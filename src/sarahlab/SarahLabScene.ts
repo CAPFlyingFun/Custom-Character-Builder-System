@@ -3838,10 +3838,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       babyCords.forEach((c, i) => { c.length = cordLength(wk); c.radius = BABY_NAVEL.radius * fits[i].scale; });
       while (babyFloats.length < fits.length) babyFloats.push(restingMass());
       babyFloats.length = fits.length; babyMoves.length = Math.min(babyMoves.length, fits.length);
+      // (the balloon's top is this same womb, laid again round it now -- seen or not: laid only while her baby had been
+      // shown, a womb still at full term stayed in the balloon when her belly was slid down to nothing, and stood out of
+      // her flat belly -- found 2026-11-04, checking the room on its own site)
+      layBalloonWomb();
       if (babySac && babyWall) {
         layShell(babyWall, babyWomb, WOMB_WALL_M);
-        // (the balloon's top is this same wall: drawn once, as the balloon)
-        babyWall.visible = !vulva; layBalloonWomb();
+        // (drawn once, as the balloon)
+        babyWall.visible = !vulva;
         // one baby: its sac lines her womb; several: each its own, round it
         layShell(babySac, babyWomb, 0); babySac.visible = fits.length === 1;
         while (babyOwnSacs.length < fits.length && fits.length > 1) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), (babySac.material as THREE.Material).clone()); m.renderOrder = 1; m.userData.unit = babySac.userData.unit; babyHolder?.add(m); babyOwnSacs.push(m); }
