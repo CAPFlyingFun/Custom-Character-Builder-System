@@ -1,0 +1,646 @@
+/**
+ * WHERE JACK AND SARAH'S ARMS COME DOWN — the only place either body is
+ * ever anything but a T.
+ *
+ * Neither human master carries a single animation clip. `listAnimations()`
+ * is empty on both GLBs, and the bind pose they ship in is a T: measured
+ * out of `tests/fixtures/humanBind.json`, Sarah's 35 joints and Jack's 69
+ * put the shoulders at x ±0.155 and ±0.178 and run the arms STRAIGHT OUT
+ * from there to wrists at ±0.533 and ±0.522 — a reach of 0.38 that
+ * changes height by 0.011 on Sarah and 0.023 on Jack, which is 3.5° and
+ * 9.8° off dead level. So every pose in this game is authored in this
+ * file or it does not exist, and a scientist standing in the laboratory
+ * with her arms out level is not a missing animation — it is this module
+ * not having been called.
+ *
+ * The failure this prevents is specific and it has already been paid for
+ * once elsewhere: a body that reads as BROKEN rather than as unfinished.
+ * `LabPeople` loads two photogrammetry scans with real faces and real
+ * clothing, and the one thing a player cannot forgive in them is the
+ * scarecrow silhouette.
+ *
+ * ─── what a turn means, and why an elbow may be written in the T ─────
+ *
+ * `humanRig.ts` explains why a `JointTurn` is an axis and an angle in the
+ * BIND POSE'S OWN WORLD FRAME rather than in a bone's local axes (the
+ * auto-rigger's local axes are not anatomical and differ between the two
+ * masters). The consequence for THIS file is the part worth stating,
+ * because it is what makes the poses below short:
+ *
+ *   The renderer's conversion is `local' = P⁻¹ · R · B`, so a joint's
+ *   accumulated world turn is `A_j = A_parent · R_j` and a posed bone
+ *   offset is `A_parent · (p_j − p_parent)`. Read from the far end:
+ *   EVERY TURN IS APPLIED IN THE BIND FRAME FIRST AND THEN CARRIED BY
+ *   ITS PARENTS.
+ *
+ * So the elbow is authored as if the arm were still horizontal — flexion
+ * is a rotation about world Y, which is true of a T-posed arm and stays
+ * true after the shoulder has swung the whole arm down, because the
+ * shoulder's turn carries the bent forearm with it. Nothing here has to
+ * track a frame that has already moved, and no angle below is a
+ * correction for another angle above it.
+ *
+ * ─── the axes, once, in the bind frame ───────────────────────────────
+ *
+ * +Y is up and +Z is the way the body faces (both masters are modelled
+ * facing +Z; `humanSkeleton.measureHuman` confirms it from the toes and
+ * publishes `leftSign`, the x direction the body's LEFT lies along). The
+ * four rules every sign below comes from:
+ *
+ *   a bone along +Y (spine, chest, neck): Rx(+θ) tips its top FORWARD;
+ *                                          Rz(+θ) tips its top toward −X.
+ *   a bone along −Y (thigh, shin):        Rx(+θ) swings its end BACKWARD.
+ *   a bone along +X (the left arm):       Rz(+θ) lifts it; Ry(+θ) swings
+ *                                          it backward.
+ *   a bone along −X (the right arm):      Rz(+θ) brings it DOWN; Ry(+θ)
+ *                                          swings it forward.
+ *
+ * Which is why the arms' signs are all `-armSign` and the legs' are not:
+ * the arms lie along opposite axes and mirror, while both thighs point
+ * down and a forward swing is forward for both. Nothing is hardcoded to
+ * a side — `leftSign` decides, so a re-export that mirrors the rig poses
+ * correctly without a line changing here.
+ *
+ * ─── the turn list is a FIXED FIFTEEN, and that is a decision ────────
+ *
+ * Every stance writes the same fifteen joints in the same order, parent
+ * before child, standing included — where the six leg turns are zero. It
+ * costs a renderer fifteen identity-ish quaternions a frame and it closes
+ * a bug that a shorter list invites: a consumer applies the turns it is
+ * GIVEN, so a knee that appears in `walk` and is omitted from `stand`
+ * keeps last frame's bend and the body stands there with a bent leg. A
+ * pose that names every joint it owns, every frame, cannot leave one
+ * holding a stale angle.
+ *
+ * The pelvis is deliberately NOT in the list. In both masters the legs
+ * hang off the pelvis, so a pelvis turn tips the whole stance and lifts a
+ * foot off the floor; where a real body shifts its weight, the sway below
+ * is put on the SPINE over planted feet. Where the body is and which way
+ * it faces belong to the actor, not to a pose.
+ *
+ * ─── amplitudes are fractions of a measured limb ─────────────────────
+ *
+ * The two legs' amplitudes are written as fractions of the skeleton's own
+ * `legLength` and resolved against its own shin, so the same constants
+ * are right for both masters and for a re-export at another scale. The
+ * numbers are the only ones in the file that come from outside it:
+ *
+ *   STEP as 0.75 of leg length walking and 1.15 running is BIOLOGICAL
+ *   SHAPE — a human's step length scales with leg length, and the hip
+ *   flexion that falls out of `asin(step / 2 legLength)` is 22.0° walking
+ *   and 35.1° running, inside the ranges gait labs report for both.
+ *   KNEE LIFT as 0.06 and 0.15 of leg length is GAME TUNING at the low
+ *   end of that biology (a real swing knee flexes further than 28°); it
+ *   is set by how the silhouette reads at the distance a player stands
+ *   from these two, not by a goniometer.
+ *   BREATH at 0.25 Hz is fifteen breaths a minute, the middle of the
+ *   12-20 of a resting adult. SWAY at 0.11 Hz is GAME TUNING in the
+ *   sub-hertz band quiet standing actually wanders in.
+ *
+ * Measured on the fixture, those fractions land the same pose on two
+ * different bodies: a 0.06 knee lift is 28.4° on Sarah (leg 0.638, shin
+ * 0.317) and 29.1° on Jack (leg 0.678, shin 0.323), and neither master's
+ * units are metres.
+ *
+ * Pure: no three, no DOM, no storage, no network. This is core, and
+ * `tests/simulationCore.test.ts` holds it to that. It allocates on the
+ * first frame that grows `out` and never again.
+ */
+
+import {
+  newJointTurn,
+  type BindJoint,
+  type HumanGait,
+  type HumanMeasure,
+  type HumanStance,
+  type JointTurn,
+  type MutableJointTurn,
+} from './humanRig';
+
+const DEG = Math.PI / 180;
+const TAU = Math.PI * 2;
+
+/**
+ * How many turns `poseHuman` writes, every call, whatever the stance.
+ * Exported so an integrator can size its `out` array once at load —
+ * `Array.from({ length: HUMAN_POSE_TURNS }, newJointTurn)` — and never
+ * allocate in a frame at all.
+ */
+export const HUMAN_POSE_TURNS = 15;
+
+/**
+ * How far from vertical a hanging arm is left, shoulder to wrist in one
+ * line. The arm is not lowered by a fixed angle any more: each master's
+ * T-pose is read for its own droop and its own elbow kink (`writeArm`),
+ * because Jack's upper arm droops 9° below the horizontal while his
+ * forearm lies level, and a fixed 77.5° drop turned that hidden 11° kink
+ * into an elbow at his ribs with the forearm and hand flaring out.
+ *
+ * And the angle is wider than an anatomy table's because of where it is
+ * measured from: the rig's shoulder joint sits up by the base of the
+ * neck, not in the ball of the shoulder, so a small angle from there runs
+ * the upper arm straight down the side of the chest. Rendered at 10°,
+ * 14°, 17° and 20° on both masters: 10° and 14° press the arm into the
+ * ribs with no gap under it — "Jack's arms are folded in his sides"
+ * (Joshua, 2026-09-30) — 20° starts to read as an A-pose, and 17° hangs
+ * the arm clear of the body with the hand beside the thigh. GAME TUNING.
+ */
+const ARM_FLARE = 17 * DEG;
+
+/** Arms hang a little in front of the torso, not beside it. */
+const SHOULDER_ROLL = 6 * DEG;
+
+/**
+ * The hand's own tip, carried a little further round the arm's arc than
+ * the forearm — which for an arm flared outward reads as the relaxed
+ * inward hand it is meant to be, and needs no second axis to say so.
+ */
+const WRIST_IN = 8 * DEG;
+
+/**
+ * Elbow flexion held whatever the arm is doing. A walker's arm HANGS: a
+ * few degrees of bend, the hand beside the thigh (Joshua, 2026-09-30,
+ * on 24° walking and 10° standing: "Jack's arms are folded in his sides"
+ * — held that way, the forearms stood out in front of the hips with the
+ * upper arms tucked against the ribs). A runner's arms are up.
+ */
+const ELBOW_BENDS: Readonly<Record<HumanStance, number>> = {
+  stand: 6 * DEG,
+  walk: 8 * DEG,
+  run: 72 * DEG,
+};
+
+/** Extra flexion as an arm comes forward, and none as it goes back. */
+const ELBOW_PUMPS: Readonly<Record<HumanStance, number>> = {
+  stand: 0,
+  walk: 14 * DEG,
+  run: 18 * DEG,
+};
+
+/** Fore and aft swing of the whole arm about the shoulder. */
+const ARM_SWINGS: Readonly<Record<HumanStance, number>> = {
+  stand: 0,
+  walk: 18 * DEG,
+  run: 38 * DEG,
+};
+
+/**
+ * How far the planted foot sweeps back under the body while it carries
+ * weight, as a fraction of leg length; the hip angle falls out of it.
+ * GAME TUNING toward the measured: an adult's stride is about 1.55 leg
+ * lengths at an ordinary walk (1.4 m on a 0.9 m leg), of which the stance
+ * foot covers `STANCE_SHARES.walk` of the cycle — 0.9 of a leg. The run
+ * sweeps further; most of its extra distance is the flight between
+ * stances, which `STANCE_SHARES.run` gives it.
+ *
+ * Shortened (2026-11-04) to 0.8 and 0.9 when the step stopped being swept
+ * evenly about the hip (`BACK_SWING_MOST`): a real step is longer than its
+ * hip's sweep because the foot rolls from heel to toe and the pelvis turns
+ * with it, and this rig has neither, so the whole step is the hip's -- at
+ * 0.9 with the back held in, the leg reached 42 degrees out in front. A
+ * walk of a little over 1.3 leg lengths a stride reads as a shorter step.
+ */
+const STEP_LENGTHS: Readonly<Record<HumanStance, number>> = {
+  stand: 0,
+  walk: 0.8,
+  run: 0.9,
+};
+
+/**
+ * HOW FAR BEHIND THE HIP A PLANTED LEG GOES (Joshua, 2026-11-04: a joint
+ * may not pass how far a real one goes -- data/jointRange.ts, read for the
+ * walk by actor/jointLimits.ts). Swept evenly, an ordinary walk took the
+ * back leg 27 degrees behind the hip and a run 35 (40 as the swing
+ * began), and the foot, held flat on the ground, bent its ankle up by as
+ * much -- where a hip extends about 17 to 18 degrees and an ankle bends
+ * up 13 to 14 by itself (CDC 2011). So the sweep is taken mostly IN FRONT
+ * of the hip: the leg goes no further back than this (and the flat foot's
+ * ankle no further up, in the step or the swing), and the rest of the
+ * step is in front. GAME TUNING under those walls, with room for the
+ * walk's lean and a man's ankle.
+ */
+const BACK_SWING_MOST = 12 * DEG;
+
+/**
+ * What share of a cycle each foot is ON THE GROUND. MEASURED: walking
+ * stance is about 60% of the gait cycle (Perry & Burnfield, Gait
+ * Analysis, 2nd ed., 2010), which is what gives a walk its moment of
+ * double support; running stance falls below half — about 40% at an easy
+ * run (Novacheck, Gait & Posture 7:77–95, 1998), which is the flight.
+ * Standing has no cycle; the share is only there so nothing divides by 0.
+ */
+const STANCE_SHARES: Readonly<Record<HumanStance, number>> = {
+  stand: 0.6,
+  walk: 0.6,
+  run: 0.4,
+};
+
+/**
+ * One whole gait cycle of THIS body, in its bind's units, left foot to
+ * left foot. A caller advancing the phase by distance divides by this and
+ * by nothing else, because the planted foot sweeps back one step at a
+ * constant rate over its stance share of the cycle (`legCycle`), so the
+ * body has to cover step ÷ share in a cycle for that foot to stand still
+ * on the ground. A stride of any other length is a foot that slides —
+ * forward when the body covers more than the pose steps, back when it
+ * covers less. Zero for a body standing, whose phase does not advance.
+ */
+export function humanStride(measure: HumanMeasure, stance: HumanStance, carry = 0): number {
+  return (STEP_LENGTHS[stance] * carryGait(carry).step * measure.legLength) / STANCE_SHARES[stance];
+}
+
+/**
+ * HOW A BUMP CHANGES THE WALK (Joshua, 2026-10-08, walking the base Sarah at 200%:
+ * "walking looks a little weird between the hips, pubic area, and under the
+ * belly"). A full stride swung each thigh up into the underside of the bump. A late
+ * pregnancy walks with a shorter step and the feet further apart, the thighs passing
+ * either side of the bump: so `carry` (0 none, 1 full term, 2 twice that) shortens
+ * the step to `step` of itself and turns each thigh out by `spread` radians.
+ * BIOLOGICAL SHAPE eased for the rig, GAME TUNING in its numbers.
+ */
+export function carryGait(carry: number): { step: number; spread: number } {
+  const c = Math.min(2, Math.max(0, Number.isFinite(carry) ? carry : 0));
+  return { step: 1 - 0.18 * c, spread: c * 3.5 * DEG };
+}
+
+/**
+ * How far the knee bend picks the foot up off the line of the thigh, as
+ * a fraction of leg length. Resolved against the skeleton's own shin,
+ * which is why `bind` is a parameter at all.
+ */
+const KNEE_LIFTS: Readonly<Record<HumanStance, number>> = {
+  stand: 0,
+  walk: 0.06,
+  run: 0.15,
+};
+
+/**
+ * How far a swinging foot's toes trail, as a share of the knee's fold.
+ * GAME TUNING toward the measured: after toe-off the ankle is plantar-
+ * flexed and comes back to neutral through the swing (Perry & Burnfield),
+ * so a foot that folds with the knee reads as leaving the ground and one
+ * held level reads as a skate. Half the fold. Through stance the ankle
+ * holds the foot LEVEL instead — see `writeLeg`.
+ */
+const TOE_TRAIL = 0.5;
+
+/** Forward lean of the torso. A run leans into its own speed. */
+const FORWARD_LEANS: Readonly<Record<HumanStance, number>> = {
+  stand: 0,
+  walk: 4 * DEG,
+  run: 11 * DEG,
+};
+
+/** How the forward lean is split between the spine and the chest above it. */
+const SPINE_SHARE = 0.65;
+
+/**
+ * How much of the lean the neck gives back, so a runner looks ahead of
+ * his feet rather than at them.
+ *
+ * The breath and the sway are given back IN FULL, which is a different
+ * claim and a load-bearing one: the head is the segment a standing body
+ * holds still, and a chest that rocked the skull 0.9° twice a breath
+ * would read as a body settling rather than as one breathing. It is also
+ * what keeps the crown from bobbing — measured on Jack, whose head joint
+ * sits 0.051 forward of his neck, a chest tilt alone moved the top of
+ * him by 1.12 mm, and a pose is a rotation and never a stretch.
+ */
+const NECK_COUNTER = 0.55;
+
+/** Roll into a full-rate turn, split spine then chest, with the neck levelling the head. */
+const LEAN_ROLL = 14 * DEG;
+const LEAN_SPINE_SHARE = 0.6;
+const NECK_LEVEL = 0.45;
+
+/** Fifteen breaths a minute, as a chest extension of under a degree. */
+const BREATH_HZ = 0.25;
+const BREATH_RISE = 0.9 * DEG;
+
+/**
+ * Quiet standing is never still. One slow roll of the torso with a
+ * second, weaker term at an incommensurate rate, so the loop is long
+ * enough that nobody watching a body at a desk sees it repeat, and the
+ * chest gives back half of it to keep the head over the feet.
+ */
+const SWAY_HZ = 0.11;
+const SWAY_ROLL = 1.1 * DEG;
+const SWAY_SECOND = 0.35;
+const SWAY_SECOND_RATIO = 0.41;
+const SWAY_COUNTER = 0.55;
+
+function clamp(value: number, low: number, high: number): number {
+  return value < low ? low : value > high ? high : value;
+}
+
+function writeTurn(
+  turn: MutableJointTurn,
+  joint: number,
+  ax: number,
+  ay: number,
+  az: number,
+  radians: number,
+): void {
+  turn.joint = joint;
+  turn.ax = ax;
+  turn.ay = ay;
+  turn.az = az;
+  turn.radians = radians;
+}
+
+/**
+ * A turn about two world axes at once, as ONE axis and angle: the
+ * rotation `Rx(xRadians) · Rz(zRadians)`, Z first.
+ *
+ * The order is not a preference. A shoulder's Z brings the horizontal
+ * arm DOWN and its X then swings the hanging arm fore and aft; the other
+ * order would apply the swing to an arm still lying along its own
+ * rotation axis, where it does nothing at all.
+ *
+ * One axis and angle out, because the renderer's conversion takes one
+ * rotation per joint — two turns naming the same joint would be a second
+ * pose fighting the first.
+ */
+function writeTurnXZ(turn: MutableJointTurn, joint: number, xRadians: number, zRadians: number): void {
+  const sx = Math.sin(xRadians * 0.5);
+  const cx = Math.cos(xRadians * 0.5);
+  const sz = Math.sin(zRadians * 0.5);
+  const cz = Math.cos(zRadians * 0.5);
+
+  // Hamilton product of (sx, 0, 0, cx) and (0, 0, sz, cz), written out.
+  let qx = sx * cz;
+  let qy = -sx * sz;
+  let qz = cx * sz;
+  let qw = cx * cz;
+  if (qw < 0) {
+    qx = -qx;
+    qy = -qy;
+    qz = -qz;
+    qw = -qw;
+  }
+
+  const sine = Math.hypot(qx, qy, qz);
+  if (sine < 1e-9) {
+    // No rotation at all. An axis is still required to be a unit vector,
+    // so it is up: the angle is zero and nothing turns about it.
+    writeTurn(turn, joint, 0, 1, 0, 0);
+    return;
+  }
+  const scale = 1 / sine;
+  writeTurn(turn, joint, qx * scale, qy * scale, qz * scale, 2 * Math.atan2(sine, qw));
+}
+
+/**
+ * An elbow: the bind's kink taken out about Z first, then the bend about
+ * Y — `Ry(bend) · Rz(straighten)` as one axis and angle.
+ */
+function writeElbow(turn: MutableJointTurn, joint: number, bend: number, straighten: number): void {
+  const sy = Math.sin(bend * 0.5), cy = Math.cos(bend * 0.5);
+  const sz = Math.sin(straighten * 0.5), cz = Math.cos(straighten * 0.5);
+  let qx = sy * sz, qy = sy * cz, qz = cy * sz, qw = cy * cz;
+  if (qw < 0) { qx = -qx; qy = -qy; qz = -qz; qw = -qw; }
+  const sine = Math.hypot(qx, qy, qz);
+  if (sine < 1e-9) {
+    writeTurn(turn, joint, 0, 1, 0, 0);
+    return;
+  }
+  writeTurn(turn, joint, qx / sine, qy / sine, qz / sine, 2 * Math.atan2(sine, qw));
+}
+
+/**
+ * Shoulder, elbow and wrist of one arm, written at `at`, `at + 1` and
+ * `at + 2`.
+ *
+ * `xSign` is the x direction this arm lies along in the bind pose, which
+ * is `leftSign` for the left arm and its negation for the right;
+ * `forward` is −1..+1, how far this arm is thrown ahead of the body.
+ * Every sign below is `-xSign` because the two arms point along opposite
+ * axes and a rotation that brings one down lifts the other.
+ *
+ * The standing arm is the BASE of all three stances: a walking body
+ * swings its arms around a pose that is already down, and never returns
+ * any part of the way to the T.
+ */
+function writeArm(
+  out: MutableJointTurn[],
+  bind: readonly BindJoint[],
+  at: number,
+  shoulder: number,
+  elbow: number,
+  wrist: number,
+  xSign: number,
+  forward: number,
+  stance: HumanStance,
+): void {
+  // The T-pose this master was rigged in: how far its upper arm already
+  // droops below the horizontal, and how far its forearm is kinked back
+  // up from the line of the upper arm. The shoulder lowers the rest of
+  // the way to ARM_FLARE; the elbow takes the kink out before it bends.
+  const s = bind[shoulder], e = bind[elbow], w = bind[wrist];
+  const droop = Math.atan2(s.y - e.y, Math.abs(e.x - s.x));
+  const kink = droop - Math.atan2(e.y - w.y, Math.abs(w.x - e.x));
+  // Negative X is forward for a hanging arm, so the roll and the swing
+  // share one angle and one sign.
+  writeTurnXZ(out[at], shoulder, -(SHOULDER_ROLL + ARM_SWINGS[stance] * forward), -xSign * (Math.PI / 2 - ARM_FLARE - droop));
+  writeElbow(out[at + 1], elbow, -xSign * (ELBOW_BENDS[stance] + ELBOW_PUMPS[stance] * Math.max(0, forward)), -xSign * kink);
+  writeTurn(out[at + 2], wrist, 0, 0, 1, -xSign * WRIST_IN);
+}
+
+/**
+ * Hip, knee and ankle of one leg, written at `at`, `at + 1` and
+ * `at + 2`, at `legPhase` 0..1 of its own cycle: 0 is the moment it
+ * lands, furthest forward.
+ *
+ * THE FOOT DRIVES THE BODY, so the cycle is two different motions and
+ * not one sine. For `share` of it the foot is PLANTED: it sweeps from
+ * furthest forward to furthest back at a CONSTANT rate, which is the rate
+ * the body passes over a foot standing still on the ground (`humanStride`
+ * is what makes the two rates the same number). The rest is the SWING: a
+ * cubic that leaves and arrives at that same rate, so the foot neither
+ * jerks as it lifts nor stubs as it lands, overshooting a little at each
+ * end the way a real foot rolls off and reaches, with the knee folding
+ * to clear the ground in the middle of it — most at mid-swing, where the
+ * foot passes under the hip and the ground is nearest.
+ *
+ * A sine did neither. Its foot moved fastest mid-stance, so no planted
+ * foot stood still; and its knee folded through the whole back half of
+ * the sweep, so the foot came off the ground while it still carried the
+ * body and came down straight-legged a quarter-cycle before it had
+ * finished swinging forward — landing, and then sliding on.
+ *
+ * The knee is the one joint in the body that may only go one way, so its
+ * flexion is `kneeBend × (1 − cos 2πu) / 2`, never negative, and still
+ * at both ends so the foot is set down rather than slapped: a knee cannot be
+ * hyperextended by a phase, a lean or an amplitude, because the only
+ * angle that reaches it is a positive one.
+ */
+function writeLeg(
+  out: MutableJointTurn[],
+  at: number,
+  hip: number,
+  knee: number,
+  ankle: number,
+  legPhase: number,
+  share: number,
+  front: number,
+  back: number,
+  kneeBend: number,
+  spread = 0,
+): void {
+  let forward: number;
+  let fold = 0;
+  if (legPhase < share) {
+    forward = 1 - (2 * legPhase) / share;
+  } else {
+    // Hermite from −1 to +1 with both end slopes equal to the stance's,
+    // per unit of the swing: −2 (1 − share) / share.
+    const u = (legPhase - share) / (1 - share);
+    const m = (-2 * (1 - share)) / share;
+    forward = ((-4 * u + 6) * u) * u - 1 + m * (((2 * u - 3) * u + 1) * u);
+    fold = (1 - Math.cos(2 * Math.PI * u)) / 2;
+  }
+  // the foot's place along the ground under the hip (a share of the leg),
+  // from `front` ahead of it to `back` behind: the hip's angle is its
+  // asin, so a planted foot's place moves on at an even pace and it does
+  // not slide; and it does not go further back than `back`, even where
+  // the swing's start would carry it on past (it turns forward there)
+  const place = Math.max(-back, (front - back) / 2 + ((front + back) / 2) * forward);
+  const hipAngle = Math.asin(clamp(place, -1, 1));
+  if (spread === 0) writeTurn(out[at], hip, 1, 0, 0, -hipAngle);
+  else writeTurnXZ(out[at], hip, -hipAngle, spread);
+  writeTurn(out[at + 1], knee, 1, 0, 0, kneeBend * fold);
+  // The ankle undoes the hip and the knee, so the sole stays level with
+  // the ground while it is on it; in the swing the toes trail by part of
+  // the fold.
+  // (and never bent up further than a leg goes behind: a run's deep knee
+  // fold, half undone, bent it up 19 degrees in the swing -- the toes trail
+  // a little more instead)
+  const ankleFlex = Math.max(-BACK_SWING_MOST, hipAngle - kneeBend * fold * (1 - TOE_TRAIL));
+  // a thigh turned out tips the foot onto its edge; the ankle sets it back flat
+  if (spread === 0) writeTurn(out[at + 2], ankle, 1, 0, 0, ankleFlex);
+  else writeTurnXZ(out[at + 2], ankle, ankleFlex, -spread);
+}
+
+function fract(x: number): number {
+  return x - Math.floor(x);
+}
+
+/**
+ * The turns actually written, as an array the caller may read straight
+ * through.
+ *
+ * `out` is the caller's and is usually exactly `HUMAN_POSE_TURNS` long,
+ * which is the whole of the fast path: the prefix IS the array. A longer
+ * `out` — one array serving several bodies — gets a view held against it,
+ * built once and then only checked, so the second frame allocates nothing
+ * either. The view is kept per array rather than per module because
+ * `LabPeople` poses two people in one frame and a single shared view
+ * would hand Jack's turns to whoever read Sarah's second.
+ */
+const PREFIXES = new WeakMap<readonly MutableJointTurn[], MutableJointTurn[]>();
+
+function usedPrefix(out: MutableJointTurn[], used: number): readonly JointTurn[] {
+  if (out.length === used) return out;
+  let view = PREFIXES.get(out);
+  if (view === undefined) {
+    view = [];
+    PREFIXES.set(out, view);
+  }
+  if (view.length !== used) view.length = used;
+  for (let i = 0; i < used; i += 1) {
+    if (view[i] !== out[i]) view[i] = out[i];
+  }
+  return view;
+}
+
+/**
+ * One frame of a human, as turns in the bind pose's world frame.
+ *
+ * `bind` is read for the one length `HumanMeasure` does not carry — the
+ * shin, which is what a knee lift has to be resolved against — and for
+ * nothing else; every other amplitude is a fraction of a measured span
+ * or an angle.
+ *
+ * Deterministic: the same `measure`, `bind` and `gait` give the same
+ * turns, every time, with no state kept between calls. Nothing is
+ * remembered, so nothing can get out of step with a phase the caller
+ * advances.
+ */
+export function poseHuman(
+  measure: HumanMeasure,
+  bind: readonly BindJoint[],
+  gait: HumanGait,
+  out: MutableJointTurn[],
+): readonly JointTurn[] {
+  while (out.length < HUMAN_POSE_TURNS) out.push(newJointTurn());
+
+  const joints = measure.joints;
+  const stance = gait.stance;
+  const left = measure.leftSign < 0 ? -1 : 1;
+
+  // The cycle. Positive is the LEFT leg thrown forward; the right leg is
+  // half a cycle behind it, and each arm goes with the OPPOSITE leg, which
+  // is what a counter-rotating torso does and what a body with both arms
+  // swinging together does not.
+  // The legs cross — both under the hips, one planted, one swinging —
+  // at a phase that moves with the stance share (`legCycle`), and the
+  // arms cross with them.
+  const share = STANCE_SHARES[stance];
+  const cycle = Math.sin((gait.phase - (share / 2 - 0.25)) * TAU);
+
+  const knee = bind[joints.kneeL];
+  const ankle = bind[joints.ankleL];
+  const shin = Math.hypot(ankle.x - knee.x, ankle.y - knee.y, ankle.z - knee.z);
+  const lift = KNEE_LIFTS[stance] * measure.legLength;
+  const kneeBend = shin > 0 ? Math.acos(clamp(1 - lift / shin, -1, 1)) : 0;
+  // The step is a fraction of THIS body's leg, and the hip angle that
+  // takes the foot that far is an asin of a share of the leg. The length
+  // cancels, which is the point: the same fraction is the same angle on
+  // Sarah's 0.638 leg and Jack's 0.678, and would be on a re-export in
+  // millimetres. The share is split: no more than `BACK_SWING_MOST`
+  // behind the hip, the rest in front.
+  const carried = carryGait(gait.carry ?? 0);
+  const step = STEP_LENGTHS[stance] * carried.step * measure.legLength;
+  const sweep = measure.legLength > 0 ? clamp(step / measure.legLength, 0, 2) : 0;
+  const back = Math.min(sweep / 2, Math.sin(BACK_SWING_MOST)), front = Math.min(1, sweep - back);
+
+  // Breath and sway are functions of the CLOCK, never of the phase: a
+  // body standing still has a phase that never advances, and these two
+  // are the whole of what keeps it from reading as a statue. The sway is
+  // a standing body's; a walking one is already moving its torso.
+  const breath = Math.sin(gait.seconds * TAU * BREATH_HZ) * BREATH_RISE;
+  const swayAt = gait.seconds * TAU * SWAY_HZ;
+  const sway = stance === 'stand'
+    ? (Math.sin(swayAt) + SWAY_SECOND * Math.sin(swayAt * SWAY_SECOND_RATIO)) * SWAY_ROLL
+    : 0;
+
+  // A lean is a roll about the forward axis, and +Z rolls the torso
+  // toward −X, so the body's own right is `leftSign` away from the sign
+  // of the lean rather than a hardcoded direction.
+  const leanRoll = left * clamp(gait.lean, -1, 1) * LEAN_ROLL;
+  const leanForward = FORWARD_LEANS[stance];
+
+  writeTurnXZ(out[0], joints.spine, leanForward * SPINE_SHARE, leanRoll * LEAN_SPINE_SHARE + sway);
+  writeTurnXZ(
+    out[1],
+    joints.chest,
+    leanForward * (1 - SPINE_SHARE) - breath,
+    leanRoll * (1 - LEAN_SPINE_SHARE) - sway * SWAY_COUNTER,
+  );
+  writeTurnXZ(
+    out[2],
+    joints.neck,
+    breath - leanForward * NECK_COUNTER,
+    -sway * (1 - SWAY_COUNTER) - leanRoll * NECK_LEVEL,
+  );
+
+  writeArm(out, bind, 3, joints.shoulderL, joints.elbowL, joints.wristL, left, -cycle, stance);
+  writeArm(out, bind, 6, joints.shoulderR, joints.elbowR, joints.wristR, -left, cycle, stance);
+
+  // The left foot lands, furthest forward, at phase 0.25; the right half
+  // a cycle later.
+  writeLeg(out, 9, joints.hipL, joints.kneeL, joints.ankleL, fract(gait.phase - 0.25), share, front, back, kneeBend, left * carried.spread);
+  writeLeg(out, 12, joints.hipR, joints.kneeR, joints.ankleR, fract(gait.phase + 0.25), share, front, back, kneeBend, -left * carried.spread);
+
+  return usedPrefix(out, HUMAN_POSE_TURNS);
+}

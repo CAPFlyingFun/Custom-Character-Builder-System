@@ -1,0 +1,56 @@
+/**
+ * Build-time constants injected by `vite.config.ts` (`define`).
+ *
+ * They exist so the running build can say what it IS. Joshua tests from
+ * the deployed Pages build, where the only question that matters is "am
+ * I looking at the change we just made, or the one before it?" — a
+ * semver cannot answer that, a commit hash can. The About screen shows
+ * both; the update check compares `__BUILD_COMMIT__` with `version.json`.
+ */
+declare const __APP_VERSION__: string;
+declare const __BUILD_COMMIT__: string;
+declare const __BUILD_DATE__: string;
+
+/**
+ * THE RELAY THIS BUILD TALKS TO, baked in rather than fetched.
+ *
+ * Its default is the deployed relay (`vite.config.ts`), and
+ * `TRADDOMIUM_RELAY_URL` at build time points a fork, a preview or a test
+ * build somewhere else. Empty means this build has no online play at all,
+ * which is an honest build, not a broken one.
+ *
+ * WHY A CONSTANT AND NOT A FETCHED CONFIG FILE. The address is known when
+ * the build is made and never changes while it runs, so fetching it would
+ * add a request that can fail, a state where the app does not yet know
+ * what it is, and a second answer to "is there online play here?" — the
+ * screen would have to guess whether to offer a room before the answer
+ * arrived. A constant is decided at compile time, cannot fail, and lets
+ * the build ANSWER that question synchronously (`src/net/relayConfig.ts`).
+ * The one thing a constant cannot do is change without a redeploy, and
+ * `?relay=` covers that: a developer points the running build at a local
+ * relay from the address bar.
+ */
+declare const __RELAY_URL__: string;
+
+/**
+ * A CONTENT HASH PER FILE IN `public/`, keyed by the path `assetUrl`
+ * takes — `models/jack.glb`, `kauai-1025.bin`, `audio/voice/x.mp3`.
+ *
+ * It exists because Vite hashes what it BUNDLES and copies `public/`
+ * verbatim, so a stable URL like `v1/models/sarah.glb` can be served
+ * from a phone's cache long after the build that replaced it shipped.
+ * The symptom is a device showing a NEW build stamp and OLD art at the
+ * same time, which is what happened on 2026-09-19 (`vite.config.ts`
+ * tells the story). `assetUrl` appends the revision so a changed file
+ * gets a URL no cache has seen, and an unchanged file keeps its.
+ *
+ * EMPTY in dev and in vitest — a missing entry simply means no query
+ * string, never a broken URL.
+ */
+declare const __PUBLIC_REV__: Record<string, string>;
+
+/**
+ * What each `public/` file costs to load, in decoded bytes: its own size, or for a `.gltf` its JSON plus every
+ * external buffer and image it names (`vite.config.ts`). The loading meter's totals. Missing under a bare `tsc`.
+ */
+declare const __PUBLIC_SIZE__: Record<string, number>;
