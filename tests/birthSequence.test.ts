@@ -95,3 +95,100 @@ describe('birth timeline', () => {
     expect(cervixLine(0.27)).toBe('Cervix 2.7 cm · not yet');
   });
 });
+
+// ---------------------------------------------------------------- P3: twins and triplets, born one at a time
+import { MULTIPLE_TIMING } from '../src/sarahlab/birthSequence';
+
+describe('twins and triplets: the same birth, once a baby in turn', () => {
+  const T = BIRTH_TIMING, M = MULTIPLE_TIMING;
+  it('one baby is exactly the birth it always was', () => {
+    const one = birthPlan(), two = birthPlan({}, 1);
+    expect(two.total).toBe(one.total);
+    for (const t of [3, 50, 90, 100, 130, 160]) expect(birthAt(t, 'fast', {}, 1)).toEqual(birthAt(t));
+    expect(birthAt(10).count).toBe(1);
+  });
+  it('counts its babies: no fewer than one, no more than three', () => {
+    expect(birthPlan({}, 0).babies).toHaveLength(1);
+    expect(birthPlan({}, 2).babies).toHaveLength(2);
+    expect(birthPlan({}, 7).babies).toHaveLength(3);
+  });
+  it('twins: one labour, then A born, a rest while B turns head down and settles, then B born with fewer pushes', () => {
+    const P = birthPlan({}, 2), [A, B] = P.babies;
+    expect(A.pushing).toBe(birthPlan().pushing);
+    expect(B.pushing).toBeCloseTo(A.after + M.between, 9);
+    expect(B.crowning - B.pushing).toBeCloseTo(M.pushCount * T.pushEvery, 9);
+    expect(B.birth - B.crowning).toBeCloseTo(M.crowning, 9);
+    // B waits curled until A is out; turns, then settles
+    expect(birthAt(A.birth, 'fast', {}, 2).babies[1].lieTurn).toBe(0);
+    expect(birthAt(B.turnFrom - 0.01, 'fast', {}, 2).babies[1].lieTurn).toBe(0);
+    expect(birthAt(B.engageFrom, 'fast', {}, 2).babies[1].lieTurn).toBeCloseTo(1, 6);
+    expect(birthAt(B.engageFrom, 'fast', {}, 2).babies[1].engage).toBe(0);
+    expect(birthAt(B.pushing, 'fast', {}, 2).babies[1].engage).toBeCloseTo(1, 6);
+    // whose turn: A until it is born, then B (the top of the moment follows B: her opening is about B)
+    expect(birthAt(A.birth + 1, 'fast', {}, 2).active).toBe(0);
+    const rest = birthAt(A.after + 5, 'fast', {}, 2);
+    expect(rest.active).toBe(1); expect(rest.stage).toBe('after'); expect(rest.down).toBe(0);
+    expect(rest.babies[0].born).toBe(true); expect(rest.babies[1].born).toBe(false);
+    const coming = birthAt(B.crowning - 1, 'fast', {}, 2);
+    expect(coming.stage).toBe('pushing'); expect(coming.down).toBe(coming.babies[1].down); expect(coming.down).toBeGreaterThan(0.3);
+    expect(coming.babies[0].onHer).toBe(1);
+    expect(birthAt(B.after + 1, 'fast', {}, 2).babies[1].born).toBe(true);
+  });
+  it("her opening has eased back after A before B's pushing starts", () => {
+    const [A, B] = birthPlan({}, 2).babies;
+    expect(B.pushing - A.after).toBeGreaterThanOrEqual(T.close);
+    expect(birthAt(B.pushing - 0.01, 'fast', {}, 2).closing).toBeGreaterThan(0.99);
+  });
+  it('each turns to the other side from the one before', () => {
+    const P = birthPlan({}, 3);
+    const born = birthAt(P.babies[2].after + 1, 'fast', {}, 3).babies.map((b) => b.turnDeg);
+    expect(born).toEqual([TURN_DEG.born, -TURN_DEG.born, TURN_DEG.born]);
+  });
+  it('each cord is its own: a press cuts what is out, a later baby keeps its own time', () => {
+    const P = birthPlan({}, 2), [A, B] = P.babies;
+    const at = A.navelOut + 2, Q = birthPlan({ cuts: [at] }, 2);
+    expect(Q.babies[0].cut).toBeCloseTo(at, 9);
+    expect(Q.babies[1].cut).toBeCloseTo(B.cut, 9);
+    const at2 = B.navelOut + 1, R = birthPlan({ cuts: [at, at2] }, 2);
+    expect(R.babies[1].cut).toBeCloseTo(at2, 9);
+    expect(R.babies[0].cut).toBeCloseTo(at, 9);
+  });
+  it('the placentas come after the last baby, one a baby, one after another, into the bowl', () => {
+    const P = birthPlan({}, 2), lastCut = Math.max(...P.babies.map((b) => b.cut));
+    expect(P.placenta).toBeCloseTo(lastCut + T.placentaAfterCut, 9);
+    expect(P.placentas).toHaveLength(2);
+    expect(P.placentas[1] - P.placentas[0]).toBeCloseTo(M.placentaGap, 9);
+    const mid = birthAt(P.placentas[1] - 0.5, 'fast', {}, 2);
+    expect(mid.placentas[0].separate).toBeGreaterThan(0); expect(mid.placentas[1].separate).toBe(0);
+    const end = birthAt(P.total, 'fast', {}, 2);
+    expect(end.placentas.map((p) => p.bowl)).toEqual([1, 1]);
+    expect(end.afterbirth).toBeCloseTo(1, 6);
+    // DELIVER PLACENTA never before the last baby's cut
+    expect(birthPlan({ placentaAt: P.babies[0].cut + 1 }, 2).placenta).toBeCloseTo(lastCut, 9);
+  });
+  it('her belly settles by what is out: half after one twin, all after both', () => {
+    const P = birthPlan({}, 2), [A, B] = P.babies;
+    expect(birthAt(A.after + T.close + 0.5, 'fast', {}, 2).delivered).toBeCloseTo(0.5, 6);
+    expect(birthAt(B.after + T.close + 0.5, 'fast', {}, 2).delivered).toBeCloseTo(1, 6);
+  });
+  it('triplets take longer, and the line says whose turn it is', () => {
+    expect(birthLength('fast', 3)).toBeGreaterThan(birthLength('fast', 2));
+    expect(birthLength('fast', 2)).toBeGreaterThan(birthLength('fast', 1));
+    const P = birthPlan({}, 3), [A, B] = P.babies;
+    expect(birthLine(birthAt(A.crowning + 1, 'fast', {}, 3))).toContain('baby A · crowning');
+    expect(birthLine(birthAt(A.after + 3, 'fast', {}, 3))).toContain('baby A born · B next');
+    expect(birthLine(birthAt(B.birth + 1, 'fast', {}, 3))).toContain('baby B · birth');
+    expect(birthLine(birthAt(P.total, 'fast', {}, 3))).toContain('3 of 3');
+  });
+});
+
+describe("a triplet's third: cut first, then into the bassinet", () => {
+  it('has its cord cut soon after it is born, and is lifted away only after the cut', () => {
+    const P = birthPlan({}, 3), C = P.babies[2], M = MULTIPLE_TIMING;
+    expect(C.cut).toBeCloseTo(C.after + 0.5 + M.cutFirst, 9);
+    expect(birthAt(C.cut - 0.01, 'fast', {}, 3).babies[2].onHer).toBe(0);
+    expect(birthAt(C.cut + 1 + BIRTH_TIMING.toHer + 0.01, 'fast', {}, 3).babies[2].onHer).toBe(1);
+    // (the twins before it still lie on her the way one baby does)
+    expect(P.babies[0].cut).toBeCloseTo(birthPlan().cut, 9);
+  });
+});

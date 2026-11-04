@@ -116,6 +116,16 @@ const BIRTH_SHRINK = 0.45;
 /** GAME TUNING: how far further in than her skin her womb is held as it settles (metres, once settled) */
 const BIRTH_WOMB_IN = 0.015;
 const BIRTH_REST = Object.freeze({ top: 1.2, span: 0.3, across: 0.05, depth: 0.32, over: 0.7, gap: 0 });
+/** GAME TUNING (P3, twins on her chest side by side, Joshua 2026-11-04): each this far off her middle (metres, her rest
+ * frame), the first to her left */
+const TWINS_ON_HER = Object.freeze({ across: 0.075 });
+/**
+ * GAME TUNING (P3, a triplet's third in a bassinet beside the bed, Joshua 2026-11-04), metres: its basket `long` by
+ * `wide` and `deep` (sides `wall` thick, a `mattress` in it), its rim `rimAbove` over her opening's height (the bed's
+ * level), stood `out` to her left of her opening and `up` along the bed toward her head; four legs `legs` thick to the
+ * floor; a baby lifted into it rises `arc` over the way there.
+ */
+const BASSINET = Object.freeze({ long: 0.74, wide: 0.42, deep: 0.2, wall: 0.012, mattress: 0.04, rimAbove: 0.1, out: 0.85, up: 0.6, legs: 0.028, arc: 0.3 });
 /** GAME TUNING: its straight body faded in over its curled one between these shares of its legs' straightening */
 const BABY_BODY_FADE = [0.3, 0.7] as const;
 /** GAME TUNING: where a hand rests on a knee -- over its top, the palm `capTilt` of the way from the thigh's top round to
@@ -537,9 +547,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const softBabies = new WeakMap<THREE.Object3D, SoftBaby>();
   let babySoftOn = true;
   /** how far its body has been moved across to pass through the middle of her opening (birthPlace), eased */
-  const birthCentreOff = new THREE.Vector3();
+  const birthCentreOffs: THREE.Vector3[] = [];
+  const centreOffOf = (i: number): THREE.Vector3 => (birthCentreOffs[i] ??= new THREE.Vector3());
   /** where its head came out of her and the way it was going (her rest frame), held while the rest of it follows */
-  let birthOutLine: { at: THREE.Vector3; way: THREE.Vector3 } | null = null;
+  /** each baby's way out of her, held from when its head came out (one a baby: twins come the same way, one by one) */
+  const birthOutLines: ({ at: THREE.Vector3; way: THREE.Vector3 } | null)[] = [];
   const babySqueeze = createSqueezeUniforms();
   /** its skin (its model's texture) shown from the start of its birth, plain in her womb (babySkin.ts) */
   const babySkin = createSkinUniforms();
@@ -549,6 +561,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** P2: her hands to her baby on her ('hands', the default once it is born) or left on her knees ('knees'); and how far
    * they have come to it (0..1, eased over BABY_HANDS.seconds) */
   let babyHold: 'hands' | 'knees' | 'cradle' = 'hands', babyHoldShare = 0;
+  /** twins (P3): her right hand's share on the second twin, which lies on her right once it is born (0 .. 1) */
+  let twinHandShare = 0;
   /** P2, POSITION B: how far her baby is turned into the cradle of her arms (0 lying on her .. 1 cradled, eased over
    * BABY_CRADLE.seconds) */
   let cradleShare = 0;
@@ -602,18 +616,36 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // canal as drawn this frame, and her baby's head's middle (its model's units)
   let birthTimeInput: HTMLInputElement | null = null;
   let birthClock: number | null = null, birthRunning = false, birthPace: BirthPace = 'fast', birthNow: BirthMoment | null = null;
-  /** CUT CORD and DELIVER PLACENTA, as moments on the birth's clock (FAST seconds; null: on their own time) */
-  const birthEvents: { cutAt: number | null; placentaAt: number | null } = { cutAt: null, placentaAt: null };
+  /** CUT CORD and DELIVER PLACENTA, as moments on the birth's clock (FAST seconds; null: on their own time); with twins
+   * and triplets every CUT CORD pressed is kept (`cuts`: each press cuts every cord out of her by then) */
+  const birthEvents: { cutAt: number | null; cuts: number[]; placentaAt: number | null } = { cutAt: null, cuts: [], placentaAt: null };
   /** the birth's clock in FAST seconds */
   const birthFast = (): number => (birthClock ?? 0) / (birthPace === 'realistic' ? REALISTIC_STRETCH : 1);
   /** a moment asked for later than where the timeline now stands has not happened yet (dragged back before it) */
   function trimBirthEvents(): void {
     const t = birthFast() + 1e-6;
     if (birthEvents.cutAt !== null && birthEvents.cutAt > t) birthEvents.cutAt = null;
+    birthEvents.cuts = birthEvents.cuts.filter((c) => c <= t);
     if (birthEvents.placentaAt !== null && birthEvents.placentaAt > t) birthEvents.placentaAt = null;
   }
-  /** her baby born (resting, its cord cut or not, the placenta coming or come) */
+  /** her baby born (resting, its cord cut or not, the placenta coming or come) -- with twins and triplets, the one before
+   * the next one's turn as well */
   const bornStage = (m: BirthMoment | null): boolean => !!m && (m.stage === 'after' || m.stage === 'afterbirth');
+  /**
+   * TWINS AND TRIPLETS (P3): baby `i`'s own birth read as a whole moment -- its place, its cord, its placenta -- for the
+   * code that lays one baby (birthPlace, layCords). With one baby it is the moment itself.
+   */
+  function momentOf(i: number): BirthMoment | null {
+    const m = birthNow, b = m?.babies[i];
+    if (!m || !b) return null;
+    if (m.count === 1) return m;
+    const p = m.placentas[i] ?? { placentaFor: -1, separate: 0, placentaDown: 0, bowl: 0 };
+    return { ...m, engage: b.engage, down: b.down, turnDeg: b.turnDeg, onHer: b.onHer, stretch: b.stretch, closing: b.closing, cut: b.cut, cutAt: b.cutAt, placentaFor: p.placentaFor, separate: p.separate, placentaDown: p.placentaDown, bowl: p.bowl };
+  }
+  /** Every baby out of her (one baby: born). */
+  const allOut = (m: BirthMoment | null): boolean => !!m && m.babies.every((b) => b.born);
+  /** A baby whose birth has reached it: the first from the start; another once it starts turning head down for its turn. */
+  const birthReaches = (i: number): boolean => i === 0 ? !!birthNow : (birthNow?.babies[i]?.lieTurn ?? 0) > 0;
   let birthPath: { points: THREE.Vector3[]; down: number[]; length: number } | null = null, birthHeadModel: THREE.Vector3 | null = null, birthLineAt = 0, birthLen: number | null = null;
   let babyCurl: CurlFrame | null = null, babyPoints: Float32Array | null = null, babyAll: Float32Array | null = null;
   /** the baby's body as a solid (baby.ts `babySolid`), found once from its points: how babies are kept out of one another */
@@ -644,6 +676,23 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let cordCut = false, cordOuterLaid = false, cordStumpLaid = false;
   /** and once cut, the rest of it hanging out of her (from her opening, then from the placenta as it comes out) */
   let cordRemnant: Cord | null = null, cordRemnantMesh: THREE.Mesh | null = null, cordRemnantLaid = false;
+  /**
+   * TWINS AND TRIPLETS (P3): each baby's cord out of her is its own -- its outside cord, stump and the cut cord hanging out
+   * of her. The single-cord code above runs for one baby at a time: `useCordOf(i)` loads baby i's into it and
+   * `keepCordOf(i)` puts it back (the first baby's stays loaded between frames, which is what one baby always had).
+   */
+  interface CordOut { outer: Cord | null; stump: Cord | null; remnant: Cord | null; outerMesh: THREE.Mesh | null; stumpMesh: THREE.Mesh | null; remnantMesh: THREE.Mesh | null; outerLaid: boolean; stumpLaid: boolean; remnantLaid: boolean; cut: boolean }
+  const cordOuts: CordOut[] = [];
+  function useCordOf(i: number): void {
+    const c = (cordOuts[i] ??= { outer: null, stump: null, remnant: null, outerMesh: null, stumpMesh: null, remnantMesh: null, outerLaid: false, stumpLaid: false, remnantLaid: false, cut: false });
+    cordOuter = c.outer; cordStump = c.stump; cordRemnant = c.remnant; cordOuterMesh = c.outerMesh; cordStumpMesh = c.stumpMesh; cordRemnantMesh = c.remnantMesh;
+    cordOuterLaid = c.outerLaid; cordStumpLaid = c.stumpLaid; cordRemnantLaid = c.remnantLaid; cordCut = c.cut;
+  }
+  function keepCordOf(i: number): void {
+    const c = cordOuts[i]; if (!c) return;
+    c.outer = cordOuter; c.stump = cordStump; c.remnant = cordRemnant; c.outerMesh = cordOuterMesh; c.stumpMesh = cordStumpMesh; c.remnantMesh = cordRemnantMesh;
+    c.outerLaid = cordOuterLaid; c.stumpLaid = cordStumpLaid; c.remnantLaid = cordRemnantLaid; c.cut = cordCut;
+  }
   const remnantWay = new THREE.Vector3(), placentaFace = new THREE.Vector3();
   const navelWay = new THREE.Vector3(), navelV = new THREE.Vector3(), navelRing = new THREE.Vector3(), cordOpen = new THREE.Vector3(), cordDown = new THREE.Vector3(), cordToward = new THREE.Vector3();
   const holderInv = new THREE.Matrix4(), offHerAt = new THREE.Vector3(), offHerN = new THREE.Vector3();
@@ -677,14 +726,23 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** CUT CORD: once its navel is out of her (false before, and nothing cut) -- a moment on the birth's clock, so the
    * timeline dragged back before it has not cut it yet (birthSequence.ts `BirthEvents`). */
   function cutCord(): boolean {
-    if (!birthNow || birthNow.down < 1 + BABY_NAVEL.fromCrown) return false;
-    if (!birthNow.cut) birthEvents.cutAt = birthFast();
+    if (!birthNow) return false;
+    if (birthNow.count === 1) {
+      if (birthNow.down < 1 + BABY_NAVEL.fromCrown) return false;
+      if (!birthNow.cut) birthEvents.cutAt = birthFast();
+      return true;
+    }
+    // (twins and triplets: every cord out of her by now that is not cut yet)
+    const out = birthNow.babies.filter((b) => b.down >= 1 + BABY_NAVEL.fromCrown);
+    if (!out.length) return false;
+    if (out.some((b) => !b.cut)) birthEvents.cuts.push(birthFast());
     return true;
   }
   /** DELIVER PLACENTA: sooner than its own time, once its cord is cut (false before, and nothing asked) -- a moment on the
    * birth's clock, like CUT CORD. */
   function deliverPlacenta(): boolean {
-    if (!birthNow || !birthNow.cut) return false;
+    // (every baby out and its cord cut: the placentas come after the last)
+    if (!birthNow || !birthNow.babies.every((b) => b.cut)) return false;
     if (birthNow.placentaFor < 0) birthEvents.placentaAt = birthFast();
     return true;
   }
@@ -2217,13 +2275,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // HOLD: once her baby lies on her, her hands come to it (P2, position A), or she takes it into her arms (position
       // B), or her hands stay on her knees
       const holdLine = () => `HOLD · ${babyHold === 'hands' ? 'HANDS ON BABY' : babyHold === 'cradle' ? 'IN HER ARMS' : 'HANDS ON KNEES'}`;
-      const hands = btn(holdLine(), SARAH_LAB_ACTION.birth + 'hands', () => { babyHold = babyHold === 'hands' ? 'cradle' : babyHold === 'cradle' ? 'knees' : 'hands'; hands.textContent = holdLine(); });
+      const hands = btn(holdLine(), SARAH_LAB_ACTION.birth + 'hands', () => { babyHold = babyHold === 'hands' ? (babyCount > 1 ? 'knees' : 'cradle') : babyHold === 'cradle' ? 'knees' : 'hands'; hands.textContent = holdLine(); });
       row.append(run, pace, reset, cut, deliver, hands); right.appendChild(row);
       birthButtons = [run, pace, reset, cut, deliver, hands];
       // its TIMELINE: drag to any moment of it (it pauses there; BIRTH ▶ carries on from it)
       birthTimeInput = slider(SARAH_LAB_FIELD.birthTime, 0, (v) => {
         if (!BIRTH_POSES_OK.includes(pose)) return;
-        birthClock = (v / 1000) * birthLength(birthPace); birthRunning = false; run.textContent = 'BIRTH ▶'; trimBirthEvents();
+        birthClock = (v / 1000) * birthLength(birthPace, babyCount); birthRunning = false; run.textContent = 'BIRTH ▶'; trimBirthEvents();
       }, 1000, 'pose');
       { const f = fields[SARAH_LAB_FIELD.birthTime]; if (f) f.textContent = 'TIMELINE · drag to any moment'; } }
     // a painted shirt's length, for every painted shirt she puts on (its drape follows: tunicDrape.ts)
@@ -2291,7 +2349,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       babyDirty = true; babyFitAt = -Infinity;
     });
     buttons.baby = btn('SEE BABY', SARAH_LAB_ACTION.baby, () => { showBaby(!babyShown); refresh(); });
-    buttons.babies = btn('BABIES · ONE', SARAH_LAB_ACTION.babies, () => { babyCount = (babyCount % 3) + 1; babyDirty = true; babyFitAt = -Infinity; applyLook(); refresh(); });
+    buttons.babies = btn('BABIES · ONE', SARAH_LAB_ACTION.babies, () => { if (birthClock !== null) birthControl('reset'); babyCount = (babyCount % 3) + 1; babyDirty = true; babyFitAt = -Infinity; applyLook(); refresh(); });
     buttons.babyLie = btn('LIE · AUTO', SARAH_LAB_ACTION.babyLie, () => { babyLie = LIE_MODES[(LIE_MODES.indexOf(babyLie) + 1) % LIE_MODES.length]; if (babyLie === 'random') babyLieSeed = Math.floor(Math.random() * 1e6) + 1; babyDirty = true; babyFitAt = -Infinity; refresh(); });
     // KICK: one of them kicks now (as BABY KICKS makes them on their own)
     buttons.babyKick = btn('KICK', SARAH_LAB_ACTION.babyKick, () => { const roots = babyRoots(); if (!roots.length) return; const i = Math.floor(Math.random() * roots.length); startMove(babyMoveOf(i, roots[i]), 'kick'); });
@@ -3042,6 +3100,26 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     return a;
   }
+  /** The body a baby is drawn with now (its straight one once born, else its curled one). */
+  function drawnMeshOf(r: THREE.Object3D): THREE.SkinnedMesh | null {
+    const own = straightOf(r);
+    if (own?.visible) return own;
+    let mesh: THREE.SkinnedMesh | null = null; r.traverse((o) => { const m = o as THREE.SkinnedMesh; if (!mesh && m.isSkinnedMesh && m.visible) mesh = m; });
+    return mesh;
+  }
+  /** A baby body's chest and hips points (every third vertex, by the bone it follows most), once a geometry: what a palm
+   * lies on (settlePitch's pick, for any of its bodies). */
+  const trunkPicks = new WeakMap<THREE.BufferGeometry, { chest: Uint32Array; hips: Uint32Array }>();
+  function trunkPick(m: THREE.SkinnedMesh): { chest: Uint32Array; hips: Uint32Array } {
+    if (m === pitchFor && pitchPick) return pitchPick;
+    let p = trunkPicks.get(m.geometry);
+    if (p) return p;
+    const bones = m.skeleton.bones, SI = m.geometry.getAttribute('skinIndex'), SW = m.geometry.getAttribute('skinWeight'), c: number[] = [], h: number[] = [];
+    for (let i = 0; i < SI.count; i += 3) { let b = 0, w = -1; for (let k = 0; k < 4; k++) if (SW.getComponent(i, k) > w) { w = SW.getComponent(i, k); b = SI.getComponent(i, k); } const nm = bones[b]?.name; if (nm === 'Bone_003' || nm === 'Bone_002' || nm === 'Bone_004') c.push(i); else if (nm === BABY_BONES.root || nm === BABY_BONES.hips || nm === 'Bone_006') h.push(i); }
+    p = { chest: Uint32Array.from(c), hips: Uint32Array.from(h) };
+    trunkPicks.set(m.geometry, p);
+    return p;
+  }
   /**
    * WHERE ON HER BABY EACH HAND GOES (P2, POSITION A -- resting on her, skin to skin): her LEFT palm flat across its upper
    * back between its shoulder blades, her RIGHT palm over its bottom, fingers across it toward her other side; each a
@@ -3049,7 +3127,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * skin there is read off it as drawn this frame (its chest's and its hips' points, settlePitch's): the furthest of them
    * out from her, so the palm lies on it, not in it. Null while it is not lying on her.
    */
-  function babyHandTarget(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3; elbow?: THREE.Vector3; elbowK?: number } | null {
+  function babyHandTarget(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3; elbow?: THREE.Vector3; elbowK?: number; share?: number } | null {
+    // TWINS (P3, Joshua 2026-11-04: "her hands on both"): her left hand on the first, her right on the second once it
+    // is on her (`twinHandShare`)
+    if (babyCount >= 2) { if (name === 'R' && !(twinHandShare > 0)) return null; const t = babyLyingTarget(name, handLen, perM); return t && name === 'R' ? { ...t, share: twinHandShare } : t; }
     const lying = babyLyingTarget(name, handLen, perM);
     if (!(cradleShare > 0)) return lying;
     // (into her arms: from where the hand was on it lying on her to where it holds it cradled)
@@ -3089,7 +3170,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     return { tip, along: long.clone(), face: away };
   }
   function babyLyingTarget(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3 } | null {
-    const r = babyRoots()[0], m = pitchFor, pick = pitchPick;
+    // (twins: her right hand on the second twin, her left on the first)
+    const twin = babyCount >= 2 && name === 'R', r = babyRoots()[twin ? 1 : 0], m = twin && r ? drawnMeshOf(r) : pitchFor, pick = m ? trunkPick(m) : null;
     if (!r || !m || !pick || !birthNow || !bornStage(birthNow)) return null;
     const hipB = r.getObjectByName(BABY_BONES.hips), chestB = r.getObjectByName('Bone_003'), neckB = r.getObjectByName(BABY_BONES.neck);
     if (!hipB || !chestB || !neckB) return null;
@@ -3098,14 +3180,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (its back: away from her skin under it)
     const face = new THREE.Vector3(); { const [b] = nearestHerSkin(C.clone().add(H).multiplyScalar(0.5)); if (b >= 0) face.fromArray(herSkin.nrm, b * 3); else face.set(0, 1, 0); }
     face.addScaledVector(long, -face.dot(long)).normalize();
-    const B = BABY_HANDS, at = name === 'L' ? C.clone().lerp(Nk, B.backUp) : H.clone().addScaledVector(long, -B.bottomDown * perM);
+    // (twins: her right hand over the second's bottom, as it is over one baby's -- on its upper back her arm stood up high)
+    const onBack = name === 'L';
+    const B = BABY_HANDS, at = onBack ? C.clone().lerp(Nk, B.backUp) : H.clone().addScaledVector(long, -B.bottomDown * perM);
     // its skin over that point: the furthest out along its back of its points there
-    const P = name === 'L' ? pick.chest : pick.hips, v = new THREE.Vector3(); let most = -Infinity;
+    const P = onBack ? pick.chest : pick.hips, v = new THREE.Vector3(); let most = -Infinity;
     m.skeleton.update();
     for (let q = 0; q < P.length; q += 2) { m.getVertexPosition(P[q], v); m.localToWorld(v); most = Math.max(most, v.sub(at).dot(face)); }
     if (!Number.isFinite(most)) return null;
     // (the back of the hand a little more toward its feet on its bottom: cupped over the round of it)
-    const back = name === 'L' ? face.clone() : face.clone().addScaledVector(long, -B.bottomCup).normalize();
+    const back = onBack ? face.clone() : face.clone().addScaledVector(long, -B.bottomCup).normalize();
     // fingers across its back from this hand's side of her toward the other (her left is the way from her right shoulder to
     // her left); on its bottom, down over it toward its legs and a little across (from above, her wrist on the small of its
     // back: straight across, her wrist stood a hand out to its side and her right arm could not reach it)
@@ -3153,7 +3237,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (holding it in her arms, her elbow is where its head lies: the elbow's place round her arm chosen nearest that)
       const elbowWant = onBaby?.elbow && onBaby.elbowK ? { at: onBaby.elbow, k: onBaby.elbowK } : null;
       if (onBaby) {
-        const k = babyHoldShare * babyHoldShare * (3 - 2 * babyHoldShare);
+        const h = babyHoldShare * (onBaby.share ?? 1), k = h * h * (3 - 2 * h);
         T.lerp(onBaby.tip, k); td.lerp(onBaby.along, k).normalize(); top.lerp(onBaby.face, k);
         top.addScaledVector(td, -top.dot(td)).normalize();
         out[name + 'Baby'] = +k.toFixed(2);
@@ -3356,8 +3440,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her baby's place in her womb: lower sags her belly, further forward deepens it; settling into her pelvis in labour
     // it drops (and once born, it is out of her)
     let baby: { low: number; forward: number } | null = null;
-    const r0 = babyRoots()[0], mid = r0?.userData.mid as THREE.Vector3 | undefined;
-    if (babyWomb && mid && !bornStage(birthNow)) {
+    // (the baby whose turn it is: with twins, the second once the first is out)
+    const r0 = babyRoots()[birthNow?.active ?? 0] ?? babyRoots()[0], mid = r0?.userData.mid as THREE.Vector3 | undefined;
+    if (babyWomb && mid && !allOut(birthNow)) {
       const half = Math.max(0.05, sacRadius(babyWomb, 0, -1, 0)), deep = Math.max(0.05, sacRadius(babyWomb, 0, 0, 1));
       baby = { low: Math.max(0, (babyWomb.centre.y - mid.y) / half) + (birthNow ? 0.3 * birthNow.engage : 0), forward: Math.max(0, (mid.z - babyWomb.centre.z) / deep) };
     }
@@ -3367,7 +3452,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // HER NAVEL: pressed by her pregnancy -- its weeks, her babies, her baby's place (for her navel a baby settled into her
     // pelvis in labour counts as dropped all the way), a contraction -- and once her baby is born, by what her womb left
     // (NAVEL AFTER BIRTH); a spring carries it there, a little past and back
-    const born = bornStage(birthNow);
+    const born = allOut(birthNow);
     if (!born) { navelPress = navelPressure(body.pregnancyWeeks, babyRoot ? carriedShare(bump, body.babyWeight, babyCount) : 1, baby && birthNow ? { low: baby.low + 0.7 * birthNow.engage, forward: baby.forward } : baby, birthNow?.contraction ?? 0); navelPeak = birthNow ? Math.max(navelPeak, navelPress) : navelPress; navelBornFor = 0; }
     else { navelBornFor += dt; navelPress = navelAfterBirth(body.navelAfter, navelPeak, navelBornFor); }
     if (!navelSpring.primed) { navelSpring.x = navelPress; navelSpring.primed = true; }
@@ -3840,7 +3925,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (Math.abs(them.depth - babyAutoDepth) > 0.25) { babyAutoDepth = them.depth; applyLook(); babyDirty = false; }
       layPush(babyPushField);
       // as many babies as asked for: copies of the first, made or put away
-      while (babyCopies.length < fits.length - 1) babyCopies.push(cloneSkinned(babyRoot));
+      // (a copy's own place and drift: a clone's userData is copied as JSON, and a Vector3 there came back a plain object)
+      while (babyCopies.length < fits.length - 1) { const c = cloneSkinned(babyRoot); c.userData = {}; babyCopies.push(c); }
       while (babyCopies.length > fits.length - 1) babyCopies.pop()?.removeFromParent();
       babyRoots().forEach((r, i) => {
         r.quaternion.copy(fits[i].quaternion); r.scale.setScalar(fits[i].scale); r.userData.at = fits[i].position; r.userData.lie = lies[i];
@@ -3931,29 +4017,32 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       (r.userData.drift ??= new THREE.Vector3()).copy(floatMove);
       // (its straight body while it is born: faded in over its curled one as its legs straighten coming down -- both
       // bodies half-bent there, alike -- and from then on through its birth and on her)
-      if (i === 0) {
+      // (each baby its own birth, one after another: P3)
+      const bm = birthReaches(i) ? momentOf(i) : null;
+      {
         const sm = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-        const legs = birthNow ? sm(0.3, 0.9, birthNow.engage) * sm(0.2, 1, birthNow.down) : 0;
-        birthBody(r, !birthNow ? 0 : birthNow.down >= 1 ? 1 : sm(BABY_BODY_FADE[0], BABY_BODY_FADE[1], legs));
+        const legs = bm ? sm(0.3, 0.9, bm.engage) * sm(0.2, 1, bm.down) : 0;
+        birthBody(r, !bm ? 0 : bm.down >= 1 ? 1 : sm(BABY_BODY_FADE[0], BABY_BODY_FADE[1], legs));
       }
       // being born: down her canal, where the birth has it now (its moves wait)
-      if (i === 0 && birthPlace(r)) {
+      if (bm && birthPlace(r, i)) {
         r.updateMatrixWorld(true);
         // born, it stretches out of its curl (and back)
-        const mv = babyMoveOf(i, r), k2 = birthNow?.stretch ?? 0, k3 = birthNow?.onHer ?? 0;
+        const mv = babyMoveOf(i, r), k2 = bm.stretch, k3 = bm.onHer;
         // (made long as it settles into her pelvis and comes down, until it is born and stretches, lifted onto her)
-        const e1 = birthNow ? Math.min(1, Math.max(0, (birthNow.engage - 0.3) / 0.6)) : 0, k1 = e1 * e1 * (3 - 2 * e1) * (1 - k3) * (1 - k2);
+        const e1 = Math.min(1, Math.max(0, (bm.engage - 0.3) / 0.6)), k1 = e1 * e1 * (3 - 2 * e1) * (1 - k3) * (1 - k2);
         if (k1 > 0 || k2 > 0 || k3 > 0 || mv.posed) {
           mv.posed = k1 > 0 || k2 > 0 || k3 > 0; mv.t = -1;
           const q = r.getWorldQuaternion(moveRoll);
           moveFrame.long.copy(babyCurl.long).applyQuaternion(q); moveFrame.front.copy(babyCurl.back).negate().applyQuaternion(q); moveFrame.left.copy(babyCurl.side).applyQuaternion(q);
           moveFrame.out.copy(moveFrame.front).negate();
           poseMove(mv.bones, mv.rest, 'stretch', 'left', k2, moveFrame);
-          { const dn = Math.min(1, Math.max(0, ((birthNow?.down ?? 0) - 0.2) / 0.8)); poseDescent(mv.bones, k1, moveFrame, k1 * dn * dn * (3 - 2 * dn)); }
-          // and lifted onto her, out of its curl and lying over her
-          poseOnHer(mv.bones, k3, moveFrame);
-          // or in her arms (P2, position B)
-          if (cradleShare > 0) poseCradle(mv.bones, k3 * cradleShare * cradleShare * (3 - 2 * cradleShare), moveFrame);
+          { const dn = Math.min(1, Math.max(0, (bm.down - 0.2) / 0.8)); poseDescent(mv.bones, k1, moveFrame, k1 * dn * dn * (3 - 2 * dn)); }
+          // and lifted onto her, out of its curl and lying over her -- or, a triplet's third, on its back in the bassinet
+          if (inBassinet(i)) poseCradle(mv.bones, k3, moveFrame);
+          else poseOnHer(mv.bones, k3, moveFrame);
+          // or in her arms (P2, position B: one baby)
+          if (cradleShare > 0 && babyCount === 1) poseCradle(mv.bones, k3 * cradleShare * cradleShare * (3 - 2 * cradleShare), moveFrame);
         }
         return;
       }
@@ -4230,11 +4319,34 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       return true;
     };
   }
+  /**
+   * A twin's or triplet's straight body (P3): the first baby's, on this one's own bones, with its own material (each fades
+   * in on its own as it is born); made when first asked for.
+   */
+  function straightOf(r: THREE.Object3D): THREE.SkinnedMesh | undefined {
+    const known = babyStraight.get(r);
+    if (known || !babyRoot || r === babyRoot) return known;
+    const src = babyStraight.get(babyRoot);
+    if (!src) return undefined;
+    let own: THREE.SkinnedMesh | null = null;
+    r.traverse((o) => { if (!own && o.name === 'baby-straight' && (o as THREE.SkinnedMesh).isSkinnedMesh) own = o as THREE.SkinnedMesh; });
+    const mat = (src.material as THREE.MeshStandardMaterial).clone(); patchSkin(mat, babySkin); patchSqueeze(mat, babySqueeze);
+    let made = own as THREE.SkinnedMesh | null;
+    if (!made) {
+      const bones = src.skeleton.bones.map((b) => r.getObjectByName(b.name) as THREE.Bone | undefined);
+      if (bones.some((b) => !b)) return undefined;
+      made = new THREE.SkinnedMesh(src.geometry, mat); made.name = 'baby-straight'; made.frustumCulled = false; made.visible = false;
+      r.add(made); made.bind(new THREE.Skeleton(bones as THREE.Bone[], src.skeleton.boneInverses.map((m) => m.clone())), src.bindMatrix.clone());
+    } else made.material = mat;
+    made.userData.share = undefined;
+    babyStraight.set(r, made);
+    return made;
+  }
   /** Which of its two bodies is drawn: curled (its rest, in her womb) or straight (being born; see BABY_STRAIGHT_MODEL),
    * and between, the straight one faded in over the curled one (2026-11-03, Joshua: no jump as one becomes the other
    * with SEE BABY on) -- in front of it by a hair, so the two do not fight where they lie together. */
   function birthBody(r: THREE.Object3D, share: number): void {
-    const own = babyStraight.get(r); if (!own) return;
+    const own = straightOf(r); if (!own) return;
     const k = Math.min(1, Math.max(0, share)), m = own.material as THREE.MeshStandardMaterial, fading = k > 0 && k < 1;
     if (own.userData.share === k) return; own.userData.share = k;
     own.visible = k > 0;
@@ -4254,15 +4366,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (birthClock === null || !vulva) { birthNow = null; birthPath = null; return; }
     // (out of a birth pose it waits where it is)
     if (birthRunning && BIRTH_POSES_OK.includes(pose)) birthClock += dt;
-    birthNow = birthAt(birthClock, birthPace, birthEvents);
+    birthNow = birthAt(birthClock, birthPace, birthEvents, babyCount);
     // her baby drawn through it even without SEE BABY: hidden inside her by her own body until it comes out of her (only
     // the baby: its sac, her womb's wall, its placenta and cord stay as SEE BABY has them)
     if (!babyRoot) loadBaby();
     else if (!babyHolder && babyFrame) { const was = babyShown; showBaby(true); if (!was) showBaby(false); }
     // (its placenta too, until it comes away for the afterbirth: from then it is drawn, as her baby is -- this runs on a
     // still frame as well, when the cords are not laid again, and once hid it there: a paused room had no placenta)
-    if (babyHolder && !babyShown) { babyHolder.visible = true; for (const m of [babySac, babyWall, ...babyOwnSacs, ...placentaMeshes, ...cordMeshes]) if (m) m.visible = false; if (placentaMeshes[0] && birthNow.separate > 0) placentaMeshes[0].visible = true; }
-    const r = babyRoots()[0], scale = r?.scale.x ?? 0.33, R = headRadiusOf(scale);
+    if (babyHolder && !babyShown) { babyHolder.visible = true; for (const m of [babySac, babyWall, ...babyOwnSacs, ...placentaMeshes, ...cordMeshes]) if (m) m.visible = false; birthNow.placentas.forEach((p, k) => { if (placentaMeshes[k] && p.separate > 0) placentaMeshes[k].visible = true; }); }
+    // (her opening and canal follow the baby whose turn it is)
+    const r = babyRoots()[birthNow.active] ?? babyRoots()[0], scale = r?.scale.x ?? 0.33, R = headRadiusOf(scale);
     // what of her baby is passing through her opening: her rim hugs its outline (the head, then its shoulders and body)
     birthPath = vulva.canalPath();
     // (and the way it travels there: her canal's own way out at her opening)
@@ -4275,6 +4388,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (her canal's length as the birth began: laid again as her opening widens, its rings move a little, and a head placed
     // by the new length jumped)
     if (birthPath) { birthLen ??= birthPath.length; birthPath.length = birthLen; }
+    // (triplets: the bassinet beside her for the third)
+    placeBassinet(babyCount >= 3);
     const L = birthPath?.length ?? 0.105, d = headDownOf(birthNow, L, scale);
     // its head stretches her canal while it is in her
     vulva.setHead(birthNow.engage > 0.5 && d < L + R ? d : null, R);
@@ -4294,7 +4409,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const bulge = 0.6 * (d > L - 0.07 ? Math.min(1, (d - (L - 0.07)) / (0.07 - 0.5 * R)) : 0) * (d > L ? Math.max(0, 1 - (d - L) / R) : 1);
     vulva.setBirthDrive({ open, bulge: Math.max(0, bulge), cervix: birthNow.cervix });
     // her belly settling smaller once her baby is born (a step at a time: her shape is laid again each step)
-    { const want = 1 - BIRTH_SHRINK * (bornStage(birthNow) ? birthNow.closing : 0) - AFTERBIRTH.shrink * birthNow.afterbirth;
+    // (with twins and triplets, by each one out: `delivered`)
+    { const want = 1 - BIRTH_SHRINK * birthNow.delivered - AFTERBIRTH.shrink * birthNow.afterbirth;
       if (Math.abs(want - birthBellyShare) > 0.01 || (want === 1 && birthBellyShare !== 1)) {
         birthBellyShare = want;
         // (and the room her belly made for her baby taken off: it is out of her now)
@@ -4303,7 +4419,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       } }
     birthLineAt += dt;
     if (birthLineAt > 0.25) { birthLineAt = 0; const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(birthNow, (vulva?.drawnOpen ?? 0) * 10) + (birthRunning ? '' : ' · paused');
-      const len = birthLength(birthPace), tl = fields[SARAH_LAB_FIELD.birthTime];
+      const len = birthLength(birthPace, babyCount), tl = fields[SARAH_LAB_FIELD.birthTime];
       if (tl) tl.textContent = `TIMELINE · ${Math.floor(birthClock / 60)}:${String(Math.floor(birthClock % 60)).padStart(2, '0')} of ${Math.floor(len / 60)}:${String(Math.round(len % 60)).padStart(2, '0')}`;
       if (birthTimeInput && document.activeElement !== birthTimeInput) birthTimeInput.value = String(Math.round((birthClock / len) * 1000)); }
   }
@@ -4323,9 +4439,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     });
     return pts.length ? Float32Array.from(pts) : null;
   }
-  function birthPlace(r: THREE.Object3D): boolean {
-    if (!birthNow || !birthPath || !babyHolder || !babyCurl || !birthHeadModel || birthPath.points.length < 2) return false;
-    const m = birthNow, scale = r.scale.x, L = birthPath.length, d = Math.max(0, headDownOf(m, L, scale));
+  function birthPlace(r: THREE.Object3D, i = 0): boolean {
+    const m = momentOf(i);
+    if (!m || !birthPath || !babyHolder || !babyCurl || !birthHeadModel || birthPath.points.length < 2) return false;
+    const scale = r.scale.x, L = birthPath.length, d = Math.max(0, headDownOf(m, L, scale));
     babyHolder.updateMatrixWorld(true);
     // (each point's distance down, measured on her canal as it is now and stretched to the length the birth began with)
     const pts = birthPath.points.map((p) => babyHolder!.worldToLocal(p.clone())), n = pts.length, k0 = L / Math.max(1e-6, birthPath.down[n - 1]), down = birthPath.down.map((x) => x * k0);
@@ -4342,10 +4459,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const end = down[n - 1], span = BIRTH_HEAD.tangentSpan;
     // (out of her, along the way her canal pointed as its head came out, held from then: her opening is drawn round it
     // as it passes and her canal's mouth with it, and a way read from that each frame swung it, and that her opening)
-    if (d <= end) { at(d, bpA); birthOutLine = null; }
+    if (d <= end) { at(d, bpA); birthOutLines[i] = null; }
     else {
-      if (!birthOutLine) { at(end - 2 * span, bpB); at(end, bpA); birthOutLine = { at: bpA.clone(), way: bpA.clone().sub(bpB).normalize() }; }
-      bpA.copy(birthOutLine.at).addScaledVector(birthOutLine.way, d - end);
+      if (!birthOutLines[i]) { at(end - 2 * span, bpB); at(end, bpA); birthOutLines[i] = { at: bpA.clone(), way: bpA.clone().sub(bpB).normalize() }; }
+      const line = birthOutLines[i]!;
+      bpA.copy(line.at).addScaledVector(line.way, d - end);
     }
     // its length along the line from its body, up her canal behind its head, to its head: its body follows the curve
     // rather than going straight back through her (2026-11-02: its toes came out under her opening as it crowned)
@@ -4365,6 +4483,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // head rides her canal's line, and its trunk lies beside that line, its neck bent -- so its shoulders and hips came
     // out of her two to six centimetres to one side of her opening, through the skin beside it. Once its head is out,
     // it is moved across (not turned: its pose is the same) until where its trunk crosses her opening is its middle.
+    const birthCentreOff = centreOffOf(i), birthOutLine = birthOutLines[i] ?? null;
     if (!(m.down > 1 && m.onHer < 1)) birthCentreOff.set(0, 0, 0);
     if (m.down > 1 && m.onHer < 1) {
       const hl = r.getObjectByName(BABY_BONES.leg.left[0]), hr = r.getObjectByName(BABY_BONES.leg.right[0]), nk = r.getObjectByName(BABY_BONES.neck);
@@ -4385,19 +4504,30 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         }
       }
     }
-    // from where it lies in her womb onto her cervix as its head settles
-    if (m.engage < 1) { pos.lerpVectors(r.position, pos, m.engage); bpQ.slerpQuaternions(r.quaternion, bpQ.clone(), m.engage); }
+    // from where it lies in her womb onto her cervix as its head settles -- a twin or triplet turned head down first, where
+    // it lies (P3: Joshua chose that over a bottom-first birth), then settled
+    if (i === 0) { if (m.engage < 1) { pos.lerpVectors(r.position, pos, m.engage); bpQ.slerpQuaternions(r.quaternion, bpQ.clone(), m.engage); } }
+    else if (m.engage < 1) {
+      // (turned about its own middle -- its curl's -- where it lies: about its root, which is not in it, it swung out of her)
+      const turnK = birthNow?.babies[i]?.lieTurn ?? 1, c0 = babyCurl.centre.clone().multiplyScalar(scale);
+      const midNow = c0.clone().applyQuaternion(r.quaternion).add(r.position), qT = r.quaternion.clone().slerp(bpQ, turnK);
+      const posT = midNow.sub(c0.applyQuaternion(qT));
+      pos.lerpVectors(posT, pos, m.engage); bpQ.slerpQuaternions(qT, bpQ.clone(), m.engage);
+    }
     // born: lifted up and onto her, face down on her chest and belly, its head toward hers (skin to skin), in an arc
     if (m.onHer > 0) {
-      const rest = birthRestPlace(scale);
+      const rest = birthRestPlace(scale, i);
       if (rest) {
         const u = m.onHer;
         // (and riding her belly as it moves: its soft body's swing)
-        pos.lerp(rest.position, u).add(bpB.set(0, 0.04, 0.12).multiplyScalar(Math.sin(u * Math.PI))).addScaledVector(jiggle.belly.value, u);
+        pos.lerp(rest.position, u);
+        // (in an arc: onto her, up and toward her; into the bassinet, up over her thigh -- straight up in the world)
+        if (inBassinet(i)) pos.addScaledVector(bpB.set(0, 1, 0).transformDirection(babyHolder.matrixWorld.clone().invert()), BASSINET.arc * Math.sin(u * Math.PI));
+        else pos.add(bpB.set(0, 0.04, 0.12).multiplyScalar(Math.sin(u * Math.PI))).addScaledVector(jiggle.belly.value, u);
         bpQ.slerp(rest.quaternion, u);
       }
       // into her arms (P2, position B): turned onto its back across her, lifted a little off her on the way
-      const c = cradleShare * cradleShare * (3 - 2 * cradleShare), cr = c > 0 ? cradlePlace(scale) : null;
+      const c = cradleShare * cradleShare * (3 - 2 * cradleShare), cr = c > 0 && babyCount === 1 ? cradlePlace(scale) : null;
       if (cr) { pos.lerp(cr.position, c).add(bpB.set(0, 0, BABY_CRADLE.arc).multiplyScalar(Math.sin(c * Math.PI))); bpQ.slerp(cr.quaternion, c); }
     }
     r.position.copy(pos); r.quaternion.copy(bpQ);
@@ -4406,10 +4536,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Where her baby lies on her once born (her rest frame): face down on her, centred on the front of her belly a little
    * below her breasts, its head toward hers; worked out once a birth, from her skin as drawn. */
   let birthRest: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null, birthRestAt: THREE.Vector3 | null = null, birthRestKey = '', birthPushWas: boolean | null = null;
-  function birthRestPlace(scale: number): { position: THREE.Vector3; quaternion: THREE.Quaternion } | null {
-    const sv = jiggle.bellySoft.value, key = `${shownBump().toFixed(1)}|${pose}|${sv.x.toFixed(2)}|${sv.y.toFixed(2)}|${sv.z.toFixed(2)}`;
-    if (birthRest && birthRestKey === key) return birthRest;
-    birthRestKey = key;
+  /** twins and triplets (P3): each one's own place, as `birthRest` is the first's */
+  const birthRests: ({ position: THREE.Vector3; quaternion: THREE.Quaternion; key: string } | null)[] = [];
+  /** A triplet's third goes into the bassinet beside her (P3, Joshua 2026-11-04): three on her chest is too many. */
+  const inBassinet = (i: number): boolean => babyCount >= 3 && i === 2;
+  function birthRestPlace(scale: number, i = 0): { position: THREE.Vector3; quaternion: THREE.Quaternion } | null {
+    if (inBassinet(i)) return bassinetPlace(scale);
+    const sv = jiggle.bellySoft.value, key = `${shownBump().toFixed(1)}|${pose}|${sv.x.toFixed(2)}|${sv.y.toFixed(2)}|${sv.z.toFixed(2)}|${babyCount}|${scale.toFixed(3)}`;
+    // (twins: side by side on her chest, the first to her left, the second to her right)
+    const x0 = babyCount >= 2 ? (i === 0 ? TWINS_ON_HER.across : -TWINS_ON_HER.across) : 0;
+    if (i > 0) { const own = birthRests[i]; if (own && own.key === key) return own; }
+    else if (birthRest && birthRestKey === key) return birthRest;
+    if (i === 0) birthRestKey = key;
     const skin = bellySkin();
     if (!skin || !babyCurl) return null;
     // (as her belly's soft shape has it: the shaders move her skin so, and the baby lies on what is drawn)
@@ -4418,26 +4556,28 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // HER FRONT DOWN HER MIDDLE (2026-11-02, Joshua: its legs "aren't resting fully on her and floating"): her skin's
     // furthest forward at each height, so it lies along her as she is curved there, not at a set lean
     const R = BIRTH_REST, step = 0.01, lo = 0.78, n = Math.round((R.top - lo) / step) + 1, front = new Float32Array(n).fill(-Infinity);
-    for (let i = 0; i < skin.length; i += 3) {
-      if (Math.abs(skin[i]) > R.across) continue;
-      const k = Math.round((skin[i + 1] - lo) / step);
-      if (k >= 0 && k < n && skin[i + 2] > front[k]) front[k] = skin[i + 2];
+    for (let v = 0; v < skin.length; v += 3) {
+      if (Math.abs(skin[v] - x0) > R.across) continue;
+      const k = Math.round((skin[v + 1] - lo) / step);
+      if (k >= 0 && k < n && skin[v + 2] > front[k]) front[k] = skin[v + 2];
     }
     const zAt = (y: number): number => { let k = Math.max(0, Math.min(n - 1, Math.round((y - lo) / step))); for (let d = 0; d < n && !Number.isFinite(front[k]); d++) k = Math.max(0, Math.min(n - 1, k + (d % 2 ? d : -d))); return front[k]; };
     const yTop = R.top, yBot = R.top - R.span;
     if (!Number.isFinite(zAt(yTop)) || !Number.isFinite(zAt(yBot))) return null;
-    const top = new THREE.Vector3(0, yTop, zAt(yTop)), bot = new THREE.Vector3(0, yBot, zAt(yBot));
-    birthRestAt = top.clone().add(bot).multiplyScalar(0.5);
+    const top = new THREE.Vector3(x0, yTop, zAt(yTop)), bot = new THREE.Vector3(x0, yBot, zAt(yBot));
+    const restAt = top.clone().add(bot).multiplyScalar(0.5);
+    if (i === 0) birthRestAt = restAt;
     // its length along the line from where its bottom rests to where its head does; its back out from her
     const long = top.clone().sub(bot).normalize(), back = new THREE.Vector3(0, -long.z, long.y).normalize();
     // (her belly rounds up between the two: it lies over that, its middle eased up most of the way over it)
     let bulge = 0;
-    for (let y = yBot; y <= yTop; y += step) bulge = Math.max(bulge, new THREE.Vector3(0, y, zAt(y)).sub(bot).dot(back));
+    for (let y = yBot; y <= yTop; y += step) bulge = Math.max(bulge, new THREE.Vector3(x0, y, zAt(y)).sub(bot).dot(back));
     const side = new THREE.Vector3().crossVectors(long, back).normalize();
     const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, long, back).multiply(new THREE.Matrix4().makeBasis(babyCurl.side, babyCurl.long, babyCurl.back).transpose()));
-    const centre = birthRestAt.clone().addScaledVector(back, R.depth * babyCurl.size.z * scale + R.over * bulge + R.gap);
+    const centre = restAt.clone().addScaledVector(back, R.depth * babyCurl.size.z * scale + R.over * bulge + R.gap);
     // (its head end at the top: its curl's middle on the middle of the line)
     const position = centre.sub(babyCurl.centre.clone().multiplyScalar(scale).applyQuaternion(q));
+    if (i > 0) { birthRests[i] = { position, quaternion: q, key }; return birthRests[i]; }
     birthRest = { position, quaternion: q };
     return birthRest;
   }
@@ -4479,7 +4619,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** BIRTH: begun (from the start) or paused and on again; reset takes it back to before it began. */
   function birthControl(cmd: 'run' | 'reset' | 'pace'): void {
-    if (cmd === 'reset') { birthRest = null; birthOutLine = null; cordCut = false; birthEvents.cutAt = null; birthEvents.placentaAt = null; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); applyLook(); const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(null); return; }
+    if (cmd === 'reset') { birthRest = null; birthOutLines.length = 0; birthRests.length = 0; birthCentreOffs.length = 0; placeBassinet(false); twinHandShare = 0; for (const c of cordOuts) if (c) { c.cut = false; c.outerLaid = false; c.stumpLaid = false; c.remnantLaid = false; for (const t of [c.outerMesh, c.stumpMesh, c.remnantMesh]) if (t) t.visible = false; } cordCut = false; birthEvents.cutAt = null; birthEvents.cuts = []; birthEvents.placentaAt = null; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); applyLook(); const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(null); return; }
     if (cmd === 'pace') { const was = birthPace; birthPace = was === 'fast' ? 'realistic' : 'fast'; if (birthClock !== null) birthClock *= was === 'fast' ? 5 : 1 / 5; return; }
     // (a birth from RECLINE or SQUAT only -- Joshua, 2026-11-02: LEGS APART is her pre-labour stance)
     if (birthClock === null && !pregnant()) { const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = 'BIRTH · not pregnant (PREGNANT · ON)'; return; }
@@ -4498,14 +4638,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     babyHolder.updateMatrixWorld(true); holderInv.copy(babyHolder.matrixWorld).invert();
     // her canal as drawn now, in her frame (the placenta comes down it; the cord runs out of her by it)
     const canal = canalHere();
-    babyPlacentas.forEach((pl, i) => {
-      const m = placentaMeshes[i], r = roots[i], cord = babyCords[i];
+    babyPlacentas.forEach((pl, i) => { useCordOf(i); try {
+      const m = placentaMeshes[i], r = roots[i], cord = babyCords[i], bm = momentOf(i);
       // laid on her lining once a fit (where it is does not change between), carried by her belly's swing -- or, in the
       // afterbirth, moved as a whole down her canal and into the bowl (birthSequence.ts AFTERBIRTH)
       if (m.userData.laid !== pl) { layPlacenta(m.geometry, pl, babyWomb!); m.userData.laid = pl; m.userData.open = 0; m.userData.curved = null; }
-      const moved = i === 0 && !!birthNow && !!canal && afterbirthMatrix(pl, birthNow, canal, abMatrix, m.geometry);
+      const moved = !!bm && !!canal && afterbirthMatrix(pl, bm, canal, abMatrix, m.geometry);
       // (and opening out from the shell it grew as, into a lens, as it goes into the bowl: openPlacenta)
-      openPlacenta(m, pl, moved && birthNow ? Math.min(1, Math.max(0, birthNow.bowl)) : 0);
+      openPlacenta(m, pl, moved && bm ? Math.min(1, Math.max(0, bm.bowl)) : 0);
       if (moved) { m.matrixAutoUpdate = false; m.matrix.copy(abMatrix); m.matrixWorldNeedsUpdate = true; }
       else { m.matrixAutoUpdate = true; m.position.copy(jiggle.belly.value); m.quaternion.identity(); m.scale.setScalar(1); }
       // (on its way it is drawn with or without SEE BABY, as her baby was: inside her, her own body hides it; through her
@@ -4520,24 +4660,27 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       cordA.copy(pl.at).addScaledVector(pl.normal, pl.thick - 0.003);
       if (moved) { cordA.applyMatrix4(abMatrix); placentaFace.copy(pl.normal).transformDirection(abMatrix); } else { cordA.add(jiggle.belly.value); placentaFace.copy(pl.normal); }
       // (out of her: from her opening -- in her frame -- once its navel is past it)
-      const out = i === 0 && !!birthNow && birthNow.down >= 1 + BABY_NAVEL.fromCrown && !!birthPath && birthPath.points.length > 1;
-      if (i === 0) cordCut = out && !!birthNow?.cut;
-      if (i === 0 && !out) cordOuterLaid = false;
+      const out = !!bm && bm.down >= 1 + BABY_NAVEL.fromCrown && !!birthPath && birthPath.points.length > 1;
+      cordCut = out && !!bm?.cut;
+      if (!out) cordOuterLaid = false;
       // (not cut -- or dragged back before the cut -- its stump and the cut cord out of her are laid afresh when it is)
-      if (i === 0 && !cordCut) { cordStumpLaid = false; cordRemnantLaid = false; }
+      if (!cordCut) { cordStumpLaid = false; cordRemnantLaid = false; }
       if (out) babyHolder!.worldToLocal(cordOpen.copy(birthPath!.points[birthPath!.points.length - 1]));
       // inside her: placenta to navel; once its navel is out, placenta to her opening -- and once cut, only as long as the
       // way from the placenta to her opening (the rest of it hangs out of her), gone once the placenta is out of her
       const innerTo = out ? cordOpen : navelAt, innerWay = out ? undefined : navelWay;
-      if (i === 0 && cordCut) cord.length = Math.max(4 * cord.radius, AFTERBIRTH.innerSlack * cordA.distanceTo(cordOpen));
-      else if (i === 0) cord.length = cordLength(weekForBump(bump, babyCount));
+      if (cordCut) cord.length = Math.max(4 * cord.radius, AFTERBIRTH.innerSlack * cordA.distanceTo(cordOpen));
+      else cord.length = cordLength(weekForBump(bump, babyCount));
       // (kept in her womb, but not once the placenta has left it down her canal)
-      const innerIn = !(i === 0 && cordCut && (birthNow?.placentaDown ?? 0) > 0);
+      const innerIn = !(cordCut && (bm?.placentaDown ?? 0) > 0);
       if (!cordLaid[i]) { cord.lay(cordA, innerTo, babyWomb!.centre.clone().add(jiggle.belly.value)); cordLaid[i] = true; for (let k = 0; k < 30; k++) cord.step(1 / 60, cordA, innerTo, babyWomb!, jiggle.belly.value, bodies, i, { bWay: innerWay, inWomb: innerIn }); }
       cord.step(babyStepDt, cordA, innerTo, babyWomb!, jiggle.belly.value, bodies, i, { bWay: innerWay, inWomb: innerIn });
       layCordTube(cordMeshes[i].geometry, cord.points, cord.radius);
-      if (i === 0) layCordOut(out, cord.radius, bodies, canal);
-    });
+      layCordOut(out, cord.radius, bodies, canal, i, bm?.placentaDown ?? 0);
+    } finally { keepCordOf(i); } });
+    // (the bowl, once any cord is cut; and the first baby's cord loaded again, as one baby's always was)
+    placeBowl(cordOuts.some((c) => c?.cut));
+    useCordOf(0);
   }
   /** Her canal as drawn now, in her frame (the holder's): its middle line from the top of her cervix to her opening, each
    * point's distance down it (stretched to the length the birth began with, as the baby's own path is), and its length. */
@@ -4650,8 +4793,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** The placenta as world points while it crosses her opening (her rim hugs it as it did her baby), or null. */
   function placentaPassing(): Float32Array | null {
-    const m = placentaMeshes[0];
-    if (!m || !birthNow || birthNow.placentaDown <= AFTERBIRTH.hugFrom || birthNow.placentaDown >= AFTERBIRTH.hugTo) return null;
+    // (the one crossing her opening now: twins and triplets each have their own, one after another)
+    const k = birthNow ? birthNow.placentas.findIndex((p) => p.placentaDown > AFTERBIRTH.hugFrom && p.placentaDown < AFTERBIRTH.hugTo) : -1;
+    const m = placentaMeshes[k];
+    if (!m || !birthNow) return null;
     m.updateMatrixWorld(true);
     const a = m.geometry.getAttribute('position'), v = new THREE.Vector3(), pts: number[] = [];
     for (let k = 0; k < a.count; k += 2) { v.fromBufferAttribute(a, k).applyMatrix4(m.matrixWorld); pts.push(v.x, v.y, v.z); }
@@ -4699,6 +4844,65 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     afterBowl.visible = true;
   }
+  /**
+   * THE BASSINET (P3): a small basket on four legs beside the bed, to her left, for a triplet's third -- in the world, as
+   * the bowl is (it does not move with her); `bassinetWorld` the middle of its mattress's top, `bassinetWay` along it
+   * toward her head.
+   */
+  let bassinet: THREE.Group | null = null;
+  const bassinetWorld = new THREE.Vector3(), bassinetWay = new THREE.Vector3();
+  function placeBassinet(show: boolean): void {
+    if (!show) { if (bassinet) { bassinet.visible = false; bassinet.userData.placed = false; } return; }
+    const B = BASSINET;
+    if (!bassinet) {
+      bassinet = new THREE.Group(); bassinet.name = 'bassinet';
+      const cloth = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
+      const wood = new THREE.MeshStandardMaterial({ color: 0xc9a77c, roughness: 0.6, metalness: 0 });
+      const sheet = new THREE.MeshStandardMaterial({ color: 0xdfe9f2, roughness: 0.9, metalness: 0 });
+      // its basket: a rounded tub (a lathe), stretched to its length
+      const prof: THREE.Vector2[] = [], r0 = B.wide / 2;
+      for (let k = 0; k <= 10; k++) { const a = (k / 10) * (Math.PI / 2); prof.push(new THREE.Vector2((r0 - 0.06 + 0.06 * Math.sin(a)) * M, (0.06 - 0.06 * Math.cos(a)) * M)); }
+      prof.push(new THREE.Vector2(r0 * M, B.deep * M), new THREE.Vector2((r0 + B.wall) * M, (B.deep + 0.005) * M), new THREE.Vector2((r0 + B.wall) * M, 0.04 * M), new THREE.Vector2((r0 - 0.05) * M, -B.wall * M), new THREE.Vector2(0, -B.wall * M));
+      const tub = new THREE.Mesh(new THREE.LatheGeometry(prof, 48), cloth); tub.scale.set(B.long / B.wide, 1, 1);
+      const mat = new THREE.Mesh(new THREE.CylinderGeometry((r0 - 0.03) * M, (r0 - 0.03) * M, B.mattress * M, 40), sheet); mat.scale.set(B.long / B.wide, 1, 1); mat.position.y = (B.mattress / 2 + 0.005) * M;
+      bassinet.add(tub, mat);
+      for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(B.legs / 2 * M, B.legs / 2 * M, 1, 12), wood); leg.name = 'leg';
+        leg.position.set(sx * (B.long / 2 - 0.08) * M, 0, sz * (r0 - 0.06) * M); bassinet.add(leg);
+      }
+      three.add(bassinet);
+    }
+    if (!bassinet.userData.placed) {
+      // beside the bed: to her left of her opening, up the bed toward her head, its rim a little over the bed's level
+      const pp = birthPath?.points, k = pp ? pp.length - 1 : -1;
+      if (!pp || k < 3) return;
+      const mouth = pp[k], way = pp[k].clone().sub(pp[k - 3]); way.y = 0;
+      if (way.lengthSq() < 1e-10) way.set(0, 0, 1);
+      way.normalize();
+      const left = new THREE.Vector3().crossVectors(WORLD_UP, way).normalize();
+      const rim = mouth.y + B.rimAbove * M, bottom = rim - B.deep * M;
+      bassinet.position.copy(mouth).addScaledVector(left, B.out * M).addScaledVector(way, -B.up * M); bassinet.position.y = bottom;
+      // (its length along the bed)
+      bassinet.rotation.set(0, Math.atan2(way.x, way.z) + Math.PI / 2, 0);
+      for (const c of bassinet.children) if (c.name === 'leg') { c.scale.y = Math.max(0.01, bottom); c.position.y = -bottom / 2; }
+      bassinetWay.copy(way).negate();
+      bassinetWorld.copy(bassinet.position).setY(bottom + (B.mattress + 0.005) * M);
+      bassinet.userData.placed = true;
+    }
+    bassinet.visible = true;
+  }
+  /** Where a triplet's third lies in the bassinet (her rest frame, as birthRestPlace): on its back, its head toward hers. */
+  function bassinetPlace(scale: number): { position: THREE.Vector3; quaternion: THREE.Quaternion } | null {
+    if (!bassinet?.userData.placed || !babyHolder || !babyCurl) return null;
+    babyHolder.updateMatrixWorld(true);
+    const inv = babyHolder.matrixWorld.clone().invert();
+    const long = bassinetWay.clone().transformDirection(inv), back = new THREE.Vector3(0, -1, 0).transformDirection(inv);
+    back.addScaledVector(long, -back.dot(long)).normalize();
+    const side = new THREE.Vector3().crossVectors(long, back).normalize();
+    const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, long, back).multiply(new THREE.Matrix4().makeBasis(babyCurl.side, babyCurl.long, babyCurl.back).transpose()));
+    const centre = babyHolder.worldToLocal(bassinetWorld.clone()).addScaledVector(back, -BIRTH_REST.depth * babyCurl.size.z * scale);
+    return { position: centre.sub(babyCurl.centre.clone().multiplyScalar(scale).applyQuaternion(q)), quaternion: q };
+  }
   /** Kept out of the floor and the bowl (world point, a cord's `radius` in world units). */
   function keepOffFloor(pw: THREE.Vector3, radius: number): void {
     if (afterBowl?.visible) {
@@ -4713,17 +4917,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * and the rest of it hanging out of her opening from the placenta inside her, coming out with the placenta and lying
    * with it in the bowl.
    */
-  function layCordOut(out: boolean, radius: number, bodies: CordBody[], canal: CanalHere | null): void {
+  function layCordOut(out: boolean, radius: number, bodies: CordBody[], canal: CanalHere | null, i = 0, pd = 0): void {
     const holder = babyHolder!;
     const tube = (): THREE.Mesh => { const t = new THREE.Mesh(cordTube(), cordMat); t.frustumCulled = false; t.renderOrder = 3; holder.add(t); return t; };
     cordOuterMesh ??= tube(); cordStumpMesh ??= tube(); cordRemnantMesh ??= tube();
     for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t.parent !== holder) holder.add(t);
-    const pd = birthNow?.placentaDown ?? 0;
     cordOuterMesh.visible = out && !cordCut; cordStumpMesh.visible = out && cordCut; cordRemnantMesh.visible = out && cordCut;
-    placeBowl(out && cordCut);
     // inside her, once cut: from the placenta to her opening (SEE BABY), and nothing once the placenta is out of her
     // (its cord leaves the placenta's middle, which crosses her opening at 1.5: afterbirthMatrix)
-    if (cordMeshes[0]) cordMeshes[0].visible = babyShown && !(cordCut && pd >= 1.5);
+    if (cordMeshes[i]) cordMeshes[i].visible = babyShown && !(cordCut && pd >= 1.5);
     if (!out) return;
     // the way down in her frame; her skin kept off (her skin as sampled near it: softBaby's `onHerPush`), and the floor
     cordDown.set(0, -1, 0).transformDirection(holderInv);
@@ -4749,7 +4951,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       cordOuter.radius = radius;
       cordOuter.length = cordOuterLaid ? cordOuter.length + (want - cordOuter.length) * Math.min(1, dt * 4) : want;
       if (!cordOuterLaid) { cordOuter.lay(cordOpen, navelAt, cordToward.copy(cordOpen).add(navelAt).multiplyScalar(0.5).addScaledVector(cordDown, cordOuter.length)); cordOuterLaid = true; }
-      cordOuter.step(dt, cordOpen, navelAt, babyWomb!, jiggle.belly.value, bodies, 0, { inWomb: false, down: cordDown, bWay: navelWay, keepOut });
+      cordOuter.step(dt, cordOpen, navelAt, babyWomb!, jiggle.belly.value, bodies, i, { inWomb: false, down: cordDown, bWay: navelWay, keepOut });
       layCordTube(cordOuterMesh.geometry, cordOuter.points, radius);
       return;
     }
@@ -4757,7 +4959,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!cordStump) cordStump = new Cord(CORD_CUT.stumpM, radius, CORD_CUT.stumpNodes);
     cordStump.radius = radius; cordStump.length = CORD_CUT.stumpM;
     if (!cordStumpLaid) { cordToward.copy(navelAt).addScaledVector(navelWay, CORD_CUT.stumpM); cordStump.lay(cordToward, navelAt, cordToward.clone().add(cordDown)); cordStumpLaid = true; }
-    cordStump.step(dt, cordToward, navelAt, babyWomb!, jiggle.belly.value, bodies, 0, { inWomb: false, freeA: true, down: cordDown, bWay: navelWay, keepOut });
+    cordStump.step(dt, cordToward, navelAt, babyWomb!, jiggle.belly.value, bodies, i, { inWomb: false, freeA: true, down: cordDown, bWay: navelWay, keepOut });
     layCordTube(cordStumpMesh.geometry, reversed(cordStump.points), radius, true);
     // the rest of it, out of her: held at her opening (once the placenta is out, at the placenta), its cut end loose
     const held = pd >= 1.5 ? cordA : cordOpen;
@@ -5097,10 +5299,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // on her before her hands go back to her knees (both at once, her hand went halfway to her knee from under it, her
       // arm out straight past her reach)
       { const onHer = pose === 'recline' && !!birthNow && bornStage(birthNow) && birthNow.onHer >= 1;
-        const want = babyHold !== 'knees' && onHer ? 1 : 0, cradle = babyHold === 'cradle' && onHer ? 1 : 0;
+        const want = babyHold !== 'knees' && onHer ? 1 : 0, cradle = babyHold === 'cradle' && onHer && babyCount === 1 ? 1 : 0;
         const handsTo = onHer && want === 0 && cradleShare > 0 ? 1 : want, cradleTo = cradle > 0 && babyHoldShare < 1 ? cradleShare : cradle;
         babyHoldShare += Math.max(-dt / BABY_HANDS.seconds, Math.min(dt / BABY_HANDS.seconds, handsTo - babyHoldShare));
-        cradleShare += Math.max(-dt / BABY_CRADLE.seconds, Math.min(dt / BABY_CRADLE.seconds, cradleTo - cradleShare)); }
+        cradleShare += Math.max(-dt / BABY_CRADLE.seconds, Math.min(dt / BABY_CRADLE.seconds, cradleTo - cradleShare));
+        // (twins: her right hand to the second once it lies on her too)
+        const twinTo = want > 0 && babyCount >= 2 && (birthNow?.babies[1]?.onHer ?? 0) >= 1 ? 1 : 0;
+        twinHandShare += Math.max(-dt / BABY_HANDS.seconds, Math.min(dt / BABY_HANDS.seconds, twinTo - twinHandShare)); }
       garmentRoom?.applyPose();
       place();
       feelMotion(dt);
