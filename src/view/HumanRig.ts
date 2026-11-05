@@ -388,6 +388,26 @@ export class HumanRig {
   }
 
   /**
+   * Only these joints, each as `apply` turns it; every other bone left as it is. For a pass that comes after a whole
+   * pose and changes a few joints of it -- each finger closed onto what the hand holds (P4, touch & grip) once the arm
+   * has reached it -- without undoing the pass before.
+   */
+  set(turns: readonly JointTurn[]): void {
+    const bones = this.bones;
+    for (let t = 0; t < turns.length; t += 1) {
+      const turn = turns[t], j = turn.joint;
+      if (j < 0 || j >= bones.length) continue;
+      this.axis.set(turn.ax, turn.ay, turn.az);
+      const square = this.axis.lengthSq();
+      if (square <= 0) continue;
+      if (Math.abs(square - 1) > 1e-6) this.axis.multiplyScalar(1 / Math.sqrt(square));
+      this.turn.setFromAxisAngle(this.axis, turn.radians);
+      this.turn.multiply(this.bindWorld[j]).premultiply(this.pre[j]);
+      bones[j].quaternion.copy(this.turn);
+    }
+  }
+
+  /**
    * Back to the bind pose — the T these masters ship in. `apply([])` does
    * the same thing; this says so at the call site, and is what a caller
    * wants while a body is being set up or torn down.
