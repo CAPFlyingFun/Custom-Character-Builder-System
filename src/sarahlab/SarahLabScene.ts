@@ -102,7 +102,7 @@ import { BIRTH_WEIGHTS, createBirthWeights, type BirthWeights } from './birthWei
 import { createAnkleWeights, type AnkleWeights } from './ankleWeights';
 import { createFingerWeights, type FingerWeights } from './fingerWeights';
 import { splitFingers, type FingerSplit, type V3 as SplitV3 } from '../actor/fingerSplit';
-import { handBack } from '../actor/ownFingers';
+import { handBack, OWN_FINGERS } from '../actor/ownFingers';
 import { createOwnFingers, type OwnFingers, type OwnFingersHand } from './ownFingersMesh';
 import { BIRTH_ROOM_FIELD, createBirthRoom, type BirthRoom } from './birthRoom';
 import { BIRTH_NORMALS_FIELD, createBirthNormals, type BirthNormals } from './birthNormals';
@@ -6168,7 +6168,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             ownFingers?.dispose(); ownFingers = null; contactSet = null;
             if (fingerSplit && ownFingersWanted) try {
               const t0 = performance.now();
-              ownFingers = createOwnFingers({ body: bm!, toRest: babyFrame.meshToRest, hands: ownHandsOf(bm!, babyFrame.meshToRest), owner: fingerSplit.owner, past: fingerSplit.past, tris: herTris, closing: fingerSplit.filled, measureFrom: sb.fields.basePos, options: ownFingersUnaligned ? { align: 0, ease: 3, centreAcross: false } : undefined });
+              ownFingers = createOwnFingers({ body: bm!, toRest: babyFrame.meshToRest, hands: ownHandsOf(bm!, babyFrame.meshToRest), owner: fingerSplit.owner, past: fingerSplit.past, tris: herTris, closing: fingerSplit.filled, measureFrom: sb.fields.basePos, options: ownFingersUnaligned ? { align: 0, ease: 3, centreAcross: false, cutBack: OWN_FINGERS.cut } : undefined });
               ownFingersMs = performance.now() - t0;
               if (ownFingers) { withFingers = Uint32Array.from(herTris); layOwnFingers(); }
             } catch (error) { console.error('[sarahlab] her own fingers could not be made; her file\'s are drawn', error); ownFingers?.dispose(); ownFingers = null; }

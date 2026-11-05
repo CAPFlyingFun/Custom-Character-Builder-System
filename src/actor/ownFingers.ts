@@ -32,11 +32,11 @@ import { alongLine, type V3 } from './fingerSplit';
 
 type M3 = [number, number, number];
 
-/** GAME TUNING (metres, unless said): where her own finger ends, past its knuckle; how many points round each ring and
+/** GAME TUNING (metres, unless said): where her own finger ends, past its knuckle, under it and over its back (cutOf); how many points round each ring and
  * how far apart its rings; how many rings ease from her ring into the new finger's shape, how far past her ring its line eases from her ring's
  * middle onto its own (and whether it is centred across where her finger's middle is, or on its bones), and over how far past her ring her weights give way to its own; how far either side of a joint its skin bends with the next bone, over the back and
  * under it; how far either side of a joint its line is rounded; the slices her finger is measured in, and how much of its tip is left out of the measure (it is rounded); how far round her ring (radians) and how far at most (metres) its points are smoothed (smoothRings). */
-const OWN_FINGER_VALUES = { cut: 0.025, around: 24, step: 0.0015, ease: 5, align: 0.014, centreAcross: true, blend: 0.008, bendBack: 0.007, bendPalm: 0.0035, round: 0.006, slice: 0.002, tipClear: 0.008, weld: 2e-5, seamSpread: 0.3, seamMove: 0.006 };
+const OWN_FINGER_VALUES = { cut: 0.025, cutBack: 0.012, around: 24, step: 0.0015, ease: 5, align: 0.014, centreAcross: true, blend: 0.008, bendBack: 0.007, bendPalm: 0.0035, round: 0.006, slice: 0.002, tipClear: 0.008, weld: 2e-5, seamSpread: 0.3, seamMove: 0.006 };
 export type OwnFingerTuning = { readonly [K in keyof typeof OWN_FINGER_VALUES]: (typeof OWN_FINGER_VALUES)[K] };
 export const OWN_FINGERS: OwnFingerTuning = Object.freeze({ ...OWN_FINGER_VALUES });
 
@@ -101,18 +101,18 @@ export interface FingerCut {
 }
 
 /**
- * Take each finger's skin off past `cut` from its knuckle: every triangle whose corners are all one finger's and one of
- * them past it. Of the last `closing` (fingerSplit's, closing each finger's side where it was cut from the next), those
+ * Take each finger's skin off past `cut` from its knuckle (or past `cutAt` of each point, where it is given): every
+ * triangle whose corners are all one finger's and one of them past it. Of the last `closing` (fingerSplit's, closing each finger's side where it was cut from the next), those
  * left are `moved`. `owner` and `past` say which finger each of her points lies on and how far along it (fingerSplit.ts);
  * `fingers` how many fingers they number; `pos` her points, to find the ones her texture's seams split (`weld`).
  */
-export function cutFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, owner: ArrayLike<number>, past: ArrayLike<number>, fingers: number, o: { readonly cut: number; readonly weld: number } = OWN_FINGERS, closing = 0): FingerCut {
-  const T = Math.floor(tris.length / 3), off = new Uint8Array(T);
+export function cutFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, owner: ArrayLike<number>, past: ArrayLike<number>, fingers: number, o: { readonly cut: number; readonly weld: number } = OWN_FINGERS, closing = 0, cutAt?: (i: number) => number): FingerCut {
+  const T = Math.floor(tris.length / 3), off = new Uint8Array(T), beyond = (i: number) => past[i] - (cutAt ? cutAt(i) : o.cut);
   let hidden = 0;
   for (let t = 0; t < T; t++) {
     const a = tris[t * 3], b = tris[t * 3 + 1], c = tris[t * 3 + 2], f = owner[a];
     if (f < 0 || owner[b] !== f || owner[c] !== f) continue;
-    if (Math.max(past[a], past[b], past[c]) > o.cut) { off[t] = 1; hidden++; }
+    if (Math.max(beyond(a), beyond(b), beyond(c)) > 0) { off[t] = 1; hidden++; }
   }
   // one point a place (her texture's seams split them), for the points round what was taken off
   const near = new Map<number, number>(), keyOf = new Map<string, number>(), weldOf = (i: number) => {
@@ -212,6 +212,18 @@ export function smoothRings(pos: ArrayLike<number>, tris: ArrayLike<number>, rin
     const m = byKey.get(keyOf(i)); if (m && Math.hypot(...m) > 1e-9) { index.push(i); delta.push(...m); }
   }
   return { index: Uint32Array.from(index), delta: Float32Array.from(delta) };
+}
+
+/**
+ * Where a finger's own skin ends for a point of it (metres past the knuckle): `cutBack` over the back of the finger, where a
+ * finger begins at its knuckle, `cut` under it, where it begins at the webbing, and between round its sides. Her stump
+ * over the back of a curled finger -- her file's skin, carried half by the fingers beside it -- stood off the new finger
+ * where it met it (Joshua: "still off at this one part").
+ */
+export function cutOf(p: V3, line: readonly V3[], back: V3, o: { readonly cut: number; readonly cutBack: number } = OWN_FINGERS): number {
+  const a = alongFinger(p, line), D = norm(sub(back, mul(a.t, dot(back, a.t)))), d = sub(p, a.q), out = sub(d, mul(a.t, dot(d, a.t))), l = Math.hypot(...out);
+  const up = l > 0 ? dot(out, D) / l : 0;
+  return o.cut + (o.cutBack - o.cut) * smooth(-0.2, 0.7, up);
 }
 
 /* ─────────────────────────────── how thick her finger is, along it ─────────────────────────────── */

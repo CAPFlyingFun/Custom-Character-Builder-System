@@ -17,7 +17,7 @@
  */
 import * as THREE from 'three';
 import type { V3 } from '../actor/fingerSplit';
-import { buildFinger, cutFingers, measureFingers, smoothRings, OWN_FINGERS, type OwnFinger, type OwnFingerTuning } from '../actor/ownFingers';
+import { buildFinger, cutFingers, cutOf, measureFingers, smoothRings, OWN_FINGERS, type OwnFinger, type OwnFingerTuning } from '../actor/ownFingers';
 
 /** MEASURED (her texture, `sarah-v2-body-slim.glb` Material_0, 2048 px): a plain patch of her skin, inside one piece of
  * her texture, its normal map flat and as rough as her hand's, whose colour (215, 167, 149) is her hand's beside her
@@ -92,7 +92,9 @@ export function createOwnFingers(input: OwnFingersInput): OwnFingers | null {
   // her finger's skin past her webbing taken off (by the points' places at rest)
   const restOfHer = () => { const out = new Float32Array(n * 3); for (let i = 0; i < n; i++) v.fromBufferAttribute(pa, i).applyMatrix4(toRest).toArray(out, i * 3); return out; };
   let herRest = restOfHer();
-  const cut = cutFingers(herRest, input.tris, input.owner, input.past, fingers.length, OWN_FINGERS, input.closing ?? 0);
+  // (nearer the knuckle over each finger's back, where a finger begins at its knuckle: cutOf)
+  const tune = { ...OWN_FINGERS, ...input.options };
+  const cut = cutFingers(herRest, input.tris, input.owner, input.past, fingers.length, tune, input.closing ?? 0, (i) => { const f = input.owner[i]; return fingers[f] ? cutOf([herRest[i * 3], herRest[i * 3 + 1], herRest[i * 3 + 2]], lines[f], fingers[f].back, tune) : tune.cut; });
   // (her triangles drawn on the fingers' plain skin instead of hers: their own points, copies of hers)
   const movedPoints = [...new Set(cut.moved)], movedAt = new Map(movedPoints.map((i, k) => [i, k]));
   const nailMaterial = new THREE.MeshStandardMaterial({ name: 'own-nails', vertexColors: true, roughness: NAIL_LOOK.roughness, metalness: 0 });
@@ -113,7 +115,9 @@ export function createOwnFingers(input: OwnFingersInput): OwnFingers | null {
   const profiles = fingers.map((f, k) => {
     const ring = ringOf(k);
     if (ring.length < 6 || f.chain.length < 4) return null;
-    const from = Math.min(...ring.map((i) => input.past[i])) - 0.004;
+    // (measured from under her webbing on: over its back her ring now begins near her knuckle, and her knuckle and webbing
+    // there, fuller than her finger, tilted its line -- and her ring finger's tip came out of the ray that finds it)
+    const from = Math.max(Math.min(...ring.map((i) => input.past[i])), tune.cut - 0.008) - 0.004;
     const ownerOf = new Int8Array(n).fill(-1); for (const i of fingerPoints) if (input.owner[i] === k) ownerOf[i] = 0;
     const [profile] = measureFingers(asFiled, ownerOf, [lines[k]], [f.back], from);
     return { from, profile };
