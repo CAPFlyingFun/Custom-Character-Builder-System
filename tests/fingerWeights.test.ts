@@ -22,7 +22,8 @@ function hand() {
   }
   // points down each finger, either side of it
   const pts: number[] = [], idx: number[] = [], w: number[] = [], owner: number[] = [], past: number[] = [];
-  for (let f = 0; f < 2; f++) for (const side of [-0.006, 0.006]) for (let y = -0.004; y <= 0.088; y += 0.002) {
+  // (each finger's sides, and the valley halfway between them -- the first finger's)
+  for (const [f, side] of [[0, -0.006], [0, 0.006], [1, -0.006], [1, 0.006], [0, 0.01]] as const) for (let y = -0.004; y <= 0.088; y += 0.002) {
     const x = (f === 0 ? -0.01 : 0.01) + side;
     pts.push(x, 1 + y, 0);
     const level = y < 0.04 ? 0 : y < 0.07 ? 1 : 2, mine = chains[f][level], theirs = chains[1 - f][level];
@@ -56,14 +57,20 @@ describe('each finger\'s skin its own (fingerWeights)', () => {
     }
   });
 
-  it('none of it before the webbing, and her own weights come back exactly', () => {
-    const { mesh, chains, split } = hand(), sw = mesh.geometry.getAttribute('skinWeight'), si = mesh.geometry.getAttribute('skinIndex');
+  it("before the webbing each point is shared by nearness -- over a finger all its own, in the valley between two half each -- and her own weights come back exactly", () => {
+    const { mesh, chains, split } = hand(), sw = mesh.geometry.getAttribute('skinWeight'), si = mesh.geometry.getAttribute('skinIndex'), pa = mesh.geometry.getAttribute('position');
     const ownW = Array.from(sw.array as Uint8Array), ownI = Array.from(si.array as Uint16Array);
     const fw = createFingerWeights(mesh, new THREE.Matrix4().makeTranslation(0, -1, 0), [chains], split)!;
-    expect(fw.points.every((i) => split.past[i] > FINGER_WEIGHTS.across[0])).toBe(true);
     expect(fw.apply(1)).toBe(true);
-    expect(fw.apply(1)).toBe(false);
-    expect(Array.from(sw.array as Uint8Array)).not.toEqual(ownW);
+    const byFinger = (i: number, f: number) => [0, 1, 2, 3].filter((c) => chains[f].includes(si.getComponent(i, c))).reduce((a, c) => a + sw.getComponent(i, c), 0);
+    for (let i = 0; i < pa.count; i++) {
+      if (split.past[i] >= FINGER_WEIGHTS.across[0] - 0.002 || split.past[i] < 0) continue;
+      const x = pa.getX(i), mine = byFinger(i, split.owner[i]), theirs = byFinger(i, 1 - split.owner[i]);
+      // (over the outer side of a finger: as good as all its own, though her file gave the other finger a third of it)
+      if (Math.abs(Math.abs(x) - 0.016) < 1e-6) expect(theirs, `point ${i}`).toBeLessThan(0.02);
+      // (in the valley halfway between them: half each -- give or take the smallest share, dropped to keep four bones)
+      if (Math.abs(x) < 1e-6) expect(Math.abs(mine - theirs), `point ${i}`).toBeLessThan(0.07);
+    }
     expect(fw.apply(0)).toBe(true);
     expect(Array.from(sw.array as Uint8Array)).toEqual(ownW);
     expect(Array.from(si.array as Uint16Array)).toEqual(ownI);

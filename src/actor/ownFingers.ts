@@ -28,7 +28,9 @@
  *
  * Pure: no three, no DOM.
  */
-import { alongLine, type V3 } from './fingerSplit';
+import { alongLine, FINGER_SPLIT, type V3 } from './fingerSplit';
+
+const FINGER_FORM_WEB = FINGER_SPLIT.web;
 
 type M3 = [number, number, number];
 
@@ -528,4 +530,91 @@ export function buildFinger(input: OwnFingerInput, o: OwnFingerTuning = OWN_FING
   const from = Math.min(...ringS);
   for (let i = 0; i < count; i++) { uv[i * 2] = 1 - Math.abs(wrap(around[i])) / Math.PI; uv[i * 2 + 1] = Math.max(0, Math.min(1, (along[i] - from) / Math.max(1e-6, tip - from))); }
   return { count, pos, nrm, uv, bones, weights, tone, copyOf, skin: Uint32Array.from(skin), nail: Uint32Array.from(nail) };
+}
+
+/* ─────────────────────────────── her own fingers given the shape ─────────────────────────────── */
+
+/** GAME TUNING (metres past a finger's knuckle): over where her finger's own shape gives way to the made one -- from just
+ * before her webbing, where her fingers are still one skin, to past it, where they are cut apart (fingerSplit.ts). */
+export const FINGER_FORM = Object.freeze({ from: [FINGER_FORM_WEB - 0.002, FINGER_FORM_WEB + 0.008] as const });
+
+/**
+ * HER OWN FINGERS, SHAPED (Joshua, 2026-11-05: "try again the default fingers and fix the weights and stuff"). Her file's
+ * fingers kept -- her points, her triangles, her texture, her bones -- but each point of a finger past her webbing moved to
+ * where it lies round the shape `buildFinger` gives a finger (the same measure of her finger, the same section: wider than
+ * thick, fuller over each knuckle, a crease under each joint, a pad under the last, the tip rounded): at the same distance
+ * along the finger, at the same angle round its middle. Her flattened sides, where her fingers were modelled touching and
+ * are cut apart, come round; her lumps go. From `from[0]` to `from[1]` her own shape gives way to it, so her hand and her
+ * fingers are one skin, as her file made them. Her normals are made again from her triangles where she moves.
+ *
+ * `pos` her points at rest (metres), `tris` her triangles, `owner` which finger each point lies on (fingerSplit.ts), `lines`
+ * each finger's joints (knuckle, middle, last, end), `backs` the way the back of each one's hand faces. Returns her points
+ * that move, how far, and the way each then faces (rest metres; unit normals).
+ */
+export function formFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, owner: ArrayLike<number>, lines: readonly (readonly V3[])[], backs: readonly V3[], o: OwnFingerTuning = OWN_FINGERS, F: typeof FINGER_SHAPE = FINGER_SHAPE, G: { readonly from: readonly [number, number] } = FINGER_FORM): { index: Uint32Array; delta: Float32Array; normal: Float32Array } {
+  const n = Math.floor(pos.length / 3), P = (i: number): V3 => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
+  const moved = new Map<number, { to: M3; b: number }>();
+  lines.forEach((J, f) => {
+    if (J.length < 4) return;
+    const mine = new Int8Array(n).fill(-1); let any = false;
+    for (let i = 0; i < n; i++) if (owner[i] === f) { mine[i] = 0; any = true; }
+    if (!any) return;
+    const [prof] = measureFingers(pos, mine, [J], [backs[f]], G.from[0] - 0.004, o);
+    const nJ = J.length, last = norm(sub(J[nJ - 1], J[nJ - 2])), S0 = [0]; for (let k = 1; k < nJ; k++) S0.push(S0[k - 1] + Math.hypot(...sub(J[k], J[k - 1])));
+    const tip = Math.max(prof.tip, S0[nJ - 1] + 0.002), sPIP = S0[1], sDIP = S0[2], lastLen = tip - sDIP;
+    const dirOf = (k: number) => norm(sub(J[k + 1], J[k]));
+    const onLine = (s: number): { p: M3; t: M3 } => {
+      for (let k = 1; k + 1 < nJ; k++) {
+        const r = Math.min(o.round, 0.4 * (S0[k] - S0[k - 1]), 0.4 * (S0[k + 1] - S0[k]));
+        if (s > S0[k] - r && s < S0[k] + r) {
+          const d1 = dirOf(k - 1), d2 = dirOf(k), P0 = sub(J[k], mul(d1, r)), P2 = add(J[k], mul(d2, r)), u = (s - (S0[k] - r)) / (2 * r);
+          return { p: add(add(mul(P0, (1 - u) * (1 - u)), mul(J[k], 2 * u * (1 - u))), mul(P2, u * u)), t: norm(add(mul(sub(J[k], P0), 1 - u), mul(sub(P2, J[k]), u))) };
+        }
+      }
+      if (s >= S0[nJ - 1]) return { p: add(J[nJ - 1], mul(last, s - S0[nJ - 1])), t: last };
+      let k = 0; while (k + 2 < nJ && s > S0[k + 1]) k++;
+      const L = S0[k + 1] - S0[k], u = L > 0 ? Math.max(0, s - S0[k]) / L : 0;
+      return { p: lerp3(J[k], J[k + 1], u), t: dirOf(k) };
+    };
+    const at = (arr: Float32Array, s: number) => { const x = (s - prof.s[0]) / (prof.s.length > 1 ? prof.s[1] - prof.s[0] : 1), k = Math.max(0, Math.min(arr.length - 1, Math.floor(x))), k1 = Math.min(arr.length - 1, k + 1), u = Math.max(0, Math.min(1, x - k)); return arr[k] + (arr[k1] - arr[k]) * u; };
+    const raw = (s: number) => ({ top: at(prof.top, s), bottom: at(prof.bottom, s) });
+    const tipFrom = (() => { let s = tip - 0.006; for (let k = 0; k < 4; k++) { const r = raw(s); s = tip - F.tipLength * 0.5 * (r.top + r.bottom); } return Math.max(G.from[1], s); })();
+    const tipLen = Math.max(1e-4, tip - tipFrom);
+    const section = (s: number, sigma: number): Section => {
+      const { p, t } = onLine(s), D = norm(sub(backs[f], mul(t, dot(backs[f], t)))), S = cross(t, D);
+      const sc = Math.min(s, tipFrom), r = raw(sc), h = 0.5 * (r.top + r.bottom), off = 0.5 * (r.top - r.bottom), side = o.centreAcross ? at(prof.across, sc) : 0;
+      const toTip = smooth(sDIP - 0.004, tipFrom, s);
+      let w = h * (F.wide + (F.wideTip - F.wide) * toTip), hD = h, hP = h;
+      for (const j of [sPIP, sDIP]) { const b = bump(s, j, F.knuckleSpread); hD *= 1 + F.knuckle * b; w *= 1 + 0.6 * F.knuckle * b; hP *= 1 - F.crease * bump(s, j, F.creaseSpread); }
+      hP *= 1 + F.pad * bump(s, sDIP + F.padAt * lastLen, F.padSpread);
+      return { c: add(add(p, mul(D, off + F.apex * h * (1 - sigma))), mul(S, side)), t, D, S, w: w * sigma, hD: hD * sigma, hP: hP * sigma, nD: F.round, nP: F.flatPalm };
+    };
+    for (let i = 0; i < n; i++) {
+      if (owner[i] !== f) continue;
+      const p = P(i), a = alongFinger(p, J), b = smooth(G.from[0], G.from[1], a.s);
+      if (b <= 0) continue;
+      const s = Math.min(a.s, tip), sigma = s <= tipFrom ? 1 : Math.cos(Math.asin(Math.min(1, (s - tipFrom) / tipLen)));
+      const x = section(s, sigma), d = sub(p, x.c), th = Math.atan2(dot(d, x.S), dot(d, x.D));
+      const c = Math.cos(th), sn = Math.sin(th), up = c >= 0, e = 2 / (up ? x.nD : x.nP), hh = up ? x.hD : x.hP;
+      const to = add(x.c, add(mul(x.S, x.w * Math.sign(sn) * Math.pow(Math.abs(sn), e)), mul(x.D, hh * Math.sign(c) * Math.pow(Math.abs(c), e))));
+      moved.set(i, { to: lerp3(p, to, b), b });
+    }
+  });
+  // HER NORMALS MADE AGAIN where she moves, from her triangles round each point (one point a place: her texture's seams)
+  const key = (i: number) => `${Math.round(pos[i * 3] / o.weld)},${Math.round(pos[i * 3 + 1] / o.weld)},${Math.round(pos[i * 3 + 2] / o.weld)}`;
+  const weldOf = new Map<number, string>(); const keys = new Set<string>();
+  for (const i of moved.keys()) { const k = key(i); weldOf.set(i, k); keys.add(k); }
+  const T = Math.floor(tris.length / 3), acc = new Map<string, M3>(), Q = (i: number): M3 => { const m = moved.get(i); return m ? m.to : [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]]; };
+  for (let t = 0; t < T; t++) {
+    const a = tris[t * 3], b = tris[t * 3 + 1], c = tris[t * 3 + 2];
+    if (!moved.has(a) && !moved.has(b) && !moved.has(c)) continue;
+    const nn = cross(sub(Q(b), Q(a)), sub(Q(c), Q(a)));
+    for (const i of [a, b, c]) { const k = weldOf.get(i); if (!k) continue; const e = acc.get(k) ?? [0, 0, 0]; acc.set(k, add(e, nn)); }
+  }
+  const index: number[] = [], delta: number[] = [], normal: number[] = [];
+  for (const [i, m] of moved) {
+    const p = P(i), d = sub(m.to, p);
+    index.push(i); delta.push(...d); normal.push(...norm(acc.get(weldOf.get(i)!) ?? [0, 0, 1]));
+  }
+  return { index: Uint32Array.from(index), delta: Float32Array.from(delta), normal: Float32Array.from(normal) };
 }

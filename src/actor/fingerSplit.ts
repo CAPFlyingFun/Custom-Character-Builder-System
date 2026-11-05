@@ -44,6 +44,9 @@ export interface FingerSplit {
   /** her points brought in round their fingers and smoothed (indices of her points), how far each moves and the way it
    * then faces (metres and unit lengths, at rest, three a point) */
   readonly round: { readonly index: Uint32Array; readonly delta: Float32Array; readonly normal: Float32Array };
+  /** each finger's middle line, slice by slice from the points plainly its own (metres, at rest; its line of bones where
+   * there were too few) */
+  readonly middles: readonly (readonly V3[])[];
 }
 
 const sub = (a: V3, b: V3): [number, number, number] => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -338,5 +341,5 @@ export function splitFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, li
     if (nrm) { const own: V3 = [nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2]], mix: V3 = [own[0] + (tn[0] - own[0]) * e, own[1] + (tn[1] - own[1]) * e, own[2] + (tn[2] - own[2]) * e], ml = Math.hypot(...mix) || 1; rn.push(mix[0] / ml, mix[1] / ml, mix[2] / ml); }
     else rn.push(...tn);
   }
-  return { tris: out, owner, past, cut, filled: fill.length / 3, holes: polygons.length, open, round: { index: Uint32Array.from(ri), delta: Float32Array.from(rd), normal: Float32Array.from(rn) } };
+  return { tris: out, owner, past, cut, filled: fill.length / 3, holes: polygons.length, open, round: { index: Uint32Array.from(ri), delta: Float32Array.from(rd), normal: Float32Array.from(rn) }, middles };
 }
