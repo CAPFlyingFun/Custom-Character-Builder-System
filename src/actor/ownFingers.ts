@@ -33,10 +33,10 @@ import { alongLine, type V3 } from './fingerSplit';
 type M3 = [number, number, number];
 
 /** GAME TUNING (metres, unless said): where her own finger ends, past its knuckle; how many points round each ring and
- * how far apart its rings; how many rings ease from her ring into the new finger's shape, and over how far past her ring
- * her weights give way to its own; how far either side of a joint its skin bends with the next bone, over the back and
+ * how far apart its rings; how many rings ease from her ring into the new finger's shape, how far past her ring its line eases from her ring's
+ * middle onto its own, and over how far past her ring her weights give way to its own; how far either side of a joint its skin bends with the next bone, over the back and
  * under it; how far either side of a joint its line is rounded; the slices her finger is measured in, and how much of its tip is left out of the measure (it is rounded); how far round her ring (radians) and how far at most (metres) its points are smoothed (smoothRings). */
-export const OWN_FINGERS = Object.freeze({ cut: 0.025, around: 24, step: 0.0015, ease: 3, blend: 0.008, bendBack: 0.007, bendPalm: 0.0035, round: 0.006, slice: 0.002, tipClear: 0.008, weld: 2e-5, seamSpread: 0.3, seamMove: 0.006 });
+export const OWN_FINGERS = Object.freeze({ cut: 0.025, around: 24, step: 0.0015, ease: 5, align: 0.014, blend: 0.008, bendBack: 0.007, bendPalm: 0.0035, round: 0.006, slice: 0.002, tipClear: 0.008, weld: 2e-5, seamSpread: 0.3, seamMove: 0.006 });
 
 /** BIOLOGICAL SHAPE (shares of the finger's own size where they are; Joshua's photos of his hand and an adult hand's
  * proportions): a finger is a little wider than thick (wider still at its last bone); flatter under the pads (`flatPalm`
@@ -220,6 +220,9 @@ export interface FingerProfile {
   /** how far her skin stands over the back of the finger, and under it, from its line of bones (metres, smoothed) */
   readonly top: Float32Array;
   readonly bottom: Float32Array;
+  /** where the middle of her finger is across it from its line of bones (metres, toward S = along x back): her file's
+   * bones run nearer one side of some fingers than the other */
+  readonly across: Float32Array;
   /** where her skin ends along it (past its end bone, on along its last bone) */
   readonly tip: number;
 }
@@ -243,27 +246,30 @@ export function alongFinger(p: V3, line: readonly V3[]): { s: number; q: M3; t: 
 export function measureFingers(pos: ArrayLike<number>, owner: ArrayLike<number>, lines: readonly (readonly V3[])[], backs: readonly V3[], from: number, o: { readonly slice: number; readonly tipClear: number } = OWN_FINGERS): FingerProfile[] {
   const n = Math.floor(pos.length / 3);
   return lines.map((line, f) => {
-    const up = new Map<number, number[]>(), down = new Map<number, number[]>();
+    const up = new Map<number, number[]>(), down = new Map<number, number[]>(), left = new Map<number, number[]>(), right = new Map<number, number[]>();
     let tip = 0;
     for (let i = 0; i < n; i++) {
       if (owner[i] !== f) continue;
       const p: V3 = [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]], a = alongFinger(p, line);
       tip = Math.max(tip, a.s);
       if (a.s < from) continue;
-      const D = norm(sub(backs[f], mul(a.t, dot(backs[f], a.t)))), h = dot(sub(p, a.q), D), k = Math.floor((a.s - from) / o.slice);
+      const D = norm(sub(backs[f], mul(a.t, dot(backs[f], a.t)))), S = cross(a.t, D), h = dot(sub(p, a.q), D), x = dot(sub(p, a.q), S), k = Math.floor((a.s - from) / o.slice);
       if (h >= 0) (up.get(k) ?? up.set(k, []).get(k)!).push(h); else (down.get(k) ?? down.set(k, []).get(k)!).push(-h);
+      if (x >= 0) (right.get(k) ?? right.set(k, []).get(k)!).push(x); else (left.get(k) ?? left.set(k, []).get(k)!).push(-x);
     }
     const slices = Math.max(1, Math.ceil((tip - from) / o.slice)), mid = (k: number) => from + (k + 0.5) * o.slice;
     // (each slice's furthest but one: a stray point of the next finger's does not make it thicker)
     const most = (m: Map<number, number[]>, k: number) => { const v = m.get(k); if (!v || !v.length) return NaN; v.sort((a, b) => b - a); return v[Math.min(1, v.length - 1)]; };
     // her finger's thickness and where its middle is, slice by slice -- her rounded tip left out -- each laid on a straight
     // line along it: her file's fingers are lumpy, and a finger is not
-    const xs: number[] = [], hs: number[] = [], offs: number[] = [];
+    const xs: number[] = [], hs: number[] = [], offs: number[] = [], xa: number[] = [], sides: number[] = [];
     for (let k = 0; k < slices; k++) { const u = most(up, k), d = most(down, k); if (Number.isFinite(u) && Number.isFinite(d) && mid(k) <= tip - o.tipClear) { xs.push(mid(k)); hs.push(0.5 * (u + d)); offs.push(0.5 * (u - d)); } }
-    const h = fitLine(xs, hs, 0.008), off = fitLine(xs, offs, 0);
+    // (and across it: where her finger touched the next, its side is where its skin was split from the next's -- near enough)
+    for (let k = 0; k < slices; k++) { const r = most(right, k), l = most(left, k); if (Number.isFinite(r) && Number.isFinite(l) && mid(k) <= tip - o.tipClear) { xa.push(mid(k)); sides.push(0.5 * (r - l)); } }
+    const h = fitLine(xs, hs, 0.008), off = fitLine(xs, offs, 0), side = fitLine(xa, sides, 0);
     const top = new Float32Array(slices), bottom = new Float32Array(slices);
     for (let k = 0; k < slices; k++) { const x = mid(k), hh = Math.max(0.003, h(x)), oo = off(x); top[k] = hh + oo; bottom[k] = hh - oo; }
-    return { s: Float32Array.from({ length: slices }, (_, k) => mid(k)), top, bottom, tip };
+    return { s: Float32Array.from({ length: slices }, (_, k) => mid(k)), top, bottom, across: Float32Array.from({ length: slices }, (_, k) => side(mid(k))), tip };
   });
 }
 
@@ -348,6 +354,14 @@ export function buildFinger(input: OwnFingerInput, o: typeof OWN_FINGERS = OWN_F
   // her ring: where along the finger each of its points is, and the furthest
   const ringS = input.ring.pos.map((p) => alongFinger(p, J).s);
   const start = Math.max(...ringS);
+  // WHERE HER RING'S MIDDLE IS, against where the finger's is measured to be there: the finger begins on hers and eases onto
+  // its own line over `align` (begun on its own, it stood a few millimetres off her finger's stump, a step where they met)
+  const ringMid = (() => {
+    const sm = ringS.reduce((a, x) => a + x, 0) / Math.max(1, ringS.length), { p, t } = onLine(sm), D = norm(sub(input.back, mul(t, dot(input.back, t)))), S = cross(t, D);
+    let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+    for (const q of input.ring.pos) { const d = sub(q, p), x = dot(d, S), y = dot(d, D); lo = [Math.min(lo[0], x), Math.min(lo[1], y)]; hi = [Math.max(hi[0], x), Math.max(hi[1], y)]; }
+    return { s: sm, across: 0.5 * (lo[0] + hi[0]), up: 0.5 * (lo[1] + hi[1]) };
+  })();
   // its tip: rounded over the last `tipLength` of its thickness
   const raw = (s: number) => ({ top: at(prof.top, s), bottom: at(prof.bottom, s) });
   const tipFrom = (() => { let s = tip - 0.006; for (let k = 0; k < 4; k++) { const r = raw(s); s = tip - F.tipLength * 0.5 * (r.top + r.bottom); } return Math.max(start + 0.01, s); })();
@@ -355,13 +369,15 @@ export function buildFinger(input: OwnFingerInput, o: typeof OWN_FINGERS = OWN_F
   // ITS SECTION at s: centred between her skin over and under its bones, the shape's bumps laid on
   const section = (s: number, sigma = 1): Section => {
     const { p, t } = onLine(s), D = norm(sub(input.back, mul(t, dot(input.back, t)))), S = cross(t, D);
-    const r = raw(Math.min(s, tipFrom)), h = 0.5 * (r.top + r.bottom), off = 0.5 * (r.top - r.bottom);
+    const r = raw(Math.min(s, tipFrom)), h = 0.5 * (r.top + r.bottom), fade = 1 - smooth(ringMid.s, ringMid.s + o.align, s);
+    const at0 = raw(ringMid.s), off = 0.5 * (r.top - r.bottom) + fade * (ringMid.up - 0.5 * (at0.top - at0.bottom));
+    const side = at(prof.across, Math.min(s, tipFrom)) + fade * (ringMid.across - at(prof.across, ringMid.s));
     const toTip = smooth(sDIP - 0.004, tipFrom, s);
     let w = h * (F.wide + (F.wideTip - F.wide) * toTip), hD = h, hP = h;
     for (const j of [sPIP, sDIP]) { const b = bump(s, j, F.knuckleSpread); hD *= 1 + F.knuckle * b; w *= 1 + 0.6 * F.knuckle * b; hP *= 1 - F.crease * bump(s, j, F.creaseSpread); }
     hP *= 1 + F.pad * bump(s, sDIP + F.padAt * lastLen, F.padSpread);
     const nD = F.round + (F.nailFlat - F.round) * smooth(nailRoot - 0.003, nailRoot + 0.002, s);
-    const c = add(p, mul(D, off + F.apex * h * (1 - sigma)));
+    const c = add(add(p, mul(D, off + F.apex * h * (1 - sigma))), mul(S, side));
     return { c, t, D, S, w: w * sigma, hD: hD * sigma, hP: hP * sigma, nD, nP: F.flatPalm };
   };
   const pointOf = (x: Section, th: number): M3 => {

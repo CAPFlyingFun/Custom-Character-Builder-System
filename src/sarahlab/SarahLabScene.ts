@@ -6773,6 +6773,25 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return true; },
         // (P4: her hand held up palm forward in a shape -- fist, open, or one finger lifted from a fist)
         handShowLast: () => showLast,
+        /** (a probe: her skin's triangles near her right hand turned over in the pose she stands in -- each against her rest
+         * turned by the bones carrying it -- and the bones and weights of their points) */
+        handFolds: (cm = 8) => { const b = bodyOf(); if (!b || !measure || !babyFrame) return null; const mesh = b.mesh, g = mesh.geometry, tris = (mesh.userData.allIndices as ArrayLike<number> | undefined) ?? g.index!.array;
+          mesh.updateMatrixWorld(true); mesh.skeleton.update();
+          const bones = mesh.skeleton.bones, wr = bones[measure.joints.wristR].getWorldPosition(new THREE.Vector3()), near = cm * M / 100;
+          const si = g.getAttribute('skinIndex'), sw = g.getAttribute('skinWeight'), pa = g.getAttribute('position') as THREE.BufferAttribute;
+          const posed = new Map<number, THREE.Vector3>(), P = (i: number) => { let v = posed.get(i); if (!v) { v = mesh.getVertexPosition(i, new THREE.Vector3()); mesh.localToWorld(v); posed.set(i, v); } return v; };
+          const rest = (i: number) => new THREE.Vector3().fromBufferAttribute(pa, i);
+          // (the turn of the bones carrying a point: its bind-relative skinning matrices, blended)
+          const turnOf = (i: number) => { const m = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), t = new THREE.Matrix4(); for (let c = 0; c < 4; c++) { const w = sw.getComponent(i, c); if (w <= 0) continue; t.multiplyMatrices(bones[si.getComponent(i, c)].matrixWorld, mesh.skeleton.boneInverses[si.getComponent(i, c)]); for (let e = 0; e < 16; e++) m.elements[e] += t.elements[e] * w; } return m; };
+          const out: { tri: number; dot: number; at: number[]; bones: string[] }[] = [];
+          for (let t = 0; t < tris.length / 3; t++) { const a = tris[t * 3], bb = tris[t * 3 + 1], c = tris[t * 3 + 2];
+            if (P(a).distanceTo(wr) > near * 1.5) continue;
+            const pn = new THREE.Vector3().crossVectors(P(bb).clone().sub(P(a)), P(c).clone().sub(P(a)));
+            const r0 = rest(a), rn = new THREE.Vector3().crossVectors(rest(bb).sub(r0), rest(c).sub(r0)).applyMatrix3(new THREE.Matrix3().setFromMatrix4(turnOf(a).multiply(mesh.bindMatrix)));
+            const d = pn.normalize().dot(rn.normalize());
+            if (d < 0) out.push({ tri: t, dot: +d.toFixed(2), at: P(a).clone().divideScalar(M / 100).toArray().map((x) => +x.toFixed(1)), bones: [a, bb, c].map((i) => [0, 1, 2, 3].filter((k) => sw.getComponent(i, k) > 0.02).map((k) => `${bones[si.getComponent(i, k)].name}:${sw.getComponent(i, k).toFixed(2)}`).join(' ')) });
+          }
+          return { folded: out.length, worst: out.sort((p, q) => p.dot - q.dot).slice(0, 12) }; },
         /** (a probe: for each of her shape fields, how many of her points split by her texture's seams are moved apart by it --
          * a crack where it is laid -- and how many of them are near her right hand) */
         seamCracks: () => { const b = bodyOf(), sb = b ? shaped.find((x) => x.mesh === b.mesh) : undefined; if (!sb || !babyFrame) return null;
