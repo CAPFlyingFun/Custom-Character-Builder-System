@@ -163,6 +163,14 @@ const ARM_IN_HER = Object.freeze({ spacing: 0.025, cell: 0.05, box: { across: 0.
  * takes to turn into her arms or back onto her
  */
 const BABY_CRADLE = Object.freeze({ y: 1.16, left: -0.03, out: 0.1, rise: 0.3, lie: 1.2, armBelow: 0.08, armClear: 0.065, crook: 0.08, past: 0.03, tummy: 0.4, arc: 0.08, seconds: 2.2 });
+/**
+ * GAME TUNING (P3, twins IN HER ARMS -- the double cradle): one twin in each arm, its head in that elbow's crook and its
+ * bottom toward her middle, her palm under it; each one's middle `across` metres off her middle, its length tipped
+ * `rise` up toward its head (a V, so their feet do not meet), the second `behind` metres nearer her than the first so
+ * where they come close one lies in front of the other; their middles `y` up her and `out` off her skin (lower and
+ * nearer her than one baby: two held out as far had her arms straight). The rest as BABY_CRADLE.
+ */
+const TWINS_CRADLE = Object.freeze({ across: 0.085, rise: 0.45, behind: 0.04, y: 1.12, out: 0.07 });
 /** GAME TUNING (P2): her hands on her baby lying on her -- her left palm's middle this share of the way from its chest up
  * to its neck, her right palm's this far (metres) down from its hips toward its feet, cupped this much over its bottom,
  * its fingers this share down along it toward its legs (the rest across it);
@@ -2274,8 +2282,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // HANDS: once her baby lies on her, her hands come to it (P2), or stay on her knees
       // HOLD: once her baby lies on her, her hands come to it (P2, position A), or she takes it into her arms (position
       // B), or her hands stay on her knees
-      const holdLine = () => `HOLD · ${babyHold === 'hands' ? 'HANDS ON BABY' : babyHold === 'cradle' ? 'IN HER ARMS' : 'HANDS ON KNEES'}`;
-      const hands = btn(holdLine(), SARAH_LAB_ACTION.birth + 'hands', () => { babyHold = babyHold === 'hands' ? (babyCount > 1 ? 'knees' : 'cradle') : babyHold === 'cradle' ? 'knees' : 'hands'; hands.textContent = holdLine(); });
+      const holdLine = () => `HOLD · ${babyHold === 'hands' ? (babyCount > 1 ? 'HANDS ON BABIES' : 'HANDS ON BABY') : babyHold === 'cradle' ? 'IN HER ARMS' : 'HANDS ON KNEES'}`;
+      const hands = btn(holdLine(), SARAH_LAB_ACTION.birth + 'hands', () => { babyHold = babyHold === 'hands' ? 'cradle' : babyHold === 'cradle' ? 'knees' : 'hands'; hands.textContent = holdLine(); });
       row.append(run, pace, reset, cut, deliver, hands); right.appendChild(row);
       birthButtons = [run, pace, reset, cut, deliver, hands];
       // its TIMELINE: drag to any moment of it (it pauses there; BIRTH ▶ carries on from it)
@@ -3129,22 +3137,24 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   function babyHandTarget(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3; elbow?: THREE.Vector3; elbowK?: number; share?: number } | null {
     // TWINS (P3, Joshua 2026-11-04: "her hands on both"): her left hand on the first, her right on the second once it
-    // is on her (`twinHandShare`)
-    if (babyCount >= 2) { if (name === 'R' && !(twinHandShare > 0)) return null; const t = babyLyingTarget(name, handLen, perM); return t && name === 'R' ? { ...t, share: twinHandShare } : t; }
+    // is on her (`twinHandShare`); in her arms, one in each
+    if (babyCount >= 2 && name === 'R' && !(twinHandShare > 0)) return null;
+    const twinR = babyCount >= 2 && name === 'R';
     const lying = babyLyingTarget(name, handLen, perM);
-    if (!(cradleShare > 0)) return lying;
+    if (!(cradleShare > 0)) return lying && twinR ? { ...lying, share: twinHandShare } : lying;
     // (into her arms: from where the hand was on it lying on her to where it holds it cradled)
     const held = babyCradleTarget(name, handLen, perM);
-    if (!held) return lying;
+    if (!held) return lying && twinR ? { ...lying, share: twinHandShare } : lying;
     const k = cradleShare * cradleShare * (3 - 2 * cradleShare);
-    if (!lying) return { ...held, elbowK: k };
+    if (!lying) return { ...held, elbowK: k, ...(twinR ? { share: twinHandShare } : {}) };
     lying.tip.lerp(held.tip, k); lying.along.lerp(held.along, k).normalize(); lying.face.lerp(held.face, k).normalize();
-    return { ...lying, elbow: held.elbow, elbowK: k };
+    return { ...lying, elbow: held.elbow, elbowK: k, ...(twinR ? { share: twinHandShare } : {}) };
   }
   /** POSITION B's hands (P2): her left palm under its bottom, her forearm under its back and her elbow's crook under its
    * head; her right palm on its tummy -- read off it as it is drawn, as babyLyingTarget's are. */
   function babyCradleTarget(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3; elbow?: THREE.Vector3 } | null {
-    const r = babyRoots()[0], m = pitchFor, pick = pitchPick, cr = cradle;
+    // (twins: each hand holds its own, as her left holds one baby: under its bottom, its head in her elbow)
+    const twin = babyCount >= 2 && name === 'R', r = babyRoots()[twin ? 1 : 0], m = twin && r ? drawnMeshOf(r) : pitchFor, pick = m ? trunkPick(m) : null, cr = cradleOf(twin ? 1 : 0);
     if (!r || !m || !pick || !cr || !babyHolder || !birthNow || !bornStage(birthNow)) return null;
     const hipB = r.getObjectByName(BABY_BONES.hips), chestB = r.getObjectByName('Bone_003'), neckB = r.getObjectByName(BABY_BONES.neck), headB = r.getObjectByName(BABY_BONES.head);
     if (!hipB || !chestB || !neckB || !headB) return null;
@@ -3155,7 +3165,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const B = BABY_HANDS, Cr = BABY_CRADLE, v = new THREE.Vector3();
     const surface = (at: THREE.Vector3, way: THREE.Vector3, P: Uint32Array): number => { let most = -Infinity; for (let q = 0; q < P.length; q += 2) { m.getVertexPosition(P[q], v); m.localToWorld(v); most = Math.max(most, v.sub(at).dot(way)); } return most; };
     m.skeleton.update();
-    if (name === 'L') {
+    if (name === 'L' || twin) {
       // under its bottom, palm up to it, fingers down its length toward its feet; her elbow's crook under its head
       const most = surface(H, toHer, pick.hips); if (!Number.isFinite(most)) return null;
       const along = long.clone().negate();
@@ -4042,7 +4052,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (inBassinet(i)) poseCradle(mv.bones, k3, moveFrame);
           else poseOnHer(mv.bones, k3, moveFrame);
           // or in her arms (P2, position B: one baby)
-          if (cradleShare > 0 && babyCount === 1) poseCradle(mv.bones, k3 * cradleShare * cradleShare * (3 - 2 * cradleShare), moveFrame);
+          if (cradleShare > 0 && !inBassinet(i)) poseCradle(mv.bones, k3 * cradleShare * cradleShare * (3 - 2 * cradleShare), moveFrame);
         }
         return;
       }
@@ -4097,12 +4107,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     softFrame++;
     // (and where it crosses her opening, it gives a little: babySqueeze.ts)
     setSqueeze(babySqueeze, babySoftOn && birthNow && vulva ? vulva.passFrame() : null, M);
-    roots.forEach((r, i) => {
+    // (the first baby's settle state is the one loaded between frames: each other baby's is swapped in for its turn)
+    roots.forEach((r, i) => { if (i > 0) useSettleOf(i); try {
       const m = babyMoveOf(i, r);
       let sb = softBabies.get(r);
       if (!sb) { sb = createSoftBaby(m.bones, BABY_SOFT_CHAINS); softBabies.set(r, sb); }
-      const b = i === 0 ? birthNow : null;
-      if (!babySoftOn) { sb.ready = false; sb.drive = 1; if (i === 0 && b && b.onHer > 0.5) { onHerPush(r); liftOffHer(r, b.onHer * (1 - cradleShare)); } return; }
+      // (each baby by its own birth; on her -- not one in the bassinet, which lies on its mattress)
+      const b = birthReaches(i) ? momentOf(i) : null, onHerK = b && !inBassinet(i) ? b.onHer : 0;
+      if (!babySoftOn) { sb.ready = false; sb.drive = 1; if (b && onHerK > 0.5) { onHerPush(r); liftOffHer(r, onHerK * (1 - cradleShare)); } return; }
       // what drives it: a move under way; its birth from its settling into her pelvis until it lies on her; a stretch
       let drive = m.t >= 0 ? Math.min(1, 4 * moveEnvelope(m.kind, m.t)) : 0;
       if (b) {
@@ -4115,21 +4127,23 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // in her womb's fluid until its body is out of her
       const fluid = !b || b.down < 1.6 ? 1 : 0;
       r.updateMatrixWorld(true);
-      const push = b && b.onHer > 0.5 ? onHerPush(r) : undefined;
+      const push = b && onHerK > 0.5 ? onHerPush(r) : undefined;
       stepSoftBaby(sb, babyStepDt, { drive, fluid, down: babyDown, ...(push ? { push } : {}) });
       // LYING ON HER, ALL OF IT ON HER SKIN (2026-11-03, Joshua: "It appears the baby's head is in her belly?"): its
       // place on her is laid from its curl's size, and posed on her -- its head turned, its back straight -- its head
       // sank into her. Its points sampled as drawn now; the deepest of them into her skin is how far it is lifted off
       // her, eased, its head laid on her by its neck, so it rests on her
-      if (i === 0) liftOffHer(r, push ? (b?.onHer ?? 0) * (1 - cradleShare) : 0);
-    });
+      liftOffHer(r, push ? onHerK * (1 - cradleShare) : 0);
+    } finally { keepSettleOf(i); } });
+    if (roots.length > 1) useSettleOf(0);
   }
   /**
    * LYING ON HER, ITS ARMS AND LEGS ON HER SKIN, NOT IN IT (2026-11-03): her skin under it sampled (every few points of
    * her within `ON_HER_SKIN.reach` of it, chosen again when it has moved), each frame where it is drawn and which way it
    * faces; a joint that would go into her is put back `margin` out from the nearest of it, along its face.
    */
-  const babyLift = new THREE.Vector3(), liftWant = new THREE.Vector3(), liftNrm = new THREE.Vector3(), liftP = new THREE.Vector3(), liftAll = new THREE.Vector3();
+  let babyLift = new THREE.Vector3();
+  const liftWant = new THREE.Vector3(), liftNrm = new THREE.Vector3(), liftP = new THREE.Vector3(), liftAll = new THREE.Vector3();
   let babyPitch = 0, pitchPick: { chest: Uint32Array; hips: Uint32Array } | null = null, pitchFor: THREE.SkinnedMesh | null = null;
   function settlePitch(r: THREE.Object3D, m: THREE.SkinnedMesh, share: number): void {
     const bones = m.skeleton.bones;
@@ -4221,7 +4235,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (m && share > 0 && n > 0) drapeOverHer(r, m, share);
     else drapeAt.clear();
   }
-  const drapeAt = new Map<string, number>(), drapePick = new Map<string, Uint32Array>(); let drapeFor: THREE.SkinnedMesh | null = null;
+  let drapeAt = new Map<string, number>(), drapePick = new Map<string, Uint32Array>(), drapeFor: THREE.SkinnedMesh | null = null;
   function drapeOverHer(r: THREE.Object3D, m: THREE.SkinnedMesh, share: number): void {
     const bones = m.skeleton.bones;
     // (each part's points: those its bone or any below it carries most, every third)
@@ -4270,7 +4284,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
   }
   /** her skin's sample in cells `near` across (built once a frame), and the nearest of it to a point within one cell */
-  const skinGrid = new Map<string, number[]>(); let skinGridFrame = -1;
+  let skinGrid = new Map<string, number[]>(), skinGridFrame = -1;
   function nearestHerSkin(p: THREE.Vector3): [number, number] {
     const cell = ON_HER_SKIN.near * M;
     if (skinGridFrame !== herSkin.frame) {
@@ -4285,7 +4299,24 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     return [best, bd];
   }
-  const herSkin = { at: new THREE.Vector3(Infinity, 0, 0), idx: new Uint32Array(0), pos: new Float32Array(0), nrm: new Float32Array(0), frame: -1 };
+  interface HerSkin { at: THREE.Vector3; idx: Uint32Array; pos: Float32Array; nrm: Float32Array; frame: number }
+  let herSkin: HerSkin = { at: new THREE.Vector3(Infinity, 0, 0), idx: new Uint32Array(0), pos: new Float32Array(0), nrm: new Float32Array(0), frame: -1 };
+  /**
+   * TWINS ON HER (P3): each baby that lies on her is settled onto her skin as the first one always was -- tipped to lie
+   * along her, lifted off her or brought down to her, its parts draped over her, its arms and legs kept off her skin --
+   * each with its own of that state. The code above runs for one baby at a time: `useSettleOf(i)` loads baby i's into it
+   * and `keepSettleOf(i)` puts it back (the first baby's stays loaded between frames, which is what one baby always had).
+   */
+  interface Settle { pitch: number; lift: THREE.Vector3; least: number; who: number; drapeAt: Map<string, number>; drapePick: Map<string, Uint32Array>; drapeFor: THREE.SkinnedMesh | null; liftPick: Uint32Array | null; liftFor: THREE.SkinnedMesh | null; pitchPick: { chest: Uint32Array; hips: Uint32Array } | null; pitchFor: THREE.SkinnedMesh | null; skin: HerSkin; grid: Map<string, number[]>; gridFrame: number }
+  const settles: Settle[] = [];
+  function keepSettleOf(i: number): void {
+    settles[i] = { pitch: babyPitch, lift: babyLift, least: liftLeast, who: liftWho, drapeAt, drapePick, drapeFor, liftPick, liftFor, pitchPick, pitchFor, skin: herSkin, grid: skinGrid, gridFrame: skinGridFrame };
+  }
+  function useSettleOf(i: number): void {
+    const t = settles[i] ?? { pitch: 0, lift: new THREE.Vector3(), least: Infinity, who: -1, drapeAt: new Map(), drapePick: new Map(), drapeFor: null, liftPick: null, liftFor: null, pitchPick: null, pitchFor: null, skin: { at: new THREE.Vector3(Infinity, 0, 0), idx: new Uint32Array(0), pos: new Float32Array(0), nrm: new Float32Array(0), frame: -1 }, grid: new Map(), gridFrame: -1 };
+    babyPitch = t.pitch; babyLift = t.lift; liftLeast = t.least; liftWho = t.who; drapeAt = t.drapeAt; drapePick = t.drapePick; drapeFor = t.drapeFor;
+    liftPick = t.liftPick; liftFor = t.liftFor; pitchPick = t.pitchPick; pitchFor = t.pitchFor; herSkin = t.skin; skinGrid = t.grid; skinGridFrame = t.gridFrame;
+  }
   let softFrame = 0;
   function onHerPush(r: THREE.Object3D): ((from: THREE.Vector3, dir: THREE.Vector3, length: number) => boolean) | undefined {
     const mesh = bodyOf()?.mesh; if (!mesh) return undefined;
@@ -4527,7 +4558,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         bpQ.slerp(rest.quaternion, u);
       }
       // into her arms (P2, position B): turned onto its back across her, lifted a little off her on the way
-      const c = cradleShare * cradleShare * (3 - 2 * cradleShare), cr = c > 0 && babyCount === 1 ? cradlePlace(scale) : null;
+      const c = cradleShare * cradleShare * (3 - 2 * cradleShare), cr = c > 0 && !inBassinet(i) && (babyCount === 1 || i < 2) ? cradlePlace(scale, i) : null;
       if (cr) { pos.lerp(cr.position, c).add(bpB.set(0, 0, BABY_CRADLE.arc).multiplyScalar(Math.sin(c * Math.PI))); bpQ.slerp(cr.quaternion, c); }
     }
     r.position.copy(pos); r.quaternion.copy(bpQ);
@@ -4587,14 +4618,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * head, her left palm under its bottom, her right palm on its tummy (each a point and the way the palm faces, rest
    * frame; babyHandTarget takes them to the world). Worked out from her skin as drawn, again when that changes.
    */
-  let cradle: { position: THREE.Vector3; quaternion: THREE.Quaternion; head: THREE.Vector3; bottom: THREE.Vector3; middle: THREE.Vector3; long: THREE.Vector3; back: THREE.Vector3; front: number; under: number } | null = null, cradleKey = '';
-  function cradlePlace(scale: number): typeof cradle {
-    const key = `${shownBump().toFixed(1)}|${pose}|${scale.toFixed(3)}`;
-    if (cradle && cradleKey === key) return cradle;
+  interface Cradle { position: THREE.Vector3; quaternion: THREE.Quaternion; head: THREE.Vector3; bottom: THREE.Vector3; middle: THREE.Vector3; long: THREE.Vector3; back: THREE.Vector3; front: number; under: number }
+  let cradle: Cradle | null = null, cradleKey = '';
+  /** twins in her arms (P3): each one's own place, as `cradle` is one baby's (the first's, with twins) */
+  const cradles: (Cradle | null)[] = [], cradleKeys: string[] = [];
+  const cradleOf = (i: number): Cradle | null => (babyCount >= 2 ? cradles[i] ?? null : i === 0 ? cradle : null);
+  function cradlePlace(scale: number, i = 0): Cradle | null {
+    const twins = babyCount >= 2, key = `${shownBump().toFixed(1)}|${pose}|${scale.toFixed(3)}|${babyCount}`;
+    if (twins) { if (cradles[i] && cradleKeys[i] === key) return cradles[i]; }
+    else if (cradle && cradleKey === key) return cradle;
     const skin = bellySkin();
     if (!skin || !babyCurl) return null;
-    cradleKey = key;
-    const C = BABY_CRADLE;
+    if (twins) cradleKeys[i] = key; else cradleKey = key;
+    // (twins: each in one arm, the first in her left, its head toward her left)
+    const way = twins && i === 1 ? -1 : 1, T = TWINS_CRADLE;
+    const C = twins ? { ...BABY_CRADLE, left: way * T.across, rise: T.rise, y: T.y, out: T.out } : BABY_CRADLE;
     // her front at that height: the furthest forward of her skin within a few centimetres of it, near her middle
     let front = -Infinity, under = -Infinity;
     for (let i = 0; i < skin.length; i += 3) {
@@ -4604,17 +4642,19 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (Math.abs(skin[i + 1] - (C.y - C.armBelow)) < 0.025 && Math.abs(skin[i] - C.left) < 0.14) under = Math.max(under, skin[i + 2]);
     }
     if (!Number.isFinite(front)) return null;
-    const middle = new THREE.Vector3(C.left, C.y, Math.max(front + C.out, under + C.armClear));
+    const middle = new THREE.Vector3(C.left, C.y, Math.max(front + C.out, under + C.armClear) - (twins && i === 1 ? T.behind : 0));
     // its length across her toward her left (+x in her rest frame), tipped up toward its head; its back toward her and
-    // turned down onto her forearm
-    const long = new THREE.Vector3(1, C.rise, 0).normalize(), back = new THREE.Vector3(0, -Math.sin(C.lie), -Math.cos(C.lie));
+    // turned down onto her forearm (the second twin: toward her right, in her right arm)
+    const long = new THREE.Vector3(way, C.rise, 0).normalize(), back = new THREE.Vector3(0, -Math.sin(C.lie), -Math.cos(C.lie));
     back.addScaledVector(long, -back.dot(long)).normalize();
     const side = new THREE.Vector3().crossVectors(long, back).normalize();
     const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, long, back).multiply(new THREE.Matrix4().makeBasis(babyCurl.side, babyCurl.long, babyCurl.back).transpose()));
     const position = middle.clone().sub(babyCurl.centre.clone().multiplyScalar(scale).applyQuaternion(q));
     // its head and its bottom: its curl's length either side of its middle, a little short of each end
     const half = 0.5 * babyCurl.size.y * scale * 0.8;
-    cradle = { position, quaternion: q, head: middle.clone().addScaledVector(long, half), bottom: middle.clone().addScaledVector(long, -half), middle, long, back, front, under };
+    const placed = { position, quaternion: q, head: middle.clone().addScaledVector(long, half), bottom: middle.clone().addScaledVector(long, -half), middle, long, back, front, under };
+    if (twins) { cradles[i] = placed; if (i === 0) cradle = placed; return placed; }
+    cradle = placed;
     return cradle;
   }
   /** BIRTH: begun (from the start) or paused and on again; reset takes it back to before it began. */
@@ -5299,7 +5339,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // on her before her hands go back to her knees (both at once, her hand went halfway to her knee from under it, her
       // arm out straight past her reach)
       { const onHer = pose === 'recline' && !!birthNow && bornStage(birthNow) && birthNow.onHer >= 1;
-        const want = babyHold !== 'knees' && onHer ? 1 : 0, cradle = babyHold === 'cradle' && onHer && babyCount === 1 ? 1 : 0;
+        // (twins into her arms once both her hands are on them)
+        const want = babyHold !== 'knees' && onHer ? 1 : 0, cradle = babyHold === 'cradle' && onHer && (babyCount === 1 || twinHandShare >= 0.99) ? 1 : 0;
         const handsTo = onHer && want === 0 && cradleShare > 0 ? 1 : want, cradleTo = cradle > 0 && babyHoldShare < 1 ? cradleShare : cradle;
         babyHoldShare += Math.max(-dt / BABY_HANDS.seconds, Math.min(dt / BABY_HANDS.seconds, handsTo - babyHoldShare));
         cradleShare += Math.max(-dt / BABY_CRADLE.seconds, Math.min(dt / BABY_CRADLE.seconds, cradleTo - cradleShare));
