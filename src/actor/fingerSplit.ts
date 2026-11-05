@@ -22,8 +22,11 @@ export type V3 = readonly [number, number, number];
 /** GAME TUNING (metres): how far from a finger's middle line a point can be and still be that finger's; how far past the
  * knuckle her own webbing reaches (nothing nearer the knuckle is cut); how much nearer one finger a point must be than the
  * next to be plainly that finger's, and the slices its middle line is found in; points this close are one point (her
- * texture's seams split a point into several); at most how many times a point's finger is put to its neighbours' vote. */
-export const FINGER_SPLIT = Object.freeze({ reach: 0.02, web: 0.022, clear: 0.004, slice: 0.005, weld: 2e-5, rounds: 12 });
+ * texture's seams split a point into several); at most how many times a point's finger is put to its neighbours' vote;
+ * how far out from a finger's middle line its skin may stand, as a share of its girth there, and over how much of its
+ * length past the webbing that is eased in; how many rounds each finger's skin is smoothed, and how much of that a point
+ * plainly the finger's own takes. */
+export const FINGER_SPLIT = Object.freeze({ reach: 0.02, web: 0.022, clear: 0.004, slice: 0.005, weld: 2e-5, rounds: 12, round: 1.05, ease: 0.008, smooth: 14, keep: 0.5 });
 
 export interface FingerSplit {
   /** every triangle she is to be drawn with: hers, less the joins, and the closing ones (corners as indices of her points) */
@@ -38,30 +41,35 @@ export interface FingerSplit {
   readonly holes: number;
   /** edges left open that were not before (0 when every hole was closed) */
   readonly open: number;
+  /** her points brought in round their fingers and smoothed (indices of her points), how far each moves and the way it
+   * then faces (metres and unit lengths, at rest, three a point) */
+  readonly round: { readonly index: Uint32Array; readonly delta: Float32Array; readonly normal: Float32Array };
 }
 
 const sub = (a: V3, b: V3): [number, number, number] => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V3, b: V3): [number, number, number] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
-/** How far p is from the bent line through `pts`, and how far along it (from its first point) the nearest place is. */
-export function alongLine(p: V3, pts: readonly V3[]): { d: number; s: number } {
-  let best = Infinity, at = 0, run = 0;
+/** How far p is from the bent line through `pts`, how far along it (from its first point) the nearest place is, and that place. */
+export function alongLine(p: V3, pts: readonly V3[]): { d: number; s: number; q: V3 } {
+  let best = Infinity, at = 0, run = 0, q: V3 = pts[0] ?? p;
   for (let k = 0; k + 1 < pts.length; k++) {
     const ab = sub(pts[k + 1], pts[k]), ap = sub(p, pts[k]), L2 = dot(ab, ab), len = Math.sqrt(L2);
     const t = L2 > 0 ? Math.min(1, Math.max(0, dot(ap, ab) / L2)) : 0;
     const d = Math.hypot(ap[0] - ab[0] * t, ap[1] - ab[1] * t, ap[2] - ab[2] * t);
-    if (d < best) { best = d; at = run + t * len; }
+    if (d < best) { best = d; at = run + t * len; q = [pts[k][0] + ab[0] * t, pts[k][1] + ab[1] * t, pts[k][2] + ab[2] * t]; }
     run += len;
   }
-  return { d: best, s: at };
+  return { d: best, s: at, q };
 }
+
+const smoothstep = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /**
  * `pos` her points at rest (metres, x y z each), `tris` her triangles, `lines` each finger's line at rest from its knuckle
- * out along its bones (every finger but the thumbs).
+ * out along its bones (every finger but the thumbs); `nrm` her normals at rest, if she has them.
  */
-export function splitFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, lines: readonly (readonly V3[])[], o: { readonly reach: number; readonly web: number; readonly clear: number; readonly slice: number; readonly weld: number; readonly rounds: number } = FINGER_SPLIT): FingerSplit {
+export function splitFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, lines: readonly (readonly V3[])[], o: { readonly reach: number; readonly web: number; readonly clear: number; readonly slice: number; readonly weld: number; readonly rounds: number; readonly round: number; readonly ease: number; readonly smooth: number; readonly keep: number } = FINGER_SPLIT, nrm?: ArrayLike<number>): FingerSplit {
   const n = Math.floor(pos.length / 3), P = (i: number): V3 => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
   // (only her hands are looked at: the points within reach of a finger's line and a little more -- the rest of her body,
   // nine points in ten, is left alone and costs nothing)
@@ -195,8 +203,40 @@ export function splitFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, li
     // two runs is a little gap at the foot of the cut -- closed too, as the web between them)
     if (runs.length === 2) { const [A, B] = runs; polygons.push([A[A.length - 1], B[0], B[B.length - 1], A[0]]); }
   }
-  // each cut into triangles across its own plane (ear by ear)
+  // A FINGER'S RUN CLOSED ALONG IT, a zip: its rim runs out along the finger from the webbing to the furthest point and back
+  // along its other edge; the two edges are joined step by step, each step taken on whichever edge is less far along the
+  // finger -- short triangles across the finger's side, each between two places along it, that bend with it at each joint
+  // (cut across its own plane, ear by ear, a long rim was closed with triangles the length of the finger, and a finger bent
+  // drew them as straight strands through its joints)
+  const zipped = new Set<number[]>();
+  // (every edge drawn so far, each way it is drawn: a step that would draw one again is the other edge's step instead)
+  const drawn = new Set<number>(kept);
+  const free = (x: number, y: number, z: number) => !drawn.has(edgeKey(x, y)) && !drawn.has(edgeKey(y, z)) && !drawn.has(edgeKey(z, x));
+  const put3 = (x: number, y: number, z: number) => { if (x === y || y === z || z === x) return; fill.push(repOf.get(x)!, repOf.get(y)!, repOf.get(z)!); drawn.add(edgeKey(x, y)); drawn.add(edgeKey(y, z)); drawn.add(edgeKey(z, x)); };
   for (const loop of polygons) {
+    const m = loop.length, own = ownerW[loop[0]];
+    if (m < 5 || own < 0 || !loop.every((w) => ownerW[w] === own)) continue;
+    let lo = 0, hi = 0;
+    for (let k = 1; k < m; k++) { if (pastW[loop[k]] < pastW[loop[lo]]) lo = k; if (pastW[loop[k]] > pastW[loop[hi]]) hi = k; }
+    if (lo === hi) continue;
+    const F: number[] = [], G: number[] = [];
+    for (let k = lo; ; k = (k + 1) % m) { F.push(loop[k]); if (k === hi) break; }
+    for (let k = lo; ; k = (k + m - 1) % m) { G.push(loop[k]); if (k === hi) break; }
+    let a = 0, b = 0;
+    while (a < F.length - 1 || b < G.length - 1) {
+      const canF = a < F.length - 1, canG = b < G.length - 1;
+      let onF = canF && (!canG || pastW[F[a + 1]] <= pastW[G[b + 1]]);
+      // (a step that would draw an edge already there -- her own, or one just closed -- is taken on the other edge)
+      if (onF && canG && !free(F[a], F[a + 1], G[b]) && free(G[b + 1], G[b], F[a])) onF = false;
+      else if (!onF && canF && !free(G[b + 1], G[b], F[a]) && free(F[a], F[a + 1], G[b])) onF = true;
+      // (the last step on each edge meets the other at the furthest point: no triangle there)
+      if (onF) { put3(F[a], F[a + 1], G[b]); a++; } else { put3(G[b + 1], G[b], F[a]); b++; }
+    }
+    zipped.add(loop);
+  }
+  // the rest each cut into triangles across its own plane (ear by ear)
+  for (const loop of polygons) {
+    if (zipped.has(loop)) continue;
     const pts = loop.map((w) => P(first[w]));
     // (the way the rim turns: Newell's normal)
     let nx = 0, ny = 0, nz = 0;
@@ -230,5 +270,73 @@ export function splitFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, li
   for (const e of after) { const a = Math.floor(e / W), b = e % W; if (!after.has(edgeKey(b, a)) && before.has(edgeKey(b, a))) open++; }
   const owner = new Int8Array(n), past = new Float32Array(n);
   for (let i = 0; i < n; i++) { owner[i] = weld[i] >= 0 ? ownerW[weld[i]] : -1; past[i] = weld[i] >= 0 ? pastW[weld[i]] : 0; }
-  return { tris: out, owner, past, cut, filled: fill.length / 3, holes: polygons.length, open };
+  // ROUNDED: where two fingers were one skin, each keeps its half of what joined them -- a fin along its side whose edge is
+  // the cut. So past the webbing each point of a finger standing further from its middle line than `round` times the
+  // finger's girth there (the middle of its plain points' distances, slice by slice) is brought in to that, eased in over
+  // `ease` past the webbing: the finger round, as a finger is
+  const girth = middles.map((l, f) => {
+    const by = new Map<number, number[]>(), all: number[] = [];
+    if (l.length >= 2) for (let w = 0; w < W; w++) { if (ownerW[w] !== f || !plain[w]) continue; const r = alongLine(P(first[w]), l), k = Math.floor(r.s / o.slice); const a = by.get(k) ?? []; a.push(r.d); by.set(k, a); all.push(r.d); }
+    const mid = (a: number[]) => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)] ?? 0; };
+    const whole = mid(all), at = new Map<number, number>();
+    for (const [k, a] of by) at.set(k, a.length >= 4 ? mid(a) : whole);
+    return (s: number) => at.get(Math.floor(s / o.slice)) ?? whole;
+  });
+  // (her points as they will stand: first each brought in round its finger)
+  const Q = new Float32Array(W * 3);
+  for (let w = 0; w < W; w++) { const p = P(first[w]); Q[w * 3] = p[0]; Q[w * 3 + 1] = p[1]; Q[w * 3 + 2] = p[2]; }
+  for (let w = 0; w < W; w++) {
+    const f = ownerW[w];
+    if (f < 0 || pastW[w] <= o.web || middles[f].length < 2) continue;
+    const p = P(first[w]), r = alongLine(p, middles[f]), most = girth[f](r.s) * o.round;
+    if (!(most > 0) || r.d <= most) continue;
+    const k = smoothstep(o.web, o.web + o.ease, pastW[w]) * (most - r.d) / r.d;
+    for (let c = 0; c < 3; c++) Q[w * 3 + c] += (p[c] - r.q[c]) * k;
+  }
+  // SMOOTHED: then each finger's skin past the webbing eased toward the middle of the points beside it on that finger, a
+  // step in and a step back out each round so the finger does not thin (Taubin's way) -- the edge the cut left gone, and a
+  // point plainly the finger's own (its knuckles' creases, its nail) moved `keep` as much, so they stay
+  const ease = (w: number) => smoothstep(o.web - o.ease / 2, o.web + o.ease, pastW[w]);
+  const nb: number[][] = Array.from({ length: W }, () => []);
+  for (let t = 0; t < out.length / 3; t++) {
+    const v = [weld[out[t * 3]], weld[out[t * 3 + 1]], weld[out[t * 3 + 2]]];
+    if (v.some((w) => w < 0 || ownerW[w] < 0) || !(ownerW[v[0]] === ownerW[v[1]] && ownerW[v[1]] === ownerW[v[2]])) continue;
+    for (let k = 0; k < 3; k++) { const a = v[k], b = v[(k + 1) % 3]; if (!nb[a].includes(b)) nb[a].push(b); if (!nb[b].includes(a)) nb[b].push(a); }
+  }
+  const smoothOf = (w: number) => (ownerW[w] >= 0 && nb[w].length >= 2 ? ease(w) * (plain[w] ? o.keep : 1) : 0);
+  const S = new Float32Array(W);
+  for (let w = 0; w < W; w++) S[w] = smoothOf(w);
+  const step = (amount: number) => {
+    const was = Q.slice();
+    for (let w = 0; w < W; w++) {
+      if (!(S[w] > 0)) continue;
+      let x = 0, y = 0, z = 0; for (const u of nb[w]) { x += was[u * 3]; y += was[u * 3 + 1]; z += was[u * 3 + 2]; }
+      const m = nb[w].length, k = amount * S[w];
+      Q[w * 3] += k * (x / m - was[w * 3]); Q[w * 3 + 1] += k * (y / m - was[w * 3 + 1]); Q[w * 3 + 2] += k * (z / m - was[w * 3 + 2]);
+    }
+  };
+  for (let r = 0; r < o.smooth; r++) { step(0.5); step(-0.53); }
+  // FACING as the skin now lies: each point's normal from the triangles round it (an even mix with its own, eased in past
+  // the webbing as the smoothing is)
+  const NQ = new Float32Array(W * 3);
+  for (let t = 0; t < out.length / 3; t++) {
+    const v = [weld[out[t * 3]], weld[out[t * 3 + 1]], weld[out[t * 3 + 2]]];
+    if (v.some((w) => w < 0) || !v.some((w) => S[w] > 0)) continue;
+    const a: V3 = [Q[v[0] * 3], Q[v[0] * 3 + 1], Q[v[0] * 3 + 2]], b: V3 = [Q[v[1] * 3], Q[v[1] * 3 + 1], Q[v[1] * 3 + 2]], c: V3 = [Q[v[2] * 3], Q[v[2] * 3 + 1], Q[v[2] * 3 + 2]];
+    const nn = cross(sub(b, a), sub(c, a));
+    for (const w of v) { NQ[w * 3] += nn[0]; NQ[w * 3 + 1] += nn[1]; NQ[w * 3 + 2] += nn[2]; }
+  }
+  const ri: number[] = [], rd: number[] = [], rn: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const w = weld[i];
+    if (w < 0 || ownerW[w] < 0 || pastW[w] <= o.web - o.ease / 2) continue;
+    const p = P(i), d0 = Q[w * 3] - p[0], d1 = Q[w * 3 + 1] - p[1], d2 = Q[w * 3 + 2] - p[2], l = Math.hypot(NQ[w * 3], NQ[w * 3 + 1], NQ[w * 3 + 2]);
+    if (!(l > 0) && Math.hypot(d0, d1, d2) < 1e-7) continue;
+    ri.push(i); rd.push(d0, d1, d2);
+    // (no normal of her own given: the triangles' alone; else hers eased into theirs)
+    const tn: V3 = l > 0 ? [NQ[w * 3] / l, NQ[w * 3 + 1] / l, NQ[w * 3 + 2] / l] : [0, 0, 0], e = ease(w);
+    if (nrm) { const own: V3 = [nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2]], mix: V3 = [own[0] + (tn[0] - own[0]) * e, own[1] + (tn[1] - own[1]) * e, own[2] + (tn[2] - own[2]) * e], ml = Math.hypot(...mix) || 1; rn.push(mix[0] / ml, mix[1] / ml, mix[2] / ml); }
+    else rn.push(...tn);
+  }
+  return { tris: out, owner, past, cut, filled: fill.length / 3, holes: polygons.length, open, round: { index: Uint32Array.from(ri), delta: Float32Array.from(rd), normal: Float32Array.from(rn) } };
 }

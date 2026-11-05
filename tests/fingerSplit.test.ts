@@ -61,6 +61,24 @@ describe('her fingers cut apart (fingerSplit)', () => {
     for (const [key, n] of edges) { expect(n, key).toBe(1); const [a, b] = key.split('>'); expect(edges.get(`${b}>${a}`), `${key} has its other side`).toBe(1); }
   });
 
+  it('each finger is brought round and smoothed where it was joined: the join\'s points pulled in, nothing thrown far, every normal a unit', () => {
+    const { pos, tris } = mitten(), s = splitFingers(pos, tris, LINES), R = s.round;
+    expect(R.index.length).toBeGreaterThan(0);
+    let inward = 0;
+    for (let k = 0; k < R.index.length; k++) {
+      const i = R.index[k], d = Math.hypot(R.delta[k * 3], R.delta[k * 3 + 1], R.delta[k * 3 + 2]);
+      expect(Number.isFinite(d)).toBe(true);
+      // (the mitten's own tip cap, one point joining both fingers' ends, aside)
+      if (pos[i * 3 + 1] <= LONG) expect(d, `point ${i} moved`).toBeLessThan(0.01);
+      expect(Math.hypot(R.normal[k * 3], R.normal[k * 3 + 1], R.normal[k * 3 + 2])).toBeCloseTo(1, 5);
+      // (the mitten's flat top and bottom between the fingers were the join: brought in toward their finger)
+      const f = s.owner[i], at = alongLine([pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]], LINES[f]).d;
+      const now = alongLine([pos[i * 3] + R.delta[k * 3], pos[i * 3 + 1] + R.delta[k * 3 + 1], pos[i * 3 + 2] + R.delta[k * 3 + 2]], LINES[f]).d;
+      if (Math.abs(pos[i * 3]) < 0.006 && s.past[i] > FINGER_SPLIT.web + FINGER_SPLIT.ease) { expect(now, `point ${i}`).toBeLessThan(at); inward++; }
+    }
+    expect(inward).toBeGreaterThan(0);
+  });
+
   it('a hand whose fingers are already apart is left as it is', () => {
     const { pos, tris } = mitten();
     // (only the left finger's line: nothing is two fingers')
