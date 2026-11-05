@@ -42,6 +42,9 @@ export interface BirthSpec {
   readonly flex: number; readonly knee: number;
   /** how far each foot turns out (degrees); whether it stays flat on the floor (else it follows the shin) */
   readonly turnOut: number; readonly footFlat: boolean;
+  /** a flat foot tipped about her side by so many degrees (absent: 0) -- for a body the owner leans back, so its sole
+   * still lies on the floor */
+  readonly footLean?: number;
   /** her back and chest tipped forward (degrees, negative back), her neck (forward) */
   readonly spine: number; readonly chest: number; readonly neck: number;
   /** her whole body leaned back about her hips onto what holds her up (degrees; the owner turns her) */
@@ -76,6 +79,25 @@ export const BIRTH_POSES: Readonly<Record<BirthStyle, BirthSpec>> = Object.freez
   // her sides first and brought forward only 50, leaning back 40: flung sideways, not drawn up)
   recline: { spread: 46, spreadPerBump: 4, flex: 90, knee: 95, turnOut: 12, footFlat: false, spine: -2, chest: 10, neck: 26, leanBack: 55, swing: true },
 });
+
+/**
+ * SITTING BACK ON THE MAT after a squat birth (P3b; Joshua, 2026-11-04: "Sits back on the mat", once she has caught her
+ * baby in her own hands): her bottom on the mat, her knees up and fallen open, her feet flat on the floor in front of
+ * her, her body leaned back a little (the owner leans it, `leanBack`, and sets her hips on the mat), her head down
+ * toward her baby. Reached from SQUAT by `blendBirthSpec`. GAME TUNING.
+ */
+export const FLOOR_SIT: BirthSpec = Object.freeze({ spread: 30, spreadPerBump: 4, flex: 126, knee: 108, turnOut: 15, footFlat: true, footLean: 18, spine: -4, chest: 6, neck: 14, leanBack: 18, swing: true });
+
+/** A position `k` of the way from `a` to `b` (0 .. 1): each angle between the two; a yes/no from the nearer. */
+export function blendBirthSpec(a: BirthSpec, b: BirthSpec, k: number): BirthSpec {
+  const t = Math.min(1, Math.max(0, Number.isFinite(k) ? k : 0)), m = (x: number, y: number) => x + (y - x) * t;
+  return {
+    spread: m(a.spread, b.spread), spreadPerBump: m(a.spreadPerBump, b.spreadPerBump), flex: m(a.flex, b.flex), knee: m(a.knee, b.knee),
+    turnOut: m(a.turnOut, b.turnOut), footFlat: t < 0.5 ? a.footFlat : b.footFlat, footLean: m(a.footLean ?? 0, b.footLean ?? 0),
+    spine: m(a.spine, b.spine), chest: m(a.chest, b.chest), neck: m(a.neck, b.neck), leanBack: m(a.leanBack, b.leanBack),
+    swing: t < 0.5 ? a.swing : b.swing, oneLeg: t < 0.5 ? a.oneLeg : b.oneLeg,
+  };
+}
 
 /** How many turns `poseBirth` writes. */
 export const BIRTH_TURNS = 10;
@@ -134,7 +156,7 @@ export function poseBirth(measure: HumanMeasure, bind: readonly BindJoint[], pos
     write(out[i], hip, hipQ);
     write(out[i + 1], knee, kneeQ);
     // flat: everything above it undone, then turned out about the vertical; else it follows the shin, a little pointed
-    write(out[i + 2], ankle, s.footFlat ? qMul(qConj(qMul(hipQ, kneeQ)), ry(side * s.turnOut * DEG)) : rx(-10 * DEG));
+    write(out[i + 2], ankle, s.footFlat ? qMul(qConj(qMul(hipQ, kneeQ)), qMul(rx((s.footLean ?? 0) * DEG), ry(side * s.turnOut * DEG))) : rx(-10 * DEG));
   };
   leg(4, j.hipL, j.kneeL, j.ankleL, L);
   if (s.oneLeg) { write(out[7], j.hipR, rx(0)); write(out[8], j.kneeR, rx(0)); write(out[9], j.ankleR, rx(0)); }

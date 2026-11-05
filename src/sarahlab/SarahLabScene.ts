@@ -87,7 +87,7 @@ import { BUILD_PROFILES, buildAmounts, buildKey, heightLine, heldSegments, profi
 import { applyBuildToBones, applyBuildToMesh, buildBoneOffsets, buildMeshFields, prepareBuildRig, standingLift, type BuildMeshFields, type BuildRig } from '../view/bodyBuild';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
-import { BIRTH_POSES, poseBirth, type BirthSpec } from '../actor/humanBirth';
+import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
 import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babyLine, babySolid, carriedShare, weekForBump, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PUBIC_PRESS, pubicPressWant, setPush, jiggleOf as jiggleOfMesh, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type SoftBellyWant } from './softBody';
@@ -120,12 +120,18 @@ const BIRTH_REST = Object.freeze({ top: 1.2, span: 0.3, across: 0.05, depth: 0.3
  * frame), the first to her left */
 const TWINS_ON_HER = Object.freeze({ across: 0.075 });
 /**
+ * GAME TUNING (P3b, the SQUAT birth, Joshua 2026-11-04): a soft mat on the floor under her whenever she squats -- `long`
+ * (front to back) by `wide`, `thick` metres, its middle `back` metres behind her hips, where she sits back -- and, sat
+ * back on it, her hips `hips` metres over the floor (the mat and the flesh under her hip joints).
+ */
+const BIRTH_MAT = Object.freeze({ long: 1.2, wide: 0.85, thick: 0.025, back: 0.18, hips: 0.135 });
+/**
  * GAME TUNING (P3, a triplet's third in a bassinet beside the bed, Joshua 2026-11-04), metres: its basket `long` by
  * `wide` and `deep` (sides `wall` thick, a `mattress` in it), its rim `rimAbove` over her opening's height (the bed's
  * level), stood `out` to her left of her opening and `up` along the bed toward her head; four legs `legs` thick to the
- * floor; a baby lifted into it rises `arc` over the way there.
+ * floor, its rim never under `rimLeast`; a baby lifted into it rises `arc` over the way there.
  */
-const BASSINET = Object.freeze({ long: 0.74, wide: 0.42, deep: 0.2, wall: 0.012, mattress: 0.04, rimAbove: 0.1, out: 0.85, up: 0.6, legs: 0.028, arc: 0.3 });
+const BASSINET = Object.freeze({ long: 0.74, wide: 0.42, deep: 0.2, wall: 0.012, mattress: 0.04, rimAbove: 0.1, rimLeast: 0.62, out: 0.85, up: 0.6, legs: 0.028, arc: 0.3 });
 /** GAME TUNING: its straight body faded in over its curled one between these shares of its legs' straightening */
 const BABY_BODY_FADE = [0.3, 0.7] as const;
 /** GAME TUNING: where a hand rests on a knee -- over its top, the palm `capTilt` of the way from the thigh's top round to
@@ -176,6 +182,12 @@ const TWINS_CRADLE = Object.freeze({ across: 0.085, rise: 0.45, behind: 0.04, y:
  * its fingers this share down along it toward its legs (the rest across it);
  * the palm this thick off its skin (metres), its middle this share of a hand back from the fingertip; and the seconds her
  * hands take to go to it or back to her knees */
+/** GAME TUNING (P3b, the catch in a SQUAT birth): her left hand goes under its head between these points of its way out
+ * (`BirthMoment.down`: 1 its head's middle at her opening), her right under its body between these; its body `under`
+ * metres from its middle to its underside (a full-term baby's, scaled with it); from `swingFrom` of its way out (most of
+ * it out of her) to all of it, her hands swing it `swing` degrees up and forward about her opening and raise it `lift`
+ * metres. */
+const SQUAT_CATCH = Object.freeze({ head: [0.85, 1.2] as const, body: [1.3, 1.75] as const, under: 0.05, swingFrom: 1.55, swing: 75, lift: 0.12 });
 const BABY_HANDS = Object.freeze({ backUp: 0.35, bottomDown: -0.03, bottomCup: 0.6, bottomFeet: 0.85, palm: 0.012, palmAt: 0.45, seconds: 1.4 });
 /** Its soft body's chains (softBaby.ts): each arm and leg from its shoulder or hip out to its hand or foot -- never its
  * torso, neck or head (Joshua, 2026-11-03: "Keep the soft body after birth but not the torso... to hopefully keep the
@@ -213,7 +225,7 @@ const BIRTH_HEAD = Object.freeze({ radius: 0.0475, atLength: 0.51, lift: [0, 0.0
 const AFTERBIRTH = Object.freeze({
   fold: { along: 0.8, across: 0.42, thick: 1.6 }, inBowlFold: 0, dish: 0.035, clear: 0.03, arc: 0.07, hugFrom: 0.95, hugTo: 1.95,
   innerSlack: 1.15, hang: 0.25, hangNodes: 14,
-  bowl: { rim: 0.13, depth: 0.07, bottom: 0.06, floor: 0.004, side: 0.18, ahead: 0.15, below: 0.11 },
+  bowl: { rim: 0.13, depth: 0.07, bottom: 0.06, floor: 0.004, side: 0.18, ahead: 0.15, below: 0.11, squatSide: 0.36, squatAhead: 0.02 },
   open: 0.55, shrink: 0.12,
 });
 import { BIRTH_CONTACT_FIELD, createBirthContact, type BirthContact } from './birthContact';
@@ -650,6 +662,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const p = m.placentas[i] ?? { placentaFor: -1, separate: 0, placentaDown: 0, bowl: 0 };
     return { ...m, engage: b.engage, down: b.down, turnDeg: b.turnDeg, onHer: b.onHer, stretch: b.stretch, closing: b.closing, cut: b.cut, cutAt: b.cutAt, placentaFor: p.placentaFor, separate: p.separate, placentaDown: p.placentaDown, bowl: p.bowl };
   }
+  /**
+   * THE SQUAT BIRTH (P3b; Joshua, 2026-11-04: she catches her baby in her own hands, then "sits back on the mat"): how far
+   * she has sat back from her squat onto the mat (0 .. 1) -- as her first baby is lifted to her chest (its `onHer`).
+   * 0 in any other position, and before.
+   */
+  const squatSit = (): number => (pose === 'squat' && birthNow ? birthNow.babies[0]?.onHer ?? 0 : 0);
   /** Every baby out of her (one baby: born). */
   const allOut = (m: BirthMoment | null): boolean => !!m && m.babies.every((b) => b.born);
   /** A baby whose birth has reached it: the first from the start; another once it starts turning head down for its turn. */
@@ -3004,7 +3022,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (isBirthPose(p)) {
       // a birth position: her standing arms, her back and legs as the position has them (actor/humanBirth.ts)
       const stood = poseHuman(measure, rig.bind, { stance: 'stand', phase: 0, seconds, lean: 0, carry: bump / 100 }, out);
-      const birth = poseBirth(measure, rig.bind, { style: p, seconds, bump: bump / 100, ...(birthTweak ? { tweak: birthTweak } : {}) }, birthOut);
+      // (a squat birth: from her squat to sitting back on the mat as she lifts her baby to her chest)
+      const sit = p === 'squat' ? squatSit() : 0, tweak = sit > 0 ? { ...blendBirthSpec(BIRTH_POSES.squat, FLOOR_SIT, sit), ...(birthTweak ?? {}) } : birthTweak;
+      const birth = poseBirth(measure, rig.bind, { style: p, seconds, bump: bump / 100, ...(tweak ? { tweak } : {}) }, birthOut);
       const mine = new Set(birth.map((t) => t.joint));
       base = [...stood.filter((t) => !mine.has(t.joint)), ...birth];
     } else if (p === 'sit') base = poseSeated(measure, rig.bind, { style: 'sit', seconds, posture: 'pregnant', bump: bump / 100, settled: settledSitFor(SARAH_LAB_MODELS[modelIndex].id) }, out);
@@ -3108,6 +3128,44 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     return a;
   }
+  /**
+   * THE CATCH (P3b, SQUAT): how far each hand has gone to her first baby as it is born -- her left as its head comes out,
+   * her right as its body follows -- until it lies on her chest (0 .. 1); 0 in any other position, before, after, or with
+   * HOLD on her knees.
+   */
+  function catchShareOf(name: 'L' | 'R'): number {
+    if (pose !== 'squat' || !birthNow || babyHold === 'knees') return 0;
+    const b = birthNow.babies[0];
+    if (!b || b.onHer >= 1) return 0;
+    const sm = (a: number, c: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (c - a))); return t * t * (3 - 2 * t); };
+    return name === 'L' ? sm(SQUAT_CATCH.head[0], SQUAT_CATCH.head[1], b.down) : sm(SQUAT_CATCH.body[0], SQUAT_CATCH.body[1], b.down);
+  }
+  /** Where each hand holds it as she catches it: palm up under it (her left under its head, her right under its body),
+   * fingers pointing ahead of her -- and, as it is lifted to her chest, on to where her hands rest on it lying there. */
+  function catchTarget(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3 } | null {
+    const r = babyRoots()[0], sk = bodyOf()?.mesh;
+    if (!r || !sk || !measure || !birthNow) return null;
+    const head = r.getObjectByName(BABY_BONES.head), hips = r.getObjectByName(BABY_BONES.hips), chest = r.getObjectByName('Bone_003');
+    if (!head || !hips || !chest) return null;
+    r.updateMatrixWorld(true);
+    const bones = sk.skeleton.bones, j = measure.joints, wp = (b: THREE.Object3D) => b.getWorldPosition(new THREE.Vector3());
+    // ahead of her, level: from between her hips toward between her knees
+    const ahead = wp(bones[j.kneeL]).add(wp(bones[j.kneeR])).sub(wp(bones[j.hipL])).sub(wp(bones[j.hipR])); ahead.y = 0;
+    if (ahead.lengthSq() < 1e-12) ahead.set(0, 0, 1);
+    ahead.normalize();
+    const down = new THREE.Vector3(0, -1, 0), C = SQUAT_CATCH, k = r.scale.x / 0.33;
+    const at = name === 'L' ? wp(head) : wp(chest).lerp(wp(hips), 0.5), under = (name === 'L' ? headRadiusOf(r.scale.x) : C.under * k) * perM;
+    const tip = at.addScaledVector(down, under + BABY_HANDS.palm * perM).addScaledVector(ahead, handLen * BABY_HANDS.palmAt);
+    const catching = { tip, along: ahead, face: down };
+    // (lifted to her chest: from under it to on it)
+    const up = birthNow.babies[0].onHer;
+    if (up <= 0) return catching;
+    const lying = babyLyingTarget(name, handLen, perM, true);
+    if (!lying) return catching;
+    const u = up * up * (3 - 2 * up);
+    catching.tip.lerp(lying.tip, u); catching.along.lerp(lying.along, u).normalize(); catching.face.lerp(lying.face, u).normalize();
+    return catching;
+  }
   /** The body a baby is drawn with now (its straight one once born, else its curled one). */
   function drawnMeshOf(r: THREE.Object3D): THREE.SkinnedMesh | null {
     const own = straightOf(r);
@@ -3179,10 +3237,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const tip = at.clone().addScaledVector(away, most + B.palm * perM).addScaledVector(long, handLen * B.palmAt);
     return { tip, along: long.clone(), face: away };
   }
-  function babyLyingTarget(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3 } | null {
+  function babyLyingTarget(name: 'L' | 'R', handLen: number, perM: number, lifting = false): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3 } | null {
     // (twins: her right hand on the second twin, her left on the first)
     const twin = babyCount >= 2 && name === 'R', r = babyRoots()[twin ? 1 : 0], m = twin && r ? drawnMeshOf(r) : pitchFor, pick = m ? trunkPick(m) : null;
-    if (!r || !m || !pick || !birthNow || !bornStage(birthNow)) return null;
+    if (!r || !m || !pick || !birthNow || (!bornStage(birthNow) && !lifting)) return null;
     const hipB = r.getObjectByName(BABY_BONES.hips), chestB = r.getObjectByName('Bone_003'), neckB = r.getObjectByName(BABY_BONES.neck);
     if (!hipB || !chestB || !neckB) return null;
     const H = hipB.getWorldPosition(new THREE.Vector3()), C = chestB.getWorldPosition(new THREE.Vector3()), Nk = neckB.getWorldPosition(new THREE.Vector3());
@@ -3212,7 +3270,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   function handsOnKnees(): void {
     kneeHold = null;
-    if (pose !== 'recline' || !model || !rig || !measure) return;
+    // (RECLINE; and SQUAT -- her hands on her knees as she pushes, catching her baby, holding it as she sits back: P3b)
+    if ((pose !== 'recline' && pose !== 'squat') || !model || !rig || !measure) return;
     // (her own skeleton: the model also carries her baby's, which has more bones)
     const sk = bodyOf()?.mesh; if (!sk) return;
     const bones = sk.skeleton.bones, j = measure.joints, B = rig.bind, K = KNEE_HANDS;
@@ -3243,7 +3302,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // HER HANDS ON HER BABY (P2; Joshua, 2026-11-03: "where she can actually hold the baby instead of it laying with no
       // hands from her"): from her knee to where on it this hand goes (babyHandTarget), `babyHoldShare` of the way -- the
       // fingertip, the way the fingers point and the way the palm's back faces all carried over together
-      const onBaby = babyHoldShare > 0 ? babyHandTarget(name, handLen, perM) : null;
+      // CAUGHT IN HER OWN HANDS (P3b, SQUAT; Joshua, 2026-11-04): as its head comes out her left hand goes under it, as
+      // its body follows her right under that; both carry it up to her chest as she sits back -- where they come to rest
+      // on it as on any baby lying on her (babyLyingTarget), the hold from then on
+      const caught = catchShareOf(name), held = caught > 0 ? catchTarget(name, handLen, perM) : null;
+      if (held) {
+        const k = caught * caught * (3 - 2 * caught);
+        T.lerp(held.tip, k); td.lerp(held.along, k).normalize(); top.lerp(held.face, k);
+        top.addScaledVector(td, -top.dot(td)).normalize();
+        out[name + 'Catch'] = +k.toFixed(2);
+      }
+      const onBaby = babyHoldShare > 0 && !held ? babyHandTarget(name, handLen, perM) : null;
       // (holding it in her arms, her elbow is where its head lies: the elbow's place round her arm chosen nearest that)
       const elbowWant = onBaby?.elbow && onBaby.elbowK ? { at: onBaby.elbow, k: onBaby.elbowK } : null;
       if (onBaby) {
@@ -3394,33 +3463,63 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   function placeBirth(skin: THREE.SkinnedMesh): void {
     if (!model || !rig || !measure || !isBirthPose(pose)) return;
-    const key = `${pose}|${bonesBuilt}|${bump.toFixed(1)}|${standLift.toFixed(4)}`;
+    const sit = pose === 'squat' ? squatSit() : 0;
+    const key = `${pose}|${bonesBuilt}|${bump.toFixed(1)}|${standLift.toFixed(4)}|${sit.toFixed(3)}`;
     if (birthPlaced?.key !== key) {
-      const bones = skin.skeleton.bones, j = measure.joints, v = () => new THREE.Vector3();
-      const read = () => {
-        model!.position.set(0, 0, 0); model!.quaternion.identity(); model!.updateMatrixWorld(true);
+      // (her own skeleton: the model also carries her baby's -- found first once it is in her arms, and read as hers it
+      // set her, sat back, 20 cm into the floor)
+      const bones = (bodyOf()?.mesh ?? skin).skeleton.bones, j = measure.joints, v = () => new THREE.Vector3();
+      const read = (turn?: THREE.Quaternion) => {
+        model!.position.set(0, 0, 0); if (turn) model!.quaternion.copy(turn); else model!.quaternion.identity(); model!.updateMatrixWorld(true);
         const al = bones[j.ankleL].getWorldPosition(v()), ar = bones[j.ankleR].getWorldPosition(v());
         return { hips: bones[j.hipL].getWorldPosition(v()).add(bones[j.hipR].getWorldPosition(v())).multiplyScalar(0.5), feet: al.clone().add(ar).multiplyScalar(0.5), low: Math.min(al.y, ar.y) };
       };
       rig.apply(turnsFor('stand', standOut)); const stand = read();
       rig.apply(turnsFor(pose, poseOut)); const now = read();
-      const lean = ((birthTweak?.leanBack ?? BIRTH_POSES[pose].leanBack) * Math.PI) / 180, q = new THREE.Quaternion();
-      const position = v();
-      if (lean > 0) {
+      const lean = ((birthTweak?.leanBack ?? (sit > 0 ? blendBirthSpec(BIRTH_POSES.squat, FLOOR_SIT, sit).leanBack : BIRTH_POSES[pose].leanBack)) * Math.PI) / 180, q = new THREE.Quaternion();
+      const position = v(), mat = BIRTH_MAT.thick * M;
+      // (the mat under her in a squat: where she sits back, behind her hips)
+      if (pose === 'squat') matAt.set(stand.hips.x, 0, stand.hips.z - BIRTH_MAT.back * M);
+      if (pose === 'squat' && sit > 0) {
+        // SITTING BACK (P3b): leaned back about her hips; her feet kept over where they stood, and from standing on the mat
+        // down to sitting on it -- her hips on it once she has sat back
+        q.setFromAxisAngle(v().set(1, 0, 0), -lean);
+        const back = read(q), onFeet = stand.low + standLift * M + mat - back.low, onHips = BIRTH_MAT.hips * M - back.hips.y;
+        position.set(stand.feet.x - back.feet.x, onFeet + (onHips - onFeet) * sit, stand.feet.z - back.feet.z);
+        squatSitAt = { sit, feetOffCm: +((back.low + onHips - mat) / M * 100).toFixed(1), hipsY: +(back.hips.y / M * 100).toFixed(1), lowY: +(back.low / M * 100).toFixed(1), posY: +(position.y / M * 100).toFixed(1), leanDeg: +(lean * 180 / Math.PI).toFixed(1) } as typeof squatSitAt;
+      } else if (lean > 0) {
         // leaned back (her top toward -z) about her hips, the hips where she stood, at the support's height
         q.setFromAxisAngle(v().set(1, 0, 0), -lean);
         position.set(stand.hips.x, RECLINE_HIPS_M * M, stand.hips.z).sub(now.hips.clone().applyQuaternion(q));
-      } else position.set(stand.feet.x - now.feet.x, stand.low + standLift * M - now.low, stand.feet.z - now.feet.z);
+      } else position.set(stand.feet.x - now.feet.x, stand.low + standLift * M - now.low + (pose === 'squat' ? mat : 0), stand.feet.z - now.feet.z);
       birthPlaced = { key, position, quaternion: q };
       rig.apply(currentTurns()); handsOnKnees();
     }
     model.position.copy(birthPlaced.position); model.quaternion.copy(birthPlaced.quaternion);
     model.updateMatrixWorld(true);
     stool.visible = false;
+    placeMat(pose === 'squat');
     orbit.target.z = ORBIT_START.target.z;
   }
   /** Leaned back in RECLINE, her hips are this high off the floor (metres): a bed's edge. GAME TUNING. */
   const RECLINE_HIPS_M = 0.55;
+  /** THE MAT (P3b): soft, on the floor under her squat and where she sits back (BIRTH_MAT); `matAt` its middle on the floor. */
+  let birthMatMesh: THREE.Mesh | null = null, squatSitAt: { sit: number; feetOffCm: number; [k: string]: number } | null = null;
+  const matAt = new THREE.Vector3();
+  function placeMat(show: boolean): void {
+    if (!show) { if (birthMatMesh) birthMatMesh.visible = false; return; }
+    if (!birthMatMesh) {
+      const B = BIRTH_MAT, w = B.wide * M, l = B.long * M, r = 0.06 * M, shape = new THREE.Shape();
+      shape.moveTo(-w / 2 + r, -l / 2); shape.lineTo(w / 2 - r, -l / 2); shape.quadraticCurveTo(w / 2, -l / 2, w / 2, -l / 2 + r); shape.lineTo(w / 2, l / 2 - r); shape.quadraticCurveTo(w / 2, l / 2, w / 2 - r, l / 2);
+      shape.lineTo(-w / 2 + r, l / 2); shape.quadraticCurveTo(-w / 2, l / 2, -w / 2, l / 2 - r); shape.lineTo(-w / 2, -l / 2 + r); shape.quadraticCurveTo(-w / 2, -l / 2, -w / 2 + r, -l / 2);
+      const g = new THREE.ExtrudeGeometry(shape, { depth: B.thick * M, bevelEnabled: true, bevelThickness: 0.004 * M, bevelSize: 0.008 * M, bevelSegments: 3, curveSegments: 8 });
+      g.rotateX(-Math.PI / 2);
+      birthMatMesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x8fa9bd, roughness: 0.95, metalness: 0 }));
+      birthMatMesh.name = 'birth-mat';
+      three.add(birthMatMesh);
+    }
+    birthMatMesh.position.copy(matAt); birthMatMesh.visible = true;
+  }
 
   /** The masses at rest, and their anchors to be read afresh (a jump, a new body, a bake). */
   function settleMasses(): void {
@@ -4516,7 +4615,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // it is moved across (not turned: its pose is the same) until where its trunk crosses her opening is its middle.
     const birthCentreOff = centreOffOf(i), birthOutLine = birthOutLines[i] ?? null;
     if (!(m.down > 1 && m.onHer < 1)) birthCentreOff.set(0, 0, 0);
-    if (m.down > 1 && m.onHer < 1) {
+    // (squatting, held once her hands swing it up -- read from where it was drawn last frame, swung, its middle chased
+    // its own swing and threw it up past her knee)
+    const swinging = pose === 'squat' && m.down > SQUAT_CATCH.swingFrom;
+    if (swinging) pos.sub(birthCentreOff);
+    if (m.down > 1 && m.onHer < 1 && !swinging) {
       const hl = r.getObjectByName(BABY_BONES.leg.left[0]), hr = r.getObjectByName(BABY_BONES.leg.right[0]), nk = r.getObjectByName(BABY_BONES.neck);
       if (hl && hr && nk) {
         r.updateMatrixWorld(true);
@@ -4544,6 +4647,26 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const midNow = c0.clone().applyQuaternion(r.quaternion).add(r.position), qT = r.quaternion.clone().slerp(bpQ, turnK);
       const posT = midNow.sub(c0.applyQuaternion(qT));
       pos.lerpVectors(posT, pos, m.engage); bpQ.slerpQuaternions(qT, bpQ.clone(), m.engage);
+    }
+    // CAUGHT (P3b, SQUAT): squatting, its way out of her points down at the mat; as its body comes out her hands swing it
+    // up and forward, about her opening, until it lies along them in front of her -- not hanging to the mat below
+    // (a twin born after she has sat back: its way out points down into the mat, and it is laid along the mat instead,
+    // ahead of her, until it is lifted onto her)
+    if (pose === 'squat' && m.down > SQUAT_CATCH.swingFrom && birthOutLines[i]) {
+      const k0 = Math.min(1, Math.max(0, (m.down - SQUAT_CATCH.swingFrom) / (2 - SQUAT_CATCH.swingFrom))), k = k0 * k0 * (3 - 2 * k0);
+      const pivot = birthOutLines[i]!.at, way = birthOutLines[i]!.way;
+      // (ahead of her, level in the world, in her frame)
+      const inv = babyHolder.matrixWorld.clone().invert(), ahead = new THREE.Vector3(0, 0, 1).transformDirection(babyHolder.matrixWorld); ahead.y = 0;
+      if (ahead.lengthSq() < 1e-10) ahead.set(0, 0, 1);
+      ahead.normalize().transformDirection(inv);
+      const axis = new THREE.Vector3().crossVectors(way, ahead), most = Math.acos(Math.min(1, Math.max(-1, way.dot(ahead))));
+      if (axis.lengthSq() > 1e-10) {
+        const angle = i === 0 ? Math.min(most, SQUAT_CATCH.swing * Math.PI / 180) : most;
+        const qr = new THREE.Quaternion().setFromAxisAngle(axis.normalize(), angle * k);
+        pos.sub(pivot).applyQuaternion(qr).add(pivot); bpQ.premultiply(qr);
+        // (the one she catches squatting: raised a little in her hands as she swings it up)
+        if (i === 0) pos.addScaledVector(new THREE.Vector3(0, 1, 0).transformDirection(inv), SQUAT_CATCH.lift * k);
+      }
     }
     // born: lifted up and onto her, face down on her chest and belly, its head toward hers (skin to skin), in an arc
     if (m.onHer > 0) {
@@ -4879,7 +5002,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (way.lengthSq() < 1e-10) way.set(0, 0, 1);
       way.normalize();
       const right = new THREE.Vector3().crossVectors(way, WORLD_UP).normalize();
-      bowlWorld.set(mouth.x, Math.max(0, mouth.y - AFTERBIRTH.bowl.below * M), mouth.z).addScaledVector(way, AFTERBIRTH.bowl.ahead * M).addScaledVector(right, AFTERBIRTH.bowl.side * M);
+      bowlWorld.set(mouth.x, Math.max(pose === 'squat' ? BIRTH_MAT.thick * M : 0, mouth.y - AFTERBIRTH.bowl.below * M), mouth.z).addScaledVector(way, (pose === 'squat' ? AFTERBIRTH.bowl.squatAhead : AFTERBIRTH.bowl.ahead) * M).addScaledVector(right, (pose === 'squat' ? AFTERBIRTH.bowl.squatSide : AFTERBIRTH.bowl.side) * M);
       afterBowl.position.copy(bowlWorld); afterBowl.userData.placed = true;
     }
     afterBowl.visible = true;
@@ -4920,7 +5043,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (way.lengthSq() < 1e-10) way.set(0, 0, 1);
       way.normalize();
       const left = new THREE.Vector3().crossVectors(WORLD_UP, way).normalize();
-      const rim = mouth.y + B.rimAbove * M, bottom = rim - B.deep * M;
+      // (and never lower than a bassinet stands: sat on the mat, her opening is near the floor)
+      const rim = Math.max(mouth.y + B.rimAbove * M, B.rimLeast * M), bottom = rim - B.deep * M;
       bassinet.position.copy(mouth).addScaledVector(left, B.out * M).addScaledVector(way, -B.up * M); bassinet.position.y = bottom;
       // (its length along the bed)
       bassinet.rotation.set(0, Math.atan2(way.x, way.z) + Math.PI / 2, 0);
@@ -5338,7 +5462,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // and out of them (BABY_CRADLE.seconds) -- one thing at a time: her hands on it before she lifts it, and it laid back
       // on her before her hands go back to her knees (both at once, her hand went halfway to her knee from under it, her
       // arm out straight past her reach)
-      { const onHer = pose === 'recline' && !!birthNow && bornStage(birthNow) && birthNow.onHer >= 1;
+      // (SQUAT, P3b: once she has sat back with it on her chest; and while she is catching it, her hands are on it already)
+      { const onHer = (pose === 'recline' || (pose === 'squat' && squatSit() >= 0.99)) && !!birthNow && bornStage(birthNow) && birthNow.onHer >= 1;
+        if (pose === 'squat' && catchShareOf('L') > 0) babyHoldShare = 1;
         // (twins into her arms once both her hands are on them)
         const want = babyHold !== 'knees' && onHer ? 1 : 0, cradle = babyHold === 'cradle' && onHer && (babyCount === 1 || twinHandShare >= 0.99) ? 1 : 0;
         const handsTo = onHer && want === 0 && cradleShare > 0 ? 1 : want, cradleTo = cradle > 0 && babyHoldShare < 1 ? cradleShare : cradle;
@@ -5776,6 +5902,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         },
         birthNormals: (on: boolean) => { birthNormalsOn = on; birthRoomFor = ''; applyLook(); return { watched: birthNormals?.watched ?? null, pierced: birthNormals?.pierced ?? null }; },
         vulvaOpen: (o: number) => { if (!vulva) return null; vulva.setOpen(o); return vulva.open; },
+        squatSit: () => ({ now: +squatSit().toFixed(3), placed: squatSitAt }),
+        jointHeights: (reapply?: boolean) => { const sk = bodyOf()?.mesh; if (!sk || !measure) return null; if (reapply && rig) rig.apply(currentTurns()); model?.updateMatrixWorld(true); const j = measure.joints as unknown as Record<string, number>, out: Record<string, number[]> = {};
+          for (const k of ['pelvis', 'hipL', 'kneeL', 'ankleL', 'hipR', 'kneeR', 'ankleR', 'chest', 'head']) { const b = sk.skeleton.bones[j[k]]; if (b) out[k] = b.getWorldPosition(new THREE.Vector3()).divideScalar(M / 100).toArray().map((x) => Math.round(x)); }
+          return { ...out, modelPos: model ? model.position.clone().divideScalar(M / 100).toArray().map((x) => Math.round(x)) : null, modelQ: model ? model.quaternion.toArray().map((x) => +x.toFixed(3)) : null, placedQ: birthPlaced?.quaternion.toArray().map((x) => +x.toFixed(3)) ?? null, parent: model?.parent?.type ?? null }; },
         birth: (cmd?: { t?: number; pace?: BirthPace; run?: boolean; reset?: boolean }) => {
           if (cmd?.reset) birthControl('reset');
           if (cmd?.pace) birthPace = cmd.pace;

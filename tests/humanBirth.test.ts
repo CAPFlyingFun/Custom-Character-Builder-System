@@ -52,3 +52,30 @@ for (const [name, bind] of [['sarah', RAW.sarah], ['jack', RAW.jack]] as const) 
     });
   });
 }
+
+// ---------------------------------------------------------------- P3b: sitting back on the mat after a squat birth
+import { FLOOR_SIT, blendBirthSpec } from '../src/actor/humanBirth';
+
+describe('sitting back on the mat (FLOOR_SIT) and the blend to it from her squat', () => {
+  it('the blend runs from one position to the other and stops at each end', () => {
+    const a = BIRTH_POSES.squat, b = FLOOR_SIT;
+    expect(blendBirthSpec(a, b, 0)).toMatchObject({ spread: a.spread, flex: a.flex, knee: a.knee, leanBack: a.leanBack });
+    expect(blendBirthSpec(a, b, 1)).toMatchObject({ spread: b.spread, flex: b.flex, knee: b.knee, leanBack: b.leanBack });
+    expect(blendBirthSpec(a, b, 0.5).flex).toBeCloseTo((a.flex + b.flex) / 2, 9);
+    expect(blendBirthSpec(a, b, -3).flex).toBe(a.flex);
+    expect(blendBirthSpec(a, b, 7).flex).toBe(b.flex);
+    expect(blendBirthSpec(a, b, Number.NaN).flex).toBe(a.flex);
+  });
+  for (const [name, bind] of [['sarah', RAW.sarah], ['jack', RAW.jack]] as const) {
+    it(`${name}: sat back, her knees stand above her hips, open wider than them, and her feet are out ahead of her hips`, () => {
+      const m = measureHuman(bind), j = m.joints;
+      const P = posedJoints(bind, poseBirth(m, bind, { style: 'squat', seconds: 0, bump: 1, tweak: FLOOR_SIT }, []));
+      const hipY = (P[j.hipL][1] + P[j.hipR][1]) / 2, hipZ = (P[j.hipL][2] + P[j.hipR][2]) / 2;
+      expect(P[j.kneeL][1]).toBeGreaterThan(hipY);
+      expect(Math.abs(P[j.kneeL][0] - P[j.kneeR][0])).toBeGreaterThan(Math.abs(P[j.hipL][0] - P[j.hipR][0]) * 1.3);
+      // (ahead: the way her toes point)
+      const toe = bind.findIndex((b) => b.parent === j.ankleL), ahead = Math.sign(bind[toe].z - bind[j.ankleL].z) || 1;
+      expect((P[j.ankleL][2] - hipZ) * ahead).toBeGreaterThan(0.1 * m.height);
+    });
+  }
+});
