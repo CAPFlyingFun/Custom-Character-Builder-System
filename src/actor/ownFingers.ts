@@ -34,9 +34,11 @@ type M3 = [number, number, number];
 
 /** GAME TUNING (metres, unless said): where her own finger ends, past its knuckle; how many points round each ring and
  * how far apart its rings; how many rings ease from her ring into the new finger's shape, how far past her ring its line eases from her ring's
- * middle onto its own, and over how far past her ring her weights give way to its own; how far either side of a joint its skin bends with the next bone, over the back and
+ * middle onto its own (and whether it is centred across where her finger's middle is, or on its bones), and over how far past her ring her weights give way to its own; how far either side of a joint its skin bends with the next bone, over the back and
  * under it; how far either side of a joint its line is rounded; the slices her finger is measured in, and how much of its tip is left out of the measure (it is rounded); how far round her ring (radians) and how far at most (metres) its points are smoothed (smoothRings). */
-export const OWN_FINGERS = Object.freeze({ cut: 0.025, around: 24, step: 0.0015, ease: 5, align: 0.014, blend: 0.008, bendBack: 0.007, bendPalm: 0.0035, round: 0.006, slice: 0.002, tipClear: 0.008, weld: 2e-5, seamSpread: 0.3, seamMove: 0.006 });
+const OWN_FINGER_VALUES = { cut: 0.025, around: 24, step: 0.0015, ease: 5, align: 0.014, centreAcross: true, blend: 0.008, bendBack: 0.007, bendPalm: 0.0035, round: 0.006, slice: 0.002, tipClear: 0.008, weld: 2e-5, seamSpread: 0.3, seamMove: 0.006 };
+export type OwnFingerTuning = { readonly [K in keyof typeof OWN_FINGER_VALUES]: (typeof OWN_FINGER_VALUES)[K] };
+export const OWN_FINGERS: OwnFingerTuning = Object.freeze({ ...OWN_FINGER_VALUES });
 
 /** BIOLOGICAL SHAPE (shares of the finger's own size where they are; Joshua's photos of his hand and an adult hand's
  * proportions): a finger is a little wider than thick (wider still at its last bone); flatter under the pads (`flatPalm`
@@ -325,7 +327,7 @@ export interface OwnFinger {
 interface Section { c: M3; t: M3; D: M3; S: M3; w: number; hD: number; hP: number; nD: number; nP: number }
 
 /** One finger, on its bones, from her ring round it to its tip. */
-export function buildFinger(input: OwnFingerInput, o: typeof OWN_FINGERS = OWN_FINGERS, F: typeof FINGER_SHAPE = FINGER_SHAPE): OwnFinger {
+export function buildFinger(input: OwnFingerInput, o: OwnFingerTuning = OWN_FINGERS, F: typeof FINGER_SHAPE = FINGER_SHAPE): OwnFinger {
   const J = input.joints, nJ = J.length, last = norm(sub(J[nJ - 1], J[nJ - 2]));
   const S0 = [0]; for (let k = 1; k < nJ; k++) S0.push(S0[k - 1] + Math.hypot(...sub(J[k], J[k - 1])));
   const prof = input.profile, tip = Math.max(prof.tip, S0[nJ - 1] + 0.002);
@@ -369,9 +371,9 @@ export function buildFinger(input: OwnFingerInput, o: typeof OWN_FINGERS = OWN_F
   // ITS SECTION at s: centred between her skin over and under its bones, the shape's bumps laid on
   const section = (s: number, sigma = 1): Section => {
     const { p, t } = onLine(s), D = norm(sub(input.back, mul(t, dot(input.back, t)))), S = cross(t, D);
-    const r = raw(Math.min(s, tipFrom)), h = 0.5 * (r.top + r.bottom), fade = 1 - smooth(ringMid.s, ringMid.s + o.align, s);
+    const r = raw(Math.min(s, tipFrom)), h = 0.5 * (r.top + r.bottom), fade = o.align > 0 ? 1 - smooth(ringMid.s, ringMid.s + o.align, s) : 0;
     const at0 = raw(ringMid.s), off = 0.5 * (r.top - r.bottom) + fade * (ringMid.up - 0.5 * (at0.top - at0.bottom));
-    const side = at(prof.across, Math.min(s, tipFrom)) + fade * (ringMid.across - at(prof.across, ringMid.s));
+    const side = o.centreAcross ? at(prof.across, Math.min(s, tipFrom)) + fade * (ringMid.across - at(prof.across, ringMid.s)) : 0;
     const toTip = smooth(sDIP - 0.004, tipFrom, s);
     let w = h * (F.wide + (F.wideTip - F.wide) * toTip), hD = h, hP = h;
     for (const j of [sPIP, sDIP]) { const b = bump(s, j, F.knuckleSpread); hD *= 1 + F.knuckle * b; w *= 1 + 0.6 * F.knuckle * b; hP *= 1 - F.crease * bump(s, j, F.creaseSpread); }

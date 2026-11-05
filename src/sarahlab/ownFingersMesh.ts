@@ -17,7 +17,7 @@
  */
 import * as THREE from 'three';
 import type { V3 } from '../actor/fingerSplit';
-import { buildFinger, cutFingers, measureFingers, smoothRings, OWN_FINGERS, type OwnFinger } from '../actor/ownFingers';
+import { buildFinger, cutFingers, measureFingers, smoothRings, OWN_FINGERS, type OwnFinger, type OwnFingerTuning } from '../actor/ownFingers';
 
 /** MEASURED (her texture, `sarah-v2-body-slim.glb` Material_0, 2048 px): a plain patch of her skin, inside one piece of
  * her texture, its normal map flat and as rough as her hand's, whose colour (215, 167, 149) is her hand's beside her
@@ -50,6 +50,8 @@ export interface OwnFingersInput {
   /** her points as her file has them (geometry, three a point), for her fingers' thickness: measured on what she is drawn
    * with, a finger her split has rounded and smoothed is a finger made thinner (fingerSplit.ts) */
   readonly measureFrom?: ArrayLike<number>;
+  /** the finger's tuning, changed (a probe's comparison) */
+  readonly options?: Partial<OwnFingerTuning>;
 }
 
 export interface OwnFingers {
@@ -139,7 +141,7 @@ export function createOwnFingers(input: OwnFingersInput): OwnFingers | null {
       const fin = buildFinger({
         joints: lines[k].slice(0, 4), bones: f.chain.slice(0, 3), back: f.back, profile,
         ring: { pos: ring.map(P), nrm: ring.map(N), bones: ring.map((i) => [0, 1, 2, 3].map((c) => si.getComponent(i, c))), weights: ring.map((i) => [0, 1, 2, 3].map((c) => sw.getComponent(i, c))) },
-      }, OWN_FINGERS);
+      }, { ...OWN_FINGERS, ...input.options });
       parts.push({ fin, ring });
     });
     const count = parts.reduce((a, p) => a + p.fin.count, 0) + movedPoints.length;

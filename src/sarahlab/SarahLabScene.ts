@@ -611,6 +611,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * instead create your own cylinder fingers"); `?fingers=meshy` (or joined) draws her file's own, for a probe to compare */
   let ownFingers: OwnFingers | null = null, ownFingersOn = true, ownFingersMs = 0, withFingers: Uint32Array | null = null;
   const ownFingersWanted = typeof location === 'undefined' || !['meshy', 'joined'].includes(new URLSearchParams(location.search).get('fingers') ?? '');
+  /** (`?fingers=unaligned`: her own fingers as first made -- centred across their bones, not begun on her ring's middle -- for a probe to compare) */
+  const ownFingersUnaligned = typeof location !== 'undefined' && new URLSearchParams(location.search).get('fingers') === 'unaligned';
   let babyFitAt = -Infinity, babyPushField: BellyPush | null = null, babyPushOff = false;
   /** BABIES and LIE: how many, and how each lies (AUTO is the commonest for so many; RANDOM is drawn again each time it is chosen) */
   let babyKeySeen = '', babyKeyAt = 0;
@@ -6166,7 +6168,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             ownFingers?.dispose(); ownFingers = null; contactSet = null;
             if (fingerSplit && ownFingersWanted) try {
               const t0 = performance.now();
-              ownFingers = createOwnFingers({ body: bm!, toRest: babyFrame.meshToRest, hands: ownHandsOf(bm!, babyFrame.meshToRest), owner: fingerSplit.owner, past: fingerSplit.past, tris: herTris, closing: fingerSplit.filled, measureFrom: sb.fields.basePos });
+              ownFingers = createOwnFingers({ body: bm!, toRest: babyFrame.meshToRest, hands: ownHandsOf(bm!, babyFrame.meshToRest), owner: fingerSplit.owner, past: fingerSplit.past, tris: herTris, closing: fingerSplit.filled, measureFrom: sb.fields.basePos, options: ownFingersUnaligned ? { align: 0, ease: 3, centreAcross: false } : undefined });
               ownFingersMs = performance.now() - t0;
               if (ownFingers) { withFingers = Uint32Array.from(herTris); layOwnFingers(); }
             } catch (error) { console.error('[sarahlab] her own fingers could not be made; her file\'s are drawn', error); ownFingers?.dispose(); ownFingers = null; }
@@ -6830,6 +6832,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         fingerSplit: () => fingerSplit ? { cut: fingerSplit.cut, filled: fingerSplit.filled, holes: fingerSplit.holes, open: fingerSplit.open, rounded: fingerSplit.round.index.length, ms: Math.round(fingerSplitMs) } : null,
         /** her own fingers (ownFingersMesh.ts): how many were made, how many of her triangles they hide, stray rings, the time;
          * `on` false draws her file's fingers instead, true hers again */
+        /** (a probe: her skin and her own fingers drawn as wireframe over themselves -- hers dark, the fingers' blue, their
+         * nails red -- posed as they are) */
+        wire: (on: boolean) => { const b = bodyOf(); if (!b) return null; const bm = b.mesh;
+          for (const o of [...bm.children]) if (o.userData.probeWire) o.removeFromParent();
+          if (!on) return false;
+          const wireOf = (src: THREE.SkinnedMesh, mats: THREE.Material | THREE.Material[]) => { const w = new THREE.SkinnedMesh(src.geometry, mats); w.bind(src.skeleton, src.bindMatrix); w.frustumCulled = false; w.userData.probeWire = true; w.renderOrder = 10; bm.add(w); };
+          const line = (color: number) => new THREE.MeshBasicMaterial({ color, wireframe: true, depthTest: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+          wireOf(bm, line(0x303030));
+          if (ownFingers?.mesh.visible) wireOf(ownFingers.mesh, [line(0x1060ff), line(0xff2020)]);
+          return true; },
         /** (a probe: her own fingers drawn flat red, their nails blue, to tell them from her) */
         ownFingersMark: (on: boolean) => { if (!ownFingers) return null; const m = ownFingers.mesh; m.userData.keep ??= m.material;
           // (her right hand's red, her left's green; nails blue)
