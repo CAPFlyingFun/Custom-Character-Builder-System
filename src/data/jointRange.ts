@@ -178,7 +178,8 @@ export const JOINT_RANGE_WIRED = Object.freeze([
   ['hip', 'flexion'], ['hip', 'extension'], ['hip', 'abduction'], ['hip', 'adduction'], ['hip', 'internalRotation'], ['hip', 'externalRotation'],
   ['knee', 'flexion'], ['knee', 'hyperextension'],
   ['ankle', 'dorsiflexion'], ['ankle', 'plantarflexion'],
-  // (sarahlab/sarahLabTool.ts FINGER_LIMITS_DEG, held inside these by tests/jointRange.test.ts)
-  ['finger', 'mcpFlexion'], ['finger', 'pipFlexion'], ['finger', 'dipFlexion'],
+  // (sarahlab/sarahLabTool.ts FINGER_LIMITS_DEG, held inside these by tests/jointRange.test.ts; and the room's P4 hand
+  // shapes, read whole: SarahLabScene bendFinger)
+  ['finger', 'mcpFlexion'], ['finger', 'pipFlexion'], ['finger', 'dipFlexion'], ['finger', 'mcpHyperextension'], ['finger', 'mcpSpread'],
   ['thumb', 'cmcAbduction'], ['thumb', 'mcpFlexion'], ['thumb', 'ipFlexion'],
 ] as const);

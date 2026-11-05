@@ -75,7 +75,7 @@ import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
 import { newJointTurn, type BindJoint, type HumanMeasure, type JointTurn, type MutableJointTurn } from '../actor/humanRig';
 import { measureContacts, type ContactPoint, type ContactSet, type FingerName } from '../actor/contactPoints';
 import { closeToTouch, shapeDistance, type GripShape } from '../actor/handGrip';
-import { BodySurface } from './bodySurface';
+import { BodySurface, type SurfaceAnchor } from './bodySurface';
 import { SEATED_TURNS, poseSeated } from '../actor/humanSeated';
 import { createSoftBaby, restorePose, stepSoftBaby, type SoftBaby } from './softBaby';
 import { createSqueezeUniforms, patchSqueeze, setSqueeze } from './babySqueeze';
@@ -102,6 +102,8 @@ import { BIRTH_WEIGHTS, createBirthWeights, type BirthWeights } from './birthWei
 import { createAnkleWeights, type AnkleWeights } from './ankleWeights';
 import { createFingerWeights, type FingerWeights } from './fingerWeights';
 import { splitFingers, type FingerSplit, type V3 as SplitV3 } from '../actor/fingerSplit';
+import { handBack } from '../actor/ownFingers';
+import { createOwnFingers, type OwnFingers, type OwnFingersHand } from './ownFingersMesh';
 import { BIRTH_ROOM_FIELD, createBirthRoom, type BirthRoom } from './birthRoom';
 import { BIRTH_NORMALS_FIELD, createBirthNormals, type BirthNormals } from './birthNormals';
 /** HER KNEES SMOOTHED AS POSED in a birth pose (Joshua, 2026-10-31: "the upper and lower legs at the knee... should remain
@@ -357,7 +359,12 @@ export type SarahLabWire = (ctx: SceneContext) => SarahLabHooks;
 
 // ---------------------------------------------------------------- the fingers
 
-interface Finger { readonly joints: readonly number[]; readonly axis: THREE.Vector3; readonly thumb: boolean }
+interface Finger {
+  readonly joints: readonly number[]; readonly axis: THREE.Vector3; readonly thumb: boolean;
+  /** SPREAD (P4): the axis its knuckle turns about to move it away from the middle finger, across the palm's plane (for the
+   * middle finger itself, toward the index); none for a thumb */
+  readonly spread: THREE.Vector3;
+}
 
 /**
  * Each hand's fingers, from the bind pose: under each wrist, the first joint
@@ -401,18 +408,23 @@ function findFingers(bind: readonly BindJoint[], measure: HumanMeasure): Finger[
     // the palm's normal; a mirror image flips a cross product, so the side's sign puts it back
     const side = Math.sign(at(wrist).x) || 1;
     const palm = new THREE.Vector3().crossVectors(along, across).multiplyScalar(side).normalize();
+    const middle = at((others[1] ?? others[0])[0]);
     for (const [i, chain] of chains.entries()) {
       const joints = chain.slice(0, -1);
       if (joints.length === 0) continue;
       const dir = at(chain[chain.length - 1]).sub(at(chain[0])).normalize();
       const thumb = i === thumbIndex;
+      // (away from the middle finger, across the hand: for the middle finger, toward the index)
+      const away = chain === (others[1] ?? others[0]) ? index.clone().sub(middle) : at(chain[0]).sub(middle);
+      away.addScaledVector(dir, -away.dot(dir));
+      const spread = thumb || away.lengthSq() < 1e-12 ? new THREE.Vector3() : new THREE.Vector3().crossVectors(dir, away.normalize()).normalize();
       // A finger closes toward the palm. THE THUMB folds ACROSS it, toward the little
       // finger (Joshua, 2026-10-08: "some of the fingers are bending the wrong
       // direction like the thumb"): bent straight toward the palm from where it
       // sits, it hooked down under the hand.
       const toward = thumb ? palm.clone().multiplyScalar(THUMB_TO_PALM).sub(across).normalize() : palm;
       const axis = new THREE.Vector3().crossVectors(dir, toward).normalize();
-      out.push({ joints, axis, thumb });
+      out.push({ joints, axis, thumb, spread });
     }
   }
   return out;
@@ -593,8 +605,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let fingerWeights: FingerWeights | null = null, fingerWeightsOn = true;
   /** her fingers cut apart where her mesh joins them (fingerSplit.ts); `?fingers=joined` draws her as her file has them, for a probe */
   let fingerSplit: FingerSplit | null = null, fingerSplitMs = 0, fingersRoundOn = true;
-  const FINGERS_ROUND_FIELD = 'shape:fingersRound';
+  const FINGERS_ROUND_FIELD = 'shape:fingersRound', OWN_SEAM_FIELD = 'shape:fingersSeam';
   const fingersJoined = typeof location !== 'undefined' && new URLSearchParams(location.search).get('fingers') === 'joined';
+  /** HER OWN FINGERS past her webbing, on her bones (ownFingers.ts; Joshua, 2026-11-05: "hide the MeshyAI fingers, and
+   * instead create your own cylinder fingers"); `?fingers=meshy` (or joined) draws her file's own, for a probe to compare */
+  let ownFingers: OwnFingers | null = null, ownFingersOn = true, ownFingersMs = 0, withFingers: Uint32Array | null = null;
+  const ownFingersWanted = typeof location === 'undefined' || !['meshy', 'joined'].includes(new URLSearchParams(location.search).get('fingers') ?? '');
   let babyFitAt = -Infinity, babyPushField: BellyPush | null = null, babyPushOff = false;
   /** BABIES and LIE: how many, and how each lies (AUTO is the commonest for so many; RANDOM is drawn again each time it is chosen) */
   let babyKeySeen = '', babyKeyAt = 0;
@@ -1635,8 +1651,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     birthShadeU.shade.value = birthAreaShown && !lowerCovered() ? 1 : 0;
     // her inner thighs out of the way of her birth area in a birth position (birthThighs.ts)
     out[BIRTH_THIGHS_FIELD] = isBirthPose(pose) ? 1 : 0;
-    // her fingers round where her mesh joined them, always (fingerSplit.ts)
-    out[FINGERS_ROUND_FIELD] = fingersRoundOn ? 1 : 0;
+    // her fingers round where her mesh joined them (fingerSplit.ts) -- while her own fingers are drawn, only the ring where
+    // her skin ends, smoothed (ownFingers.ts)
+    const own = !!ownFingers && ownFingersOn;
+    out[FINGERS_ROUND_FIELD] = fingersRoundOn && !own ? 1 : 0;
+    out[OWN_SEAM_FIELD] = own ? 1 : 0;
     // and more room between her legs there (birthGap.ts)
     out[BIRTH_GAP_FIELD] = isBirthPose(pose) && birthGapOn ? 1 : 0;
     // (only with her hips bent up: standing with her legs apart her buttocks hang as they are)
@@ -1702,6 +1721,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // and each finger's skin with that finger, not half with the ones beside it (fingerWeights.ts; P4, 2026-11-05: her
     // index finger pointing at a button was drawn curled in her fist with a spike of skin out to it)
     if (fingerWeights?.apply(fingerWeightsOn ? 1 : 0)) { const bm = bodyOf()?.mesh; if (bm) contactLocal.delete(bm); }
+    // and her own fingers made again on her ring if her shape or her weights moved it (ownFingersMesh.ts)
+    if (ownFingers?.follow()) { const bm = bodyOf()?.mesh; contactSet = null; if (bm) contactLocal.delete(bm); }
     // her navel, laid on her as just shaped (navelPiece.ts)
     layNavel(drawn);
     // which garments are drawn: the outfit editor's choice, or none while her skin is painted bare (CLOTHES · HIDDEN)
@@ -3849,8 +3870,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * (bodySurface.ts). Drawn as dots when asked (a probe, or the room's CONTACTS check): finger pads blue, fingertips
    * cyan, palm green, feet orange, knees and elbows violet.
    */
-  let contactSet: { mesh: THREE.SkinnedMesh; set: ContactSet; surface: BodySurface } | null = null, contactsShown = false, contactDots: THREE.InstancedMesh | null = null;
-  function contactsOf(): { mesh: THREE.SkinnedMesh; set: ContactSet; surface: BodySurface } | null {
+  /** where a contact point is on her now: on her body, or on her own fingers (ownFingersMesh.ts), each its own surface */
+  interface ContactSurface { evaluate(a: SurfaceAnchor, out: THREE.Vector3): THREE.Vector3 }
+  let contactSet: { mesh: THREE.SkinnedMesh; set: ContactSet; surface: ContactSurface } | null = null, contactsShown = false, contactDots: THREE.InstancedMesh | null = null;
+  function contactsOf(): { mesh: THREE.SkinnedMesh; set: ContactSet; surface: ContactSurface } | null {
     const b = bodyOf(), sb = b ? shaped.find((x) => x.mesh === b.mesh) : undefined;
     if (!b || !sb || !measure || !rig || !babyFrame || !sb.fields.basePos) return null;
     if (contactSet?.mesh === b.mesh) return contactSet;
@@ -3863,8 +3886,19 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     bones.forEach((_, k) => v.setFromMatrixPosition(m.multiplyMatrices(bindInv, m.clone().copy(mesh.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest).toArray(joints, k * 3));
     const parents = bones.map((bn) => bones.indexOf(bn.parent as THREE.Bone));
     const j = measure.joints;
-    const set = measureContacts({ pos, tris, joints, parents, named: { wristL: j.wristL, wristR: j.wristR, elbowL: j.elbowL, elbowR: j.elbowR, kneeL: j.kneeL, kneeR: j.kneeR, ankleL: j.ankleL, ankleR: j.ankleR } });
-    contactSet = { mesh, set, surface: new BodySurface(mesh, tris, base) };
+    const named = { wristL: j.wristL, wristR: j.wristR, elbowL: j.elbowL, elbowR: j.elbowR, kneeL: j.kneeL, kneeR: j.kneeR, ankleL: j.ankleL, ankleR: j.ankleR };
+    const set = measureContacts({ pos, tris, joints, parents, named }), herSurface = new BodySurface(mesh, tris, base);
+    // her own fingers' pads and tips are found on them, the same way (her thumbs, palms and the rest on her)
+    if (ownFingers && ownFingersOn) {
+      const r = ownFingers.rest(), theirs = measureContacts({ pos: r.pos, tris: r.tris, joints, parents, named });
+      const own = (site: string) => /^(index|middle|ring|little)(Pad|Tip)$/.test(site);
+      const mine = new Set(theirs.points.filter((p) => own(p.site))), fingerSurface = new BodySurface(ownFingers.mesh, r.tris, r.base);
+      const points = [...set.points.filter((p) => !own(p.site)), ...mine];
+      const missing = [...set.missing.filter((x) => !own(x.split('.')[1] ?? '')), ...theirs.missing.filter((x) => own(x.split('.')[1] ?? ''))];
+      contactSet = { mesh, set: { points, missing }, surface: { evaluate: (a, out) => (mine.has(a as ContactPoint) ? fingerSurface : herSurface).evaluate(a, out) } };
+      return contactSet;
+    }
+    contactSet = { mesh, set, surface: herSurface };
     return contactSet;
   }
   const CONTACT_COLOURS: Record<string, number> = { Pad: 0x2f7cf6, Tip: 0x22d3ee, palm: 0x22c55e, palmHeel: 0x16a34a, heel: 0xf97316, ball: 0xfb923c, toes: 0xfdba74, knee: 0xa855f7, elbow: 0xa855f7 };
@@ -3919,11 +3953,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     press: { thumb: [0.15, 0.35, 0.35], index: [0.04, 0.08, 0.04], middle: [0.7, 0.8, 0.55], ring: [0.75, 0.85, 0.6], little: [0.8, 0.85, 0.6] } as Readonly<Record<FingerName, readonly number[]>>,
     show: { right: 0.02, down: 0.16, ahead: 0.42, dip: 8 },
   });
-  /** GAME TUNING: hand shapes for the SHOW bench, each finger's closure knuckle first (a share of its full bend) -- a fist,
-   * the hand open, and each finger (the thumb too) lifted straight from the fist. */
-  const FIST: Readonly<Record<FingerName, readonly number[]>> = Object.freeze({ thumb: [0.55, 0.75, 0.6], index: [0.9, 0.95, 0.8], middle: [0.9, 0.95, 0.8], ring: [0.9, 0.95, 0.8], little: [0.9, 0.95, 0.8] });
+  /** GAME TUNING: hand shapes for the SHOW bench, each finger's closure knuckle first (a share of its full bend: bendFinger)
+   * and its spread fourth -- a fist, the hand open, spread wide, and each finger (the thumb too) lifted straight from the
+   * fist. */
+  const FIST: Readonly<Record<FingerName, readonly number[]>> = Object.freeze({ thumb: [0.7, 0.85, 0.75], index: [0.9, 0.95, 0.75], middle: [0.92, 0.95, 0.75], ring: [0.94, 0.95, 0.75], little: [0.96, 0.95, 0.75] });
   const HAND_SHAPES: Readonly<Record<string, Readonly<Record<FingerName, readonly number[]>>>> = Object.freeze({
     fist: FIST, open: { thumb: [0, 0, 0], index: [0, 0, 0], middle: [0, 0, 0], ring: [0, 0, 0], little: [0, 0, 0] },
+    spread: { thumb: [-0.8, 0, 0], index: [0, 0, 0, 0.7], middle: [0, 0, 0, 0.1], ring: [0, 0, 0, 0.45], little: [0, 0, 0, 0.9] },
     ...Object.fromEntries((['thumb', 'index', 'middle', 'ring', 'little'] as const).map((f) => [f, { ...FIST, [f]: [0, 0, 0] }])),
   });
   let showShape: Readonly<Record<FingerName, readonly number[]>> = FIST;
@@ -4029,7 +4065,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let gripLast: Record<string, number> | null = null, gripJoints: Record<string, number[]> = {};
   const contactLocal = new WeakMap<THREE.SkinnedMesh, Map<number, THREE.Vector3>>();
   /** Each contact point of hers where it is on its bone (its skin there rides that bone), read once. */
-  function contactLocalOf(c: { mesh: THREE.SkinnedMesh; set: ContactSet; surface: BodySurface }): Map<number, THREE.Vector3> {
+  function contactLocalOf(c: { mesh: THREE.SkinnedMesh; set: ContactSet; surface: ContactSurface }): Map<number, THREE.Vector3> {
     let local = contactLocal.get(c.mesh);
     if (!local) {
       const sk = c.mesh, bones = sk.skeleton.bones, v = new THREE.Vector3();
@@ -4049,9 +4085,53 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       return end >= 0 ? [...f.joints, end] : [...f.joints];
     })) : [];
   }
-  /** A finger's joints closed by these shares of their full bends (the thumb's base opened below 0). */
+  /** Each hand's fingers but its thumb (handsFingersOf) and the way the back of the hand faces at rest (ownFingers.ts). */
+  function ownHandsOf(sk: THREE.SkinnedMesh, toRest: THREE.Matrix4): OwnFingersHand[] {
+    if (!measure) return [];
+    const bones = sk.skeleton.bones, bindInv = new THREE.Matrix4().copy(sk.bindMatrix).invert(), m = new THREE.Matrix4();
+    const at = (b: number): SplitV3 => new THREE.Vector3().setFromMatrixPosition(m.multiplyMatrices(bindInv, new THREE.Matrix4().copy(sk.skeleton.boneInverses[b]).invert())).applyMatrix4(toRest).toArray() as [number, number, number];
+    const hands = handsFingersOf(sk);
+    return [measure.joints.wristL, measure.joints.wristR].map((wrist, h) => {
+      const chains = hands[h] ?? [], thumb = fingers.find((f) => f.thumb && boneUnder(bones, f.joints[0], wrist));
+      const back = chains.length >= 2 && thumb ? handBack(at(wrist), chains.map((c) => at(c[0])), at(thumb.joints[0])) : ([0, 0, 1] as [number, number, number]);
+      return { fingers: chains, back };
+    });
+  }
+  /** Her own fingers drawn, or her file's (a probe's switch): which of her triangles she is drawn with, and theirs. */
+  function layOwnFingers(): void {
+    const bm = bodyOf()?.mesh;
+    if (!bm || !ownFingers || !withFingers) return;
+    const tris = ownFingersOn ? ownFingers.herTris : withFingers;
+    bm.userData.allIndices = tris; bm.geometry.setIndex(new THREE.BufferAttribute(Uint32Array.from(tris), 1)); bm.userData.coverMask = undefined;
+    ownFingers.mesh.visible = ownFingersOn;
+    contactSet = null; contactLocal.delete(bm);
+  }
+  /**
+   * A finger's joints closed by these shares of their full bends, knuckle first, and spread by the share in a fourth (P4).
+   * A finger's full bends are her ACTIVE range in the master table (data/jointRange.ts: knuckle, middle and end joints;
+   * back past straight at the knuckle; spread at the knuckle away from the middle finger, below 0 toward it); a thumb's
+   * are its curl limits (fingerBend), its base opened below 0.
+   */
+  const FINGER_RANGE = ['mcpFlexion', 'pipFlexion', 'dipFlexion'] as const;
   function bendFinger(bones: readonly THREE.Bone[], f: Finger, bend: readonly number[]): void {
-    rig!.set(f.joints.map((jt, k) => ({ joint: jt, ax: f.axis.x, ay: f.axis.y, az: f.axis.z, radians: bend[k] >= 0 ? fingerBend(bend[k] * 100, k, f.thumb) : -fingerBend(-bend[k] * 100, k, f.thumb) })));
+    const deg = Math.PI / 180;
+    const radians = (k: number) => {
+      const b = bend[k] ?? 0;
+      if (f.thumb) return b >= 0 ? fingerBend(b * 100, k, true) : -fingerBend(-b * 100, k, true);
+      if (b >= 0) return b * rangeDeg('finger', FINGER_RANGE[Math.min(2, k)], 'female') * deg;
+      return k === 0 ? b * rangeDeg('finger', 'mcpHyperextension', 'female') * deg : 0;
+    };
+    const share = f.thumb ? 0 : bend[3] ?? 0, q = new THREE.Quaternion(), axis = new THREE.Vector3();
+    rig!.set(f.joints.map((jt, k) => {
+      // (the knuckle bent and spread at once: one turn, the spread after the bend)
+      if (k === 0 && share !== 0 && f.spread.lengthSq() > 0) {
+        q.setFromAxisAngle(f.spread, share * rangeDeg('finger', 'mcpSpread', 'female') * deg).multiply(new THREE.Quaternion().setFromAxisAngle(f.axis, radians(0)));
+        const w = Math.min(1, Math.max(-1, q.w)), angle = 2 * Math.acos(w), sn = Math.sqrt(Math.max(0, 1 - w * w));
+        if (sn > 1e-9) axis.set(q.x / sn, q.y / sn, q.z / sn); else axis.copy(f.axis);
+        return { joint: jt, ax: axis.x, ay: axis.y, az: axis.z, radians: angle };
+      }
+      return { joint: jt, ax: f.axis.x, ay: f.axis.y, az: f.axis.z, radians: radians(k) };
+    }));
     bones[f.joints[0]].updateMatrixWorld(true);
   }
   /** Every other skeleton of hers given these bones' turns, bone for bone by name. */
@@ -4063,7 +4143,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * HER RIGHT HAND POINTING (P4, pressing): each of its fingers with the closure TOUCH_BENCH.press gives it, named from the
    * pad on its last bone, and her index fingertip -- its bone and where on it the tip is.
    */
-  function pointingHand(P: Readonly<Record<FingerName, readonly number[]>> = TOUCH_BENCH.press): { sk: THREE.SkinnedMesh; fingers: { f: Finger; name: FingerName; bend: readonly number[] }[]; tipBone: number; tip: THREE.Vector3; tipPoint: ContactPoint; surface: BodySurface; points: { bone: number; at: THREE.Vector3; site: string }[] } | null {
+  function pointingHand(P: Readonly<Record<FingerName, readonly number[]>> = TOUCH_BENCH.press): { sk: THREE.SkinnedMesh; fingers: { f: Finger; name: FingerName; bend: readonly number[] }[]; tipBone: number; tip: THREE.Vector3; tipPoint: ContactPoint; surface: ContactSurface; points: { bone: number; at: THREE.Vector3; site: string }[] } | null {
     const c = contactsOf(); if (!c || !measure || !rig) return null;
     const local = contactLocalOf(c), bones = c.mesh.skeleton.bones;
     const out: { f: Finger; name: FingerName; bend: readonly number[] }[] = [], points: { bone: number; at: THREE.Vector3; site: string }[] = [];
@@ -4074,7 +4154,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (pad < 0) continue;
       const name = c.set.points[pad].site.replace('Pad', '') as FingerName;
       out.push({ f, name, bend: P[name] });
-      c.set.points.forEach((p, i) => { if (p.bone === end) points.push({ bone: end, at: local.get(i)!, site: p.site }); });
+      c.set.points.forEach((p, i) => { if (p.side === 'R' && (p.bone === end || p.site === `${name}Tip`)) points.push({ bone: p.bone, at: local.get(i)!, site: p.site }); });
       if (name === 'index') { const t = c.set.points.findIndex((p) => p.bone === end && p.site === 'indexTip'); if (t >= 0) { tipBone = end; tip = local.get(t)!; tipPoint = c.set.points[t]; } }
     }
     return tip && tipPoint && tipBone >= 0 ? { sk: c.mesh, fingers: out, tipBone, tip, tipPoint, surface: c.surface, points } : null;
@@ -4115,12 +4195,53 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     pressLast = { tipMm: +(shapeDistance(touchShapes.button, P(tip)) / M * 1000).toFixed(1), nearestMm: +(nearest / M * 1000).toFixed(1), nearest: which };
   }
   /** Her hand held up at the SHOW bench, in the shape asked. */
+  let showLast: Record<string, unknown> = {};
   function showFingers(): void {
     if (!touchHere() || touchTest !== 'show') return;
     const ph = pointingHand(showShape); if (!ph) return;
     const bones = ph.sk.skeleton.bones;
+    showLast = {};
     for (const x of ph.fingers) bendFinger(bones, x.f, x.bend);
+    // A FIST'S FINGERS CLOSED INTO HER PALM, not through it: each finger closed by its shape's bends, scaled back to where
+    // its pad or tip first meets her palm (her full active range carried her ring finger's tip out through the back of
+    // her hand)
+    const palm = palmBoxOf(ph.sk);
+    if (palm) for (const x of ph.fingers) {
+      if (x.f.thumb || !(x.bend[0] > 0.5)) continue;
+      // (its pad and its tip: the tip rides the end bone past its last joint, and closing, it is the tip that meets her palm)
+      const pts = ph.points.filter((q) => q.site === `${x.name}Pad` || q.site === `${x.name}Tip`), v = new THREE.Vector3();
+      if (!pts.length) continue;
+      const scaled = (u: number) => x.bend.map((b, k) => (k < 3 ? b * u : b));
+      const clear = (u: number) => { bendFinger(bones, x.f, scaled(u)); let m = Infinity; for (const q of pts) { bones[q.bone].localToWorld(v.copy(q.at)); m = Math.min(m, shapeDistance(palm, [v.x, v.y, v.z])); } return m; };
+      const r = closeToTouch(clear, 1, 0.002 * M);
+      showLast[x.name] = { closure: +r.closure.toFixed(3), touched: r.touched, points: pts.map((q) => q.site), at0: +(clear(0) / M * 1000).toFixed(1), at1: +(clear(1) / M * 1000).toFixed(1) };
+      bendFinger(bones, x.f, scaled(r.closure));
+    }
     sameOnHerOthers(ph.sk, ph.fingers.flatMap((x) => x.f.joints.map((i) => bones[i])));
+  }
+  /** Her right palm as she holds it now, as a box under its skin (P4): its top on her palm's middle, from the heel of her hand
+   * to her knuckles, across her hand. */
+  function palmBoxOf(sk: THREE.SkinnedMesh): GripShape | null {
+    const c = contactsOf(); if (!c || !measure) return null;
+    const bones = sk.skeleton.bones, wrist = measure.joints.wristR, w = (b: number) => bones[b].getWorldPosition(new THREE.Vector3());
+    // (her palm's points as the bone of her hand carries them, as they were found: read on her skin, they move as her fingers
+    // close -- her palm's skin is partly carried by her fingers' bones -- and a fist closed onto that closed through her hand)
+    const local = contactLocalOf(c);
+    const site = (k: string) => { const i = c.set.points.findIndex((q) => q.side === 'R' && q.site === k); return i >= 0 && local.get(i) ? bones[c.set.points[i].bone].localToWorld(local.get(i)!.clone()) : null; };
+    const mid = site('palm'), heel = site('palmHeel'), thumb = fingers.find((f) => f.thumb && boneUnder(bones, f.joints[0], wrist));
+    const others = fingers.filter((f) => !f.thumb && boneUnder(bones, f.joints[0], wrist));
+    if (!mid || !heel || !thumb || others.length < 2) return null;
+    const T = w(thumb.joints[0]), ks = others.map((f) => w(f.joints[0])).sort((a, b) => a.distanceTo(T) - b.distanceTo(T));
+    const K = ks.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / ks.length);
+    const along = K.clone().sub(w(wrist)).normalize(), across = ks[0].clone().sub(ks[ks.length - 1]);
+    across.addScaledVector(along, -across.dot(along)).normalize();
+    // (out of her palm, as findFingers finds it: a mirror image's cross product put right by her side -- not by which side
+    // of her bones her palm's skin is, which her file's bones, lying near her palm, leave to chance)
+    const n = new THREE.Vector3().crossVectors(along, across).normalize().multiplyScalar(Math.sign(rig?.bind[wrist]?.x ?? -1) || -1);
+    const thick = 0.015 * M, a = heel.clone().sub(mid).dot(along), b = K.clone().sub(mid).dot(along);
+    const centre = mid.clone().addScaledVector(n, -thick).addScaledVector(along, (a + b) / 2);
+    const V = (x: THREE.Vector3): [number, number, number] => [x.x, x.y, x.z];
+    return { kind: 'box', centre: V(centre), axes: [V(along), V(across), V(n)], half: [Math.abs(b - a) / 2, 0.05 * M, thick] };
   }
   function gripFingers(): void {
     gripLast = null;
@@ -5859,6 +5980,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     hairMeshes = []; hairRequest++;
     if (model) { three.remove(model); rig?.dispose(); release(model); model = null; }
     dropBabyHolder();
+    ownFingers?.dispose(); ownFingers = null; withFingers = null;
     rig = null; measure = null; fingers = []; skinned = []; shaped = []; garments = []; hasBelly = false; anchors = null; legAnchors = null; navel = null; sidesAt = []; babyAt = []; chestAt = []; milkAt = []; groinAt = [];
     buildRig = null; bonesBuilt = ''; standLift = 0;
     crease.reset(); if (creaseTimer) { clearTimeout(creaseTimer); creaseTimer = 0; }
@@ -6038,6 +6160,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             try { fingerWeights = measure && fingerSplit ? createFingerWeights(bm!, babyFrame.meshToRest, handsFingersOf(bm!), fingerSplit) : null; } catch (error) { console.error('[sarahlab] her finger weights could not be made', error); fingerWeights = null; }
             // (and laid now: nothing else asks for her look again until she is posed or dressed)
             fingerWeights?.apply(fingerWeightsOn ? 1 : 0);
+            // HER OWN FINGERS (ownFingers.ts, ownFingersMesh.ts; Joshua, 2026-11-05: "hide the MeshyAI fingers, and instead
+            // create your own cylinder fingers... and still use the same bones"): past her webbing her index, middle, ring
+            // and little fingers are made on her bones, begun on the ring of her skin they leave; her thumbs are her own
+            ownFingers?.dispose(); ownFingers = null; contactSet = null;
+            if (fingerSplit && ownFingersWanted) try {
+              const t0 = performance.now();
+              ownFingers = createOwnFingers({ body: bm!, toRest: babyFrame.meshToRest, hands: ownHandsOf(bm!, babyFrame.meshToRest), owner: fingerSplit.owner, past: fingerSplit.past, tris: herTris, closing: fingerSplit.filled, measureFrom: sb.fields.basePos });
+              ownFingersMs = performance.now() - t0;
+              if (ownFingers) { withFingers = Uint32Array.from(herTris); layOwnFingers(); }
+            } catch (error) { console.error('[sarahlab] her own fingers could not be made; her file\'s are drawn', error); ownFingers?.dispose(); ownFingers = null; }
             const parts = birthAreaFields(sb.fields.basePos, sb.fields.baseNrm, herTris, babyFrame.meshToRest);
             if (parts.cleft.index.length) map.set(BIRTH_CLEFT_FIELD, parts.cleft);
             if (parts.lips.index.length) map.set(BIRTH_LIPS_FIELD, parts.lips);
@@ -6057,6 +6189,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                 const i = R.index[k] * 3; nrm[k * 3] = v.x - base[i]; nrm[k * 3 + 1] = v.y - base[i + 1]; nrm[k * 3 + 2] = v.z - base[i + 2];
               }
               map.set(FINGERS_ROUND_FIELD, { index: R.index, pos, nrm });
+            }
+            // and, where her own fingers begin, her ring smoothed (ownFingers.ts): from rest metres into her geometry
+            if (ownFingers?.seam.index.length) {
+              const R = ownFingers.seam, toGeom = new THREE.Matrix3().setFromMatrix4(babyFrame.meshToRest).invert(), pos = new Float32Array(R.delta.length), v = new THREE.Vector3();
+              for (let k = 0; k < R.index.length; k++) v.fromArray(R.delta, k * 3).applyMatrix3(toGeom).toArray(pos, k * 3);
+              map.set(OWN_SEAM_FIELD, { index: R.index, pos, nrm: null });
             }
             sb.fields = { ...sb.fields, fields: map, last: '' };
             // and its split shaded along its middle (on her skin's own material)
@@ -6623,11 +6761,35 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         touchWhere: () => { const c = contactsOf(); if (!c || !measure) return null; const sk = c.mesh, cm = (v: THREE.Vector3) => v.clone().divideScalar(M / 100).toArray().map((x) => +x.toFixed(1)), v = new THREE.Vector3(); sk.updateMatrixWorld(true);
           const site = (k: string) => { const p = c.set.points.find((q) => `${q.side}.${q.site}` === k); if (!p) return null; c.surface.evaluate(p, v); return cm(sk.localToWorld(v)); };
           const hj = handJointsOf(rig!.bind)[1];
-          return { asked: touchAsked ? { tip: cm(touchAsked.tip), centre: cm(touchAsked.centre), along: touchAsked.along.toArray().map((x) => +x.toFixed(2)), face: touchAsked.face.toArray().map((x) => +x.toFixed(2)) } : null, wristR: cm(sk.skeleton.bones[measure.joints.wristR].getWorldPosition(v)), tipBone: hj ? cm(sk.skeleton.bones[hj.tip].getWorldPosition(v)) : null, palm: site('R.palm'), middleTip: site('R.middleTip'), indexPad: site('R.indexPad'), thumbPad: site('R.thumbPad'), tips: ['thumb', 'index', 'middle', 'ring', 'little'].map((f) => site(`R.${f}Tip`)), heel: site('R.palmHeel') }; },
+          return { asked: touchAsked ? { tip: cm(touchAsked.tip), centre: cm(touchAsked.centre), along: touchAsked.along.toArray().map((x) => +x.toFixed(2)), face: touchAsked.face.toArray().map((x) => +x.toFixed(2)) } : null, wristR: cm(sk.skeleton.bones[measure.joints.wristR].getWorldPosition(v)), tipBone: hj ? cm(sk.skeleton.bones[hj.tip].getWorldPosition(v)) : null, palm: site('R.palm'), middleTip: site('R.middleTip'), indexPad: site('R.indexPad'), thumbPad: site('R.thumbPad'), tips: ['thumb', 'index', 'middle', 'ring', 'little'].map((f) => site(`R.${f}Tip`)), heel: site('R.palmHeel'), left: { wrist: cm(sk.skeleton.bones[measure.joints.wristL].getWorldPosition(v)), palm: site('L.palm'), heel: site('L.palmHeel'), tips: ['thumb', 'index', 'middle', 'ring', 'little'].map((f) => site(`L.${f}Tip`)) }, missing: c.set.missing }; },
         // (a probe: where on the screen (CSS pixels of the canvas) points of the world (metres) are drawn now, and the camera's place)
         project: (pts: number[][]) => { placeCamera(); camera.updateMatrixWorld(true); const el = ctx.renderer.gl.domElement, r = el.getBoundingClientRect();
           return { camera: camera.position.clone().divideScalar(M).toArray().map((x) => +x.toFixed(3)), target: orbit.target.clone().divideScalar(M).toArray().map((x) => +x.toFixed(3)), orbit: [orbit.yaw, orbit.pitch, orbit.distance], canvas: [r.left, r.top, r.width, r.height], at: pts.map((q) => { const v = new THREE.Vector3(q[0], q[1], q[2]).multiplyScalar(M).project(camera); return [+(r.left + (v.x + 1) / 2 * r.width).toFixed(1), +(r.top + (1 - v.y) / 2 * r.height).toFixed(1), +v.z.toFixed(4)]; }) }; },
+        // (a probe: her body drawn as it is, in one plain skin colour with no texture, or by its normals -- to tell a mark in
+        // her texture from one in her shape or her shading)
+        bodyLook: (mode: 'own' | 'plain' | 'normals') => { const bm = bodyOf()?.mesh; if (!bm) return false;
+          const keep = (bm.userData.ownMaterial ??= bm.material) as THREE.Material | THREE.Material[];
+          bm.material = mode === 'own' ? keep : mode === 'plain' ? new THREE.MeshStandardMaterial({ color: 0xd9a58a, roughness: 0.6 }) : new THREE.MeshNormalMaterial();
+          return true; },
         // (P4: her hand held up palm forward in a shape -- fist, open, or one finger lifted from a fist)
+        handShowLast: () => showLast,
+        /** (a probe: for each of her shape fields, how many of her points split by her texture's seams are moved apart by it --
+         * a crack where it is laid -- and how many of them are near her right hand) */
+        seamCracks: () => { const b = bodyOf(), sb = b ? shaped.find((x) => x.mesh === b.mesh) : undefined; if (!sb || !babyFrame) return null;
+          const base = sb.fields.basePos, n = base.length / 3, key = (i: number) => `${Math.round(base[i * 3] / 2e-5)},${Math.round(base[i * 3 + 1] / 2e-5)},${Math.round(base[i * 3 + 2] / 2e-5)}`;
+          const groups = new Map<string, number[]>(); for (let i = 0; i < n; i++) { const k = key(i); (groups.get(k) ?? groups.set(k, []).get(k)!).push(i); }
+          const v = new THREE.Vector3(), out: Record<string, [number, number]> = {};
+          for (const [name, f] of sb.fields.fields) {
+            const d = new Map<number, number>(); for (let k = 0; k < f.index.length; k++) d.set(f.index[k], k);
+            let apart = 0, nearHand = 0;
+            for (const g of groups.values()) { if (g.length < 2) continue;
+              const at = (i: number) => { const k = d.get(i); return k === undefined ? [0, 0, 0] : [f.pos[k * 3], f.pos[k * 3 + 1], f.pos[k * 3 + 2]]; };
+              const a = at(g[0]); if (g.some((i) => { const q = at(i); return Math.hypot(q[0] - a[0], q[1] - a[1], q[2] - a[2]) > 1e-6; })) { apart++; v.set(base[g[0] * 3], base[g[0] * 3 + 1], base[g[0] * 3 + 2]).applyMatrix4(babyFrame.meshToRest); if (v.x < -0.2 && v.y > 0.6 && v.y < 1.0) nearHand++; } }
+            if (apart) out[name] = [apart, nearHand];
+          }
+          return out; },
+        /** (a probe: any hand shape, each finger's shares knuckle first, spread fourth) */
+        handShowAs: (shape: Record<FingerName, number[]>) => { showShape = shape; if (touchTest !== 'show') setTouchTest('show'); return true; },
         handShow: (shape: string) => { const s2 = HAND_SHAPES[shape]; if (!s2) return null; showShape = s2; if (touchTest !== 'show') setTouchTest('show'); return Object.keys(HAND_SHAPES); },
         touchTest: (mode?: TouchTest) => { if (mode !== undefined) setTouchTest(mode); const m3 = (v?: THREE.Vector3) => v ? v.clone().divideScalar(M).toArray().map((x) => +x.toFixed(3)) : null; return { mode: touchTest, at: touchAt ? { cup: m3(touchAt.cup), button: m3(touchAt.button) } : null, grip: gripLast, joints: gripJointsNow(), press: pressLast, hands: kneeHold }; },
         // (P4: her contact points -- measured, and drawn as dots when `show`)
@@ -6647,6 +6809,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             m.position.copy(bm.position); m.quaternion.copy(bm.quaternion); m.scale.copy(bm.scale); m.morphTargetDictionary = bm.morphTargetDictionary; m.morphTargetInfluences = bm.morphTargetInfluences; m.bind(bm.skeleton, bm.bindMatrix); bm.parent?.add(m); };
           mk(T.slice(keptCount * 3), 0xff2020); return { filled, kept: keptCount }; },
         fingerSplit: () => fingerSplit ? { cut: fingerSplit.cut, filled: fingerSplit.filled, holes: fingerSplit.holes, open: fingerSplit.open, rounded: fingerSplit.round.index.length, ms: Math.round(fingerSplitMs) } : null,
+        /** her own fingers (ownFingersMesh.ts): how many were made, how many of her triangles they hide, stray rings, the time;
+         * `on` false draws her file's fingers instead, true hers again */
+        /** (a probe: her own fingers drawn flat red, their nails blue, to tell them from her) */
+        ownFingersMark: (on: boolean) => { if (!ownFingers) return null; const m = ownFingers.mesh; m.userData.keep ??= m.material;
+          // (her right hand's red, her left's green; nails blue)
+          const r = ownFingers.rest(), g = m.geometry; g.userData.keepColor ??= g.getAttribute('color');
+          const col = new Float32Array(r.pos.length); for (let i = 0; i < r.pos.length / 3; i++) col.set(r.pos[i * 3] > 0 ? [0.1, 0.9, 0.2] : [1, 0.12, 0.12], i * 3);
+          g.setAttribute('color', on ? new THREE.BufferAttribute(col, 3) : g.userData.keepColor);
+          m.material = on ? [new THREE.MeshBasicMaterial({ vertexColors: true }), new THREE.MeshBasicMaterial({ color: 0x2040ff })] : m.userData.keep; return on; },
+        ownFingers: (on?: boolean) => { if (on !== undefined && ownFingers) { ownFingersOn = on; layOwnFingers(); applyLook(); }
+          return ownFingers ? { on: ownFingersOn, made: ownFingers.made, hidden: ownFingers.hidden, stray: ownFingers.stray, points: ownFingers.mesh.geometry.getAttribute('position').count, version: ownFingers.version, ms: Math.round(ownFingersMs), measured: ownFingers.measured.map((m) => [m.from, m.tip, ...m.thick, ...m.off].map((x) => +(x * 1000).toFixed(1))) } : null; },
         // (P4: her fingers' triangles stretched most as she is posed now -- posed edge over rest edge -- and their points)
         fingerStretch: (count = 8) => { const bm = bodyOf()?.mesh, fw = fingerSplit ? { ownerOf: fingerSplit.owner, pastOf: fingerSplit.past, points: fingerWeights?.points ?? [] } : null; if (!bm || !fw || !babyFrame) return null;
           bm.updateMatrixWorld(true); bm.skeleton.update();
