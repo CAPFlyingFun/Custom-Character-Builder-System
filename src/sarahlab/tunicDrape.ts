@@ -28,6 +28,8 @@ import * as THREE from 'three';
 import { attachJiggle, jiggleOf, jiggleWeights, JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE } from './softBody';
 import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 
+/** Her trunk, for reading a share of it in millimetres (about 600 mm on her; a probe's reading only). */
+const TRUNK_MM = 600;
 /** The sheet's top, on her trunk (0 her hip joints, 1 the base of her neck): above her belly's fullest point. */
 const T_TOP = 0.45;
 /** Rows are about this far apart, as a share of her trunk (about 6 mm on her). */
@@ -63,6 +65,8 @@ const STAND_OFF = 0.008;
 /** Passes smoothing her skin as measured, down her, and how far the drape stands off it, round her and down her: so the
  * drape's edge at her sides is a smooth line, not a tooth for every row. */
 const SKIN_PASSES = 16, OFF_PASSES = 8;
+/** Where her smoothed skin falls short of her skin, the most of it within this many rows and columns is put back (`build`). */
+const SHORT_ROWS = 6, SHORT_COLUMNS = 2;
 /** A faded point lies under her skin where the outline is within this much of it (a share of her trunk, about 7 mm),
  * and under the outline where it stands twice that clear. */
 const FADED_UNDER = 0.012;
@@ -116,6 +120,41 @@ const LEFT_OUT = new Set(['face', 'scalp', 'neck', 'handL', 'handR', 'footL', 'f
 
 const smooth01 = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
 
+/**
+ * How far toward the eye the drape is drawn (world units: 2 mm), its place on screen unchanged. Where it lies on her it
+ * is a millimetre or so off her skin, and between its points -- a grid about 6 mm by 1.4 cm -- her skin's own triangles
+ * came through it by about as much: over her seat, seen from behind, her skin and its paint (the leggings, a lighter
+ * red) showed through the shirt in patches (Joshua, 2026-11-06: "the back end of that shirt on a wrong z-layer or it's
+ * not offsetting correctly"; measured at 73%: the drape whole there, her skin up to 1.1 mm over it). The depth bias
+ * (`polygonOffset`) is in the depth buffer's own steps, which are millimetres up close and centimetres at a phone's
+ * distance -- enough to draw the shirt over her hand at her hip -- so the drape leads by this instead, off her surface:
+ * the same 2 mm at every distance, which nothing but her own skin under it is ever that close to. GAME TUNING.
+ */
+export const DRAPE_LEAD = 0.2;
+/** The most the lead grows where the drape is seen at a slant (at most DRAPE_LEAD × this toward the eye: 6 mm). GAME TUNING. */
+export const DRAPE_LEAD_SLANT = 3;
+const leading = new WeakSet<THREE.Material>();
+/** Patch the drape's material, once, to draw it DRAPE_LEAD toward the eye (chained onto whatever it has, as fabricMaterial.ts chains). */
+export function leadToward(material: THREE.Material): void {
+  if (leading.has(material)) return;
+  leading.add(material);
+  const previous = material.onBeforeCompile, cacheKey = material.customProgramCacheKey;
+  material.onBeforeCompile = function (shader, renderer) {
+    previous.call(this, shader, renderer);
+    // (DRAPE_LEAD off her surface: along the line of sight that is more where it is seen at a slant, by one over the
+    // slant's cosine, up to DRAPE_LEAD_SLANT times)
+    shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', () => `#include <project_vertex>
+    {
+      vec3 drapeEye = normalize(-mvPosition.xyz);
+      float drapeFacing = dot(transformedNormal, transformedNormal) > 0.0 ? abs(dot(normalize(transformedNormal), drapeEye)) : 1.0;
+      mvPosition.xyz += drapeEye * (${DRAPE_LEAD.toFixed(4)} / max(drapeFacing, ${(1 / DRAPE_LEAD_SLANT).toFixed(4)}));
+      gl_Position = projectionMatrix * mvPosition;
+    }`);
+  };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|drape-lead-2`; };
+  material.needsUpdate = true;
+}
+
 /** The convex outline of points (x, z), counter-clockwise (Andrew's monotone chain). */
 function hull2(xs: Float64Array, zs: Float64Array, n: number): number[] {
   const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => xs[a] - xs[b] || zs[a] - zs[b]);
@@ -133,6 +172,10 @@ export class TunicDrape {
   private readonly maxRows: number;
   private hem: number | null = null;
   private hemLift = HEM_LIFT_FLAT;
+  /** How much of the shirt's paint each vertex of her has (`wear`), or null. */
+  private covered: ((v: number) => number) | null = null;
+  /** For a probe: of the points that show, how many are drawn inside her skin as measured, and the deepest (mm). */
+  inside = { shown: 0, inside: 0, worstMm: 0 };
   private dirty = true;
   private lastBuild = -Infinity;
   private readonly motion: number[] = [];
@@ -200,11 +243,15 @@ export class TunicDrape {
     this.mesh.bind(body.skeleton, body.bindMatrix);
   }
 
-  /** The hem, on her trunk, or null to take the drape off. */
-  wear(hem: number | null, hemLift = HEM_LIFT_FLAT): void {
+  /**
+   * The hem, on her trunk, or null to take the drape off; and how much of the shirt's paint each vertex of her has
+   * (`covered`, 0 to 1), so the drape stays whole over wherever it ends -- read when it is next built.
+   */
+  wear(hem: number | null, hemLift = HEM_LIFT_FLAT, covered: ((v: number) => number) | null = null): void {
     if (hem !== this.hem || hemLift !== this.hemLift) this.dirty = true;
     this.hem = hem;
     this.hemLift = hemLift;
+    this.covered = covered;
     this.mesh.visible = hem !== null && this.mesh.visible && !this.dirty;
     if (hem === null) { this.mesh.visible = false; if (this.hang.some((h) => h > 0)) { this.hang.fill(0); this.hangVersion++; } }
   }
@@ -218,6 +265,7 @@ export class TunicDrape {
     if (!m.transparent) { m.transparent = true; m.depthWrite = true; m.needsUpdate = true; }
     // drawn over her skin where the two are one surface
     m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -4;
+    leadToward(m);
   }
 
   /** Once a frame: rebuild if her shape changed, and carry her belly's motion over. */
@@ -461,6 +509,17 @@ export class TunicDrape {
         sum[c] += (py[k] - hipY) / T; cnt[c]++;
       }
       for (let c = 0; c < COLUMNS; c++) if (cnt[c]) paintHem[c] = sum[c] / cnt[c];
+      // ...and wherever the paint truly ends higher than that line, the highest of it in each direction: the paint's
+      // edge is not one level line round her -- over her seat it rose to a peak 2-3 cm above it, and the drape, whole only
+      // to the line and fading above it, let the leggings under that peak show through in patches (Joshua, 2026-11-06:
+      // "the back end of that shirt on a wrong z-layer or it's not offsetting correctly")
+      const cov = this.covered;
+      if (cov) for (let k = 0; k < nc; k++) {
+        const t = (py[k] - hipY) / T;
+        if (t <= hemT || t >= T_TOP - TOP_FADE || cov(cand[k]) >= 0.5) continue;
+        const c = ((Math.round((Math.atan2(pz[k] - az, px[k] - ax) / (2 * Math.PI)) * COLUMNS) % COLUMNS) + COLUMNS) % COLUMNS;
+        if (!(t <= (Number.isNaN(paintHem[c]) ? -Infinity : paintHem[c]))) paintHem[c] = t;
+      }
       // directions with none of her hem's skin in them (between her legs) take their neighbours'; then smoothed round her
       for (let pass = 0; pass < COLUMNS && paintHem.some((h) => Number.isNaN(h)); pass++) {
         const was = paintHem.slice();
@@ -482,25 +541,6 @@ export class TunicDrape {
         falling[i] = smooth01(alpha[i]) * top; alpha[i] = Math.max(smooth01(alpha[i]), band) * top;
       }
     }
-    // the skin it hangs clear of: each of her vertices against the drape at its own height and direction
-    this.hang.fill(0);
-    for (let k = 0; k < nc; k++) {
-      const r = rowOf(k);
-      if (r < 0) continue;
-      const dx = px[k] - ax, dz = pz[k] - az;
-      const c = ((Math.round((Math.atan2(dz, dx) / (2 * Math.PI)) * COLUMNS) % COLUMNS) + COLUMNS) % COLUMNS, i = r * COLUMNS + c;
-      if (r < rows) {
-        const clear = (R[i] - Math.hypot(dx, dz)) / T;
-        // only under drape that is whole there: under a part still fading in, the paint stays, or what is under the
-        // shirt would show through the fade as dark patches
-        this.hang[cand[k]] = smooth01((alpha[i] - 0.9) / 0.1) * smooth01((clear - HANG_FROM) / HANG_FROM);
-      }
-      // below the hem, as she stands now, no shirt at all: a big bump hangs lower than the shirt reaches, but its paint
-      // (measured on her at rest) still ran on down it -- seen from below, red under the hem
-      const row = (hipY + T_TOP * T - py[k]) / (step * T);
-      this.hang[cand[k]] = Math.max(this.hang[cand[k]], Math.max(0, Math.min(1, 0.5 + (row - (rows - 1) - 0.5) / 2)));
-    }
-    this.hangVersion++;
 
     // what each point carries from her skin: bone weights, her rest place and direction (for the fabric's pattern),
     // and her belly's motion
@@ -615,9 +655,72 @@ export class TunicDrape {
       for (let i = 0; i < n; i++) off[i] = shown(i) ? radius[i] - skin[i] : 0;
       smooth(skinSmooth, SKIN_PASSES, false);
       smooth(off, OFF_PASSES, true);
+      // ...but smoothed down her, her skin over a rounded part -- her seat, most of all -- comes out under her skin itself:
+      // the drape laid on it was drawn inside her, up to 11 mm at 73% (Joshua, 2026-11-06: "the back end of that shirt on
+      // a wrong z-layer or it's not offsetting correctly" -- her skin won the depth test there, its paint and the
+      // leggings showing through the shirt in patches). So what her smoothed skin falls short of her skin by is put back,
+      // spread smoothly: first the most of it within SHORT_ROWS rows and SHORT_COLUMNS columns, then smoothed by no more
+      // than that reach, so every point is lifted at least as far as it fell short and the lift has no step of its own
+      const short = new Float64Array(n);
+      for (let i = 0; i < n; i++) short[i] = shown(i) ? Math.max(0, skin[i] - skinSmooth[i]) : 0;
+      const most = new Float64Array(n);
+      for (let r = 0; r < rows; r++) for (let c = 0; c < COLUMNS; c++) {
+        const i = r * COLUMNS + c;
+        if (!shown(i)) continue;
+        let m = 0;
+        for (let dr = -SHORT_ROWS; dr <= SHORT_ROWS; dr++) {
+          const rr = r + dr;
+          if (rr < 0 || rr >= rows) continue;
+          for (let dc = -SHORT_COLUMNS; dc <= SHORT_COLUMNS; dc++) m = Math.max(m, short[rr * COLUMNS + ((c + dc + COLUMNS) % COLUMNS)]);
+        }
+        most[i] = m;
+      }
+      smooth(most, SHORT_ROWS - SHORT_COLUMNS, false);
+      smooth(most, SHORT_COLUMNS, true);
       // never inside her where it shows, and a hair out where it shows fully (the rule above, against her smoothed skin)
-      for (let i = 0; i < n; i++) if (shown(i)) radius[i] = skinSmooth[i] + Math.max(off[i], this.hemLift * T * smooth01(alpha[i] / 0.5));
+      for (let i = 0; i < n; i++) if (shown(i)) radius[i] = skinSmooth[i] + most[i] + Math.max(off[i], this.hemLift * T * smooth01(alpha[i] / 0.5));
     }
+    {
+      // (for a probe: where it shows, how much of it is drawn inside her skin as measured)
+      let shownN = 0, inside = 0, worst = 0;
+      for (let i = 0; i < n; i++) if (skin[i] > 0 && alpha[i] > 0.01) { shownN++; const d = skin[i] - radius[i]; if (d > 0.0005 * T) { inside++; worst = Math.max(worst, d); } }
+      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2) };
+      this.mesh.userData.drapeInside = this.inside;
+    }
+    // the skin it hangs clear of: each of her vertices against the drape AS DRAWN, at its own height and direction. (It
+    // was measured against the drape's outline before it was laid: where the drape is then drawn back on her -- what is
+    // still fading in, what stands off her a little, smoothed round her and down her -- her skin had already given up the
+    // shirt's paint under it, and the leggings showed through the shirt in patches round her seat, the drape and her skin
+    // fighting there (Joshua, 2026-11-06: "the back end of that shirt on a wrong z-layer or it's not offsetting
+    // correctly").)
+    this.hang.fill(0);
+    // (whole means whole all round it: a vertex of hers is laid against one cell of the drape, but the drape drawn over it
+    // runs on to the cells beside it, and at the edge of the whole part those are already fading -- see-through over skin
+    // that had given up the shirt's paint, the leggings showed through in patches round her seat (Joshua, 2026-11-06).
+    // So the least of the cell's own and its eight neighbours')
+    const whole = new Float64Array(n);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < COLUMNS; c++) {
+      let m = Infinity;
+      for (let dr = -1; dr <= 1; dr++) { const rr = Math.min(rows - 1, Math.max(0, r + dr)); for (let dc = -1; dc <= 1; dc++) m = Math.min(m, alpha[rr * COLUMNS + ((c + dc + COLUMNS) % COLUMNS)]); }
+      whole[r * COLUMNS + c] = m;
+    }
+    for (let k = 0; k < nc; k++) {
+      const r = rowOf(k);
+      if (r < 0) continue;
+      const dx = px[k] - ax, dz = pz[k] - az;
+      const c = ((Math.round((Math.atan2(dz, dx) / (2 * Math.PI)) * COLUMNS) % COLUMNS) + COLUMNS) % COLUMNS, i = r * COLUMNS + c;
+      if (r < rows) {
+        const clear = (radius[i] - Math.hypot(dx, dz)) / T;
+        // only under drape that is whole there: under a part still fading in, the paint stays, or what is under the
+        // shirt would show through the fade as dark patches
+        this.hang[cand[k]] = smooth01((whole[i] - 0.9) / 0.1) * smooth01((clear - HANG_FROM) / HANG_FROM);
+      }
+      // below the hem, as she stands now, no shirt at all: a big bump hangs lower than the shirt reaches, but its paint
+      // (measured on her at rest) still ran on down it -- seen from below, red under the hem
+      const row = (hipY + T_TOP * T - py[k]) / (step * T);
+      this.hang[cand[k]] = Math.max(this.hang[cand[k]], Math.max(0, Math.min(1, 0.5 + (row - (rows - 1) - 0.5) / 2)));
+    }
+    this.hangVersion++;
     for (let r = 0; r < rows; r++) {
       const y = hipY + (T_TOP - r * step) * T;
       for (let c = 0; c < COLUMNS; c++) {

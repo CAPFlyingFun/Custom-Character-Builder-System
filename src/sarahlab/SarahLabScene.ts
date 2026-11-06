@@ -7574,6 +7574,22 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           }
           return { skin: felt, drawn, shirt: shirt ? slice(shirt, shirt.length / 3) : [], fine: fineP ? slice(fineP, fineP.length / 3) : [], drawnCut, skinCut, tipAt, n, press: clothPress(), keep: clothKeep(), paintFlatten: fabric?.navelFlatten() ?? 0, navelX: navelX(0), surface: surfaceNow };
         },
+        // (the painted shirt's drape, tunicDrape.ts: how much of it is drawn inside her as fitted; and for a look at what
+        // is in front of what -- it hidden, its depth bias, its depth test or blending off, her body's colour off, what is drawn)
+        drapeInside: (o2?: { hide?: boolean; units?: number; factor?: number; noDepth?: boolean; opaque?: boolean; hang?: boolean; body?: boolean; list?: boolean }) => {
+          if (o2?.body !== undefined) { const bm = bodyOf()?.mesh; if (bm) (bm.material as THREE.Material).colorWrite = o2.body; }
+          if (o2?.list) { const seen: string[] = []; three.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh && mm.visible) { let v = true; for (let p: THREE.Object3D | null = mm; p; p = p.parent) if (!p.visible) v = false; if (v) seen.push(`${mm.name || mm.type}:${(Array.isArray(mm.material) ? mm.material[0] : mm.material)?.name ?? ''}`); } }); return seen; }
+          let out: unknown = null, mesh: THREE.Mesh | null = null;
+          three.traverse((o) => { if (o.userData.drapeInside) { out = o.userData.drapeInside; mesh = o as THREE.Mesh; } });
+          const m = mesh as THREE.Mesh | null;
+          if (m && o2?.hide !== undefined) m.visible = !o2.hide;
+          if (m && o2?.units !== undefined) { const mat = m.material as THREE.Material; mat.polygonOffsetUnits = o2.units; mat.needsUpdate = true; }
+          if (m && o2?.factor !== undefined) { const mat = m.material as THREE.Material; mat.polygonOffsetFactor = o2.factor; mat.needsUpdate = true; }
+          if (m && o2?.noDepth !== undefined) { const mat = m.material as THREE.Material; mat.depthTest = !o2.noDepth; mat.needsUpdate = true; }
+          if (m && o2?.opaque !== undefined) { const mat = m.material as THREE.Material; mat.transparent = !o2.opaque; mat.needsUpdate = true; }
+          if (m && o2?.hang) { const c = m.geometry.getAttribute('color') as THREE.BufferAttribute; let lo = 0; for (let i = 0; i < c.count; i++) if (c.getW(i) > 0.01 && c.getW(i) < 0.9) lo++; return { ...(out as object), fading: lo, points: c.count }; }
+          return out;
+        },
         navelLift: (on?: boolean) => { const det = (garmentRoom?.cloth as unknown as { detail?: { navelLift: boolean } } | undefined)?.detail; if (!det) return null; if (on !== undefined) det.navelLift = on; return det.navelLift; },
         navelClothPress: (x?: number | null) => { if (x !== undefined) { navelPressHeld = x === null || !Number.isFinite(x) ? null : Math.max(0, Math.min(1, x)); applyLook(); } return { held: navelPressHeld, press: clothPress() }; },
         garmentProfile: (i = 0) => garmentRoom?.cloth.detailProfile(i) ?? null,
