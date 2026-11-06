@@ -16,11 +16,14 @@
  * carried across as the cloth's triangle has it.
  */
 import * as THREE from 'three';
+import type { NavelSurface } from './navelSurface';
 
 /** Each of the cloth's triangles over her navel cut into FINE × FINE (about 2 mm at 1.2 cm). GAME TUNING. */
 export const NAVEL_FINE = 6;
 /** The raise (world units) at which a fine point's normal is all its own: below it the cloth's normal eases in. */
 export const NAVEL_FINE_EASE = 0.03;
+/** How far past her navel's surface the cloth's triangles are given to the fine drawing (world units): their middles. GAME TUNING. */
+export const NAVEL_PICK_PAD = 1.2;
 
 export class NavelPatch {
   readonly mesh: THREE.Mesh;
@@ -106,6 +109,46 @@ export class NavelPatch {
       (g.getAttribute('normal') as THREE.BufferAttribute).needsUpdate = true;
     }
     pos.needsUpdate = true;
+  }
+
+  private all: ArrayLike<number> | null = null;
+  private picked = '';
+
+  /**
+   * Each frame, once the source's positions are written: of its drawn triangles `all` (as laid out, 3 points each), those
+   * over her navel -- their middles within her surface's reach and NAVEL_PICK_PAD of her crown -- are drawn here,
+   * finely and raised by her navel's profile (`NavelSurface.raise`), and left out of the source's own drawing meanwhile
+   * (its index rewritten, the rest first, its draw range cut to the rest). Nothing is given while her surface is off.
+   * `all` is the source's whole drawn list, kept apart from its index; a new one lays the drawing out again.
+   */
+  draw(all: ArrayLike<number>, surface: NavelSurface | null): void {
+    const g = this.source.geometry, index = g.index, P = (g.getAttribute('position') as THREE.BufferAttribute | undefined)?.array as ArrayLike<number> | undefined;
+    if (!index || !P) return;
+    if (all !== this.all) { this.all = all; this.picked = '\u0000'; }
+    const reach = surface && surface.reach > 0 ? surface.reach + NAVEL_PICK_PAD : 0, picked: number[] = [];
+    if (reach > 0) {
+      const [cx, cy, cz] = surface!.crown, r2 = reach * reach;
+      for (let t = 0; t + 2 < all.length; t += 3) {
+        let x = 0, y = 0, z = 0;
+        for (let c = 0; c < 3; c++) { const v = all[t + c] * 3; x += P[v]; y += P[v + 1]; z += P[v + 2]; }
+        x = x / 3 - cx; y = y / 3 - cy; z = z / 3 - cz;
+        if (x * x + y * y + z * z < r2) picked.push(t);
+      }
+    }
+    const key = picked.join(',');
+    if (key !== this.picked) {
+      this.picked = key;
+      // (the source's own drawing: every drawn triangle but those, then those, past its draw range)
+      const I = index.array as Uint32Array, out = new Set(picked), fine: number[] = [];
+      let w = 0;
+      for (let t = 0; t + 2 < all.length; t += 3) if (!out.has(t)) { I[w++] = all[t]; I[w++] = all[t + 1]; I[w++] = all[t + 2]; }
+      const drawn = w;
+      for (const t of picked) { I[w++] = all[t]; I[w++] = all[t + 1]; I[w++] = all[t + 2]; fine.push(all[t], all[t + 1], all[t + 2]); }
+      index.needsUpdate = true;
+      g.setDrawRange(0, drawn);
+      this.setTriangles(fine);
+    }
+    if (picked.length && surface) this.update((x, y, z) => surface.raise(x, y, z), surface.axis);
   }
 
   dispose(): void { this.mesh.removeFromParent(); this.geometry.dispose(); }

@@ -298,7 +298,7 @@ describe('the patch', () => {
       }
       const key = material.customProgramCacheKey();
       expect(key).toContain('|cloth-neckline-v1');
-      expect(key).toContain('|cloth-detail-v3');
+      expect(key).toContain('|cloth-detail-v4');
       expect(key).toContain('|fabric-1-v11');
     });
   }

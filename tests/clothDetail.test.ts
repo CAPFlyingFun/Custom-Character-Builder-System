@@ -14,8 +14,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import {
-  DIMPLE_DARKEN, MAX_DARKEN, clothDetailAt, patchClothDetail, setClothDetail,
-  type ClothDetailSettle, type ClothDetailSpot, type ClothDetailState,
+  DIMPLE_DARKEN, MAX_DARKEN, PROFILE_BINS, clothDetailAt, patchClothDetail, setClothDetail,
+  type ClothDetailProfile, type ClothDetailSettle, type ClothDetailSpot, type ClothDetailState,
 } from '../src/sarahlab/clothDetail';
 import { setFabricLayer } from '../src/sarahlab/fabricMaterial';
 
@@ -353,6 +353,58 @@ describe('settling the garment\'s own modelled navel', () => {
       expect(withSettle.shade).toBe(without.shade);
     }
   });
+
+  // HER NAVEL'S OWN PROFILE on the fitted tee (Joshua, 2026-11-06: "All shirts follow the exact side profile of the
+  // bellybutton but just scaled slightly bigger for offsets"): a cone 0.8 tall at her crown, down to nothing 1 cm out
+  const CONE: ClothDetailProfile = { values: Array.from({ length: 21 }, (_, b) => 0.8 * (1 - b / 20)), step: 0.05, crown: [0, 0, 0.5], top: 0.8, over: 0.05 };
+  const cone = (r: number, step = 0.05): number => { const h = 0.8 * Math.max(0, 1 - r / (step * 20)); return h > 0 ? h + 0.05 * Math.min(1, h / 0.8) : 0; };
+
+  it('her navel\'s profile: every point moved out along the axis by it, inside the window or past it, at the drawn width', () => {
+    for (const [x, y] of [[0, 0], [0.3, 0], [0.2, -0.4], [0.7, 0.1]]) {
+      // a point on the tee's smooth surface (its own navel already gone): moved out by her profile there and no more
+      const p = at(x, y, 0), r = Math.hypot(x, y), s = clothDetailAt(p, settled({ profile: CONE }));
+      expect(s.displacement[0]).toBe(0); expect(s.displacement[1]).toBe(0);
+      expect(s.displacement[2]).toBeCloseTo(cone(r), 6);
+    }
+    // the tee's own navel, 6 mm proud inside the window: settled away, and her profile laid on the surface instead
+    const own = at(0.1, 0, 0.6), o = clothDetailAt(own, settled({ profile: CONE }));
+    expect(add(own, o.displacement)[2]).toBeCloseTo(surface(0.1) + cone(0.1), 6);
+    // stretched twice as wide (NAVEL DETAIL 0): as high at her crown, the same height at twice the distance -- past the
+    // window's 2 cm too
+    const wide = { ...CONE, step: 0.1 };
+    expect(clothDetailAt(at(0, 0, 0), settled({ profile: wide })).displacement[2]).toBeCloseTo(cone(0), 6);
+    for (const r of [0.3, 0.6, 0.9]) expect(clothDetailAt(at(2 * r, 0, 0), settled({ profile: wide })).displacement[2]).toBeCloseTo(cone(r), 6);
+    // nothing past it, nothing at her back (out of reach), nothing without one
+    expect(clothDetailAt(at(1.2, 0, 0), settled({ profile: CONE })).displacement[2]).toBeCloseTo(0, 12);
+    expect(clothDetailAt(at(0.1, 0, -6), settled({ profile: CONE, amount: 0 })).displacement[2]).toBe(0);
+    expect(clothDetailAt(at(0.3, 0, 0), settled()).displacement[2]).toBe(0);
+  });
+
+  it('her navel\'s profile tilts the shading by its own slope, outward, and an innie\'s (all nothing) by nothing', () => {
+    const p = at(0.5, 0, cone(0.5)), s = clothDetailAt(p, settled({ profile: CONE }));
+    // the cone falls 0.8 over 1 cm (and over with it): the gradient points back toward her crown, its size the slope
+    expect(s.gradient[0]).toBeCloseTo(-0.8 * (1 + 0.05 / 0.8), 6);
+    expect(s.gradient[1]).toBeCloseTo(0, 12);
+    const flat: ClothDetailProfile = { ...CONE, values: new Array(21).fill(0), top: 0 };
+    const f = clothDetailAt(p, settled({ profile: flat }));
+    expect(f.gradient).toEqual([0, 0, 0]);
+    expect(clothDetailAt(at(0.3, 0, 0), settled({ profile: flat })).displacement[2]).toBe(0);
+  });
+
+  it('her navel\'s profile in the uniforms: on with one, its values packed four to a vec4, off without', () => {
+    const material = new THREE.MeshStandardMaterial();
+    setClothDetail(material, settled({ profile: CONE }));
+    const u = compiled(material).uniforms;
+    expect(u.clothProfOn.value).toBe(1);
+    expect(u.clothProfCount.value).toBe(21);
+    expect(u.clothProfStep.value).toBe(0.05);
+    expect(u.clothProf.value.length).toBe(PROFILE_BINS / 4);
+    expect(u.clothProf.value[1].y).toBeCloseTo(CONE.values[5] as number, 6);
+    expect(u.clothProf.value[5].x).toBeCloseTo(CONE.values[20] as number, 6);
+    expect(u.clothProf.value[6].x).toBe(0);
+    setClothDetail(material, settled());
+    expect(u.clothProfOn.value).toBe(0);
+  });
 });
 
 describe('the patch', () => {
@@ -384,8 +436,8 @@ describe('the patch', () => {
     const shader = compiled(material);
     expect(before).toHaveBeenCalledTimes(1);
     expect(before.mock.calls[0][0]).toBe(shader);
-    expect(material.customProgramCacheKey()).toBe('hem-cut-v3|cloth-detail-v3');
-    expect(material.customProgramCacheKey().endsWith('cloth-detail-v3')).toBe(true);
+    expect(material.customProgramCacheKey()).toBe('hem-cut-v3|cloth-detail-v4');
+    expect(material.customProgramCacheKey().endsWith('cloth-detail-v4')).toBe(true);
   });
 
   it('writes its code into three\'s standard shader and keeps every hook once', () => {
@@ -397,6 +449,8 @@ describe('the patch', () => {
       'uniform float clothDetailOn;', 'uniform vec3 clothSpotC[3];', 'uniform vec3 clothSpotN[3];', 'uniform float clothSpotH[3];', 'uniform float clothSpotR[3];',
       'uniform float clothSettleOn;', 'uniform vec3 clothSettleC;', 'uniform vec3 clothSettleN;', 'uniform float clothSettleH;', 'uniform vec3 clothSettleL;', 'uniform mat3 clothSettleQ;',
       'uniform float clothSettleIn;', 'uniform float clothSettleOut;', 'uniform float clothSettleF;', 'uniform float clothSettleT;', 'uniform float clothSettleR;',
+      'uniform float clothProfOn;', `uniform vec4 clothProf[${PROFILE_BINS / 4}];`, 'uniform float clothProfCount;', 'uniform float clothProfStep;', 'uniform vec3 clothProfK;',
+      'uniform float clothProfTop;', 'uniform float clothProfOver;', 'vec2 clothProfile(float r) {',
     ];
     for (const decl of decls) {
       expect(count(shader.vertexShader, decl), decl).toBe(1);
@@ -445,7 +499,8 @@ describe('the patch', () => {
     expect(vert.indexOf('#include <defaultnormal_vertex>')).toBeLessThan(at);
     for (const token of ['#include <color_fragment>', '#include <normal_fragment_maps>', '#include <map_fragment>']) expect(count(shader.fragmentShader, token), token).toBe(1);
     expect(Object.keys(shader.uniforms).sort()).toEqual([
-      'clothDetailOn', 'clothSettleC', 'clothSettleF', 'clothSettleH', 'clothSettleIn', 'clothSettleL', 'clothSettleN', 'clothSettleOn',
+      'clothDetailOn', 'clothProf', 'clothProfCount', 'clothProfK', 'clothProfOn', 'clothProfOver', 'clothProfStep', 'clothProfTop',
+      'clothSettleC', 'clothSettleF', 'clothSettleH', 'clothSettleIn', 'clothSettleL', 'clothSettleN', 'clothSettleOn',
       'clothSettleOut', 'clothSettleQ', 'clothSettleR', 'clothSettleT', 'clothSpotC', 'clothSpotH', 'clothSpotN', 'clothSpotR',
     ]);
     expect(shader.uniforms.clothDetailOn.value).toBe(0); // starts off
@@ -480,7 +535,7 @@ describe('the patch', () => {
       for (const token of ['#include <color_fragment>', '#include <normal_fragment_maps>', '#include <map_fragment>', '#include <roughnessmap_fragment>', '#include <metalnessmap_fragment>']) expect(count(shader.fragmentShader, token), token).toBe(1);
       const key = material.customProgramCacheKey();
       expect(key).toContain('|fabric-1-v11');
-      expect(key).toContain('|cloth-detail-v3');
+      expect(key).toContain('|cloth-detail-v4');
     });
   }
 });

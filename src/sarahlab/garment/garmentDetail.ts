@@ -27,21 +27,12 @@
 import type { SkinContacts } from '../clothTypes';
 import type { ClothDetailState } from '../clothDetail';
 import { DETAIL_LOOK, DetailSpots, type DetailPoints, type Poser, type Posed } from '../detailSpots';
+import { aroundOf, NavelSurface, type RestBody } from './navelSurface';
+export { NAVEL_SURFACE, type RestBody } from './navelSurface';
 
 /** How far a dome's top stands above her detail's tip, world units (0.5 mm): the cloth is flat between its particles. */
 export const DOME_MARGIN = 0.05;
 
-/**
- * Her navel under a shirt (`GarmentDetail.navelRaise`), world units (the room's centimetres). GAME TUNING, but `widest`
- * and `over` are read off Joshua's drawing of 2026-11-06: at NAVEL DETAIL 0 the shirt over her navel is about twice as
- * wide as her navel, as high; at 100% it is her navel's own shape at the shirt's offset, "about 0.5 mm" more.
- * - bin: how finely her navel's profile is measured from its crown out; bins: how far (bin × bins)
- * - widest: how far NAVEL DETAIL 0 stretches it across her belly
- * - over: how much farther out than the shirt's own offset off her it is, at her navel's crown
- * - band: how far along her navel's axis a point may be from it and still be laid on it (not the back of her)
- * - outie: how far her navel's centre must stand out of her belly to be an outie the shirt shows (0.5 mm)
- */
-export const NAVEL_SURFACE = Object.freeze({ bin: 0.05, bins: 80, widest: 2, over: 0.05, band: 3, outie: 0.05 });
 /** Beyond the dome's flat top, the floor under the cloth falls from the tip's height no faster than this (rise / run). */
 export const TENT_SLOPE = 0.35;
 /** How far from her navel's axis (in its inner ring's radii) a cloth point may be and still be laid on it as the apex. */
@@ -66,8 +57,6 @@ export const SHADE_NAVEL_GROW = 1.5;
 /** The outer share of the dome over which the tent gives way to her smooth surface (no step at the dome's edge). */
 export const TENT_FADE = 0.5;
 
-/** Her body at rest, for finding each detail's tip vertices once: her vertex count and a vertex's rest position. */
-export interface RestBody { readonly count: number; at(v: number, out: number[]): void }
 
 /**
  * Where a detail's TIP is this frame: the tallest of the vertices around its centre. On Sarah the nipple's centre
@@ -130,6 +119,7 @@ export class GarmentDetail {
     // a nipple's tip is found within its inner ring; her navel's whole shape within its OUTER ring, since at 100% belly
     // and full NAVEL DETAIL her outie spreads past the inner one and came up through the cloth beside its apex
     this.around = details.map(([centre, rings], i) => (rest && rings?.length ? aroundOf(rest, centre, i === 0 ? rings[rings.length - 1] : rings[0]) : null));
+    this.navelSurface = new NavelSurface(points);
   }
 
   /**
@@ -161,7 +151,7 @@ export class GarmentDetail {
     // at the tip's height: a tent, as the cloth tee's own outie is, rather than a flat top as wide as the triangle
     // her navel, for a probe (`navelLift`): the cloth point nearest its axis laid ON the axis, the apex of a tent over it
     if (this.navelLift) {
-      this.surfaceOn = false;
+      this.navelSurface.off();
       this.apex = this.apexOver(positions, count, ds[0], this.tips[0]);
       if (this.apex >= 0) this.apexAlong = this.apexHeight(positions, ds[0], this.tips[0], this.apex);
     } else {
@@ -169,134 +159,29 @@ export class GarmentDetail {
       // stand-off, as though her navel were not there (`smoothOver`); the room draws her navel's own side profile onto
       // it finely, stretched by NAVEL DETAIL, and nothing at all over an innie (`navelRaise`, `measureNavel`)
       this.apex = -1;
-      this.measureNavel(this.tips[0], nav);
-      this.smoothOver(A, count);
+      const t = this.tips[0];
+      this.navelSurface.measure(ds[0], t.k, t.at, this.relief, this.reliefCount, nav);
+      this.navelSurface.smoothOver(A, count);
     }
     ds.forEach((d, i) => (i === 0 && !this.navelLift) || domeOver(d, positions, A, count, this.around[i] ? this.tips[i] : undefined, i === 0 ? 1 : 1 - nip, i === 0 ? 1 - nav : 1 - nip, 0,
       i === 0 && this.apex >= 0 ? [this.apex] : this.cover.subarray(i * 3, i * 3 + 3), i === 0 && this.apex >= 0 ? this.apexAlong : undefined));
   }
 
 
-  /** Her navel's profile (`measureNavel`): height above her belly round it, bin b at b × NAVEL_SURFACE.bin from its crown. */
-  private readonly profile = new Float32Array(NAVEL_SURFACE.bins);
-  private profileBins = 0;
-  private stretch = 1;
-  private surfaceOn = false;
-  /** Her belly round her navel above the smooth surface (`measureNavel`), and how far her navel's centre stands out of it. */
-  private floor = 0;
-  private outie = 0;
-
   /**
-   * HER NAVEL MEASURED for the shirt over it: the tallest of its own vertices (`relief`, as posed now) at each distance
-   * from its crown, NAVEL_SURFACE.bin apart, never rising outward; and how far NAVEL DETAIL (`keep`) stretches it out
-   * across her belly (1 at all of it, NAVEL_SURFACE.widest at none).
+   * HER NAVEL UNDER THE SHIRT (navelSurface.ts): measured from her navel round its tip (`tipOf`'s relief), stretched by
+   * NAVEL DETAIL, nothing over an innie; the cloth over it on her smooth belly, her navel's profile drawn onto it.
    */
-  private measureNavel(t: Tip, keep: number): void {
-    const R = this.relief, m = this.reliefCount, P = this.profile, B = NAVEL_SURFACE.bins, bin = NAVEL_SURFACE.bin;
-    const d = this.spots.navel, [kx, ky, kz] = t.k;
-    P.fill(-Infinity);
-    // (her navel's centre vertex, which is not among the vertices round it, as one of them)
-    const [bx, by, bz] = d.base, [nx, ny, nz] = d.n, ex = d.c[0] - bx, ey = d.c[1] - by, ez = d.c[2] - bz, al = ex * nx + ey * ny + ez * nz;
-    const cx = ex - al * nx, cy = ey - al * ny, cz = ez - al * nz, centre = al - d.curve * (d.reach2 - (cx * cx + cy * cy + cz * cz));
-    let last = 0;
-    for (let j = -1; j < m; j++) {
-      const h = j < 0 ? centre : R[j * 4 + 3];
-      if (!Number.isFinite(h)) continue;
-      const r = j < 0 ? Math.hypot(cx - kx, cy - ky, cz - kz) : Math.hypot(R[j * 4] - kx, R[j * 4 + 1] - ky, R[j * 4 + 2] - kz), b = Math.min(B - 1, Math.round(r / bin));
-      if (h > P[b]) P[b] = h;
-      last = Math.max(last, b + 1);
-    }
-    // (an empty bin on the line between the filled ones either side of it; never rising outward: whatever stands farther
-    // out holds the nearer up)
-    for (let b = 0, lo = -1; b < last; b++) {
-      if (P[b] === -Infinity) continue;
-      if (lo < 0) for (let e = 0; e < b; e++) P[e] = P[b];
-      else for (let e = lo + 1; e < b; e++) P[e] = P[lo] + ((P[b] - P[lo]) * (e - lo)) / (b - lo);
-      lo = b;
-    }
-    for (let b = last - 2; b >= 0; b--) if (P[b + 1] > P[b]) P[b] = P[b + 1];
-    // her belly round her navel, where the profile has come down to it (the middle of its outer quarter; the last ring
-    // can hold only a vertex or two): the smooth surface's own misfit there (about 0.8 mm at 73%), which the shirt
-    // round her navel already lies on, so the profile is taken from it and comes down to nothing at its edge
-    const floor = last > 0 ? P[Math.min(last - 1, Math.floor(last * 0.875))] : 0;
-    this.floor = Number.isFinite(floor) ? floor : 0;
-    for (let b = 0; b < last; b++) P[b] = Math.max(0, P[b] - this.floor);
-    // OUTIE OR INNIE (Joshua, 2026-11-06: "if the bellybutton isn't an outie, it shouldn't draw one just because... An
-    // Innie should stay flat and not curve inward, only the Outie would curve outwards"; "Innie to flat (between
-    // innie/outie) = what's draw stays flat regardless of slider. Outie only = closest to shape to wider smooth curve arc
-    // up and down"): her navel's own centre stands out of her belly, or it does not. An outie's profile is drawn,
-    // stretched by NAVEL DETAIL; an innie's or a flat one's is nothing, at any NAVEL DETAIL -- the shirt laid flat across
-    // it at her belly's height round it, never into it.
-    this.outie = centre - this.floor;
-    const outie = this.outie > NAVEL_SURFACE.outie;
-    if (!outie) { P.fill(0, 0, last); last = Math.min(last, Math.ceil(d.rho / bin)); }
-    this.profileBins = last;
-    this.stretch = outie ? 1 + (NAVEL_SURFACE.widest - 1) * (1 - clamp01(keep)) : 1;
-    this.surfaceOn = last > 0 && m > 0;
-  }
-
-  /** Her navel's profile at `r` from its crown, stretched (`measureNavel`), between bins; -1 past its end. */
-  private profileAt(r: number): number {
-    const u = r / (this.stretch * NAVEL_SURFACE.bin), b = Math.floor(u);
-    if (b >= this.profileBins) return -1;
-    const f = u - b, a = this.profile[b], c = b + 1 < this.profileBins ? this.profile[b + 1] : 0;
-    return a + (c - a) * f;
-  }
-
-  /**
-   * HER NAVEL'S SURFACE UNDER A SHIRT (Joshua, 2026-11-06, with a drawing of it from the side: "All shirts follow the
-   * exact side profile of the bellybutton but just scaled slightly bigger for offsets"; "The shape can alter, but, only
-   * based on the slider through clothes, it doesn't affect the main bellybutton shape"; at 100% "close to the bellybutton
-   * exact shape", at 0% as high and wider and smoother -- "how tight and closely to the sides it follows"). How far
-   * out along her navel's axis the shirt over her smooth belly at `x, y, z` (`smoothOver`) is drawn: her navel's own
-   * profile there (`measureNavel`, stretched by NAVEL DETAIL; nothing for an innie), and NAVEL_SURFACE.over more in
-   * proportion to how tall it stands there. 0 away from her navel.
-   */
-  navelRaise(x: number, y: number, z: number): number {
-    if (!this.surfaceOn) return 0;
-    const d = this.spots.navel, t = this.tips[0], [bx, by, bz] = d.base, [nx, ny, nz] = d.n, [kx, ky, kz] = t.k;
-    const dx = x - bx, dy = y - by, dz = z - bz, along = dx * nx + dy * ny + dz * nz;
-    const tx = dx - along * nx, ty = dy - along * ny, tz = dz - along * nz, h = this.profileAt(Math.hypot(tx - kx, ty - ky, tz - kz));
-    if (!(h > 0)) return 0;
-    // (the back of her: a body's depth away along the axis)
-    if (Math.abs(along - d.curve * (d.reach2 - (tx * tx + ty * ty + tz * tz)) - this.floor) > NAVEL_SURFACE.band) return 0;
-    const top = this.profile[0];
-    return h + (top > 0 ? NAVEL_SURFACE.over * Math.min(1, h / top) : 0);
-  }
-
-  /** Her navel's surface as measured now, for a probe. */
-  navelSurfaceState(): { on: boolean; outie: number; floor: number; profile: number[]; stretch: number; top: number; along: number; reach: number } {
-    return { on: this.surfaceOn, outie: this.outie, floor: this.floor, profile: Array.from(this.profile.subarray(0, this.profileBins), (v) => +v.toFixed(4)), stretch: this.stretch, top: this.tips[0].top, along: this.tips[0].along, reach: this.navelReach };
-  }
-
+  readonly navelSurface: NavelSurface;
+  /** How far out along her navel's axis the shirt at `x, y, z` is drawn over her smooth belly (`NavelSurface.raise`). */
+  navelRaise(x: number, y: number, z: number): number { return this.navelSurface.raise(x, y, z); }
   /** How far out from her crown her navel's surface reaches now (world units), for the room's fine drawing. */
-  get navelReach(): number { return this.surfaceOn ? this.profileBins * NAVEL_SURFACE.bin * this.stretch : 0; }
-  /** Her navel's crown now, world (for the room's fine drawing: what lies within `navelReach` of it). */
-  get navelCrown(): readonly [number, number, number] { return this.tips[0].at; }
-
-  /**
-   * The cloth over her navel on her SMOOTH belly: every contact on her skin within her navel's own reach (`measureNavel`,
-   * unstretched) is moved along her navel's axis onto her smooth surface there (`floor` over the smooth quadric, as the
-   * belly round her navel stands), with that surface's own normal. An outie no longer holds the cloth up and an innie no
-   * longer lets it in: the cloth lies there at its own stand-off as it does over the rest of her belly, and the room adds
-   * her navel's profile to it as drawn (`navelRaise`), so the shirt is her navel's own shape at the shirt's own offset.
-   */
-  private smoothOver(A: SkinContacts, n: number): void {
-    if (!this.surfaceOn) return;
-    const d = this.spots.navel, [bx, by, bz] = d.base, [nx, ny, nz] = d.n, [kx, ky, kz] = this.tips[0].k, q = A.point, qn = A.normal;
-    const reach = this.profileBins * NAVEL_SURFACE.bin, c2 = 2 * d.curve;
-    for (let i = 0; i < n; i++) {
-      const i3 = i * 3, ex = q[i3] - bx, ey = q[i3 + 1] - by, ez = q[i3 + 2] - bz, al = ex * nx + ey * ny + ez * nz;
-      const tx = ex - al * nx, ty = ey - al * ny, tz = ez - al * nz;
-      if ((tx - kx) ** 2 + (ty - ky) ** 2 + (tz - kz) ** 2 > reach * reach) continue;
-      const smooth = d.curve * (d.reach2 - (tx * tx + ty * ty + tz * tz)) + this.floor, move = smooth - al;
-      if (Math.abs(move) > NAVEL_SURFACE.band) continue;
-      q[i3] += nx * move; q[i3 + 1] += ny * move; q[i3 + 2] += nz * move;
-      // (the smooth surface's normal: along its axis, leaning out with its slope)
-      let mx = nx + c2 * tx, my = ny + c2 * ty, mz = nz + c2 * tz;
-      const l = Math.hypot(mx, my, mz) || 1; mx /= l; my /= l; mz /= l;
-      qn[i3] = mx; qn[i3 + 1] = my; qn[i3 + 2] = mz;
-    }
+  get navelReach(): number { return this.navelSurface.reach; }
+  /** Her navel's crown now, world. */
+  get navelCrown(): readonly [number, number, number] { return this.navelSurface.crown; }
+  /** Her navel's surface as measured now, for a probe. */
+  navelSurfaceState(): ReturnType<NavelSurface['state']> & { top: number; along: number } {
+    return { ...this.navelSurface.state(), top: this.tips[0].top, along: this.tips[0].along };
   }
 
   /**
@@ -464,18 +349,6 @@ export class GarmentDetail {
 }
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
-
-/** The vertices within `ring`'s mean radius of `centre`, at rest. */
-function aroundOf(rest: RestBody, centre: number, ring: readonly number[]): Int32Array {
-  const c = [0, 0, 0], q = [0, 0, 0];
-  rest.at(centre, c);
-  let r = 0;
-  for (const v of ring) { rest.at(v, q); r += Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]); }
-  r /= ring.length || 1;
-  const out: number[] = [];
-  for (let v = 0; v < rest.count; v++) { if (v === centre) continue; rest.at(v, q); if ((q[0] - c[0]) ** 2 + (q[1] - c[1]) ** 2 + (q[2] - c[2]) ** 2 < r * r) out.push(v); }
-  return Int32Array.from(out);
-}
 
 /**
  * One detail's dome (the cloth tee's `dome`, its height taken at the tip): every particle within it whose skin lies

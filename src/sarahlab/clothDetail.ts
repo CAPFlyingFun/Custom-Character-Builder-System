@@ -76,7 +76,31 @@ export interface ClothDetailSettle {
   readonly thickness: number;
   /** A point deviating more than this from the smooth surface is left alone, fading out to nothing at 1.5x (the back of the garment, a body's depth behind). */
   readonly reach: number;
+  /**
+   * HER NAVEL'S OWN PROFILE laid on the smooth surface (navelSurface.ts; Joshua, 2026-11-06: "All shirts follow the exact
+   * side profile of the bellybutton but just scaled slightly bigger for offsets"): every point within `reach` of the
+   * smooth surface is moved out along the axis by her navel's height at its distance from her crown (and its slope tilts
+   * the shading), whether the settle's window takes it or not -- at NAVEL DETAIL 0 the profile is twice as wide as the
+   * window. Missing or null: none.
+   */
+  readonly profile?: ClothDetailProfile | null;
 }
+
+/** Her navel's radial profile (navelSurface.ts `profileFor`), world units. */
+export interface ClothDetailProfile {
+  /** Its heights along the axis, bin by bin from her crown out (at most PROFILE_BINS; past the last, nothing). */
+  readonly values: ArrayLike<number>;
+  /** How far apart the bins are drawn (stretched by NAVEL DETAIL). */
+  readonly step: number;
+  /** Her crown: distances are taken from it, across the settle's axis. */
+  readonly crown: readonly [number, number, number];
+  /** Its height at her crown, and how much more than the profile it stands there (`over × min(1, h / top)`). */
+  readonly top: number;
+  readonly over: number;
+}
+
+/** The most bins of her navel's profile the shader holds (as PROFILE_BINS / 4 vec4s). */
+export const PROFILE_BINS = 80;
 
 /** Everything the tee shows through, this frame. */
 export interface ClothDetailState {
@@ -128,6 +152,13 @@ interface Uniforms {
   readonly clothSettleF: THREE.IUniform<number>;
   readonly clothSettleT: THREE.IUniform<number>;
   readonly clothSettleR: THREE.IUniform<number>;
+  readonly clothProfOn: THREE.IUniform<number>;
+  readonly clothProf: THREE.IUniform<THREE.Vector4[]>;
+  readonly clothProfCount: THREE.IUniform<number>;
+  readonly clothProfStep: THREE.IUniform<number>;
+  readonly clothProfK: THREE.IUniform<THREE.Vector3>;
+  readonly clothProfTop: THREE.IUniform<number>;
+  readonly clothProfOver: THREE.IUniform<number>;
 }
 const patched = new WeakMap<THREE.Material, Uniforms>();
 
@@ -169,6 +200,28 @@ interface Settle {
   readonly c: readonly [number, number, number]; readonly n: [number, number, number]; readonly h: number;
   readonly l: [number, number, number]; readonly q: number[];
   readonly inner: number; readonly outer: number; readonly f: number; readonly t: number; readonly reach: number;
+  /** her navel's profile: its values (PROFILE_BINS, 0 past `count`), how many, the step, her crown, top and over; null none */
+  readonly p: { readonly v: Float32Array; readonly count: number; readonly step: number; readonly k: readonly [number, number, number]; readonly top: number; readonly over: number } | null;
+}
+/** Her navel's profile reduced: at most PROFILE_BINS values, a positive step; null for none (or nothing in it). */
+function profileOf(p: ClothDetailProfile | null | undefined): Settle['p'] {
+  if (!p || !(p.step > 0) || !p.values.length) return null;
+  const count = Math.min(PROFILE_BINS, p.values.length), v = new Float32Array(PROFILE_BINS);
+  for (let i = 0; i < count; i++) v[i] = Number.isFinite(p.values[i]) ? p.values[i] : 0;
+  return { v, count, step: p.step, k: p.crown, top: Number.isFinite(p.top) ? p.top : 0, over: Number.isFinite(p.over) ? p.over : 0 };
+}
+/**
+ * Her navel's profile at `r` from her crown: its height there (and `over × min(1, h / top)`) and its slope; nothing where
+ * it has come down to nothing or past its end. The CPU twin of the shader's `clothProfile`, formula for formula.
+ */
+function profileAt(p: NonNullable<Settle['p']>, r: number): [number, number] {
+  const u = r / Math.max(p.step, 1e-6), fb = Math.floor(u);
+  if (fb >= p.count) return [0, 0];
+  const b = fb, f = u - fb, a = p.v[b], c = fb + 1 < p.count ? p.v[b + 1] : 0;
+  const h = a + (c - a) * f, dh = (c - a) / Math.max(p.step, 1e-6);
+  if (!(h > 0)) return [0, 0];
+  const k = p.top > 0 ? p.over / p.top : 0;
+  return h < p.top ? [h + k * h, dh * (1 + k)] : [h + p.over, dh];
 }
 function settleOf(state: ClothDetailState): Settle | null {
   const s = state.settle;
@@ -178,7 +231,7 @@ function settleOf(state: ClothDetailState): Settle | null {
   const [lx, ly, lz] = s.slope, ln = lx * n[0] + ly * n[1] + lz * n[2];
   const l: [number, number, number] = [lx - ln * n[0], ly - ln * n[1], lz - ln * n[2]];
   const q = Array.from({ length: 9 }, (_, i) => s.curvature[i] ?? 0);
-  return { c: s.center, n, h: s.height, l, q, inner: s.inner, outer: s.outer, f: clamp01(s.amount), t: s.thickness, reach: s.reach };
+  return { c: s.center, n, h: s.height, l, q, inner: s.inner, outer: s.outer, f: clamp01(s.amount), t: s.thickness, reach: s.reach, p: profileOf(s.profile) };
 }
 
 /**
@@ -223,7 +276,26 @@ const PARS = [
   'uniform float clothSettleF;',
   'uniform float clothSettleT;',
   'uniform float clothSettleR;',
+  'uniform float clothProfOn;',
+  `uniform vec4 clothProf[${PROFILE_BINS / 4}];`,
+  'uniform float clothProfCount;',
+  'uniform float clothProfStep;',
+  'uniform vec3 clothProfK;',
+  'uniform float clothProfTop;',
+  'uniform float clothProfOver;',
   'varying vec3 vClothWorld;',
+  // her navel's profile at r from her crown: its height (and over) and its slope -- `profileAt`, formula for formula
+  'float clothProfAt(int b) { return clothProf[b / 4][b - 4 * (b / 4)]; }',
+  'vec2 clothProfile(float r) {',
+  '  float u = r / max(clothProfStep, 1e-6); float fb = floor(u);',
+  '  if (clothProfOn < 0.5 || fb >= clothProfCount) return vec2(0.0);',
+  '  int b = int(fb); float f = u - fb;',
+  '  float a = clothProfAt(b); float c = fb + 1.0 < clothProfCount ? clothProfAt(b + 1) : 0.0;',
+  '  float h = a + (c - a) * f; float dh = (c - a) / max(clothProfStep, 1e-6);',
+  '  if (!(h > 0.0)) return vec2(0.0);',
+  '  float k = clothProfTop > 0.0 ? clothProfOver / clothProfTop : 0.0;',
+  '  return h < clothProfTop ? vec2(h + k * h, dh * (1.0 + k)) : vec2(h + clothProfOver, dh);',
+  '}',
 ].join('\n');
 /**
  * One spot's footprint at `point` (a vec3 expression): its radius squared, normal, tangential offset, g and fade, as
@@ -268,6 +340,13 @@ const VERTEX_SETTLE = `
       float clothLayer = clothSettleT * clamp(0.5 - 2.0 * dot(clothWN, clothSN), 0.0, 1.0);
       float clothDev = clothSAlong - (clothSurf - clothLayer);${settleWeight('clothDev')}
       vec3 clothDisp = -(clothSW * clothDev) * clothSN;
+      if (clothProfOn > 0.5) {
+        vec3 clothPD = clothW.xyz - clothProfK;
+        vec2 clothP = clothProfile(length(clothPD - dot(clothPD, clothSN) * clothSN));
+        float clothPDev = clothSAlong - clothSurf;
+        float clothPW = clothSettleR > 0.0 ? 1.0 - smoothstep(clothSettleR, 1.5 * clothSettleR, abs(clothPDev)) : 0.0;
+        clothDisp += (clothP.x * clothPW) * clothSN;
+      }
       if (dot(clothDisp, clothDisp) > 0.0) {
         clothW.xyz += clothDisp;
         mvPosition = viewMatrix * clothW;
@@ -287,6 +366,15 @@ const FRAGMENT_RELIEF = `
         clothDark += min(clothH, 0.0) * clothG * clothFade;
       }
       clothShade = 1.0 + clamp(clothDark * ${glslFloat(DIMPLE_DARKEN)}, ${glslFloat(-MAX_DARKEN)}, 0.0);
+      if (clothSettleOn > 0.5 && clothProfOn > 0.5) {${settleFrame('vClothWorld')}
+        vec3 clothPD = vClothWorld - clothProfK;
+        vec3 clothPT = clothPD - dot(clothPD, clothSN) * clothSN;
+        float clothPR = length(clothPT);
+        vec2 clothP = clothProfile(clothPR);
+        float clothPDev = clothSAlong - clothSurf - clothP.x;
+        float clothPW = clothSettleR > 0.0 ? 1.0 - smoothstep(clothSettleR, 1.5 * clothSettleR, abs(clothPDev)) : 0.0;
+        if (clothPR > 1e-6) clothGrad += (clothPW * clothP.y / clothPR) * clothPT;
+      }
     }
     diffuseColor.rgb *= clothShade;`;
 // `normal` is the view-space shading normal; faceDirection (normal_fragment_begin) turns it for a back face. First the
@@ -325,6 +413,13 @@ function patch(material: THREE.Material): Uniforms {
     clothSettleF: { value: 0 },
     clothSettleT: { value: 0 },
     clothSettleR: { value: 0 },
+    clothProfOn: { value: 0 },
+    clothProf: { value: Array.from({ length: PROFILE_BINS / 4 }, () => new THREE.Vector4()) },
+    clothProfCount: { value: 0 },
+    clothProfStep: { value: 1 },
+    clothProfK: { value: new THREE.Vector3() },
+    clothProfTop: { value: 0 },
+    clothProfOver: { value: 0 },
   };
   const previous = material.onBeforeCompile, cacheKey = material.customProgramCacheKey;
   material.onBeforeCompile = function (shader, renderer) {
@@ -336,7 +431,7 @@ function patch(material: THREE.Material): Uniforms {
       .replace('#include <color_fragment>', () => `#include <color_fragment>${FRAGMENT_RELIEF}`)
       .replace('#include <normal_fragment_maps>', () => `#include <normal_fragment_maps>${FRAGMENT_TILT}`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|cloth-detail-v3`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|cloth-detail-v4`; };
   material.needsUpdate = true;
   patched.set(material, uniforms);
   return uniforms;
@@ -373,6 +468,14 @@ export function setClothDetail(material: THREE.Material, state: ClothDetailState
   u.clothSettleF.value = settle ? settle.f : 0;
   u.clothSettleT.value = settle ? settle.t : 0;
   u.clothSettleR.value = settle ? settle.reach : 0;
+  const prof = settle?.p ?? null;
+  u.clothProfOn.value = prof ? 1 : 0;
+  for (let i = 0; i < PROFILE_BINS / 4; i++) u.clothProf.value[i].set(prof ? prof.v[i * 4] : 0, prof ? prof.v[i * 4 + 1] : 0, prof ? prof.v[i * 4 + 2] : 0, prof ? prof.v[i * 4 + 3] : 0);
+  u.clothProfCount.value = prof ? prof.count : 0;
+  u.clothProfStep.value = prof ? prof.step : 1;
+  u.clothProfK.value.set(prof ? prof.k[0] : 0, prof ? prof.k[1] : 0, prof ? prof.k[2] : 0);
+  u.clothProfTop.value = prof ? prof.top : 0;
+  u.clothProfOver.value = prof ? prof.over : 0;
 }
 
 /**
@@ -413,6 +516,17 @@ export function clothDetailAt(
     const dev = along - (surf - layer);
     const m = s.f * win * settleReach(s, dev) * dev;
     displacement[0] -= m * n[0]; displacement[1] -= m * n[1]; displacement[2] -= m * n[2];
+    // her navel's profile, from her crown across the axis: the point moved out by it (the vertex stage), and its slope
+    // in the gradient at the drawn point (the fragment stage)
+    if (s.p) {
+      const k = s.p.k, pd = [p[0] - k[0], p[1] - k[1], p[2] - k[2]], pa = pd[0] * n[0] + pd[1] * n[1] + pd[2] * n[2];
+      const pt = [pd[0] - pa * n[0], pd[1] - pa * n[1], pd[2] - pa * n[2]], pr = Math.hypot(pt[0], pt[1], pt[2]);
+      const [ph, dh] = profileAt(s.p, pr);
+      const out = ph * settleReach(s, along - surf);
+      displacement[0] += out * n[0]; displacement[1] += out * n[1]; displacement[2] += out * n[2];
+      const g = pr > 1e-6 ? (settleReach(s, along - surf - ph) * dh) / pr : 0;
+      gradient[0] += g * pt[0]; gradient[1] += g * pt[1]; gradient[2] += g * pt[2];
+    }
     // the fragment stage: the same frame, no layer term, and the smooth surface's normal N - L + 2 (Qt) tangential
     const dev0 = along - surf;
     settleWeight = s.f * win * settleReach(s, dev0);

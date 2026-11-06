@@ -40,6 +40,8 @@ import type { ClothDetailState } from './clothDetail';
 import { CLOTH_NECKLINE_ATTRIBUTE, clothNecklineBelow, type ClothNecklineState } from './clothNeckline';
 import { CLOTH_TRIM_ATTRIBUTE, cropShare, type ClothTrimState } from './clothTrim';
 import { DETAIL_LOOK, DetailSpots, type DetailPoints, type Posed } from './detailSpots';
+import { NavelSurface } from './garment/navelSurface';
+import { NavelPatch } from './garment/navelPatch';
 
 export interface ClothShirtStats {
   /** Milliseconds this frame, smoothed: finding her skin under the cloth, moving the cloth, writing it for drawing. */
@@ -123,6 +125,16 @@ export class ClothShirt {
   private readonly spots: DetailSpots | null;
   /** BREAST and NAVEL DETAIL (0 hidden, 1 all of it): how the cloth lies over her details, set by the room. */
   keep: { nipple: number; navel: number } = { nipple: 0.45, navel: 0.8 };
+  /**
+   * HER NAVEL UNDER THE TEE (navelSurface.ts; Joshua, 2026-11-06: "All shirts follow the exact side profile of the
+   * bellybutton but just scaled slightly bigger for offsets"): measured from her navel, the cloth over it on her smooth
+   * belly, her navel's profile drawn onto it finely (`navelPatch`) -- as the procedural garment does. Null for an older
+   * file that does not name her navel.
+   */
+  readonly navelSurface: NavelSurface | null;
+  private readonly navelPatch: NavelPatch;
+  /** Every drawn triangle as laid out (render vertices, 3 each), kept apart from the index the fine drawing rewrites. */
+  private drawnAll = new Uint32Array(0);
   private readonly lift: Float32Array;
   /** Her skin under each particle last frame, as `ClothSkin` found it (before a dome stood in for it): friction's reference. */
   private readonly lastSkin: Float32Array;
@@ -230,6 +242,7 @@ export class ClothShirt {
     this.below = new Float32Array(count).fill(NECK_FAR);
     this.above = new Float32Array(count).fill(NECK_FAR);
     this.spots = info.detail && info.detail.navel >= 0 ? new DetailSpots(info.detail) : null;
+    { const bp = body.geometry.getAttribute('position'); this.navelSurface = info.detail && info.detail.navel >= 0 ? new NavelSurface(info.detail, { count: bp.count, at: (v, o) => { o[0] = bp.getX(v); o[1] = bp.getY(v); o[2] = bp.getZ(v); } }) : null; }
     this.lift = new Float32Array(count);
     this.lastSkin = new Float32Array(count * 3);
     // the tee's particles' neighbours (across its triangles), and which are in her navel's zone
@@ -333,6 +346,8 @@ export class ClothShirt {
     this.mesh.name = 'sarah-cloth-tee';
     this.mesh.frustumCulled = false;
     this.mesh.matrixAutoUpdate = false;
+    this.navelPatch = new NavelPatch(this.mesh);
+    this.mesh.add(this.navelPatch.mesh);
 
     this.before = createContacts(count); this.after = createContacts(count);
     this.scratch = new Float32Array(count * 3);
@@ -477,7 +492,10 @@ export class ClothShirt {
     if (!sp) return;
     sp.measure(this.skin);
     const k = this.keep, clamp01 = (x: number) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0)), p = this.sim.positions;
-    this.dome(sp.navel, 1, 1 - clamp01(k.navel), p, A, n);
+    // her navel: the cloth over it on her smooth belly, her navel's own profile drawn onto it (navelSurface.ts); the dome
+    // only for a file whose navel has no rings to measure it by
+    if (this.navelSurface?.around) { this.navelSurface.follow(this.skin, sp.navel, k.navel); this.navelSurface.smoothOver(A, n); }
+    else this.dome(sp.navel, 1, 1 - clamp01(k.navel), p, A, n);
     for (const d of sp.nipples) this.dome(d, 1 - clamp01(k.nipple), 1 - clamp01(k.nipple), p, A, n);
   }
 
@@ -584,7 +602,7 @@ export class ClothShirt {
     const wx = ny * uz - nz * uy, wy = nz * ux - nx * uz, wz = nx * uy - ny * ux;
     const frame = (x: number, y: number, z: number): [number, number, number] => { const dx = x - bx, dy = y - by, dz = z - bz; return [dx * ux + dy * uy + dz * uz, dx * wx + dy * wy + dz * wz, dx * nx + dy * ny + dz * nz]; };
     // the cloth's triangles near the axis, in the axis frame
-    const x = this.sim.positions, idx = this.index.array, shown = this.mesh.geometry.drawRange.count, vp = this.vertexParticle, slot = this.slotOf, tris: number[][] = [];
+    const x = this.sim.positions, idx = this.drawnAll, shown = idx.length, vp = this.vertexParticle, slot = this.slotOf, tris: number[][] = [];
     for (let t = 0; t + 2 < Math.min(idx.length, shown); t += 3) {
       const ps = [slot[vp[idx[t]]], slot[vp[idx[t + 1]]], slot[vp[idx[t + 2]]]];
       if (ps.some((p) => p < 0)) continue;
@@ -623,7 +641,7 @@ export class ClothShirt {
    * by more than `cos`), and their particles (file order) with how each is held and whether it is bound to her arm.
    */
   folds(cos = -0.2): { folded: number; particles: { p: number; pin: number; arm: boolean; at: number[]; off: number; gap: number }[] } {
-    const x = this.sim.positions, N = this.before.normal, idx = this.index.array, shown = this.mesh.geometry.drawRange.count, vp = this.vertexParticle, slot = this.slotOf;
+    const x = this.sim.positions, N = this.before.normal, idx = this.drawnAll, shown = idx.length, vp = this.vertexParticle, slot = this.slotOf;
     const seen = new Map<number, { p: number; pin: number; arm: boolean; at: number[]; off: number; gap: number }>();
     let folded = 0;
     for (let t = 0; t + 2 < Math.min(idx.length, shown); t += 3) {
@@ -710,6 +728,8 @@ export class ClothShirt {
       N[o] = normals[q]; N[o + 1] = normals[q + 1]; N[o + 2] = normals[q + 2];
     }
     this.position.needsUpdate = true; this.normal.needsUpdate = true;
+    // her navel drawn finely onto the cloth over it
+    this.navelPatch.draw(this.drawnAll, this.navelSurface?.around ? this.navelSurface : null);
     const drawMs = performance.now() - t1, k = 1 / SMOOTHING, s = this.shown;
     s.skinMs += (skinMs - s.skinMs) * k; s.simMs += (stats.ms - s.simMs) * k; s.drawMs += (drawMs - s.drawMs) * k;
     s.posed = this.skin.posed; s.substeps = stats.substeps; s.contacts = stats.contacts;
@@ -726,6 +746,7 @@ export class ClothShirt {
   set standOff(units: number) { this.skin.thickness = Math.max(0.01, units); }
 
   dispose(): void {
+    this.navelPatch.dispose();
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
   }
@@ -824,6 +845,7 @@ export class ClothShirt {
     L.tris.forEach((t, j) => { I[j * 3] = V[t * 3]; I[j * 3 + 1] = V[t * 3 + 1]; I[j * 3 + 2] = V[t * 3 + 2]; });
     this.index.needsUpdate = true;
     this.mesh.geometry.setDrawRange(0, L.tris.length * 3);
+    this.drawnAll = I.slice(0, L.tris.length * 3);
     // the new slots; then every particle laid on her, and the ones that were already moving carried over
     const slotOf = new Int32Array(this.count).fill(-1);
     L.order.forEach((p, i) => { slotOf[p] = i; });

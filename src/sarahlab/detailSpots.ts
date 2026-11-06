@@ -19,7 +19,7 @@
  *
  * Every position is WORLD (the room's, 100 to the metre).
  */
-import type { ClothDetailSettle, ClothDetailState } from './clothDetail';
+import type { ClothDetailProfile, ClothDetailSettle, ClothDetailState } from './clothDetail';
 
 /** Her navel and nipples on her body, by vertex, each with its inner and outer ring of skin. */
 export interface DetailPoints {
@@ -141,11 +141,14 @@ export class DetailSpots {
   }
 
   /**
-   * What the FITTED tee shows: her nipples drawn through it as on the cloth (it has no nipple of its own), and its own
-   * modelled navel settled onto its smooth surface by what NAVEL DETAIL hides (none at 100%, all of it at 0). No navel
-   * is shaded onto it: at full detail its own modelled navel is the navel.
+   * What the FITTED tee shows: her nipples drawn through it as on the cloth (it has no nipple of its own), and its navel.
+   * With her navel's own `profile` measured (navelSurface.ts; Joshua, 2026-11-06: "All shirts follow the exact side
+   * profile of the bellybutton but just scaled slightly bigger for offsets"), its own modelled navel is settled away
+   * whole and her profile is laid on its smooth surface instead -- stretched by NAVEL DETAIL, nothing for an innie.
+   * Without it (no rest body to measure her by), as before: its own modelled navel settled onto its smooth surface by
+   * what NAVEL DETAIL hides (none at 100%, all of it at 0). No navel is shaded onto it either way.
    */
-  fitted(keep: DetailKeepLike, navel: TeeNavel | null): ClothDetailState {
+  fitted(keep: DetailKeepLike, navel: TeeNavel | null, profile?: ClothDetailProfile | null): ClothDetailState {
     const L = DETAIL_LOOK;
     return {
       navel: null,
@@ -153,7 +156,7 @@ export class DetailSpots {
         const g = L.fittedNippleGap;
         return { center: [d.c[0] + d.n[0] * g, d.c[1] + d.n[1] * g, d.c[2] + d.n[2] * g] as [number, number, number], normal: d.n, height: L.nippleRelief * clamp01(keep.nipple), radius: L.nippleRadius * d.rho };
       }),
-      settle: navel?.settle(1 - clamp01(keep.navel)) ?? null,
+      settle: navel?.settle(profile ? 1 : 1 - clamp01(keep.navel), profile) ?? null,
     };
   }
 }
@@ -269,14 +272,14 @@ export class TeeNavel {
     return true;
   }
 
-  /** The settle for `amount` (0..1) of the tee's navel taken back, or null if the surface was not fitted. */
-  settle(amount: number): ClothDetailSettle | null {
+  /** The settle for `amount` (0..1) of the tee's navel taken back, with her navel's `profile` laid on it, or null if the surface was not fitted. */
+  settle(amount: number, profile?: ClothDetailProfile | null): ClothDetailSettle | null {
     if (!this.ok) return null;
     return {
       center: [this.c[0], this.c[1], this.c[2]], normal: [this.n[0], this.n[1], this.n[2]],
       height: this.h, slope: [this.l[0], this.l[1], this.l[2]], curvature: this.q.slice(),
       inner: this.outer * SETTLE_LOOK.inner, outer: this.outer,
-      amount: clamp01(amount), thickness: SETTLE_LOOK.thickness, reach: SETTLE_LOOK.reach,
+      amount: clamp01(amount), thickness: SETTLE_LOOK.thickness, reach: SETTLE_LOOK.reach, ...(profile ? { profile } : {}),
     };
   }
 }
