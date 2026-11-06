@@ -1865,7 +1865,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * takes (0 her outie, 1 an ordinary navel); her fabric's settling keeps it from standing past what she wears.
    */
   function navelXAt(o: number): number {
-    return Math.max(navelRawXAt(o), fabric?.navelFlatten() ?? 0, clothFlatten());
+    // (under the procedural garment, NAVEL DETAIL is the shirt's and never her navel's -- Joshua, 2026-11-06: "The shape
+    // can alter, but, only based on the slider through clothes, it doesn't affect the main bellybutton shape" -- so a
+    // painted layer under it, her leggings' waist over her navel, does not soften her navel by it either)
+    return Math.max(navelRawXAt(o), garmentRoom ? 0 : fabric?.navelFlatten() ?? 0, clothFlatten());
   }
   /** navelXAt without her fabric's settling: her navel itself, as the light tee takes it (it settles its own in the shader). */
   function navelRawXAt(o: number): number {
@@ -2233,13 +2236,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function clothPress(navelKeep = clothKeep().navel): number {
     return Math.max(1 - navelKeep, navelPressHeld ?? 0);
   }
-  /**
-   * How much flatter her navel is DRAWN under a garment than the garment FEELS it (`navelSoft.felt`; Joshua,
-   * 2026-11-06: "render like you did - a graph... of how the bellybutton is shape and match it up"). The cloth lies on her
-   * navel's own shape, but its points are about 1.2 cm apart and her navel about 3 cm across, so between two of them it
-   * cuts under the crown by 2 to 3.5 mm (measured, 73% and 100%); drawn this much flatter, her navel stays under it. GAME TUNING.
-   */
-  const NAVEL_UNDER = 0.35;
   /** A probe pressing her navel flatter under a garment (`navelClothPress` hook), or null. */
   let navelPressHeld: number | null = null;
   /**
@@ -2250,8 +2246,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   let clothFlattenLaid = 0;
   function clothFlatten(): number {
-    clothFlattenLaid = clothWorn() || fittedTee() || garmentRoom ? clothPress() : 0;
+    clothFlattenLaid = clothFlattenWanted();
     return clothFlattenLaid;
+  }
+  /**
+   * The softening her navel is wanted at under what she wears: what NAVEL DETAIL hides under the cloth or the fitted
+   * tee; under the procedural garment nothing (Joshua, 2026-11-06: "The shape can alter, but, only based on the slider
+   * through clothes, it doesn't affect the main bellybutton shape" -- there NAVEL DETAIL decides how closely the shirt
+   * follows her navel, `GarmentDetail.navelSurface`, and her navel stays as it is), unless a probe presses it.
+   */
+  function clothFlattenWanted(navelKeep = clothKeep().navel): number {
+    // (the procedural garment first: it is dressed in the light tee's own material, and the fitted tee reads as shown)
+    return garmentRoom ? navelPressHeld ?? 0 : clothWorn() || fittedTee() ? clothPress(navelKeep) : 0;
   }
   /** The fitted light tee, when it is what she wears over her middle (the cloth off), or null. */
   function fittedTee(): THREE.SkinnedMesh | null {
@@ -4598,12 +4604,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!navelSpring.primed) { navelSpring.x = navelPress; navelSpring.primed = true; }
     { const w = 2 * Math.PI * 1.4, steps = Math.max(1, Math.ceil(dt / 0.01)), h = dt / steps;
       for (let i = 0; i < steps; i++) { navelSpring.v += (w * w * (navelPress - navelSpring.x) - 2 * 0.65 * w * navelSpring.v) * h; navelSpring.x += navelSpring.v * h; } }
-    if (navelSoft) {
-      // (under a garment drawn NAVEL_UNDER flatter than her clothes feel it: the cloth lies on her navel's own shape, and
-      // what is drawn stays under it -- Joshua, 2026-11-06, "match it up")
-      const k = Math.max(-0.1, Math.min(1.3, navelSpring.x)), over = clothWorn() || fittedTee() || !!garmentRoom;
-      navelSoft.felt.value = k; navelSoft.out.value = over && k > 0 ? k * (1 - NAVEL_UNDER) : k;
-    }
+    if (navelSoft) navelSoft.out.value = Math.max(-0.1, Math.min(1.3, navelSpring.x));
     // her fitted clothes' navels with hers, as it moves (a kick, a contraction, her womb settling after the birth)
     if (navelSoft && navelLaid) for (const mesh of skinned) {
       const at = mesh.morphTargetDictionary?.[NAVEL_FLAT_TARGET], inf = mesh.morphTargetInfluences;
@@ -6676,7 +6677,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         setClothNeckline(cloth.mesh.material as THREE.Material, cloth.neckline());
         // and its crop's hem and tank's armholes, the same way
         setClothTrim(cloth.mesh.material as THREE.Material, cloth.trim());
-        if (Math.abs(clothPress(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
+        if (Math.abs(clothFlattenWanted(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
         if (fields.cloth) fields.cloth.textContent = clothLine(cloth.stats(), frameMs);
       }
       // the procedural tee a probe put on her (Stage 2b review): the room's tees stand aside while it is worn, it is laid
@@ -6722,7 +6723,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // plain tee carries no cut, so its edge is never dropped)
         setClothNeckline(garmentRoom.cloth.mesh.material as THREE.Material, null); setClothTrim(garmentRoom.cloth.mesh.material as THREE.Material, null);
         if (garmentAuto) setCutEdge(garmentRoom.cloth.mesh.material as THREE.Material, true);
-        if (Math.abs(clothPress(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
+        if (Math.abs(clothFlattenWanted(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
       }
       // the fitted light tee (the cloth off): her nipples drawn through it and its own navel settled onto its smooth
       // surface, at the editor's BREAST and NAVEL DETAIL; her navel softened under it to match
@@ -6736,7 +6737,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const keep = clothKeep();
         setClothDetail(tee.material as THREE.Material, fitted.spots.fitted(keep, fitted.navel));
         fittedLaid = true;
-        if (Math.abs(clothPress(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
+        if (Math.abs(clothFlattenWanted(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
       } else if (fittedLaid && !clothWorn()) {
         const material = partMeshes.get('spandex-lite')?.[0]?.material;
         if (material) setClothDetail(material as THREE.Material, null);
@@ -7526,13 +7527,28 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             return out; };
           const vc = bm.geometry.getAttribute('position').count, P = new Float32Array(vc * 3), one = [0, 0, 0];
           const skinNow = () => { const sp = new SkinPose(bm); sp.refresh(); for (let i = 0; i < vc; i++) { sp.posedVertex(i, one); P[i * 3] = one[0]; P[i * 3 + 1] = one[1]; P[i * 3 + 2] = one[2]; } return slice(P, vc); };
-          // (her skin as her clothes feel it, and as it is drawn)
-          const felt = skinNow(), feltWas = navelSoft ? navelSoft.felt.value : 0;
-          if (navelSoft) navelSoft.felt.value = navelSoft.out.value;
-          const drawn = skinNow();
-          if (navelSoft) navelSoft.felt.value = feltWas;
+          const felt = skinNow(), drawn = felt;
           const shirt = garmentRoom ? garmentRoom.cloth.positions : null;
-          return { skin: felt, drawn, shirt: shirt ? slice(shirt, shirt.length / 3) : [], tipAt, n, press: clothPress(), keep: clothKeep() };
+          // (and the cloth as drawn finely round her navel, navelPatch.ts)
+          const fineMesh = garmentRoom?.cloth.mesh.children.find((c) => c.name.endsWith('-navel')) as THREE.Mesh | undefined;
+          const fineP = fineMesh?.visible ? (fineMesh.geometry.getAttribute('position')?.array as Float32Array | undefined) : undefined;
+          const surface = (det as unknown as { navelSurfaceState?: () => unknown } | undefined)?.navelSurfaceState?.() ?? null;
+          // (the shirt AS DRAWN, cut exactly down her middle: each drawn triangle crossing the plane through her navel's
+          // axis and her up, as a segment [v, out, v, out] -- the cloth's own triangles in its draw range and the fine ones)
+          const cut = (g: THREE.BufferGeometry, start: number, count: number) => { const out: number[][] = [], Pa = g.getAttribute('position')?.array as ArrayLike<number> | undefined, I = g.index?.array as ArrayLike<number> | undefined;
+            if (!Pa || !I) return out;
+            const at = (i: number) => { const dx = Pa[i * 3] - tipAt[0], dy = Pa[i * 3 + 1] - tipAt[1], dz = Pa[i * 3 + 2] - tipAt[2];
+              return [dx * up[0] + dy * up[1] + dz * up[2], dx * n[0] + dy * n[1] + dz * n[2], dx * side[0] + dy * side[1] + dz * side[2]]; };
+            for (let t = start; t + 2 < Math.min(I.length, start + count); t += 3) { const q = [at(I[t]), at(I[t + 1]), at(I[t + 2])], seg: number[] = [];
+              for (let e = 0; e < 3; e++) { const a = q[e], b = q[(e + 1) % 3]; if ((a[2] > 0) === (b[2] > 0)) continue; const f = a[2] / (a[2] - b[2]); seg.push(+(a[0] + (b[0] - a[0]) * f).toFixed(3), +(a[1] + (b[1] - a[1]) * f).toFixed(3)); }
+              if (seg.length === 4 && Math.abs(seg[0]) <= half && seg[1] > -half) out.push(seg); }
+            return out; };
+          // (her skin cut the same way: an innie's pit as it is, which the envelope of her vertices fills in)
+          const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(P, 3)); if (bm.geometry.index) sg.setIndex(bm.geometry.index);
+          const skinCut = cut(sg, 0, Infinity);
+          const cm = garmentRoom?.cloth.mesh;
+          const drawnCut = cm ? [...cut(cm.geometry, cm.geometry.drawRange.start, Number.isFinite(cm.geometry.drawRange.count) ? cm.geometry.drawRange.count : Infinity), ...(fineMesh?.visible ? cut(fineMesh.geometry, 0, Infinity) : [])] : [];
+          return { skin: felt, drawn, shirt: shirt ? slice(shirt, shirt.length / 3) : [], fine: fineP ? slice(fineP, fineP.length / 3) : [], drawnCut, skinCut, tipAt, n, press: clothPress(), keep: clothKeep(), paintFlatten: fabric?.navelFlatten() ?? 0, navelX: navelX(0), surface };
         },
         navelLift: (on?: boolean) => { const det = (garmentRoom?.cloth as unknown as { detail?: { navelLift: boolean } } | undefined)?.detail; if (!det) return null; if (on !== undefined) det.navelLift = on; return det.navelLift; },
         navelClothPress: (x?: number | null) => { if (x !== undefined) { navelPressHeld = x === null || !Number.isFinite(x) ? null : Math.max(0, Math.min(1, x)); applyLook(); } return { held: navelPressHeld, press: clothPress() }; },

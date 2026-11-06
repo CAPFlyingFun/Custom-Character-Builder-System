@@ -40,6 +40,7 @@ import type { SewnGarment } from './types';
 import type { DetailPoints } from '../detailSpots';
 import type { ClothDetailState } from '../clothDetail';
 import { DOME_MARGIN, GarmentDetail } from './garmentDetail';
+import { NavelPatch } from './navelPatch';
 import { CUT_EDGE_ATTRIBUTE } from './cutEdge';
 import type { GarmentCuts } from './cuts';
 
@@ -240,6 +241,10 @@ export class GarmentCloth {
   private after: SkinContacts;
   /** Her navel and nipples, domed over (`detail`); null without. */
   private readonly detail: GarmentDetail | null;
+  /** The cloth drawn finely round her navel, on her navel's surface (`navelPatch.ts`), and what of its own it leaves out for it. */
+  private readonly navelPatch: NavelPatch;
+  private drawnAll = new Uint32Array(0);
+  private navelPicked = '';
   private primed = false;
   private warm = WARM_SECONDS;
   private readonly position: THREE.BufferAttribute;
@@ -383,6 +388,8 @@ export class GarmentCloth {
     this.mesh.name = 'sarah-procedural-garment';
     this.mesh.frustumCulled = false;
     this.mesh.matrixAutoUpdate = false;
+    this.navelPatch = new NavelPatch(this.mesh);
+    this.mesh.add(this.navelPatch.mesh);
     this.before = createContacts(n); this.after = createContacts(n);
     // what is worn, its slots and the cloth over them
     this.layout();
@@ -599,6 +606,8 @@ export class GarmentCloth {
     kept.forEach((t, j) => { for (let c = 0; c < 3; c++) { this.slotTris[j * 3 + c] = this.slotOf[T[t * 3 + c]]; I[j * 3 + c] = R[t * 3 + c]; } });
     this.index.needsUpdate = true;
     this.mesh?.geometry.setDrawRange(0, kept.length * 3);
+    // (all of it drawn by the cloth again, until the fine drawing round her navel picks its triangles anew)
+    this.drawnAll = I.slice(0, kept.length * 3); this.navelPicked = '';
     const C = this.cutAttr.array as Float32Array;
     if (keep) C.set(keep); else C.fill(1);
     this.cutAttr.needsUpdate = true;
@@ -975,6 +984,7 @@ export class GarmentCloth {
       P[o] = x[q] + lift * N[o]; P[o + 1] = x[q + 1] + lift * N[o + 1]; P[o + 2] = x[q + 2] + lift * N[o + 2];
     }
     this.position.needsUpdate = true; this.normal.needsUpdate = true;
+    this.drawNavel();
     const k = 1 / SMOOTHING, s = this.shown;
     s.skinMs += (skinMs - s.skinMs) * k; s.simMs += (stats.ms - s.simMs) * k; s.drawMs += (performance.now() - t1 - s.drawMs) * k;
     this.last = stats;
@@ -1225,9 +1235,46 @@ export class GarmentCloth {
     return out;
   }
 
-  dispose(): void { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); }
+  /**
+   * The cloth over her navel drawn finely, on her navel's surface (`navelPatch.ts`; Joshua, 2026-11-06): its drawn
+   * triangles within the surface's reach of her navel's crown given to the fine drawing, and left out of the cloth's
+   * own (drawn last, past its draw range) while they are.
+   */
+  private drawNavel(): void {
+    const det = this.detail, all = this.drawnAll, P = this.position.array as Float32Array, I = this.index.array as Uint32Array;
+    const reach = det && det.navelReach > 0 ? det.navelReach + NAVEL_PICK_PAD : 0;
+    const picked: number[] = [];
+    if (reach > 0) {
+      const [cx, cy, cz] = det!.navelCrown, r2 = reach * reach;
+      for (let t = 0; t + 2 < all.length; t += 3) {
+        let x = 0, y = 0, z = 0;
+        for (let c = 0; c < 3; c++) { const v = all[t + c] * 3; x += P[v]; y += P[v + 1]; z += P[v + 2]; }
+        x = x / 3 - cx; y = y / 3 - cy; z = z / 3 - cz;
+        if (x * x + y * y + z * z < r2) picked.push(t);
+      }
+    }
+    const key = picked.join(',');
+    if (key !== this.navelPicked) {
+      this.navelPicked = key;
+      // (the cloth's own drawing: every worn triangle but those, then those, past its draw range)
+      const out = new Set(picked);
+      let w = 0;
+      for (let t = 0; t + 2 < all.length; t += 3) if (!out.has(t)) { I[w++] = all[t]; I[w++] = all[t + 1]; I[w++] = all[t + 2]; }
+      const drawn = w, fine: number[] = [];
+      for (const t of picked) { I[w++] = all[t]; I[w++] = all[t + 1]; I[w++] = all[t + 2]; fine.push(all[t], all[t + 1], all[t + 2]); }
+      this.index.needsUpdate = true;
+      this.mesh.geometry.setDrawRange(0, drawn);
+      this.navelPatch.setTriangles(fine);
+    }
+    if (picked.length && det) this.navelPatch.update((x, y, z) => det.navelRaise(x, y, z), det.posed.navel.n);
+  }
+
+  dispose(): void { this.navelPatch.dispose(); this.mesh.removeFromParent(); this.mesh.geometry.dispose(); }
 }
 
+
+/** How far past her navel's surface the cloth's triangles are given to the fine drawing (world units): their middles. GAME TUNING. */
+export const NAVEL_PICK_PAD = 1.2;
 
 /** Whether two per-slot arrays hold the same values. */
 function sameValues(a: Float32Array, b: Float32Array): boolean {
