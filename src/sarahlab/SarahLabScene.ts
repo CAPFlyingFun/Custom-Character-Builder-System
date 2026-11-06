@@ -102,8 +102,9 @@ import { BIRTH_WEIGHTS, createBirthWeights, type BirthWeights } from './birthWei
 import { createAnkleWeights, type AnkleWeights } from './ankleWeights';
 import { createFingerWeights, type FingerWeights } from './fingerWeights';
 import { splitFingers, type FingerSplit, type V3 as SplitV3 } from '../actor/fingerSplit';
-import { formFingers, handBack, OWN_FINGERS, type FormedFingers } from '../actor/ownFingers';
+import { formFingers, handBack, OWN_FINGERS } from '../actor/ownFingers';
 import { roundFills, type RoundFills } from '../actor/fingerFillShape';
+import { betterTris } from '../actor/betterTris';
 import { createOwnFingers, type OwnFingers, type OwnFingersHand } from './ownFingersMesh';
 import { createFingerFills, type FingerFills } from './fingerFills';
 import { BIRTH_ROOM_FIELD, createBirthRoom, type BirthRoom } from './birthRoom';
@@ -618,6 +619,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let ownFingers: OwnFingers | null = null, ownFingersOn = true, ownFingersMs = 0, withFingers: Uint32Array | null = null;
   /** her fingers' closing triangles drawn in her own colour (fingerFills.ts) */
   let fingerFills: FingerFills | null = null;
+  /** her thin triangles round her hands turned (betterTris.ts): how many; GAME TUNING (metres), how far from the middle of
+   * a hand's knuckles they are looked for (her wrist is about nine centimetres behind them) */
+  let betterTurned = 0; const HAND_REACH = 0.11;
   const ownFingersWanted = typeof location !== 'undefined' && ['own', 'unaligned'].includes(new URLSearchParams(location.search).get('fingers') ?? '');
   /** (`?fingers=unaligned`: her own fingers as first made -- centred across their bones, not begun on her ring's middle -- for a probe to compare) */
   const ownFingersUnaligned = typeof location !== 'undefined' && new URLSearchParams(location.search).get('fingers') === 'unaligned';
@@ -6212,14 +6216,47 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             // and her file's fingers given the finger's shape past her webbing (ownFingers.ts formFingers; Joshua 2026-11-05: "try
             // again the default fingers and fix the weights and stuff"): from rest metres into her geometry, its normals too
             fingersFormed = 0;
-            let formed: { rest: Float32Array; R: FormedFingers } | null = null;
+            let fillsMade: { tris: number[]; round: RoundFills } | null = null;
             if (fingerSplit && sb.fields.baseNrm && !ownFingers) try {
               const R0 = babyFrame.meshToRest, base = sb.fields.basePos, v = new THREE.Vector3(), rest = new Float32Array(base.length);
               for (let i = 0; i < base.length; i += 3) v.set(base[i], base[i + 1], base[i + 2]).applyMatrix4(R0).toArray(rest, i);
               const hands = ownHandsOf(bm!, R0), bindInv = new THREE.Matrix4().copy(bm!.bindMatrix).invert();
               const jointAt = (k: number): SplitV3 => new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bindInv, new THREE.Matrix4().copy(bm!.skeleton.boneInverses[k]).invert())).applyMatrix4(R0).toArray() as [number, number, number];
               const R = formFingers(rest, herTris, fingerSplit.owner, hands.flatMap((h) => h.fingers.map((chain) => chain.map(jointAt))), hands.flatMap((h) => h.fingers.map(() => h.back)));
-              formed = { rest, R };
+              // (her points as they are shaped)
+              const Q = Float32Array.from(rest); for (let k = 0; k < R.index.length; k++) for (let c = 0; c < 3; c++) Q[R.index[k] * 3 + c] += R.delta[k * 3 + c];
+              if (fingerSplit.filled > 0) {
+                // her thin triangles round her hands joined better, as she is shaped (betterTris.ts), within a hand's reach of
+                // the middle of its knuckles; and her fingers' closing laid round them (fingerFillShape.ts)
+                const T = herTris.length / 3, first = (T - fingerSplit.filled) * 3, all = Array.from(herTris);
+                const nbR = sb.fields.baseNrm, nm = new THREE.Matrix3().getNormalMatrix(R0), restN = new Float32Array(nbR.length);
+                for (let i = 0; i < nbR.length; i += 3) v.set(nbR[i], nbR[i + 1], nbR[i + 2]).applyMatrix3(nm).normalize().toArray(restN, i);
+                const centres = hands.map((h) => { const c = [0, 0, 0]; for (const f of h.fingers) { const k = jointAt(f[0]); c[0] += k[0] / h.fingers.length; c[1] += k[1] / h.fingers.length; c[2] += k[2] / h.fingers.length; } return c; });
+                const nearHand = (i: number) => centres.some((c) => Math.hypot(Q[i * 3] - c[0], Q[i * 3 + 1] - c[1], Q[i * 3 + 2] - c[2]) < HAND_REACH);
+                const herPart = all.slice(0, first), uvs = bm!.geometry.getAttribute('uv') as THREE.BufferAttribute | undefined;
+                const better = betterTris(Q, herPart, (t) => nearHand(herPart[t * 3]) && nearHand(herPart[t * 3 + 1]) && nearHand(herPart[t * 3 + 2]), restN, uvs ? (uvs.array as ArrayLike<number>) : undefined);
+                betterTurned = better.turned;
+                const closing = all.slice(first), round = roundFills(Q, closing, better.tris, fingerSplit.owner, (f, p) => R.place(f, p));
+                fillsMade = { tris: [...better.tris, ...closing], round };
+                // (the points round each closing facing as the skin either side of them now lies, hers and the closing laid
+                // round -- not the straight closing across the hole, which tilted them in: a dark line down her finger)
+                const keyOf = (i: number) => `${Math.round(Q[i * 3] / 2e-5)},${Math.round(Q[i * 3 + 1] / 2e-5)},${Math.round(Q[i * 3 + 2] / 2e-5)}`;
+                const rim = new Map<string, [number, number, number]>(); for (const i of closing) rim.set(keyOf(i), [0, 0, 0]);
+                const at = (i: number): [number, number, number] => {
+                  if (i < round.base) return [Q[i * 3], Q[i * 3 + 1], Q[i * 3 + 2]];
+                  const k = i - round.base, p: [number, number, number] = [round.offset[k * 3], round.offset[k * 3 + 1], round.offset[k * 3 + 2]];
+                  for (let j = 0; j < 3; j++) for (let c = 0; c < 3; c++) p[c] += round.bary[k * 3 + j] * Q[round.parents[k * 3 + j] * 3 + c];
+                  return p;
+                };
+                for (const list of [better.tris, round.tris]) for (let t = 0; t + 2 < list.length; t += 3) {
+                  const vs = [list[t], list[t + 1], list[t + 2]], hit = vs.map((i) => (i < round.base ? rim.get(keyOf(i)) : undefined));
+                  if (!hit.some(Boolean)) continue;
+                  const A = at(vs[0]), B = at(vs[1]), C = at(vs[2]), u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], w = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+                  const f = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+                  for (const e of hit) if (e) { e[0] += f[0]; e[1] += f[1]; e[2] += f[2]; }
+                }
+                for (let k = 0; k < R.index.length; k++) { const e = rim.get(keyOf(R.index[k])); if (e && Math.hypot(...e) > 0) { const l = Math.hypot(...e); R.normal[k * 3] = e[0] / l; R.normal[k * 3 + 1] = e[1] / l; R.normal[k * 3 + 2] = e[2] / l; } }
+              }
               const toGeom = new THREE.Matrix3().setFromMatrix4(R0).invert(), toGeomN = new THREE.Matrix3().getNormalMatrix(R0).invert();
               const pos = new Float32Array(R.delta.length), nrm = new Float32Array(R.delta.length), nb = sb.fields.baseNrm;
               for (let k = 0; k < R.index.length; k++) {
@@ -6228,19 +6265,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                 const i = R.index[k] * 3; nrm[k * 3] = v.x - nb[i]; nrm[k * 3 + 1] = v.y - nb[i + 1]; nrm[k * 3 + 2] = v.z - nb[i + 2];
               }
               if (R.index.length) { map.set(FINGERS_FORM_FIELD, { index: R.index, pos, nrm }); fingersFormed = R.index.length; }
-            } catch (error) { console.error('[sarahlab] her fingers could not be given their shape', error); fingersFormed = 0; }
+            } catch (error) { console.error('[sarahlab] her fingers could not be given their shape', error); fingersFormed = 0; fillsMade = null; }
             // her file's fingers drawn: the triangles closing each one's side where it was cut from the next drawn apart --
             // laid round the finger's shape and in her finger's own colour, not across her texture (fingerFills.ts,
             // actor/fingerFillShape.ts)
             fingerFills?.dispose(); fingerFills = null;
             if (fingerSplit && !ownFingers && fingerSplit.filled > 0) try {
-              const T = herTris.length / 3, first = (T - fingerSplit.filled) * 3, all = Array.from(herTris);
-              let round: RoundFills | null = null;
-              if (formed && fingersFormed > 0) {
-                const Q = Float32Array.from(formed.rest), Rf = formed.R; for (let k = 0; k < Rf.index.length; k++) for (let c = 0; c < 3; c++) Q[Rf.index[k] * 3 + c] += Rf.delta[k * 3 + c];
-                round = roundFills(Q, all.slice(first), all.slice(0, first), fingerSplit.owner, (f, p) => Rf.place(f, p));
-              }
-              fingerFills = createFingerFills(bm!, herTris, fingerSplit.filled, { fingers: fingerSplit, round, toGeom: new THREE.Matrix3().setFromMatrix4(babyFrame.meshToRest).invert() });
+              fingerFills = createFingerFills(bm!, fillsMade?.tris ?? herTris, fingerSplit.filled, { fingers: fingerSplit, round: fillsMade?.round ?? null, toGeom: new THREE.Matrix3().setFromMatrix4(babyFrame.meshToRest).invert() });
               if (fingerFills) { bm!.userData.allIndices = fingerFills.herTris; bm!.geometry.setIndex(new THREE.BufferAttribute(Uint32Array.from(fingerFills.herTris), 1)); bm!.userData.coverMask = undefined; contactSet = null; }
             } catch (error) { console.error('[sarahlab] her fingers\' closing triangles could not be drawn apart', error); fingerFills?.dispose(); fingerFills = null; }
             // and, where her own fingers begin, her ring smoothed (ownFingers.ts): from rest metres into her geometry
@@ -6884,7 +6915,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             const m = new THREE.SkinnedMesh(g, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); m.name = 'finger-split-debug'; m.frustumCulled = false;
             m.position.copy(bm.position); m.quaternion.copy(bm.quaternion); m.scale.copy(bm.scale); m.morphTargetDictionary = bm.morphTargetDictionary; m.morphTargetInfluences = bm.morphTargetInfluences; m.bind(bm.skeleton, bm.bindMatrix); bm.parent?.add(m); };
           mk(T.slice(keptCount * 3), 0xff2020); return { filled, kept: keptCount }; },
-        fingerSplit: () => fingerSplit ? { cut: fingerSplit.cut, filled: fingerSplit.filled, holes: fingerSplit.holes, open: fingerSplit.open, rounded: fingerSplit.round.index.length, ms: Math.round(fingerSplitMs) } : null,
+        fingerSplit: () => fingerSplit ? { cut: fingerSplit.cut, filled: fingerSplit.filled, holes: fingerSplit.holes, open: fingerSplit.open, rounded: fingerSplit.round.index.length, ms: Math.round(fingerSplitMs), turned: betterTurned, closing: fingerFills?.count ?? 0 } : null,
         /** her own fingers (ownFingersMesh.ts): how many were made, how many of her triangles they hide, stray rings, the time;
          * `on` false draws her file's fingers instead, true hers again */
         /** (a probe: her skin and her own fingers drawn as wireframe over themselves -- hers dark, the fingers' blue, their

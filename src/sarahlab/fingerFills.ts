@@ -24,8 +24,9 @@ import type { RoundFills } from '../actor/fingerFillShape';
  * her hand, 99-106 of 255), and her hand's skin colour (215, 167, 149) -- where her texture cannot be read (a compressed
  * skin). GAME TUNING: how far along a finger each colour is read over (metres), and which of her texture's colours there,
  * by how light they are, make it (the lighter half, not the lightest, which are its shine); with no finger to read, how
- * far each point's own colour is drawn toward her hand's. */
-export const FILL_LOOK = Object.freeze({ roughness: 0.4, fallback: [215 / 255, 167 / 255, 149 / 255] as const, band: 0.004, light: [0.5, 0.9] as const, toHand: 0.6 });
+ * far each point's own colour is drawn toward her hand's; how far from her skin's edge her own colour there gives way to
+ * her finger's (metres). */
+export const FILL_LOOK = Object.freeze({ roughness: 0.4, fallback: [215 / 255, 167 / 255, 149 / 255] as const, band: 0.004, light: [0.5, 0.9] as const, toHand: 0.6, ease: 0.0025 });
 
 export interface FingerFills {
   readonly mesh: THREE.SkinnedMesh;
@@ -152,11 +153,21 @@ export function createFingerFills(body: THREE.SkinnedMesh, tris: ArrayLike<numbe
       const t = texel(h), q = FILL_LOOK.toHand;
       return t ? [t[0] * (1 - q) + f[0] * q, t[1] * (1 - q) + f[1] * q, t[2] * (1 - q) + f[2] * q] : [f[0], f[1], f[2]];
     };
-    hers.forEach((h, k) => { const m = colourOf(h); c.setRGB(m[0], m[1], m[2], THREE.SRGBColorSpace); c.toArray(color, k * 3); });
+    // (cut finer: at her skin's edge her own colour there, so the two meet with no line between, eased into her finger's
+    // colour over `ease` from it)
+    const edgeOf = (h: number): [number, number, number] => (round ? texel(h) ?? colourOf(h) : colourOf(h));
+    hers.forEach((h, k) => { const m = edgeOf(h); c.setRGB(m[0], m[1], m[2], THREE.SRGBColorSpace); c.toArray(color, k * 3); });
     if (round) for (let k = 0; k < extra; k++) {
-      const m = [0, 0, 0];
-      for (let j = 0; j < 3; j++) { const b = round.bary[k * 3 + j]; if (!(b > 0)) continue; const q = colourOf(round.parents[k * 3 + j]); for (let i = 0; i < 3; i++) m[i] += b * q[i]; }
-      c.setRGB(m[0], m[1], m[2], THREE.SRGBColorSpace); c.toArray(color, (hn + k) * 3);
+      const edge = [0, 0, 0], inside = [0, 0, 0]; let near = Infinity;
+      for (let j = 0; j < 3; j++) {
+        const q = round.parents[k * 3 + j], b = round.bary[k * 3 + j]; if (!(b > 0)) continue;
+        const e = edgeOf(q), m = colourOf(q); for (let i = 0; i < 3; i++) { edge[i] += b * e[i]; inside[i] += b * m[i]; }
+        // (how far it is from that corner of her skin's edge)
+        let d2 = 0; for (let i = 0; i < 3; i++) { let x = round.offset[k * 3 + i]; for (let jj = 0; jj < 3; jj++) x += round.bary[k * 3 + jj] * pa.getComponent(round.parents[k * 3 + jj], i); x -= pa.getComponent(q, i); d2 += x * x; }
+        near = Math.min(near, Math.sqrt(d2));
+      }
+      const t = Math.min(1, near / FILL_LOOK.ease), u = t * t * (3 - 2 * t);
+      c.setRGB(edge[0] + (inside[0] - edge[0]) * u, edge[1] + (inside[1] - edge[1]) * u, edge[2] + (inside[2] - edge[2]) * u, THREE.SRGBColorSpace); c.toArray(color, (hn + k) * 3);
     }
     (geo.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     mapSeen = skin.map;

@@ -75,4 +75,31 @@ describe('each finger\'s skin its own (fingerWeights)', () => {
     expect(Array.from(sw.array as Uint8Array)).toEqual(ownW);
     expect(Array.from(si.array as Uint16Array)).toEqual(ownI);
   });
+
+  it('over her knuckles each point goes from her hand to its finger evenly, step by step along it, with no jump', () => {
+    // (the same hand, a thumb added beside it, and its points joined into skin: columns side by side, rows along)
+    const { mesh, chains, split } = hand(), bones = mesh.skeleton.bones, root = bones[0];
+    const thumb: number[] = []; let parent: THREE.Bone = root;
+    for (const [x, y] of [[-0.03, -0.012], [-0.006, 0.02], [-0.004, 0.02], [-0.003, 0.015]]) { const b = new THREE.Bone(); b.position.set(x, y, 0); parent.add(b); parent = b; thumb.push(bones.length); bones.push(b); }
+    mesh.updateMatrixWorld(true); mesh.bind(new THREE.Skeleton(bones));
+    const rows = mesh.geometry.getAttribute('position').count / 5, cols = [0, 1, 4, 2, 3], tris: number[] = [];
+    for (let c = 0; c + 1 < cols.length; c++) for (let r = 0; r + 1 < rows; r++) { const a = cols[c] * rows + r, b = cols[c + 1] * rows + r; tris.push(a, b, b + 1, a, b + 1, a + 1); }
+    const fw = createFingerWeights(mesh, new THREE.Matrix4().makeTranslation(0, -1, 0), [chains], split, FINGER_WEIGHTS, [thumb], tris)!;
+    expect(fw.apply(1)).toBe(true);
+    const si = mesh.geometry.getAttribute('skinIndex'), sw = mesh.geometry.getAttribute('skinWeight');
+    const handShare = (i: number) => [0, 1, 2, 3].filter((c) => si.getComponent(i, c) === 0).reduce((a, c) => a + sw.getComponent(i, c), 0);
+    for (const col of [0, 3]) {
+      const share: number[] = []; for (let r = 0; r < rows; r++) share.push(handShare(col * rows + r));
+      // (from behind the knuckle to well past it: her hand's share only falls, never by much a step)
+      for (let r = 0; r + 1 < rows && r * 0.002 - 0.004 < 0.014; r++) {
+        expect(share[r + 1], `column ${col}, row ${r + 1}: no more her hand's than the row behind it`).toBeLessThanOrEqual(share[r] + 0.01);
+        expect(share[r] - share[r + 1], `column ${col}, row ${r + 1}: no jump`).toBeLessThan(0.3);
+      }
+      // (behind the knuckle her hand's a good deal more than past it; past it hardly at all -- this little hand's skin ends
+      // just behind its knuckles, and is evened toward the rows past it)
+      expect(share[0] - share[Math.round(0.006 / 0.002) + 2], `column ${col}: her hand's behind the knuckle, not past it`).toBeGreaterThan(0.05);
+      expect(share[Math.round(0.006 / 0.002) + 2], `column ${col} past the knuckle`).toBeLessThan(0.2);
+    }
+  });
 });
+

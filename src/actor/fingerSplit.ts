@@ -26,7 +26,7 @@ export type V3 = readonly [number, number, number];
  * how far out from a finger's middle line its skin may stand, as a share of its girth there, and over how much of its
  * length past the webbing that is eased in; how many rounds each finger's skin is smoothed, and how much of that a point
  * plainly the finger's own takes. */
-export const FINGER_SPLIT = Object.freeze({ reach: 0.02, web: 0.022, clear: 0.004, slice: 0.005, weld: 2e-5, rounds: 12, round: 1.05, ease: 0.008, smooth: 14, keep: 0.5 });
+export const FINGER_SPLIT = Object.freeze({ reach: 0.02, web: 0.016, clear: 0.004, slice: 0.005, weld: 2e-5, rounds: 12, round: 1.05, ease: 0.008, smooth: 14, keep: 0.5 });
 
 export interface FingerSplit {
   /** every triangle she is to be drawn with: hers, less the joins, and the closing ones (corners as indices of her points) */

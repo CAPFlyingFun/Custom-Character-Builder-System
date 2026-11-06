@@ -36,9 +36,10 @@ import { FINGER_SPLIT } from '../actor/fingerSplit';
  * sharply nearness decides (a power of the inverse distance); and over where behind the knuckle all this is eased in.
  * `knuckles`: how far round the row of her knuckles (and from her index knuckle to her thumb's) her weights are made again
  * in full, and how far they are eased back into what they were; from where to where along a finger past its knuckle (and
- * her thumb past its first) its share grows; how far past its knuckle a finger's skin, and past its first knuckle her
- * thumb's (within `thumb` of its bones), is left as it is; how many rounds of evening. */
-export const FINGER_WEIGHTS = Object.freeze({ across: [FINGER_SPLIT.web, FINGER_SPLIT.web + 0.012] as const, along: [FINGER_SPLIT.web + 0.012, FINGER_SPLIT.web + 0.032] as const, bend: 0.006, nearness: 4, region: [-0.02, -0.006] as const, knuckles: { full: 0.02, reach: 0.028, over: [-0.008, 0.006] as const, finger: 0.008, thumb: 0.011, thumbPast: 0.004, rounds: 12 } });
+ * her thumb past its first) its share grows; how far past its knuckle a finger's skin (eased back into what it was from
+ * where its share is whole), and past its first knuckle her thumb's (within `thumb` of its bones), is left as it is; how
+ * many rounds of evening. */
+export const FINGER_WEIGHTS = Object.freeze({ across: [FINGER_SPLIT.web, FINGER_SPLIT.web + 0.012] as const, along: [FINGER_SPLIT.web + 0.012, FINGER_SPLIT.web + 0.032] as const, bend: 0.006, nearness: 4, region: [-0.02, -0.006] as const, knuckles: { full: 0.02, reach: 0.028, over: [-0.008, 0.004] as const, finger: 0.01, thumb: 0.011, thumbPast: 0.004, rounds: 12 } });
 
 export interface FingerWeights {
   /** hand `share` (0 none .. 1 all) of each finger's skin to its finger; true when anything changed */
@@ -210,7 +211,9 @@ export function createFingerWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matri
           g = groups.length; keyOf.set(key, g); groups.push([]);
           const x = split.owner[i], onFinger = x >= 0 && fingers[x]?.hand === h && split.past[i] >= K.finger;
           const t = along(q, thumbOn, thumbOnLen), onThumb = t.d < K.thumb && t.s > K.thumbPast;
-          free.push(onFinger || onThumb ? 0 : 1 - smooth(K.full, K.reach, d));
+          // (and along a finger, given back to what it was before where it is left as it is)
+          const along2 = x >= 0 && fingers[x]?.hand === h ? 1 - smooth(K.over[1], K.finger, split.past[i]) : 1;
+          free.push(onFinger || onThumb ? 0 : (1 - smooth(K.full, K.reach, d)) * along2);
         }
         groups[g].push(i); nodeOf[i] = g;
       }
@@ -237,7 +240,7 @@ export function createFingerWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matri
       const nbr: Set<number>[] = Array.from({ length: G }, () => new Set<number>());
       for (let t = 0; t + 2 < tris.length; t += 3) {
         const a = nodeOf[tris[t]], b = nodeOf[tris[t + 1]], c = nodeOf[tris[t + 2]];
-        if (a < 0 || b < 0 || c < 0) continue;
+        if (!(a >= 0 && b >= 0 && c >= 0)) continue;
         for (const [u, v] of [[a, b], [b, c], [c, a]]) if (u !== v) { nbr[u].add(v); nbr[v].add(u); }
       }
       const list = nbr.map((s2) => [...s2]);
