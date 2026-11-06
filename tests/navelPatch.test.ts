@@ -51,6 +51,22 @@ describe('NavelPatch', () => {
     }
   });
 
+  it('carries a model file\'s packed attributes as their values: normalized, interleaved (the spandex tee\'s knit)', () => {
+    const src = source(), g = src.geometry;
+    // its uv packed as normalized 16-bit numbers, and a pattern place interleaved with something else
+    g.setAttribute('uv', new THREE.BufferAttribute(Uint16Array.from([0, 0, 65535, 0, 0, 65535, 65535, 65535]), 2, true));
+    const inter = new THREE.InterleavedBuffer(Float32Array.from([0, 0, 0, 9, 2, 0, 0, 9, 0, 2, 0, 9, 2, 2, 0, 9]), 4);
+    g.setAttribute('fabricRest', new THREE.InterleavedBufferAttribute(inter, 3, 0));
+    const p = new NavelPatch(src, F);
+    p.setTriangles([0, 1, 2, 1, 3, 2]);
+    p.update(() => 0, [0, 0, 1]);
+    const P = posOf(p), uv = p.mesh.geometry.getAttribute('uv') as THREE.BufferAttribute, rest = p.mesh.geometry.getAttribute('fabricRest') as THREE.BufferAttribute;
+    for (let i = 0; i < P.count; i++) {
+      expect(uv.getX(i)).toBeCloseTo(P.getX(i), 4); expect(uv.getY(i)).toBeCloseTo(P.getY(i), 4);
+      expect(rest.getX(i)).toBeCloseTo(2 * P.getX(i), 6); expect(rest.getY(i)).toBeCloseTo(2 * P.getY(i), 6);
+    }
+  });
+
   it('raises each point along the axis by what it is given, and only that', () => {
     const p = new NavelPatch(source(), F);
     p.setTriangles([0, 1, 2, 1, 3, 2]);

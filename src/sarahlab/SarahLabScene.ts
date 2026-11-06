@@ -33,6 +33,7 @@ import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFace
 import { REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { BEND_COMPLIANCE } from './garment/garmentCloth';
 import { NavelSurface } from './garment/navelSurface';
+import { NavelPatch } from './garment/navelPatch';
 import { setCutEdge } from './garment/cutEdge';
 import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorKey, withConstruction, type GarmentRecord, type GarmentSettings } from './garment/settings';
 import { GarmentPanel } from './garmentPanel';
@@ -7590,6 +7591,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (m && o2?.hang) { const c = m.geometry.getAttribute('color') as THREE.BufferAttribute; let lo = 0; for (let i = 0; i < c.count; i++) if (c.getW(i) > 0.01 && c.getW(i) < 0.9) lo++; return { ...(out as object), fading: lo, points: c.count }; }
           return out;
         },
+        navelFine: (on?: boolean) => { if (on !== undefined) NavelPatch.off = !on; return !NavelPatch.off; },
         navelLift: (on?: boolean) => { const det = (garmentRoom?.cloth as unknown as { detail?: { navelLift: boolean } } | undefined)?.detail; if (!det) return null; if (on !== undefined) det.navelLift = on; return det.navelLift; },
         navelClothPress: (x?: number | null) => { if (x !== undefined) { navelPressHeld = x === null || !Number.isFinite(x) ? null : Math.max(0, Math.min(1, x)); applyLook(); } return { held: navelPressHeld, press: clothPress() }; },
         garmentProfile: (i = 0) => garmentRoom?.cloth.detailProfile(i) ?? null,

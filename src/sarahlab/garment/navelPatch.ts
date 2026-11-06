@@ -25,6 +25,19 @@ export const NAVEL_FINE_EASE = 0.03;
 /** How far past her navel's surface the cloth's triangles are given to the fine drawing (world units): their middles. GAME TUNING. */
 export const NAVEL_PICK_PAD = 1.2;
 
+/** An attribute's values, item after item: its own array when that is them, else read one by one (packed, normalized or interleaved). */
+function valuesOf(attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): ArrayLike<number> {
+  if (!(attr as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute && !attr.normalized && attr.array instanceof Float32Array) return attr.array;
+  const k = attr.itemSize, out = new Float32Array(attr.count * k);
+  for (let i = 0; i < attr.count; i++) {
+    out[i * k] = attr.getX(i);
+    if (k > 1) out[i * k + 1] = attr.getY(i);
+    if (k > 2) out[i * k + 2] = attr.getZ(i);
+    if (k > 3) out[i * k + 3] = attr.getW(i);
+  }
+  return out;
+}
+
 export class NavelPatch {
   readonly mesh: THREE.Mesh;
   private readonly geometry = new THREE.BufferGeometry();
@@ -33,6 +46,8 @@ export class NavelPatch {
   private weight = new Float32Array(0);
   private count = 0;
   private key = '';
+  /** Each source attribute's version as last carried across. */
+  private readonly carried = new Map<string, number>();
 
   constructor(private readonly source: THREE.Mesh, private readonly fine = NAVEL_FINE) {
     this.mesh = new THREE.Mesh(this.geometry, source.material);
@@ -71,6 +86,7 @@ export class NavelPatch {
     this.from = Uint32Array.from(from); this.weight = Float32Array.from(weight); this.count = from.length / 3;
     const g = this.geometry, src = this.source.geometry;
     for (const name of Object.keys(g.attributes)) g.deleteAttribute(name);
+    this.carried.clear();
     for (const [name, attr] of Object.entries(src.attributes)) g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(this.count * attr.itemSize), attr.itemSize).setUsage(THREE.DynamicDrawUsage));
     g.setIndex(index);
     this.mesh.visible = T > 0;
@@ -86,7 +102,14 @@ export class NavelPatch {
     for (const [name, attr] of Object.entries(src.attributes)) {
       const out = g.getAttribute(name) as THREE.BufferAttribute | undefined;
       if (!out) continue;
-      const S = attr.array as ArrayLike<number>, O = out.array as Float32Array, k = attr.itemSize;
+      // (carried only when the source's changed, or the drawing was laid out again -- its pattern's place and cut edge
+      // change with her shape, its position and normal every frame -- and read as values: a model file's attributes may
+      // be packed, normalized or interleaved, and their raw numbers are not their values -- the spandex tee's knit came
+      // out scrambled round her navel)
+      const version = (attr as THREE.BufferAttribute).version ?? -1;
+      if (this.carried.get(name) === version && name !== 'position' && name !== 'normal') continue;
+      this.carried.set(name, version);
+      const S = valuesOf(attr), O = out.array as Float32Array, k = attr.itemSize;
       for (let p = 0; p < n; p++) for (let c = 0; c < k; c++) O[p * k + c] = W[p * 3] * S[F[p * 3] * k + c] + W[p * 3 + 1] * S[F[p * 3 + 1] * k + c] + W[p * 3 + 2] * S[F[p * 3 + 2] * k + c];
       out.needsUpdate = true;
     }
@@ -121,7 +144,11 @@ export class NavelPatch {
    * (its index rewritten, the rest first, its draw range cut to the rest). Nothing is given while her surface is off.
    * `all` is the source's whole drawn list, kept apart from its index; a new one lays the drawing out again.
    */
+  /** For a probe: the fine drawing off, every cloth's (the cloth draws all of itself again). */
+  static off = false;
+
   draw(all: ArrayLike<number>, surface: NavelSurface | null): void {
+    if (NavelPatch.off) surface = null;
     const g = this.source.geometry, index = g.index, P = (g.getAttribute('position') as THREE.BufferAttribute | undefined)?.array as ArrayLike<number> | undefined;
     if (!index || !P) return;
     if (all !== this.all) { this.all = all; this.picked = '\u0000'; }
