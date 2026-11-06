@@ -12,6 +12,14 @@ to by herself, and PASSIVE, how far it gives placed or loaded (a squat, a
 birth position, a lunge) -- a study's mean plus two standard deviations where
 one measured it, never less than active, and the active range where none did.
 
+`contacts/` holds each rig's CONTACT POINTS (P4, 2026-11-05): where on its
+skin it touches things with -- each finger's pad and tip, the palm and its heel,
+the elbows, knees, heels, balls and toes -- each kept as the bone it rides, a
+triangle of the model's body mesh and where on it, and how deep the skin is
+over the bone there (MEASURED). `scripts/measureContacts.ts` writes them from
+the models (`female-v2`, `newborn`); the room measures again live, on her as
+she is drawn.
+
 ## The pattern in one line
 
 ```

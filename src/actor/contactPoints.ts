@@ -62,6 +62,10 @@ export interface ContactInput {
   readonly parents: ArrayLike<number>;
   /** the joints a body's contacts are found from */
   readonly named: Readonly<Record<'wristL' | 'wristR' | 'elbowL' | 'elbowR' | 'kneeL' | 'kneeR' | 'ankleL' | 'ankleR', number>>;
+  /** how big the body is against a grown woman (1, unless given): how far behind the ankle the heel is looked for is that
+   * much of a grown woman's (a newborn's heel is a centimetre behind its ankle, not two), and how far each cast looks too,
+   * though never under half of hers (a newborn is plump for its size: its elbow's skin two centimetres from the joint) */
+  readonly size?: number;
 }
 
 export interface ContactSet {
@@ -112,13 +116,13 @@ export function castToSkin(pos: ArrayLike<number>, tris: ArrayLike<number>, o: V
 
 /** Every contact the body's rest mesh and bones give. */
 export function measureContacts(input: ContactInput): ContactSet {
-  const { pos, tris, joints, parents, named } = input, n = parents.length;
+  const { pos, tris, joints, parents, named } = input, n = parents.length, size = input.size ?? 1;
   const J = (i: number): V => [joints[i * 3], joints[i * 3 + 1], joints[i * 3 + 2]];
   const kids: number[][] = Array.from({ length: n }, () => []);
   for (let i = 0; i < n; i++) if (parents[i] >= 0) kids[parents[i]].push(i);
   const points: ContactPoint[] = [], missing: string[] = [];
   const cast = (site: ContactSite, side: Side, bone: number, o: V, d: V, most: number = CONTACT_CAST.most) => {
-    const dir = norm(d), hit = castToSkin(pos, tris, o, dir, most);
+    const dir = norm(d), hit = castToSkin(pos, tris, o, dir, most * Math.max(0.5, size));
     if (!hit) { missing.push(`${side}.${site}`); return; }
     const [a, b, c] = [tris[hit.tri * 3], tris[hit.tri * 3 + 1], tris[hit.tri * 3 + 2]].map((k) => [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]] as V);
     let nrm = norm(cross(sub(b, a), sub(c, a)));
@@ -164,7 +168,7 @@ export function measureContacts(input: ContactInput): ContactSet {
     const toe = kids[ankle][0], toeEnd = toe !== undefined ? (kids[toe][0] ?? toe) : undefined;
     if (toe === undefined || toeEnd === undefined) { missing.push(`${side}.toes`); continue; }
     const A = J(ankle), fwd = norm([J(toeEnd)[0] - A[0], 0, J(toeEnd)[2] - A[2]]);
-    cast('heel', side, ankle, sub(A, mul(fwd, CONTACT_CAST.heelBack)), [0, -1, 0], CONTACT_CAST.footMost);
+    cast('heel', side, ankle, sub(A, mul(fwd, CONTACT_CAST.heelBack * size)), [0, -1, 0], CONTACT_CAST.footMost);
     cast('ball', side, toe, J(toe), [0, -1, 0], CONTACT_CAST.footMost);
     cast('toes', side, toe, J(toeEnd), fwd);
   }
