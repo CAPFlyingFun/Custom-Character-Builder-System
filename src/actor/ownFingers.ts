@@ -551,9 +551,10 @@ export const FINGER_FORM = Object.freeze({ from: [FINGER_FORM_WEB - 0.002, FINGE
  * each finger's joints (knuckle, middle, last, end), `backs` the way the back of each one's hand faces. Returns her points
  * that move, how far, and the way each then faces (rest metres; unit normals).
  */
-export function formFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, owner: ArrayLike<number>, lines: readonly (readonly V3[])[], backs: readonly V3[], o: OwnFingerTuning = OWN_FINGERS, F: typeof FINGER_SHAPE = FINGER_SHAPE, G: { readonly from: readonly [number, number] } = FINGER_FORM): { index: Uint32Array; delta: Float32Array; normal: Float32Array } {
+export function formFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, owner: ArrayLike<number>, lines: readonly (readonly V3[])[], backs: readonly V3[], o: OwnFingerTuning = OWN_FINGERS, F: typeof FINGER_SHAPE = FINGER_SHAPE, G: { readonly from: readonly [number, number] } = FINGER_FORM): FormedFingers {
   const n = Math.floor(pos.length / 3), P = (i: number): V3 => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
   const moved = new Map<number, { to: M3; b: number }>();
+  const placers: (((p: V3) => { to: M3; b: number } | null) | undefined)[] = [];
   lines.forEach((J, f) => {
     if (J.length < 4) return;
     const mine = new Int8Array(n).fill(-1); let any = false;
@@ -589,15 +590,21 @@ export function formFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, own
       hP *= 1 + F.pad * bump(s, sDIP + F.padAt * lastLen, F.padSpread);
       return { c: add(add(p, mul(D, off + F.apex * h * (1 - sigma))), mul(S, side)), t, D, S, w: w * sigma, hD: hD * sigma, hP: hP * sigma, nD: F.round, nP: F.flatPalm };
     };
-    for (let i = 0; i < n; i++) {
-      if (owner[i] !== f) continue;
-      const p = P(i), a = alongFinger(p, J), b = smooth(G.from[0], G.from[1], a.s);
-      if (b <= 0) continue;
+    // (a point at rest to where it lies round the shape: the same distance along, the same angle round)
+    const placeOne = (p: V3): { to: M3; b: number } | null => {
+      const a = alongFinger(p, J), b = smooth(G.from[0], G.from[1], a.s);
+      if (b <= 0) return null;
       const s = Math.min(a.s, tip), sigma = s <= tipFrom ? 1 : Math.cos(Math.asin(Math.min(1, (s - tipFrom) / tipLen)));
       const x = section(s, sigma), d = sub(p, x.c), th = Math.atan2(dot(d, x.S), dot(d, x.D));
       const c = Math.cos(th), sn = Math.sin(th), up = c >= 0, e = 2 / (up ? x.nD : x.nP), hh = up ? x.hD : x.hP;
       const to = add(x.c, add(mul(x.S, x.w * Math.sign(sn) * Math.pow(Math.abs(sn), e)), mul(x.D, hh * Math.sign(c) * Math.pow(Math.abs(c), e))));
-      moved.set(i, { to: lerp3(p, to, b), b });
+      return { to: lerp3(p, to, b), b };
+    };
+    placers[f] = placeOne;
+    for (let i = 0; i < n; i++) {
+      if (owner[i] !== f) continue;
+      const m = placeOne(P(i));
+      if (m) moved.set(i, m);
     }
   });
   // HER NORMALS MADE AGAIN where she moves, from her triangles round each point (one point a place: her texture's seams)
@@ -616,5 +623,15 @@ export function formFingers(pos: ArrayLike<number>, tris: ArrayLike<number>, own
     const p = P(i), d = sub(m.to, p);
     index.push(i); delta.push(...d); normal.push(...norm(acc.get(weldOf.get(i)!) ?? [0, 0, 1]));
   }
-  return { index: Uint32Array.from(index), delta: Float32Array.from(delta), normal: Float32Array.from(normal) };
+  return { index: Uint32Array.from(index), delta: Float32Array.from(delta), normal: Float32Array.from(normal), place: (f, p) => placers[f]?.(p)?.to ?? null };
+}
+
+export interface FormedFingers {
+  /** her points that move, how far (rest metres, three a point), and the way each then faces (unit lengths) */
+  readonly index: Uint32Array;
+  readonly delta: Float32Array;
+  readonly normal: Float32Array;
+  /** where a point at rest (metres) lies round finger `f`'s shape, as her own points of it are placed; null where her own
+   * shape is kept (nearer the knuckle than her webbing) or `f` has none */
+  place(f: number, p: V3): M3 | null;
 }

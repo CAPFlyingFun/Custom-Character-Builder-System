@@ -33,8 +33,12 @@ import { FINGER_SPLIT } from '../actor/fingerSplit';
 
 /** GAME TUNING (metres past a finger's knuckle, along its bones, unless said): where the sharing by nearness gives way to
  * each finger's own; where her weights are eased into an even bend; how far either side of a joint the bend is eased; how
- * sharply nearness decides (a power of the inverse distance); and over where behind the knuckle all this is eased in. */
-export const FINGER_WEIGHTS = Object.freeze({ across: [FINGER_SPLIT.web, FINGER_SPLIT.web + 0.012] as const, along: [FINGER_SPLIT.web + 0.012, FINGER_SPLIT.web + 0.032] as const, bend: 0.006, nearness: 4, region: [-0.02, -0.006] as const });
+ * sharply nearness decides (a power of the inverse distance); and over where behind the knuckle all this is eased in.
+ * `knuckles`: how far round the row of her knuckles (and from her index knuckle to her thumb's) her weights are made again
+ * in full, and how far they are eased back into what they were; from where to where along a finger past its knuckle (and
+ * her thumb past its first) its share grows; how far past its knuckle a finger's skin, and past its first knuckle her
+ * thumb's (within `thumb` of its bones), is left as it is; how many rounds of evening. */
+export const FINGER_WEIGHTS = Object.freeze({ across: [FINGER_SPLIT.web, FINGER_SPLIT.web + 0.012] as const, along: [FINGER_SPLIT.web + 0.012, FINGER_SPLIT.web + 0.032] as const, bend: 0.006, nearness: 4, region: [-0.02, -0.006] as const, knuckles: { full: 0.02, reach: 0.028, over: [-0.008, 0.006] as const, finger: 0.008, thumb: 0.011, thumbPast: 0.004, rounds: 12 } });
 
 export interface FingerWeights {
   /** hand `share` (0 none .. 1 all) of each finger's skin to its finger; true when anything changed */
@@ -60,16 +64,16 @@ function along(p: THREE.Vector3, pts: readonly THREE.Vector3[], S: readonly numb
 }
 const lengthsOf = (pts: readonly THREE.Vector3[]) => { const S = [0]; for (let k = 1; k < pts.length; k++) S.push(S[k - 1] + pts[k].distanceTo(pts[k - 1])); return S; };
 
-type Tuning = { readonly across: readonly [number, number]; readonly along: readonly [number, number]; readonly bend: number; readonly nearness: number; readonly region: readonly [number, number] };
+type Tuning = { readonly across: readonly [number, number]; readonly along: readonly [number, number]; readonly bend: number; readonly nearness: number; readonly region: readonly [number, number]; readonly knuckles?: { readonly full: number; readonly reach: number; readonly over: readonly [number, number]; readonly finger: number; readonly thumb: number; readonly thumbPast: number; readonly rounds: number } };
 
 /**
  * For `mesh` (her body): `hands` each hand's fingers but its thumb, each finger the bones (indices in its skeleton) from
  * its knuckle out to its end; `split` (fingerSplit.ts, its fingers numbered across both hands as `hands` lists them) the
  * finger each of her points lies on, how far along it, and each finger's middle line (her rest frame, metres); `thumbs`
- * each hand's thumb, base first; `toRest` takes her geometry to her rest frame (metres). Null when she has no skin
- * weights.
+ * each hand's thumb, base first; `toRest` takes her geometry to her rest frame (metres); `tris` her triangles, to smooth
+ * her knuckles (none given: not smoothed). Null when she has no skin weights.
  */
-export function createFingerWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix4, hands: readonly (readonly (readonly number[])[])[], split: { readonly owner: Int8Array; readonly past: Float32Array; readonly middles?: readonly (readonly (readonly [number, number, number])[])[] }, F: Tuning = FINGER_WEIGHTS, thumbs: readonly (readonly number[])[] = []): FingerWeights | null {
+export function createFingerWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix4, hands: readonly (readonly (readonly number[])[])[], split: { readonly owner: Int8Array; readonly past: Float32Array; readonly middles?: readonly (readonly (readonly [number, number, number])[])[] }, F: Tuning = FINGER_WEIGHTS, thumbs: readonly (readonly number[])[] = [], tris?: ArrayLike<number>): FingerWeights | null {
   const g = mesh.geometry as THREE.BufferGeometry;
   const si = g.getAttribute('skinIndex') as THREE.BufferAttribute | undefined, sw = g.getAttribute('skinWeight') as THREE.BufferAttribute | undefined, pa = g.getAttribute('position');
   if (!si || !sw || !pa || (si as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute || (sw as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) return null;
@@ -155,6 +159,101 @@ export function createFingerWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matri
     if (inRegion < 1) { const mix = new Map<number, number>(); for (const [b, w] of sum) mix.set(b, w * inRegion); for (let c = 0; c < 4; c++) { const b = ownI[i * 4 + c], w = ownW[i * 4 + c]; if (w > 0) mix.set(b, (mix.get(b) ?? 0) + w * (1 - inRegion)); } target.push(...mix); }
     else target.push(...sum);
     points.push({ i, target });
+  }
+  // OVER HER KNUCKLES, FROM HER HAND TO EACH FINGER EVENLY (Joshua, 2026-11-05: her index knuckle cut open as her fist
+  // closed). Meshy's rig splits the skin over her knuckles between her hand and her fingers unevenly, point by point -- one
+  // point a third her finger's and the next three quarters, a fifth of one carried by her forearm -- carries the back of her
+  // hand two centimetres behind her knuckles a third with her fingers, and gives her thumb half the skin over her index
+  // knuckle; a closed fist pulls all of that into folds. So round the row of her knuckles and across the web from her index
+  // knuckle to her thumb's first knuckle, each point's weights are made again: its fingers' share (and her thumb's) grows
+  // across each knuckle with how far past it the point lies (`over`, along that finger), each finger and her thumb taking
+  // as much of it as they are near, as above; the rest is her hand's, on the bones her file's hand carried it with. Further
+  // than `full` from the row this gives way to what it was, by `reach`; past `finger` along a finger, and past her thumb's
+  // first knuckle, nothing is changed. Then a few rounds of each point evened with those round it (her points one a place:
+  // her texture's seams kept together).
+  const K = F.knuckles;
+  if (tris && K) {
+    const byPoint = new Map<number, Point>(); for (const q of points) byPoint.set(q.i, q);
+    const handOf = new Int8Array(n).fill(-1), restP = new Float32Array(n * 3);
+    // (each hand's bones: its fingers', its thumb's, and the two its fingers hang from)
+    const handBones = hands.map((_, h) => {
+      const set = new Set<number>(); for (const x of fingers) if (x.hand === h) { x.chain.forEach((b) => set.add(b)); let o = bones[x.chain[0]]?.parent; for (let up = 0; up < 2 && o; up++, o = o.parent) { const k = bones.indexOf(o as THREE.Bone); if (k >= 0) set.add(k); } }
+      thumbChains[h]?.forEach((b) => set.add(b)); return set;
+    });
+    for (let i = 0; i < n; i++) {
+      p.set(pa.getX(i), pa.getY(i), pa.getZ(i)).applyMatrix4(toRest); p.toArray(restP, i * 3);
+      for (let h = 0; h < hands.length; h++) { let m = 0; for (let c = 0; c < 4; c++) if (handBones[h].has(ownI[i * 4 + c])) m += ownW[i * 4 + c]; if (m >= 0.3) { handOf[i] = h; break; } }
+    }
+    const seg = (q: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) => { const ab = b.clone().sub(a), t = Math.min(1, Math.max(0, q.clone().sub(a).dot(ab) / Math.max(1e-12, ab.lengthSq()))); return q.distanceTo(a.clone().addScaledVector(ab, t)); };
+    hands.forEach((_, h) => {
+      const tl = thumbLines[h], tch = thumbChains[h], mine = fingers.map((x, k) => ({ x, k })).filter((y) => y.x.hand === h);
+      if (!tl || !tch || tl.length < 3 || mine.length < 2) return;
+      // (her digits: each finger from its knuckle, her thumb from its first knuckle -- where, which way, its middle, its bone)
+      const thumbOn = tl.slice(1), thumbOnLen = lengthsOf(thumbOn);
+      const digits = [...mine.map((y) => ({ at: lines[y.k][0], way: lines[y.k][1].clone().sub(lines[y.k][0]).normalize(), mid: middles[y.k], midLen: middleLengths[y.k], bone: y.x.chain[0], thumb: false })),
+        { at: tl[1], way: tl[2].clone().sub(tl[1]).normalize(), mid: thumbOn, midLen: thumbOnLen, bone: tch[1], thumb: true }];
+      const digitBones = new Set<number>([...mine.flatMap((y) => y.x.chain), ...tch.slice(1)]);
+      // the row of her knuckles from her little finger's to her index finger's, and on to her thumb's first knuckle
+      const row = mine.map((y) => lines[y.k][0]).sort((a, b) => b.distanceTo(tl[0]) - a.distanceTo(tl[0]));
+      row.push(tl[1]);
+      const rowDist = (q: THREE.Vector3) => { let d = Infinity; for (let k = 0; k + 1 < row.length; k++) d = Math.min(d, seg(q, row[k], row[k + 1])); return d; };
+      // (her points one a place, near the row: free within reach, a band round them held as they are)
+      const keyOf = new Map<string, number>(), groups: number[][] = [], free: number[] = [], q = new THREE.Vector3();
+      const nodeOf = new Int32Array(n).fill(-1);
+      for (let i = 0; i < n; i++) {
+        if (handOf[i] !== h) continue;
+        q.fromArray(restP, i * 3);
+        const d = rowDist(q); if (d > K.reach + 0.006) continue;
+        const key = `${Math.round(q.x / 2e-5)},${Math.round(q.y / 2e-5)},${Math.round(q.z / 2e-5)}`;
+        let g = keyOf.get(key);
+        if (g === undefined) {
+          g = groups.length; keyOf.set(key, g); groups.push([]);
+          const x = split.owner[i], onFinger = x >= 0 && fingers[x]?.hand === h && split.past[i] >= K.finger;
+          const t = along(q, thumbOn, thumbOnLen), onThumb = t.d < K.thumb && t.s > K.thumbPast;
+          free.push(onFinger || onThumb ? 0 : 1 - smooth(K.full, K.reach, d));
+        }
+        groups[g].push(i); nodeOf[i] = g;
+      }
+      const G = groups.length; if (!free.some((z) => z > 0)) return;
+      // (each place's weights as they stand -- worked out above where it was, else her own)
+      const startOf = (i: number): [number, number][] => { const t = byPoint.get(i)?.target; if (t) return t; const o: [number, number][] = []; for (let c = 0; c < 4; c++) if (ownW[i * 4 + c] > 0) o.push([ownI[i * 4 + c], ownW[i * 4 + c]]); return o; };
+      // (and as made again: her hand's share on her hand's bones as her file had them, each digit's on its first bone)
+      const remade = (i: number): [number, number][] => {
+        q.fromArray(restP, i * 3);
+        const near = digits.map((dg) => Math.pow(Math.max(1e-4, along(q, dg.mid, dg.midLen).d), -F.nearness)), total = near.reduce((a, b) => a + b, 0);
+        const out = new Map<number, number>(); let digit = 0;
+        digits.forEach((dg, k) => { const w = (near[k] / total) * smooth(K.over[0], K.over[1], q.clone().sub(dg.at).dot(dg.way)); if (w > 0) { out.set(dg.bone, (out.get(dg.bone) ?? 0) + w); digit += w; } });
+        let handMass = 0; const hand: [number, number][] = [];
+        for (let c = 0; c < 4; c++) { const b = ownI[i * 4 + c], w = ownW[i * 4 + c]; if (w > 0 && !digitBones.has(b)) { hand.push([b, w]); handMass += w; } }
+        if (handMass <= 0) { const up = bones[digits[0].bone]?.parent, k = up ? bones.indexOf(up as THREE.Bone) : -1; if (k >= 0) { hand.push([k, 1]); handMass = 1; } }
+        for (const [b, w] of hand) out.set(b, (out.get(b) ?? 0) + (1 - digit) * w / handMass);
+        return [...out];
+      };
+      const slot = new Map<number, number>(), starts = groups.map((g, k) => { const a = startOf(g[0]); if (free[k] <= 0) return { a, b: [] as [number, number][] }; return { a, b: remade(g[0]) }; });
+      for (const s2 of starts) for (const [b] of [...s2.a, ...s2.b]) if (!slot.has(b)) slot.set(b, slot.size);
+      const B = slot.size, V = new Float64Array(G * B);
+      starts.forEach((s2, k) => { const z = free[k]; for (const [b, w] of s2.a) V[k * B + slot.get(b)!] += w * (1 - z); for (const [b, w] of s2.b) V[k * B + slot.get(b)!] += w * z; });
+      // (who is beside whom, by her triangles; then a few rounds of evening, the free part of each point only)
+      const nbr: Set<number>[] = Array.from({ length: G }, () => new Set<number>());
+      for (let t = 0; t + 2 < tris.length; t += 3) {
+        const a = nodeOf[tris[t]], b = nodeOf[tris[t + 1]], c = nodeOf[tris[t + 2]];
+        if (a < 0 || b < 0 || c < 0) continue;
+        for (const [u, v] of [[a, b], [b, c], [c, a]]) if (u !== v) { nbr[u].add(v); nbr[v].add(u); }
+      }
+      const list = nbr.map((s2) => [...s2]);
+      for (let round = 0; round < K.rounds; round++) for (let k = 0; k < G; k++) {
+        const z = free[k]; if (z <= 0 || list[k].length === 0) continue;
+        for (let c = 0; c < B; c++) { let s2 = 0; for (const u of list[k]) s2 += V[u * B + c]; V[k * B + c] += z * (s2 / list[k].length - V[k * B + c]); }
+      }
+      const boneAt = [...slot.keys()];
+      groups.forEach((g, k) => {
+        if (free[k] <= 0) return;
+        const target: [number, number][] = []; let total = 0;
+        for (let c = 0; c < B; c++) if (V[k * B + c] > 1e-4) { target.push([boneAt[c], V[k * B + c]]); total += V[k * B + c]; }
+        for (const e of target) e[1] /= total || 1;
+        for (const i of g) { const old = byPoint.get(i); if (old) old.target = target; else { const nq = { i, target }; points.push(nq); byPoint.set(i, nq); } }
+      });
+    });
   }
   let shareNow = 0;
   const I = si.array as ArrayLike<number> & { [k: number]: number }, W = sw.array as ArrayLike<number> & { [k: number]: number };

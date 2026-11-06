@@ -102,7 +102,8 @@ import { BIRTH_WEIGHTS, createBirthWeights, type BirthWeights } from './birthWei
 import { createAnkleWeights, type AnkleWeights } from './ankleWeights';
 import { createFingerWeights, type FingerWeights } from './fingerWeights';
 import { splitFingers, type FingerSplit, type V3 as SplitV3 } from '../actor/fingerSplit';
-import { formFingers, handBack, OWN_FINGERS } from '../actor/ownFingers';
+import { formFingers, handBack, OWN_FINGERS, type FormedFingers } from '../actor/ownFingers';
+import { roundFills, type RoundFills } from '../actor/fingerFillShape';
 import { createOwnFingers, type OwnFingers, type OwnFingersHand } from './ownFingersMesh';
 import { createFingerFills, type FingerFills } from './fingerFills';
 import { BIRTH_ROOM_FIELD, createBirthRoom, type BirthRoom } from './birthRoom';
@@ -6175,7 +6176,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             // her birth-pose weights first: their leg openings say which of her skin is leg (birthGap.ts, vulvaMesh.ts)
             try { const jt = measure?.joints; birthWeights = jt ? createBirthWeights(bm!, babyFrame.meshToRest, jt.pelvis, jt.hipL, jt.hipR, jt.kneeL, jt.kneeR, herTris) : null; } catch (error) { console.error('[sarahlab] her birth-pose weights could not be made', error); birthWeights = null; }
             try { const jt = measure?.joints; ankleWeights = jt ? createAnkleWeights(bm!, babyFrame.meshToRest, [[jt.kneeL, jt.ankleL], [jt.kneeR, jt.ankleR]]) : null; } catch (error) { console.error('[sarahlab] her heel weights could not be made', error); ankleWeights = null; }
-            try { fingerWeights = measure && fingerSplit ? createFingerWeights(bm!, babyFrame.meshToRest, handsFingersOf(bm!), fingerSplit, undefined, thumbsOf(bm!)) : null; } catch (error) { console.error('[sarahlab] her finger weights could not be made', error); fingerWeights = null; }
+            try { fingerWeights = measure && fingerSplit ? createFingerWeights(bm!, babyFrame.meshToRest, handsFingersOf(bm!), fingerSplit, undefined, thumbsOf(bm!), herTris) : null; } catch (error) { console.error('[sarahlab] her finger weights could not be made', error); fingerWeights = null; }
             // (and laid now: nothing else asks for her look again until she is posed or dressed)
             fingerWeights?.apply(fingerWeightsOn ? 1 : 0);
             // HER OWN FINGERS (ownFingers.ts, ownFingersMesh.ts; Joshua, 2026-11-05: "hide the MeshyAI fingers, and instead
@@ -6188,13 +6189,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               ownFingersMs = performance.now() - t0;
               if (ownFingers) { withFingers = Uint32Array.from(herTris); layOwnFingers(); }
             } catch (error) { console.error('[sarahlab] her own fingers could not be made; her file\'s are drawn', error); ownFingers?.dispose(); ownFingers = null; }
-            // her file's fingers drawn: the triangles closing each one's side where it was cut from the next drawn in her own
-            // colour, not across her texture (fingerFills.ts)
-            fingerFills?.dispose(); fingerFills = null;
-            if (fingerSplit && !ownFingers && fingerSplit.filled > 0) try {
-              fingerFills = createFingerFills(bm!, herTris, fingerSplit.filled);
-              if (fingerFills) { bm!.userData.allIndices = fingerFills.herTris; bm!.geometry.setIndex(new THREE.BufferAttribute(Uint32Array.from(fingerFills.herTris), 1)); bm!.userData.coverMask = undefined; contactSet = null; }
-            } catch (error) { console.error('[sarahlab] her fingers\' closing triangles could not be drawn apart', error); fingerFills?.dispose(); fingerFills = null; }
             const parts = birthAreaFields(sb.fields.basePos, sb.fields.baseNrm, herTris, babyFrame.meshToRest);
             if (parts.cleft.index.length) map.set(BIRTH_CLEFT_FIELD, parts.cleft);
             if (parts.lips.index.length) map.set(BIRTH_LIPS_FIELD, parts.lips);
@@ -6218,12 +6212,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             // and her file's fingers given the finger's shape past her webbing (ownFingers.ts formFingers; Joshua 2026-11-05: "try
             // again the default fingers and fix the weights and stuff"): from rest metres into her geometry, its normals too
             fingersFormed = 0;
+            let formed: { rest: Float32Array; R: FormedFingers } | null = null;
             if (fingerSplit && sb.fields.baseNrm && !ownFingers) try {
               const R0 = babyFrame.meshToRest, base = sb.fields.basePos, v = new THREE.Vector3(), rest = new Float32Array(base.length);
               for (let i = 0; i < base.length; i += 3) v.set(base[i], base[i + 1], base[i + 2]).applyMatrix4(R0).toArray(rest, i);
               const hands = ownHandsOf(bm!, R0), bindInv = new THREE.Matrix4().copy(bm!.bindMatrix).invert();
               const jointAt = (k: number): SplitV3 => new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bindInv, new THREE.Matrix4().copy(bm!.skeleton.boneInverses[k]).invert())).applyMatrix4(R0).toArray() as [number, number, number];
               const R = formFingers(rest, herTris, fingerSplit.owner, hands.flatMap((h) => h.fingers.map((chain) => chain.map(jointAt))), hands.flatMap((h) => h.fingers.map(() => h.back)));
+              formed = { rest, R };
               const toGeom = new THREE.Matrix3().setFromMatrix4(R0).invert(), toGeomN = new THREE.Matrix3().getNormalMatrix(R0).invert();
               const pos = new Float32Array(R.delta.length), nrm = new Float32Array(R.delta.length), nb = sb.fields.baseNrm;
               for (let k = 0; k < R.index.length; k++) {
@@ -6233,6 +6229,20 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               }
               if (R.index.length) { map.set(FINGERS_FORM_FIELD, { index: R.index, pos, nrm }); fingersFormed = R.index.length; }
             } catch (error) { console.error('[sarahlab] her fingers could not be given their shape', error); fingersFormed = 0; }
+            // her file's fingers drawn: the triangles closing each one's side where it was cut from the next drawn apart --
+            // laid round the finger's shape and in her finger's own colour, not across her texture (fingerFills.ts,
+            // actor/fingerFillShape.ts)
+            fingerFills?.dispose(); fingerFills = null;
+            if (fingerSplit && !ownFingers && fingerSplit.filled > 0) try {
+              const T = herTris.length / 3, first = (T - fingerSplit.filled) * 3, all = Array.from(herTris);
+              let round: RoundFills | null = null;
+              if (formed && fingersFormed > 0) {
+                const Q = Float32Array.from(formed.rest), Rf = formed.R; for (let k = 0; k < Rf.index.length; k++) for (let c = 0; c < 3; c++) Q[Rf.index[k] * 3 + c] += Rf.delta[k * 3 + c];
+                round = roundFills(Q, all.slice(first), all.slice(0, first), fingerSplit.owner, (f, p) => Rf.place(f, p));
+              }
+              fingerFills = createFingerFills(bm!, herTris, fingerSplit.filled, { fingers: fingerSplit, round, toGeom: new THREE.Matrix3().setFromMatrix4(babyFrame.meshToRest).invert() });
+              if (fingerFills) { bm!.userData.allIndices = fingerFills.herTris; bm!.geometry.setIndex(new THREE.BufferAttribute(Uint32Array.from(fingerFills.herTris), 1)); bm!.userData.coverMask = undefined; contactSet = null; }
+            } catch (error) { console.error('[sarahlab] her fingers\' closing triangles could not be drawn apart', error); fingerFills?.dispose(); fingerFills = null; }
             // and, where her own fingers begin, her ring smoothed (ownFingers.ts): from rest metres into her geometry
             if (ownFingers?.seam.index.length) {
               const R = ownFingers.seam, toGeom = new THREE.Matrix3().setFromMatrix4(babyFrame.meshToRest).invert(), pos = new Float32Array(R.delta.length), v = new THREE.Vector3();
@@ -6488,6 +6498,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // ...and a bake of her for the story player (scripts/sarahV2Recovery/story-sarah.mjs)
       if (new URLSearchParams(globalThis.location?.search ?? '').get('bake') === 'story') (globalThis as unknown as Record<string, unknown>).__sarahLabStory = { ready: storyReady, bake: bakeForStory };
       // ?probe=cloth: run the cloth tee N frames at a fixed step between pictures (a software renderer draws ~1 a second)
+      // (a probe's look inside her hands: her mesh and the finger parts, read only by a probe that asks)
+      if (new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth') (globalThis as unknown as Record<string, unknown>).__sarahLabHands = () => ({ mesh: bodyOf()?.mesh ?? null, fingerSplit, fingerWeights, fingerFills, babyFrame, measure, THREE });
       if (new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth') (globalThis as unknown as Record<string, unknown>).__sarahLabCloth = {
         // the three masses (softBody.ts): where each is, and what her skin shows of it (metres)
         bellySkin: (all?: boolean) => { const k = bellySkin(); if (k && babyAutoDepth && babySkinDepth?.length === k.length) { const u = depthUnit(); for (let i = 0; i < k.length; i++) k[i] -= babyAutoDepth * u * babySkinDepth[i]; } return k ? { n: k.length / 3, sample: Array.from(all ? k : k.slice(0, 30)), depth: all && babySkinDepth ? Array.from(babySkinDepth) : null, depthUnit: depthUnit(), zmax: Math.max(...Array.from(k).filter((_, i) => i % 3 === 2)), baby: all && babyPoints ? Array.from(babyPoints) : null, babyAll: all && babyAll ? Array.from(babyAll) : null, curl: babyCurl ? { centre: babyCurl.centre.toArray(), long: babyCurl.long.toArray(), back: babyCurl.back.toArray(), side: babyCurl.side.toArray(), size: babyCurl.size.toArray() } : null } : null; },
@@ -6863,6 +6875,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (P4: the triangles that close her fingers' sides, drawn red over her, for a probe)
         fingerSplitShow: (on: boolean) => { const bm = bodyOf()?.mesh; if (!bm || !fingerSplit) return false;
           for (const m of [...(bm.parent?.children ?? [])]) if (m.name === 'finger-split-debug') m.removeFromParent();
+          // (drawn apart, round: that mesh red)
+          if (fingerFills) { const fm = fingerFills.mesh; fm.userData.keep ??= fm.material; fm.material = on ? new THREE.MeshBasicMaterial({ color: 0xff2020, side: THREE.DoubleSide }) : fm.userData.keep; return { filled: fingerFills.count }; }
           if (!on) return true;
           const T = fingerSplit.tris, filled = fingerSplit.filled, keptCount = T.length / 3 - filled;
           const mk = (idx: Uint32Array, color: number) => { const g = new THREE.BufferGeometry(); for (const k of ['position', 'normal', 'skinIndex', 'skinWeight']) { const at = bm.geometry.getAttribute(k); if (at) g.setAttribute(k, at); }
