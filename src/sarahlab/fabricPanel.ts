@@ -33,7 +33,7 @@ import {
 } from './fabricLibrary';
 import { ensureRest, setDetailKeep, setFabricLayer, setHang, setRegionOverlay, setUnder } from './fabricMaterial';
 import type { DetailKeep } from './bodyDetail';
-import { DEFAULT_LAYER_DETAIL, DEFAULT_VULVA_KEEP, resolveDetail, resolveVulva, type LayerDetail, type ResolvedDetail } from './detailMaterials';
+import { DEFAULT_LAYER_DETAIL, DEFAULT_VULVA_KEEP, resolveDetail, resolveVulva, type DetailMaterial, type LayerDetail, type ResolvedDetail } from './detailMaterials';
 import { BRUSH_RANGE_CM, BodyPaint, PAINT_LAYER_COUNT, packLayer } from './bodyPaint';
 import { BODY_REGIONS, REGION_GROUPS, groupOf, groupRegions, type BodyMap, type RegionSide } from './bodyRegions';
 import { CleavageBridge } from './cleavageBridge';
@@ -196,6 +196,8 @@ export interface FabricPanel {
   detail(): DetailOverride;
   /** How much of her shows through a modelled garment: the MANUAL values where set, else AUTO from its fabric. */
   garmentDetail(name: string): DetailKeep;
+  /** A modelled garment's material row (AUTO's, from its fabric's family): what it is made of, whatever its DETAIL is set to. */
+  garmentMaterial(name: string): DetailMaterial | null;
   setDetail(which: 'nipple' | 'navel' | 'vulva', value: number | null): void;
   /**
    * How much of her vulva's lips' shape shows through what is over it now (0 none .. 1 all; Joshua, 2026-10-31: "a
@@ -1101,6 +1103,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     coversLower() { return templates.some((t) => !!t && LOWER_KINDS.includes(pieceKind(t.id) ?? 'top')); },
     detail: () => override,
     garmentDetail,
+    garmentMaterial: (name: string) => garmentResolved(name).material,
     setDetail: setDetailValue,
     vulvaKeep: () => override.vulva ?? autoDetail('vulva')?.keep ?? DEFAULT_VULVA_KEEP,
     detailControl() { const e = detailControl(); drawDetail(); return e; },

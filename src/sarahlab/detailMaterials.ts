@@ -58,6 +58,25 @@ export const DETAIL_MATERIALS: readonly DetailMaterial[] = Object.freeze(([
 
 export const detailMaterial = (id: string): DetailMaterial | undefined => DETAIL_MATERIALS.find((m) => m.id === id);
 
+/**
+ * HOW FLAT A GARMENT PRESSES HER NAVEL (Joshua, 2026-11-05, of her navel under the red tee: "the side view is boxy for
+ * some reason and not smooth following the rounded shape"; going ahead with a garment's SHAPE and LOOK split). A
+ * garment over her middle presses an outie toward an ordinary navel, a stretch knit more than a loose thick one: 0 not
+ * at all, 1 all the way. It is her navel's SHAPE under the garment (so the fabric is no longer held off her belly round
+ * it like a tent); what shows of it is still NAVEL DETAIL, drawn through the fabric as it stood before it was pressed
+ * (`DetailKeepLike.navelShows`). Paint presses nothing. GAME TUNING, a row each beside his sheet's (his rows are as he
+ * wrote them).
+ */
+export const NAVEL_PRESS: Readonly<Record<string, number>> = Object.freeze({
+  fineJersey: 0.5, athleticKnit: 0.6, chunkySweater: 0.35, ribbedKnit: 0.5, sheerNylon: 0.6, swimsuit: 0.6, sportsBra: 0.7, structuredBra: 0.7,
+  paintMedium: 0, paintThin: 0, paintThick: 0,
+});
+/** A garment's press on her navel (`NAVEL_PRESS`), by its material row; a stretch knit's where there is none. */
+export function navelPressOf(m: DetailMaterial | null | undefined): number {
+  const p = m ? NAVEL_PRESS[m.id] : undefined;
+  return typeof p === 'number' && Number.isFinite(p) ? Math.max(0, Math.min(1, p)) : NAVEL_PRESS.athleticKnit;
+}
+
 /** Each fabric family's own row. */
 export const FAMILY_MATERIAL: Readonly<Record<FabricFamilyId, string>> = Object.freeze({
   jersey: 'fineJersey', athletic: 'athleticKnit', sweater: 'chunkySweater', ribbed: 'ribbedKnit', pantyhose: 'sheerNylon',

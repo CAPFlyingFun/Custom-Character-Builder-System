@@ -273,7 +273,7 @@ import { HIP_TURN_FIELD, createHipTurn, type HipTurn } from './hipTurn';
 import { birthAt, birthLength, birthLine, REALISTIC_STRETCH, type BirthMoment, type BirthPace } from './birthSequence';
 /** GAME TUNING: all of it within `near` of a knee, none past `far` (metres); `passes` of `lambda` each */
 const KNEE_SMOOTH = Object.freeze({ near: 0.06, far: 0.12, passes: 60, lambda: 0.6, restore: 0 });
-import { DEFAULT_VULVA_KEEP } from './detailMaterials';
+import { DEFAULT_VULVA_KEEP, navelPressOf } from './detailMaterials';
 import { attachJiggle, bellyTune, breastTune, createJiggleUniforms, feltAcceleration, GRAVITY, GRAVITY_SHARE, LEG_TUNE, restingMass, stepMass, type LegBones, type Mass } from './softBody';
 import { applyMilk, applyWomb, applyZeroRefine, babyAnchors, babyWeightState, chestAnchors, chestFieldWeights, groinAnchors, groinFieldWeights, loadMilk, milkAnchors, milkBalanceState, milkFieldWeights, milkState, MILK_PATH, babyFieldWeights, loadWomb, loadZeroRefine, sidesAnchors, sidesFieldWeights, zeroRefineWeight, UPPER_FIELD_PREFIX, WOMB_PATH, ZERO_FIELD, ZERO_REFINE_PATH } from './zeroRefine';
 import { NAVEL_MORPHS, type NavelPiece } from './navelPiece';
@@ -2226,17 +2226,39 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * still should have a visible effect"; "the bellybutton also doesn't appear with the slider… the overrides should be
    * working"): BREAST and NAVEL DETAIL as the outfit editor holds them, MANUAL where set, else AUTO from the tee's fabric.
    */
-  function clothKeep(): { nipple: number; navel: number } {
-    return fabric?.garmentDetail('shirtSpandexLite') ?? { nipple: 0.45, navel: 0.8 };
+  function clothKeep(): { nipple: number; navel: number; navelShows: number } {
+    const k = fabric?.garmentDetail('shirtSpandexLite') ?? { nipple: 0.45, navel: 0.8 };
+    // her navel drawn through the fabric as it stood before the garment pressed it (`clothPress`): how much farther out
+    // that is than it is pressed, at her pressure now
+    const o = navelSoft ? navelSpring.x : navelPress, raw = navelRawXAt(o);
+    const looked = 1 - Math.max(raw, 1 - k.navel), pressed = 1 - Math.max(raw, clothPress(k.navel));
+    return { ...k, navelShows: pressed > 0.02 && looked > pressed ? (looked / pressed) * (1 + navelStandIn * (1 - pressed / looked)) : 1 };
   }
   /**
-   * Under the light tee -- the cloth or the fitted one, or the procedural garment a probe put on her -- her navel is softened the way paint softens it: toward an
-   * ordinary navel by what NAVEL DETAIL hides. (Not the fitted tee's own navel: its shapes follow hers, and settled to
-   * an ordinary navel it would dip where hers does; that one is settled onto its smooth surface instead, in the shader.)
+   * How much of the shape a pressed navel no longer gives the garment its drawn relief stands in for, as a share of
+   * what was pressed away (0: drawn only as her navel stood; 1: as much again). From the front the tee's bump over her
+   * whole outie was most of her navel's look, so what is pressed away is drawn back. GAME TUNING (a probe may move it).
+   */
+  let navelStandIn = 2;
+  /**
+   * How flat the garment over her middle presses her navel (Joshua, 2026-11-05: the side view "boxy... not smooth
+   * following the rounded shape"; going ahead with SHAPE and LOOK split): what NAVEL DETAIL hides, or what its fabric
+   * presses (`NAVEL_PRESS`: a stretch knit more than a loose thick one), whichever is more. Her navel's SHAPE: held out
+   * by her whole outie, the tight tee stood off her belly round it and fell from it in a straight run to where her belly
+   * curves away below. What shows of it is NAVEL DETAIL, drawn as it stood (`clothKeep`'s navelShows).
+   */
+  function clothPress(navelKeep = clothKeep().navel): number {
+    return Math.max(1 - navelKeep, navelPressOf(fabric?.garmentMaterial('shirtSpandexLite')));
+  }
+  /**
+   * Under the light tee -- the cloth or the fitted one, or the procedural garment -- her navel is softened the way paint
+   * softens it: toward an ordinary navel by as much as the garment presses it (`clothPress`). (Not the fitted tee's own
+   * navel: its shapes follow hers, and settled to an ordinary navel it would dip where hers does; that one is settled
+   * onto its smooth surface instead, in the shader.)
    */
   let clothFlattenLaid = 0;
   function clothFlatten(): number {
-    clothFlattenLaid = clothWorn() || fittedTee() || garmentRoom ? 1 - clothKeep().navel : 0;
+    clothFlattenLaid = clothWorn() || fittedTee() || garmentRoom ? clothPress() : 0;
     return clothFlattenLaid;
   }
   /** The fitted light tee, when it is what she wears over her middle (the cloth off), or null. */
@@ -6657,7 +6679,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         setClothNeckline(cloth.mesh.material as THREE.Material, cloth.neckline());
         // and its crop's hem and tank's armholes, the same way
         setClothTrim(cloth.mesh.material as THREE.Material, cloth.trim());
-        if (Math.abs(1 - keep.navel - clothFlattenLaid) > 1e-3) applyLook();
+        if (Math.abs(clothPress(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
         if (fields.cloth) fields.cloth.textContent = clothLine(cloth.stats(), frameMs);
       }
       // the procedural tee a probe put on her (Stage 2b review): the room's tees stand aside while it is worn, it is laid
@@ -6703,7 +6725,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // plain tee carries no cut, so its edge is never dropped)
         setClothNeckline(garmentRoom.cloth.mesh.material as THREE.Material, null); setClothTrim(garmentRoom.cloth.mesh.material as THREE.Material, null);
         if (garmentAuto) setCutEdge(garmentRoom.cloth.mesh.material as THREE.Material, true);
-        if (Math.abs(1 - keep.navel - clothFlattenLaid) > 1e-3) applyLook();
+        if (Math.abs(clothPress(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
       }
       // the fitted light tee (the cloth off): her nipples drawn through it and its own navel settled onto its smooth
       // surface, at the editor's BREAST and NAVEL DETAIL; her navel softened under it to match
@@ -6717,7 +6739,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const keep = clothKeep();
         setClothDetail(tee.material as THREE.Material, fitted.spots.fitted(keep, fitted.navel));
         fittedLaid = true;
-        if (Math.abs(1 - keep.navel - clothFlattenLaid) > 1e-3) applyLook();
+        if (Math.abs(clothPress(keep.navel) - clothFlattenLaid) > 1e-3) applyLook();
       } else if (fittedLaid && !clothWorn()) {
         const material = partMeshes.get('spandex-lite')?.[0]?.material;
         if (material) setClothDetail(material as THREE.Material, null);
@@ -7486,6 +7508,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { tested, seen: out.length, worst: out.sort((a, b) => b.by - a.by).slice(0, k) };
         },
         garmentShade: (on: boolean) => { garmentShade = on; return true; },
+        navelStandIn: (x?: number) => { if (x !== undefined && Number.isFinite(x)) navelStandIn = Math.max(0, x); const k = clothKeep(); return { standIn: navelStandIn, keep: k, press: clothPress(k.navel), drawn: garmentRoom?.cloth.detailShading(k)?.navel ?? null }; },
         garmentProfile: (i = 0) => garmentRoom?.cloth.detailProfile(i) ?? null,
         garmentDetailShade: (patch?: { spread?: number; widen?: number; slope?: number; grow?: number }) => garmentRoom?.cloth.detailShade(patch) ?? null,
         garmentStats: () => garmentRoom?.cloth.stats() ?? null,

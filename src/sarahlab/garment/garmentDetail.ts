@@ -26,7 +26,7 @@
  */
 import type { SkinContacts } from '../clothTypes';
 import type { ClothDetailState } from '../clothDetail';
-import { DETAIL_LOOK, DetailSpots, type DetailPoints, type Poser, type Posed } from '../detailSpots';
+import { DETAIL_LOOK, DetailSpots, NAVEL_SHOWS_MOST, type DetailKeepLike, type DetailPoints, type Poser, type Posed } from '../detailSpots';
 
 /** How far a dome's top stands above her detail's tip, world units (0.5 mm): the cloth is flat between its particles. */
 export const DOME_MARGIN = 0.05;
@@ -157,8 +157,15 @@ export class GarmentDetail {
    * (by (r/r')², the relief's volume kept). `gaps` is `GarmentCloth.detailGap` (navel, then the nipples; non-finite:
    * as the tee), `touch` how far off the tip the cloth stands when it lies on it.
    */
-  shading(keep: { readonly nipple: number; readonly navel: number }, gaps?: { readonly navel: number; readonly nipples: readonly number[] }, touch = 0): ClothDetailState {
-    const base = this.spots.cloth(keep);
+  shading(keep: DetailKeepLike, gaps?: { readonly navel: number; readonly nipples: readonly number[] }, touch = 0): ClothDetailState {
+    let base = this.spots.cloth(keep);
+    // her navel pressed by the garment (`navelShows` over 1, the room's NAVEL_PRESS): drawn from its own tip as it stood,
+    // not from its pressed centre -- pressed, her outie's middle sinks under her smooth surface and drew a dimple
+    const sh = keep.navelShows, t0 = this.tips[0];
+    if (base.navel && sh !== undefined && Number.isFinite(sh) && sh > 1 && t0.top > 0) {
+      const stood = t0.top * Math.min(NAVEL_SHOWS_MOST, sh) * clamp01(keep.navel);
+      if (stood > base.navel.height) base = { ...base, navel: { ...base.navel, height: stood } };
+    }
     if (!gaps) return base;
     const soften = <T extends { readonly height: number; readonly radius: number }>(spot: T, gap: number | undefined, i: number): T => {
       // spread by the cloth's distance off the tip, and by as much as the dome's flat top was widened past the cloth tee's
