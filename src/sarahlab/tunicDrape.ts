@@ -131,27 +131,36 @@ const smooth01 = (x: number) => { const c = Math.max(0, Math.min(1, x)); return 
  * the same 2 mm at every distance, which nothing but her own skin under it is ever that close to. GAME TUNING.
  */
 export const DRAPE_LEAD = 0.2;
+/** For a probe: each of the 2026-11-06 changes on or off (`TunicDrape.reshape` to build again with them). */
+export const DRAPE_PROBE = { lift: true, covered: true, whole: true, lead: true };
 /** The most the lead grows where the drape is seen at a slant (at most DRAPE_LEAD × this toward the eye: 6 mm). GAME TUNING. */
 export const DRAPE_LEAD_SLANT = 3;
 const leading = new WeakSet<THREE.Material>();
+const leadUniforms: { value: number }[] = [];
+/** For a probe: the lead on or off on every drape (DRAPE_PROBE.lead). */
+export function setDrapeLead(on: boolean): void { DRAPE_PROBE.lead = on; for (const u of leadUniforms) u.value = on ? DRAPE_LEAD : 0; }
 /** Patch the drape's material, once, to draw it DRAPE_LEAD toward the eye (chained onto whatever it has, as fabricMaterial.ts chains). */
 export function leadToward(material: THREE.Material): void {
   if (leading.has(material)) return;
   leading.add(material);
   const previous = material.onBeforeCompile, cacheKey = material.customProgramCacheKey;
+  const lead = { value: DRAPE_LEAD };
+  leadUniforms.push(lead);
   material.onBeforeCompile = function (shader, renderer) {
     previous.call(this, shader, renderer);
+    shader.uniforms.drapeLead = lead;
+    shader.vertexShader = 'uniform float drapeLead;\n' + shader.vertexShader;
     // (DRAPE_LEAD off her surface: along the line of sight that is more where it is seen at a slant, by one over the
     // slant's cosine, up to DRAPE_LEAD_SLANT times)
     shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', () => `#include <project_vertex>
     {
       vec3 drapeEye = normalize(-mvPosition.xyz);
       float drapeFacing = dot(transformedNormal, transformedNormal) > 0.0 ? abs(dot(normalize(transformedNormal), drapeEye)) : 1.0;
-      mvPosition.xyz += drapeEye * (${DRAPE_LEAD.toFixed(4)} / max(drapeFacing, ${(1 / DRAPE_LEAD_SLANT).toFixed(4)}));
+      mvPosition.xyz += drapeEye * (drapeLead / max(drapeFacing, ${(1 / DRAPE_LEAD_SLANT).toFixed(4)}));
       gl_Position = projectionMatrix * mvPosition;
     }`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|drape-lead-2`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|drape-lead-3`; };
   material.needsUpdate = true;
 }
 
@@ -513,7 +522,7 @@ export class TunicDrape {
       // edge is not one level line round her -- over her seat it rose to a peak 2-3 cm above it, and the drape, whole only
       // to the line and fading above it, let the leggings under that peak show through in patches (Joshua, 2026-11-06:
       // "the back end of that shirt on a wrong z-layer or it's not offsetting correctly")
-      const cov = this.covered;
+      const cov = DRAPE_PROBE.covered ? this.covered : null;
       if (cov) for (let k = 0; k < nc; k++) {
         const t = (py[k] - hipY) / T;
         if (t <= hemT || t >= T_TOP - TOP_FADE || cov(cand[k]) >= 0.5) continue;
@@ -678,7 +687,7 @@ export class TunicDrape {
       smooth(most, SHORT_ROWS - SHORT_COLUMNS, false);
       smooth(most, SHORT_COLUMNS, true);
       // never inside her where it shows, and a hair out where it shows fully (the rule above, against her smoothed skin)
-      for (let i = 0; i < n; i++) if (shown(i)) radius[i] = skinSmooth[i] + most[i] + Math.max(off[i], this.hemLift * T * smooth01(alpha[i] / 0.5));
+      for (let i = 0; i < n; i++) if (shown(i)) radius[i] = skinSmooth[i] + (DRAPE_PROBE.lift ? most[i] : 0) + Math.max(off[i], this.hemLift * T * smooth01(alpha[i] / 0.5));
     }
     {
       // (for a probe: where it shows, how much of it is drawn inside her skin as measured)
@@ -713,7 +722,7 @@ export class TunicDrape {
         const clear = (radius[i] - Math.hypot(dx, dz)) / T;
         // only under drape that is whole there: under a part still fading in, the paint stays, or what is under the
         // shirt would show through the fade as dark patches
-        this.hang[cand[k]] = smooth01((whole[i] - 0.9) / 0.1) * smooth01((clear - HANG_FROM) / HANG_FROM);
+        this.hang[cand[k]] = smooth01(((DRAPE_PROBE.whole ? whole[i] : alpha[i]) - 0.9) / 0.1) * smooth01((clear - HANG_FROM) / HANG_FROM);
       }
       // below the hem, as she stands now, no shirt at all: a big bump hangs lower than the shirt reaches, but its paint
       // (measured on her at rest) still ran on down it -- seen from below, red under the hem

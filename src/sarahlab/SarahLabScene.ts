@@ -34,6 +34,7 @@ import { REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { BEND_COMPLIANCE } from './garment/garmentCloth';
 import { NavelSurface } from './garment/navelSurface';
 import { NavelPatch } from './garment/navelPatch';
+import { DRAPE_PROBE, setDrapeLead } from './tunicDrape';
 import { setCutEdge } from './garment/cutEdge';
 import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorKey, withConstruction, type GarmentRecord, type GarmentSettings } from './garment/settings';
 import { GarmentPanel } from './garmentPanel';
@@ -7590,6 +7591,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (m && o2?.opaque !== undefined) { const mat = m.material as THREE.Material; mat.transparent = !o2.opaque; mat.needsUpdate = true; }
           if (m && o2?.hang) { const c = m.geometry.getAttribute('color') as THREE.BufferAttribute; let lo = 0; for (let i = 0; i < c.count; i++) if (c.getW(i) > 0.01 && c.getW(i) < 0.9) lo++; return { ...(out as object), fading: lo, points: c.count }; }
           return out;
+        },
+        drapeProbe: (patch?: Partial<typeof DRAPE_PROBE>) => {
+          if (patch) { Object.assign(DRAPE_PROBE, patch); if (patch.lead !== undefined) setDrapeLead(patch.lead); fabric?.reshaped(); }
+          return { ...DRAPE_PROBE };
         },
         navelFine: (on?: boolean) => { if (on !== undefined) NavelPatch.off = !on; return !NavelPatch.off; },
         navelLift: (on?: boolean) => { const det = (garmentRoom?.cloth as unknown as { detail?: { navelLift: boolean } } | undefined)?.detail; if (!det) return null; if (on !== undefined) det.navelLift = on; return det.navelLift; },

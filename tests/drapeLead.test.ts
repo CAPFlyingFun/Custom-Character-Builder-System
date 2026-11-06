@@ -20,10 +20,11 @@ describe('the drape leads toward the eye', () => {
     leadToward(m); leadToward(m);
     const vert = compile(m);
     expect(vert.split('drapeEye * ').length - 1).toBe(1);
-    expect(vert).toContain(`${DRAPE_LEAD.toFixed(4)} / max(drapeFacing, ${(1 / DRAPE_LEAD_SLANT).toFixed(4)})`);
+    expect(vert).toContain(`drapeLead / max(drapeFacing, ${(1 / DRAPE_LEAD_SLANT).toFixed(4)})`);
+    expect(vert).toContain('uniform float drapeLead;');
     expect(vert.indexOf('#include <project_vertex>')).toBeLessThan(vert.indexOf('drapeEye'));
     expect(vert).toContain('gl_Position = projectionMatrix * mvPosition;');
-    expect(m.customProgramCacheKey()).toContain('|drape-lead-2');
+    expect(m.customProgramCacheKey()).toContain('|drape-lead-3');
   });
   it('chains onto what the material already does', () => {
     const m = new THREE.MeshStandardMaterial();
@@ -33,7 +34,7 @@ describe('the drape leads toward the eye', () => {
     leadToward(m);
     compile(m);
     expect(ran).toBe(1);
-    expect(m.customProgramCacheKey()).toBe('mine|drape-lead-2');
+    expect(m.customProgramCacheKey()).toBe('mine|drape-lead-3');
   });
   it('is 2 mm, at most 6 at a slant (world units, 100 to the metre)', () => {
     expect(DRAPE_LEAD).toBe(0.2);
