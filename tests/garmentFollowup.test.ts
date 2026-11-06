@@ -1246,20 +1246,25 @@ describe('GarmentDetail.keep: BREAST and NAVEL DETAIL decide how high and how wi
     expect(heights({ nipple: -3, navel: Infinity }, ps)).toEqual(heights({ nipple: 0, navel: 0 }, ps));
   });
 
-  it('by default the cloth lies on her navel\'s own shape: nothing lifts it there (no apex, no dome, no tent), her nipples\' domes as before', () => {
-    // (Joshua, 2026-11-06: "render like you did - a graph... of how the bellybutton is shape and match it up")
-    const b = detailBody(), ps = [posedAt([NAVEL_AT, 0, 0.01]), posedAt([NAVEL_AT + 0.3, 0, 0.05]), posedAt([NAVEL_AT + 0.8, 0, 0.01])];
+  it('by default the cloth lies on her navel\'s own shape: one point laid on its crown and held there, no higher; nothing else lifted', () => {
+    // (Joshua, 2026-11-06: "render like you did - a graph... of how the bellybutton is shape and match it up"; at 150%,
+    // "why is the bellybutton flattening above 100%?")
+    const b = detailBody(), ps = [posedAt([NAVEL_AT + 0.3, 0, 0.05]), posedAt([NAVEL_AT - 0.9, 0.9, 0.01]), posedAt([NAVEL_AT - 0.9, -0.9, 0.01])];
     const gd = new GarmentDetail(b.points, ps.length, true, restOf(b.rest), Uint32Array.from([0, 1, 2]));
     expect(gd.navelLift).toBe(false);
     const { positions, after, before } = particlesOver(ps), skin = Float32Array.from(after.point.subarray(0, ps.length * 3));
     gd.follow(poserOf(b.rest), positions, after, before, ps.length, true);
-    expect(gd.apex).toBe(-1);
-    expect(Array.from(after.point.subarray(0, ps.length * 3))).toEqual(Array.from(skin));
-    // lifted, as before, for a probe
+    // the nearest its axis on it, held at her navel's own crown and DOME_MARGIN
+    expect(gd.apex).toBe(0);
+    expect(gd.apexAlong).toBeCloseTo(gd.tips[0].along + DOME_MARGIN, 9);
+    expect(heightOf(after, 0)).toBeCloseTo(heightOf({ point: Float32Array.from(gd.tips[0].at) } as unknown as SkinContacts, 0) + DOME_MARGIN, 5);
+    // the rest of the cloth on her skin as it was
+    expect(Array.from(after.point.subarray(3, 9))).toEqual(Array.from(skin.subarray(3, 9)));
+    // lifted, as before, for a probe: the apex held higher than her crown
     const lifted = new GarmentDetail(b.points, ps.length, true, restOf(b.rest), Uint32Array.from([0, 1, 2])), o = particlesOver(ps);
     lifted.navelLift = true;
     lifted.follow(poserOf(b.rest), o.positions, o.after, o.before, ps.length, true);
-    expect(heightOf(o.after, 0)).toBeGreaterThan(heightOf(after, 0));
+    expect(lifted.apexAlong).toBeGreaterThanOrEqual(gd.apexAlong - 1e-9);
   });
 
   it('shading(keep) is the cloth tee\'s own (DetailSpots.cloth), from the same measure: nipples 0 at keep 0, nippleRelief at 1', () => {

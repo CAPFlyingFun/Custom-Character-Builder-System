@@ -51,6 +51,24 @@ export const SHADE_SPREAD = 1;
 export const SHADE_SLOPE = 0.5;
 /** How much wider than the cloth tee's her navel's relief may be drawn, for a probe (`shade.grow`; 1, the tee's, by default). */
 export const SHADE_NAVEL_GROW = 1.5;
+/**
+ * HER NAVEL'S CROWN under the cloth (Joshua, 2026-11-06, of her navel under the tee from the side: at 73% and 100% right,
+ * at 150% "why is the bellybutton flattening above 100%?"). The cloth lies on her navel's own shape, but its points are
+ * about 1.2 cm apart -- farther at 150%, stretched over her -- and her navel about 3 cm across: where none of them
+ * happened to land on its crown, the cloth spanned straight across it (measured, 150%: points 0.9 cm above and 0.7 cm
+ * below it, the cloth 4.4 mm under the crown) and her navel was gone from the side. So the cloth point nearest her
+ * navel's axis is laid on the axis (`apexOver`) and held at her navel's own crown, DOME_MARGIN out -- no higher: no tent,
+ * no dome, nothing lifted round it.
+ */
+export function crownOver(d: Posed, p: Float32Array, A: SkinContacts, i: number, crown: number): void {
+  const [bx, by, bz] = d.base, [nx, ny, nz] = d.n, q = A.point, qn = A.normal, i3 = i * 3;
+  const skin = (q[i3] - bx) * nx + (q[i3 + 1] - by) * ny + (q[i3 + 2] - bz) * nz;
+  if (crown <= skin) return;
+  const along = (p[i3] - bx) * nx + (p[i3 + 1] - by) * ny + (p[i3 + 2] - bz) * nz, drop = along - crown;
+  q[i3] = p[i3] - nx * drop; q[i3 + 1] = p[i3 + 1] - ny * drop; q[i3 + 2] = p[i3 + 2] - nz * drop;
+  qn[i3] = nx; qn[i3 + 1] = ny; qn[i3 + 2] = nz;
+}
+
 /** The outer share of the dome over which the tent gives way to her smooth surface (no step at the dome's edge). */
 export const TENT_FADE = 0.5;
 
@@ -149,9 +167,11 @@ export class GarmentDetail {
     // at the tip's height: a tent, as the cloth tee's own outie is, rather than a flat top as wide as the triangle
     // her navel: the cloth point nearest its axis is laid ON the axis, the apex of a tent over it (`apexOver`)
     // her navel: the cloth on its own shape, as her skin under each particle stands (the room draws her navel a little
-    // flatter than her clothes feel it, `navelSoft.felt`, so it stays under the cloth); lifted off it only for a probe
-    this.apex = this.navelLift ? this.apexOver(positions, count, ds[0], this.tips[0]) : -1;
-    if (this.apex >= 0) this.apexAlong = this.apexHeight(positions, ds[0], this.tips[0], this.apex);
+    // flatter than her clothes feel it, `navelSoft.felt`, so it stays under the cloth), with one cloth point on its crown
+    // (`crownOver`); lifted off it only for a probe
+    this.apex = this.apexOver(positions, count, ds[0], this.tips[0]);
+    if (this.apex >= 0) this.apexAlong = this.navelLift ? this.apexHeight(positions, ds[0], this.tips[0], this.apex) : this.tips[0].along + DOME_MARGIN;
+    if (!this.navelLift && this.apex >= 0) crownOver(ds[0], positions, A, this.apex, this.apexAlong);
     ds.forEach((d, i) => (i === 0 && !this.navelLift) || domeOver(d, positions, A, count, this.around[i] ? this.tips[i] : undefined, i === 0 ? 1 : 1 - nip, i === 0 ? 1 - nav : 1 - nip, 0,
       i === 0 && this.apex >= 0 ? [this.apex] : this.cover.subarray(i * 3, i * 3 + 3), i === 0 && this.apex >= 0 ? this.apexAlong : undefined));
   }
