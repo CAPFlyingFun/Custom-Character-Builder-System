@@ -3998,11 +3998,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const TOUCH_REACH = Object.freeze({ elbowLow: 1, elbowOut: 0.35 });
   /** GAME TUNING (radians; P4, a thumb on a place: thumbOnto): how far its base folds back (below 0) and across her palm,
    * how far it turns either way out of the way it folds (out of her palm's plane, or into it) and about its own length,
-   * how far over the place (metres) it is first brought, and how many passes bring it down onto it; how thick its bones are as capsules (a share of its pad's depth: its pad is
-   * its fullest) and how far its outer joints bend; how many steps
+   * how far over the place (metres) it is first brought, and in how many steps it is lowered onto it; how thick its bones are as capsules (a share of its pad's depth: its pad is
+   * its fullest) and its tip; what a radian of its turn about its length, or of its joints' bend, costs against a metre
+   * of pad from its place (a thumb at ease, not hooked); and how far its outer joints bend; how many steps
    * the whole is searched in and how many times halved round the best; what a metre of thumb inside the thing costs
    * against a metre of pad from its place. */
-  const THUMB_ON = Object.freeze({ fold: [-1.0, 1.2] as const, lift: 1.6, twist: 1.6, bend: 1.0, coarse: 7, refine: 6, inside: 5, thick: 0.8, over: 0.012, down: 3 });
+  const THUMB_ON = Object.freeze({ fold: [-1.0, 1.8] as const, lift: 1.8, twist: 2.0, bend: 1.2, coarse: 7, refine: 6, inside: 5, thick: 0.8, tip: 0.5, ease: 0.002, over: 0.012, down: 4 });
   const touchHere = (): boolean => touchTest !== 'off' && pose === 'stand';
   function setTouchTest(mode: TouchTest): void {
     touchTest = mode; touchAt = null; touchShapes = {}; armSearch.L = undefined; armSearch.R = undefined;
@@ -4355,17 +4356,19 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const P = (x: THREE.Vector3): [number, number, number] => [x.x, x.y, x.z];
     // (as a thumb comes onto a thing: first to just over the place, anywhere it can reach, then down onto it from there,
     // none of it in the thing)
-    let goal = on.at.clone().addScaledVector(on.out, O.over * M), inside = 0;
+    let goal = on.at.clone().addScaledVector(on.out, O.over * M), inside = O.inside, turned = [0, 0, 0, 0];
     const cost = () => {
       padBone.localToWorld(v.copy(padLocal));
       let c = v.distanceTo(goal) / M;
       // (none of it in what she holds: each bone a capsule as thick as its pad is deep)
-      if (inside > 0) for (const jt of f.joints) { const a = bones[jt].getWorldPosition(w), kid = bones[jt].children.find((o) => (o as THREE.Bone).isBone); if (!kid) continue; const e = kid.getWorldPosition(new THREE.Vector3()); for (const t of [0.5, 1]) { const d = dist(P(a.clone().lerp(e, t))) - padDepth * O.thick; if (d < 0) c += inside * (-d / M); } }
-      return c;
+      // (its tip, past its pad, thinner)
+      if (inside > 0) f.joints.forEach((jt, k) => { const a = bones[jt].getWorldPosition(w), kid = bones[jt].children.find((o) => (o as THREE.Bone).isBone); if (!kid) return; const e = kid.getWorldPosition(new THREE.Vector3()); for (const t of [0.5, 1]) { const d = dist(P(a.clone().lerp(e, t))) - padDepth * (k === f.joints.length - 1 && t === 1 ? O.tip : O.thick); if (d < 0) c += inside * (-d / M); } });
+      // (and as little turned as will do: a thumb at ease)
+      return c + O.ease * (Math.abs(turned[2]) + turned[3]);
     };
     const lo = [O.fold[0], -O.lift, -O.twist, 0], hi = [O.fold[1], O.lift, O.twist, O.bend], clamp = (x: number, k: number) => Math.min(hi[k], Math.max(lo[k], x));
     let best = { x: [0, 0, 0, 0], cost: Infinity };
-    const tryAt = (x: number[]) => { set(x[0], x[1], x[2], x[3]); const k = cost(); if (k < best.cost) best = { x: x.slice(), cost: k }; };
+    const tryAt = (x: number[]) => { set(x[0], x[1], x[2], x[3]); turned = x; const k = cost(); if (k < best.cost) best = { x: x.slice(), cost: k }; };
     const n = O.coarse;
     for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) for (let t = 0; t <= n; t++) for (let k = 0; k <= 3; k++) tryAt([lo[0] + (hi[0] - lo[0]) * i / n, lo[1] + (hi[1] - lo[1]) * j / n, lo[2] + (hi[2] - lo[2]) * t / n, hi[3] * k / 3]);
     const refine = (step: number[], rounds: number) => {
@@ -4377,9 +4380,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     };
     refine([0, 1, 2, 3].map((k) => (hi[k] - lo[k]) / (k === 3 ? 3 : n)), O.refine);
     // (then down onto it: the place itself, none of the thumb in the thing, from where it came over it)
-    const over = best.cost * 1000;
-    goal = on.at.clone().addScaledVector(on.out, HAND_GRIP.gap * M); inside = O.inside; set(best.x[0], best.x[1], best.x[2], best.x[3]); best.cost = cost();
-    for (let pass = 0; pass < O.down; pass++) refine([0, 1, 2, 3].map((k) => (hi[k] - lo[k]) / (k === 3 ? 3 : n) / 4), O.refine);
+    set(best.x[0], best.x[1], best.x[2], best.x[3]); padBone.localToWorld(v.copy(padLocal)); const over = v.distanceTo(goal) / M * 1000;
+    // (lowered onto it a little at a time, as a thumb comes down on a thing: each pass's place a step nearer it)
+    inside = O.inside;
+    for (let pass = 1; pass <= O.down; pass++) {
+      goal = on.at.clone().addScaledVector(on.out, HAND_GRIP.gap * M + O.over * M * (1 - pass / O.down));
+      set(best.x[0], best.x[1], best.x[2], best.x[3]); turned = best.x; best.cost = cost();
+      refine([0, 1, 2, 3].map((k) => (hi[k] - lo[k]) / (k === 3 ? 3 : n) / 4), O.refine);
+    }
     set(best.x[0], best.x[1], best.x[2], best.x[3]);
     padBone.localToWorld(v.copy(padLocal));
     return { miss: v.distanceTo(on.at) / M * 1000, over, turns: best.x.map((x) => +x.toFixed(2)) };
