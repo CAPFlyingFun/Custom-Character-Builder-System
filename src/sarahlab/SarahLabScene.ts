@@ -74,7 +74,7 @@ import * as THREE from 'three';
 import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
 import { newJointTurn, type BindJoint, type HumanMeasure, type JointTurn, type MutableJointTurn } from '../actor/humanRig';
 import { measureContacts, type ContactPoint, type ContactSet, type FingerName } from '../actor/contactPoints';
-import { closeToTouch, shapeDistance, type GripShape } from '../actor/handGrip';
+import { closeToTouch, HAND_GRIP, shapeDistance, type GripShape } from '../actor/handGrip';
 import { BodySurface, type SurfaceAnchor } from './bodySurface';
 import { SEATED_TURNS, poseSeated } from '../actor/humanSeated';
 import { createSoftBaby, restorePose, stepSoftBaby, type SoftBaby } from './softBaby';
@@ -3471,7 +3471,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           tipAsked = W.clone().addScaledVector(along, handLen);
         } else {
           tipAsked = pivot ? pivot.clone().addScaledVector(along, handLen * BABY_HANDS.palmAt) : T;
-          W = tipAsked.clone().addScaledVector(along, -handLen).addScaledVector(top, K.lift * perM);
+          W = tipAsked.clone().addScaledVector(along, -handLen).addScaledVector(top, (touch?.lift ?? K.lift) * perM);
         }
         const SW = W.clone().sub(S);
         let d = SW.length(); reachShown = d / (a + b);
@@ -3947,12 +3947,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * left straight with its tip on the button and the rest closed loosely.
    * CUP: her right hand round a cup, her palm on its side toward her, fingers and thumb closed round it.
    * BUTTON: her right index fingertip on a call button on a post before her, that finger straight and the rest curled.
+   * TABLET (Joshua, 2026-11-05, choosing it: "One hand, reading" -- resting on her palm and fingers underneath, her thumb
+   * over its front edge, her other hand free to tap it): a tablet held up before her to read, its screen toward her eyes,
+   * in her LEFT hand -- her palm and fingers under its back, up it from its lower left corner, its left edge in the web of
+   * her thumb, her thumb over that edge onto its front.
    * SHOW: her right hand held out before her as if to shake hands, in a hand shape (HAND_SHAPES: a fist, open, or one finger lifted
    * from a fist) -- for looking at her hand from every side (Joshua, 2026-11-05: "render the hand in a fist, then lift each
    * finger separately and do 3 sides to see how it looks and make sure it looks like a real hand").
    */
-  type TouchTest = 'off' | 'cup' | 'button' | 'show';
-  let touchTest: TouchTest = 'off', touchProps: THREE.Group | null = null, touchShapes: { cup?: GripShape; table?: GripShape; button?: GripShape; panel?: GripShape } = {}, touchAt: { cup?: THREE.Vector3; button?: THREE.Vector3 } | null = null;
+  type TouchTest = 'off' | 'cup' | 'button' | 'tablet' | 'show';
+  let touchTest: TouchTest = 'off', touchProps: THREE.Group | null = null, touchShapes: { cup?: GripShape; table?: GripShape; button?: GripShape; panel?: GripShape; tablet?: GripShape } = {}, touchAt: { cup?: THREE.Vector3; button?: THREE.Vector3; tablet?: { centre: THREE.Vector3; across: THREE.Vector3; up: THREE.Vector3; out: THREE.Vector3 } } | null = null;
   /** GAME TUNING (metres): the cup's radius and height, where it stands from her right shoulder (her right, down, ahead)
    * and how far up it her palm goes, round from its right side toward her by `side` (her palm there as a hand shakes), and
    * how far (degrees) her fingers may turn from round it; the table's top under it, its size and leg thickness; how far (a share of its base's
@@ -3961,6 +3965,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * stands off its panel, the panel (wide, tall, deep) and how far the button sits above the panel's middle; her hand
    * pointing `dip` degrees below level and turned `roll` degrees from thumb-up toward palm-down (a forearm half turned,
    * as a hand reaching out to a button is), its fingers turned at most `turnsMost`.
+   * TABLET: its size (MEASURED, an 11-inch tablet: 24.8 x 17.9 cm, 7 mm thick), held upright, its middle from the middle of
+   * her shoulders (to her left, down, ahead), its screen turned across toward a point `eyes` above her head joint and ahead
+   * of it and tipped back `faceUp` degrees from upright;
+   * the middle of her palm on its back `palmIn` in from its left edge and `palmUp` up from its lower edge, her hand's line
+   * `palmOff` off its back, how far (degrees)
+   * her fingers may turn from straight up it, and how far her thumb opens before it closes onto its front; her thumb's pad
+   * on its screen `thumbIn` in from its left edge and `thumbUp` above the middle of her palm.
    * PRESS: how far each joint of each finger of a pointing hand closes, knuckle first (a share of its full bend) -- the
    * index all but straight, the others curled back (each finger can be apart from the next once her mesh's joins between
    * them are cut and each finger's skin is its own: actor/fingerSplit.ts, fingerWeights.ts), the thumb laid along the middle
@@ -3970,6 +3981,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     button: { right: 0.0, down: 0.22, ahead: 0.55, radius: 0.012, cap: 0.005, panel: [0.09, 0.17, 0.025] as const, high: 0.035, post: 0.05, dip: 15, roll: 45, turnsMost: 25 },
     press: { thumb: [0.15, 0.35, 0.35], index: [0.04, 0.08, 0.04], middle: [0.7, 0.8, 0.55], ring: [0.75, 0.85, 0.6], little: [0.8, 0.85, 0.6] } as Readonly<Record<FingerName, readonly number[]>>,
     show: { right: 0.02, down: 0.16, ahead: 0.42, dip: 8 },
+    tablet: { wide: 0.179, tall: 0.248, thick: 0.007, left: 0.06, down: 0.12, ahead: 0.36, eyes: [0.09, 0.08] as const, faceUp: 35, palmIn: 0.025, palmUp: 0.065, palmOff: 0.004, turnsMost: 25, thumbOpen: 0.9, thumbIn: 0.012, thumbUp: 0.0 },
   });
   /** GAME TUNING: hand shapes for the SHOW bench, each finger's closure knuckle first (a share of its full bend: bendFinger)
    * and its spread fourth -- a fist, the hand open, spread wide, and each finger (the thumb too) lifted straight from the
@@ -3984,6 +3996,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** GAME TUNING (P4, a reach for a thing): each radian her elbow is swung from where it hangs (down by her side, `elbowOut`
    * of the way out) costs `elbowLow` -- as a radian of a hand turned from the way asked does */
   const TOUCH_REACH = Object.freeze({ elbowLow: 1, elbowOut: 0.35 });
+  /** GAME TUNING (radians; P4, a thumb on a place: thumbOnto): how far its base folds back (below 0) and across her palm,
+   * how far it turns either way out of the way it folds (out of her palm's plane, or into it) and about its own length,
+   * how far over the place (metres) it is first brought, and how many passes bring it down onto it; how thick its bones are as capsules (a share of its pad's depth: its pad is
+   * its fullest) and how far its outer joints bend; how many steps
+   * the whole is searched in and how many times halved round the best; what a metre of thumb inside the thing costs
+   * against a metre of pad from its place. */
+  const THUMB_ON = Object.freeze({ fold: [-1.0, 1.2] as const, lift: 1.6, twist: 1.6, bend: 1.0, coarse: 7, refine: 6, inside: 5, thick: 0.8, over: 0.012, down: 3 });
   const touchHere = (): boolean => touchTest !== 'off' && pose === 'stand';
   function setTouchTest(mode: TouchTest): void {
     touchTest = mode; touchAt = null; touchShapes = {}; armSearch.L = undefined; armSearch.R = undefined;
@@ -3994,6 +4013,30 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const S = sk.skeleton.bones[measure.joints.shoulderR].getWorldPosition(new THREE.Vector3()), C = TOUCH_BENCH.cup, Tb = TOUCH_BENCH.table;
     // (SHOW: nothing to touch -- her hand held up before her)
     if (mode === 'show') { touchAt = {}; return; }
+    if (mode === 'tablet') {
+      // A TABLET HELD UP TO READ: upright before her and a little to her left, its screen turned to her eyes (her front +z,
+      // her left +x; the room stands her facing the camera)
+      const Tt = TOUCH_BENCH.tablet, SL = sk.skeleton.bones[measure.joints.shoulderL].getWorldPosition(new THREE.Vector3());
+      const mid = S.clone().add(SL).multiplyScalar(0.5), head = sk.skeleton.bones[measure.joints.head].getWorldPosition(new THREE.Vector3());
+      const centre = new THREE.Vector3(mid.x + Tt.left * M, mid.y - Tt.down * M, mid.z + Tt.ahead * M);
+      const eyes = new THREE.Vector3(head.x, head.y + Tt.eyes[0] * M, head.z + Tt.eyes[1] * M);
+      // (`across` toward her left, `up` up it, `out` out of its screen toward her)
+      // (turned to her eyes across, and tipped back `faceUp` degrees from upright, as a tablet read standing is held)
+      const toEyes = eyes.clone().sub(centre).setY(0).normalize(), up0 = Tt.faceUp * Math.PI / 180;
+      const out = toEyes.multiplyScalar(Math.cos(up0)).add(new THREE.Vector3(0, Math.sin(up0), 0)).normalize(), across = new THREE.Vector3(1, 0, 0).addScaledVector(out, -out.x).normalize(), up = new THREE.Vector3().crossVectors(across, out).normalize();
+      if (up.y < 0) up.negate();
+      touchAt = { tablet: { centre, across, up, out } };
+      const g = new THREE.Group(); g.name = 'touch-bench';
+      const body = new THREE.Mesh(new THREE.BoxGeometry(Tt.wide * M, Tt.tall * M, Tt.thick * M), new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.35, metalness: 0.5 }));
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry((Tt.wide - 0.014) * M, (Tt.tall - 0.014) * M), new THREE.MeshStandardMaterial({ color: 0x1b2a3a, emissive: 0x6d8fb8, emissiveIntensity: 0.35, roughness: 0.15 }));
+      screen.position.z = (Tt.thick / 2 + 0.0003) * M; body.add(screen);
+      // (its screen on its +z: turned so +x is to her right as she reads it, +y up it, +z toward her -- a turn, not a mirror)
+      body.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(across.clone().negate(), up, out)); body.position.copy(centre); body.name = 'touch-tablet';
+      g.add(body); three.add(g); touchProps = g;
+      const V = (v: THREE.Vector3): [number, number, number] => [v.x, v.y, v.z];
+      touchShapes.tablet = { kind: 'box', centre: V(centre), axes: [V(across), V(up), V(out)], half: [(Tt.wide / 2) * M, (Tt.tall / 2) * M, (Tt.thick / 2) * M] };
+      return;
+    }
     if (mode === 'button') {
       // A CALL BUTTON ON A POST before her, its face toward her (her front +z, her right -x): the button's face at the
       // place asked, its panel behind it, the post down to the floor
@@ -4035,9 +4078,22 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** Where a hand goes at the touch bench: its fingertip, the way its fingers point and the way the back of its hand
    * faces (as babyHandTarget's); null for a hand with nothing to touch. */
-  function touchTargetOf(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3; palm?: THREE.Vector3; press?: THREE.Vector3; turnsMost?: number } | null {
-    if (!touchHere() || !touchAt || !measure || name !== 'R') return null;
+  function touchTargetOf(name: 'L' | 'R', handLen: number, perM: number): { tip: THREE.Vector3; along: THREE.Vector3; face: THREE.Vector3; palm?: THREE.Vector3; press?: THREE.Vector3; turnsMost?: number; lift?: number } | null {
+    if (!touchHere() || !touchAt || !measure) return null;
     const sk = bodyOf()?.mesh; if (!sk) return null;
+    if (touchTest === 'tablet' && touchAt.tablet) {
+      // UNDER IT, HER LEFT HAND: her palm on its back, its fingers up it, the back of her hand away from it; the middle of
+      // her palm `palmIn` in from its left edge, `palmUp` up from its lower edge -- so its left edge is in the web of her
+      // thumb (her right hand left as it hangs, free)
+      if (name !== 'L') return null;
+      const Tt = TOUCH_BENCH.tablet, t = touchAt.tablet;
+      const onBack = t.centre.clone().addScaledVector(t.out, -(Tt.thick / 2) * M).addScaledVector(t.across, (Tt.wide / 2 - Tt.palmIn) * M).addScaledVector(t.up, -(Tt.tall / 2 - Tt.palmUp) * M);
+      const face = t.out.clone().negate(), along = t.up.clone();
+      const palm = onBack.clone().addScaledVector(face, Tt.palmOff * perM), tip = palm.clone().addScaledVector(along, handLen * BABY_HANDS.palmAt);
+      touchAsked = { tip: tip.clone(), along: along.clone(), face: face.clone(), centre: t.centre.clone() };
+      return { tip, along, face, palm, turnsMost: Tt.turnsMost, lift: 0 };
+    }
+    if (name !== 'R') return null;
     if (touchTest === 'show') {
       // HELD OUT BEFORE HER AS A HAND IS OFFERED TO SHAKE: her forearm not turned, her thumb up, her palm to her left, her
       // fingers ahead (`dip` below level) -- every side of it to be seen, none of her in the way
@@ -4266,23 +4322,95 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const V = (x: THREE.Vector3): [number, number, number] => [x.x, x.y, x.z];
     return { kind: 'box', centre: V(centre), axes: [V(along), V(across), V(n)], half: [Math.abs(b - a) / 2, 0.05 * M, thick] };
   }
+  /** Where her thumb's pad goes on the tablet (TOUCH_BENCH.tablet): on its screen, `thumbIn` in from its left edge, at
+   * the height of the middle of her palm and `thumbUp` above it -- the web of her thumb round the edge. */
+  function tabletThumbAt(): { at: THREE.Vector3; out: THREE.Vector3 } | null {
+    const t = touchAt?.tablet; if (!t) return null;
+    const Tt = TOUCH_BENCH.tablet;
+    const at = t.centre.clone().addScaledVector(t.out, (Tt.thick / 2) * M).addScaledVector(t.across, (Tt.wide / 2 - Tt.thumbIn) * M).addScaledVector(t.up, -(Tt.tall / 2 - Tt.palmUp - Tt.thumbUp) * M);
+    return { at, out: t.out.clone() };
+  }
+  /**
+   * HER THUMB TURNED ONTO A PLACE (P4, a thumb over an edge -- a tablet's, a book's, a tray's): its base turned about the
+   * way it folds across her palm, about the way it lifts out of it (toward what her palm holds) and about its own length
+   * (turning its pad to the thing, as a thumb opposes), and its two outer
+   * joints bent together, searched for the turn that puts its pad nearest `on.at` with none of the thumb in what she holds
+   * -- coarsely over its whole reach, then finer round the best. Each turn within her thumb's own: its base folds back
+   * `THUMB_ON.fold[0]` to across `fold[1]`, turns `lift` either way out of the way it folds and `twist` either way about
+   * its length, its joints bend 0 to `bend` (radians).
+   */
+  function thumbOnto(sk: THREE.SkinnedMesh, f: Finger, padBone: THREE.Bone, padLocal: THREE.Vector3, padDepth: number, on: { at: THREE.Vector3; out: THREE.Vector3 }, dist: (p: [number, number, number]) => number): { miss: number; over: number; turns: number[] } {
+    const bones = sk.skeleton.bones, O = THUMB_ON, base = f.joints[0], b0 = rig!.bind[base], b1 = rig!.bind[f.joints[1]];
+    // (its way along at rest, and the way out of her palm there: the fold's axis crossed with it)
+    const dir = new THREE.Vector3(b1.x - b0.x, b1.y - b0.y, b1.z - b0.z).normalize(), liftAxis = new THREE.Vector3().crossVectors(f.axis, dir).normalize();
+    const q = new THREE.Quaternion(), qa = new THREE.Quaternion(), qt = new THREE.Quaternion(), axis = new THREE.Vector3(), v = new THREE.Vector3(), w = new THREE.Vector3();
+    // (folded, lifted, and turned about its own length -- a thumb laid on a thing turns its pad to it)
+    const set = (a: number, b: number, c: number, d = 0) => {
+      q.setFromAxisAngle(liftAxis, b).multiply(qa.setFromAxisAngle(f.axis, a)).multiply(qt.setFromAxisAngle(dir, d));
+      const ww = Math.min(1, Math.max(-1, q.w)), angle = 2 * Math.acos(ww), sn = Math.sqrt(Math.max(0, 1 - ww * ww));
+      if (sn > 1e-9) axis.set(q.x / sn, q.y / sn, q.z / sn); else axis.copy(f.axis);
+      rig!.set(f.joints.map((jt, k) => (k === 0 ? { joint: jt, ax: axis.x, ay: axis.y, az: axis.z, radians: angle } : { joint: jt, ax: f.axis.x, ay: f.axis.y, az: f.axis.z, radians: c })));
+      bones[base].updateMatrixWorld(true);
+    };
+    const P = (x: THREE.Vector3): [number, number, number] => [x.x, x.y, x.z];
+    // (as a thumb comes onto a thing: first to just over the place, anywhere it can reach, then down onto it from there,
+    // none of it in the thing)
+    let goal = on.at.clone().addScaledVector(on.out, O.over * M), inside = 0;
+    const cost = () => {
+      padBone.localToWorld(v.copy(padLocal));
+      let c = v.distanceTo(goal) / M;
+      // (none of it in what she holds: each bone a capsule as thick as its pad is deep)
+      if (inside > 0) for (const jt of f.joints) { const a = bones[jt].getWorldPosition(w), kid = bones[jt].children.find((o) => (o as THREE.Bone).isBone); if (!kid) continue; const e = kid.getWorldPosition(new THREE.Vector3()); for (const t of [0.5, 1]) { const d = dist(P(a.clone().lerp(e, t))) - padDepth * O.thick; if (d < 0) c += inside * (-d / M); } }
+      return c;
+    };
+    const lo = [O.fold[0], -O.lift, -O.twist, 0], hi = [O.fold[1], O.lift, O.twist, O.bend], clamp = (x: number, k: number) => Math.min(hi[k], Math.max(lo[k], x));
+    let best = { x: [0, 0, 0, 0], cost: Infinity };
+    const tryAt = (x: number[]) => { set(x[0], x[1], x[2], x[3]); const k = cost(); if (k < best.cost) best = { x: x.slice(), cost: k }; };
+    const n = O.coarse;
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) for (let t = 0; t <= n; t++) for (let k = 0; k <= 3; k++) tryAt([lo[0] + (hi[0] - lo[0]) * i / n, lo[1] + (hi[1] - lo[1]) * j / n, lo[2] + (hi[2] - lo[2]) * t / n, hi[3] * k / 3]);
+    const refine = (step: number[], rounds: number) => {
+      for (let r = 0; r < rounds; r++) {
+        const c0 = best.x.slice();
+        for (const da of [-1, 0, 1]) for (const db of [-1, 0, 1]) for (const dt of [-1, 0, 1]) for (const dc of [-1, 0, 1]) tryAt([da, db, dt, dc].map((dd, k) => clamp(c0[k] + dd * step[k] / 2, k)));
+        step = step.map((x) => x / 2);
+      }
+    };
+    refine([0, 1, 2, 3].map((k) => (hi[k] - lo[k]) / (k === 3 ? 3 : n)), O.refine);
+    // (then down onto it: the place itself, none of the thumb in the thing, from where it came over it)
+    const over = best.cost * 1000;
+    goal = on.at.clone().addScaledVector(on.out, HAND_GRIP.gap * M); inside = O.inside; set(best.x[0], best.x[1], best.x[2], best.x[3]); best.cost = cost();
+    for (let pass = 0; pass < O.down; pass++) refine([0, 1, 2, 3].map((k) => (hi[k] - lo[k]) / (k === 3 ? 3 : n) / 4), O.refine);
+    set(best.x[0], best.x[1], best.x[2], best.x[3]);
+    padBone.localToWorld(v.copy(padLocal));
+    return { miss: v.distanceTo(on.at) / M * 1000, over, turns: best.x.map((x) => +x.toFixed(2)) };
+  }
   function gripFingers(): void {
     gripLast = null;
-    if (!touchHere() || !rig || !measure || touchTest !== 'cup' || !touchShapes.cup) return;
+    if (!touchHere() || !rig || !measure) return;
+    // (round the cup her right hand; under the tablet her left)
+    const holding = touchTest === 'cup' && touchShapes.cup ? { wrist: measure.joints.wristR, shapes: [touchShapes.cup, touchShapes.table], thumbOpen: TOUCH_BENCH.thumbOpen }
+      : touchTest === 'tablet' && touchShapes.tablet ? { wrist: measure.joints.wristL, shapes: [touchShapes.tablet], thumbOpen: TOUCH_BENCH.tablet.thumbOpen, thumbOn: tabletThumbAt() } : null;
+    if (!holding) return;
     const c = contactsOf(); if (!c) return;
-    const sk = c.mesh, bones = sk.skeleton.bones, shapes = [touchShapes.cup, touchShapes.table].filter((x): x is GripShape => !!x), out: Record<string, number> = {};
+    const sk = c.mesh, bones = sk.skeleton.bones, shapes: GripShape[] = (holding.shapes as (GripShape | undefined)[]).filter((x): x is GripShape => !!x), out: Record<string, number> = {};
     const dist = (p: [number, number, number]) => shapes.reduce((m, sh) => Math.min(m, shapeDistance(sh, p)), Infinity);
     const local = contactLocalOf(c);
     const under = (b: number, top: number) => boneUnder(bones, b, top);
     const P = (v: THREE.Vector3): [number, number, number] => [v.x, v.y, v.z];
     const moved: THREE.Bone[] = [];
     for (const f of fingers) {
-      if (!under(f.joints[0], measure.joints.wristR)) continue;
+      if (!under(f.joints[0], holding.wrist)) continue;
       const end = f.joints[f.joints.length - 1], pts = c.set.points.map((p, i) => ({ p, i })).filter((x) => x.p.bone === end && (x.p.site.endsWith('Pad') || x.p.site.endsWith('Tip')));
+      // (her thumb ON a place, over an edge: turned to it, not closed into her palm -- thumbOnto)
+      const on = 'thumbOn' in holding ? holding.thumbOn : null;
+      if (f.thumb && on) {
+        const pad = pts.find((x) => x.p.site.endsWith('Pad'));
+        if (pad) { const r = thumbOnto(sk, f, bones[pad.p.bone], local.get(pad.i)!, pad.p.depth * M, on, dist); moved.push(...f.joints.map((jt) => bones[jt])); out.thumb = +r.miss.toFixed(1); out.thumbOver = +r.over.toFixed(1); out.thumbTouched = r.miss < 3 ? 1 : 0; gripJoints.thumb = r.turns; continue; }
+      }
       const pad = pts.find((x) => x.p.site.endsWith('Pad')), thick = pad ? pad.p.depth * M : 0.008 * M;
       // (the thumb first opened away from her palm, about its base, to go round the far side of what she holds, then closed:
       // straight, it pointed into the cup; `thumbOpen` of its base's bend the other way, at most)
-      const open = f.thumb ? TOUCH_BENCH.thumbOpen : 0;
+      const open = f.thumb ? holding.thumbOpen : 0;
       // each joint's closure (a share of its own full bend; the thumb's base opened below 0)
       const bend = f.joints.map(() => 0);
       const apply = () => bendFinger(bones, f, bend);
@@ -6896,7 +7024,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         /** (a probe: any hand shape, each finger's shares knuckle first, spread fourth) */
         handShowAs: (shape: Record<FingerName, number[]>) => { showShape = shape; if (touchTest !== 'show') setTouchTest('show'); return true; },
         handShow: (shape: string) => { const s2 = HAND_SHAPES[shape]; if (!s2) return null; showShape = s2; if (touchTest !== 'show') setTouchTest('show'); return Object.keys(HAND_SHAPES); },
-        touchTest: (mode?: TouchTest) => { if (mode !== undefined) setTouchTest(mode); const m3 = (v?: THREE.Vector3) => v ? v.clone().divideScalar(M).toArray().map((x) => +x.toFixed(3)) : null; return { mode: touchTest, at: touchAt ? { cup: m3(touchAt.cup), button: m3(touchAt.button) } : null, grip: gripLast, joints: gripJointsNow(), press: pressLast, hands: kneeHold }; },
+        touchTest: (mode?: TouchTest) => { if (mode !== undefined) setTouchTest(mode); const m3 = (v?: THREE.Vector3) => v ? v.clone().divideScalar(M).toArray().map((x) => +x.toFixed(3)) : null; return { mode: touchTest, at: touchAt ? { cup: m3(touchAt.cup), button: m3(touchAt.button), tablet: m3(touchAt.tablet?.centre) } : null, grip: gripLast, joints: gripJointsNow(), press: pressLast, hands: kneeHold }; },
         // (P4: her contact points -- measured, and drawn as dots when `show`)
         contacts: (show?: boolean) => { if (show !== undefined) { contactsShown = show; drawContacts(); } const c = contactsOf(); if (!c) return null;
           return { count: c.set.points.length, missing: c.set.missing, sites: c.set.points.map((p) => ({ k: `${p.side}.${p.site}`, bone: c.mesh.skeleton.bones[p.bone]?.name, depthMm: +(p.depth * 1000).toFixed(1), tri: p.tri })) }; },
