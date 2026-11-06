@@ -37,7 +37,7 @@ import { ClothSim, type Capsules, type ClothSettings, type ClothStepStats } from
 import { ClothSkin } from '../clothSkin';
 import { copyContacts, createContacts, type ClothBinding, type SkinContacts } from '../clothTypes';
 import type { SewnGarment } from './types';
-import type { DetailKeepLike, DetailPoints } from '../detailSpots';
+import type { DetailPoints } from '../detailSpots';
 import type { ClothDetailState } from '../clothDetail';
 import { DOME_MARGIN, GarmentDetail } from './garmentDetail';
 import { CUT_EDGE_ATTRIBUTE } from './cutEdge';
@@ -1123,7 +1123,7 @@ export class GarmentCloth {
   }
 
   /** What the room draws through the fabric at BREAST and NAVEL DETAIL (`clothDetail.ts`), as the cloth tee; null without `detail`. */
-  detailShading(keep: DetailKeepLike): ClothDetailState | null {
+  detailShading(keep: { readonly nipple: number; readonly navel: number }): ClothDetailState | null {
     // softened by how far the sheet stands off each tip beyond lying on it (her skin's stand-off and the dome's margin)
     return this.detail ? this.detail.shading(keep, this.detailGap() ?? undefined, this.skin.thickness + DOME_MARGIN) : null;
   }

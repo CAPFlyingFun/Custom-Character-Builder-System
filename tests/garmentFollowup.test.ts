@@ -80,7 +80,7 @@ import { draftTee, SET_IN_NECK, TEE_DEFAULTS, teeParams, type Draft, type TeePar
 import { ClothSim, type ClothSettings } from '../src/sarahlab/clothSim';
 import { BEND_COMPLIANCE, FIT_MAX, FIT_MIN, FIT_SMOOTHING, GarmentCloth, HANG_BIG_FROM, HANG_BIG_TO, HANG_FROM, HANG_GROWN_FROM, HANG_GROWN_TO, HANG_TO, LOOSE_OVER_ARM, RESCUE_OVER, SELF_DISTANCE } from '../src/sarahlab/garment/garmentCloth';
 import { APEX_MAX, APEX_REACH, COVER_REACH, DOME_MARGIN, domeOver, GarmentDetail, SHADE_NAVEL_GROW, SHADE_SLOPE, SHADE_SPREAD, SPACING_SLACK, TENT_SLOPE, type RestBody } from '../src/sarahlab/garment/garmentDetail';
-import { DETAIL_LOOK, DetailSpots, NAVEL_SHOWS_MOST, type DetailPoints, type Poser } from '../src/sarahlab/detailSpots';
+import { DETAIL_LOOK, DetailSpots, type DetailPoints, type Poser } from '../src/sarahlab/detailSpots';
 import { measureBody } from '../src/sarahlab/garment/measure';
 import { placeGarment, type Placed } from '../src/sarahlab/garment/place';
 import { validate } from '../src/sarahlab/garment/sew';
@@ -1187,6 +1187,7 @@ describe('GarmentDetail.keep: BREAST and NAVEL DETAIL decide how high and how wi
   /** Contacts' heights after one follow at `keep`, for particles at `ps` (posed world), skin flat under each. */
   function heights(keep: { nipple: number; navel: number }, ps: [number, number, number][], innerRise = 0): number[] {
     const b = detailBody(innerRise), gd = new GarmentDetail(b.points, ps.length, true, restOf(b.rest));
+    gd.navelLift = true; // (her navel lifted off its shape, as 2026-10-27 to 11-06: a probe since)
     gd.keep = keep;
     const { positions, after, before } = particlesOver(ps);
     gd.follow(poserOf(b.rest), positions, after, before, ps.length, true);
@@ -1245,6 +1246,22 @@ describe('GarmentDetail.keep: BREAST and NAVEL DETAIL decide how high and how wi
     expect(heights({ nipple: -3, navel: Infinity }, ps)).toEqual(heights({ nipple: 0, navel: 0 }, ps));
   });
 
+  it('by default the cloth lies on her navel\'s own shape: nothing lifts it there (no apex, no dome, no tent), her nipples\' domes as before', () => {
+    // (Joshua, 2026-11-06: "render like you did - a graph... of how the bellybutton is shape and match it up")
+    const b = detailBody(), ps = [posedAt([NAVEL_AT, 0, 0.01]), posedAt([NAVEL_AT + 0.3, 0, 0.05]), posedAt([NAVEL_AT + 0.8, 0, 0.01])];
+    const gd = new GarmentDetail(b.points, ps.length, true, restOf(b.rest), Uint32Array.from([0, 1, 2]));
+    expect(gd.navelLift).toBe(false);
+    const { positions, after, before } = particlesOver(ps), skin = Float32Array.from(after.point.subarray(0, ps.length * 3));
+    gd.follow(poserOf(b.rest), positions, after, before, ps.length, true);
+    expect(gd.apex).toBe(-1);
+    expect(Array.from(after.point.subarray(0, ps.length * 3))).toEqual(Array.from(skin));
+    // lifted, as before, for a probe
+    const lifted = new GarmentDetail(b.points, ps.length, true, restOf(b.rest), Uint32Array.from([0, 1, 2])), o = particlesOver(ps);
+    lifted.navelLift = true;
+    lifted.follow(poserOf(b.rest), o.positions, o.after, o.before, ps.length, true);
+    expect(heightOf(o.after, 0)).toBeGreaterThan(heightOf(after, 0));
+  });
+
   it('shading(keep) is the cloth tee\'s own (DetailSpots.cloth), from the same measure: nipples 0 at keep 0, nippleRelief at 1', () => {
     const b = detailBody(0.1), gd = new GarmentDetail(b.points, 1, true, restOf(b.rest)), poser = poserOf(b.rest);
     gd.follow(poser, new Float32Array(3), createContacts(1), createContacts(1), 1, true);
@@ -1254,19 +1271,6 @@ describe('GarmentDetail.keep: BREAST and NAVEL DETAIL decide how high and how wi
     expect(gd.shading({ nipple: 0, navel: 1 }).nipples.map((n) => n.height)).toEqual([0]);
     expect(gd.shading({ nipple: 1, navel: 1 }).nipples.map((n) => n.height)).toEqual([L.nippleRelief]);
     expect(gd.shading({ nipple: 1, navel: 1 }).navel!.height).toBeCloseTo(NAVEL_H, 6);
-  });
-  it('her navel pressed by a garment (navelShows) is drawn as it stood: from its tip, that much farther out, at NAVEL DETAIL', () => {
-    // (Joshua, 2026-11-05: the side view boxy; her navel's SHAPE pressed under the tee, what shows of it still NAVEL DETAIL)
-    const b = detailBody(0.1), gd = new GarmentDetail(b.points, 1, true, restOf(b.rest)), poser = poserOf(b.rest);
-    gd.follow(poser, new Float32Array(3), createContacts(1), createContacts(1), 1, true);
-    const top = gd.tips[0].top, plain = gd.shading({ nipple: 1, navel: 0.8 }).navel!.height;
-    expect(top).toBeGreaterThan(0);
-    expect(gd.shading({ nipple: 1, navel: 0.8, navelShows: 1 }).navel!.height).toBeCloseTo(plain, 9);
-    expect(gd.shading({ nipple: 1, navel: 0.8, navelShows: 2 }).navel!.height).toBeCloseTo(Math.max(NAVEL_H * 2 * 0.8, top * 2 * 0.8), 6);
-    // never more than NAVEL_SHOWS_MOST times as it is, never less than as it is, and the nipples untouched
-    expect(gd.shading({ nipple: 1, navel: 0.8, navelShows: 99 }).navel!.height).toBeCloseTo(Math.max(NAVEL_H, top) * NAVEL_SHOWS_MOST * 0.8, 6);
-    expect(gd.shading({ nipple: 1, navel: 0.8, navelShows: 0.2 }).navel!.height).toBeCloseTo(plain, 9);
-    expect(gd.shading({ nipple: 0.5, navel: 0.8, navelShows: 3 }).nipples).toEqual(gd.shading({ nipple: 0.5, navel: 0.8 }).nipples);
   });
 });
 
@@ -1767,6 +1771,7 @@ describe('GarmentDetail.apex: the cloth point nearest her navel\'s axis is laid 
   /** One follow over `ps` (the navel's keep at its default); the detail, the moved positions and the contacts. */
   function run(ps: [number, number, number][], domes = true, triangles?: number[]) {
     const b = detailBody(), gd = new GarmentDetail(b.points, ps.length, domes, restOf(b.rest), triangles ? Uint32Array.from(triangles) : undefined);
+    gd.navelLift = true; // (her navel lifted off its shape, as 2026-10-27 to 11-06: a probe since)
     const { positions, after, before } = particlesOver(ps), was = Float32Array.from(positions);
     gd.follow(poserOf(b.rest), positions, after, before, ps.length, true);
     return { gd, positions, after, was };
@@ -1847,6 +1852,7 @@ describe('GarmentDetail.apexAlong: the apex held high enough that its triangles 
     const b = detailBody();
     for (const [x, y, z] of relief) b.rest.push([NAVEL_AT + x, y, z]);
     const gd = new GarmentDetail(b.points, ps.length, true, restOf(b.rest), Uint32Array.from(triangles));
+    gd.navelLift = true; // (her navel lifted off its shape, as 2026-10-27 to 11-06: a probe since)
     const { positions, after, before } = particlesOver(ps);
     gd.follow(poserOf(b.rest), positions, after, before, ps.length, true);
     return { gd, after };

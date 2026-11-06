@@ -26,7 +26,7 @@
  */
 import type { SkinContacts } from '../clothTypes';
 import type { ClothDetailState } from '../clothDetail';
-import { DETAIL_LOOK, DetailSpots, NAVEL_SHOWS_MOST, type DetailKeepLike, type DetailPoints, type Poser, type Posed } from '../detailSpots';
+import { DETAIL_LOOK, DetailSpots, type DetailPoints, type Poser, type Posed } from '../detailSpots';
 
 /** How far a dome's top stands above her detail's tip, world units (0.5 mm): the cloth is flat between its particles. */
 export const DOME_MARGIN = 0.05;
@@ -95,6 +95,14 @@ export class GarmentDetail {
   readonly cover = new Int32Array(9).fill(-1);
   /** The cloth point held over her navel's tip this frame (`apexOver`), or -1. */
   apex = -1;
+  /**
+   * Her navel's cloth LIFTED off it, as it was laid 2026-10-27 to 11-06: the apex held on its axis, its dome, and the tent
+   * from its tip. Measured from the side (the room's `navelSlice`; Joshua, 2026-11-06: "render like you did - a graph...
+   * of how the bellybutton is shape and match it up... It's the side profile that's off"), that cloth stood 2 to 6 mm
+   * off her navel's own shape and ran on past it in a straight line down her belly. Off, the default: the cloth lies on
+   * her navel's own shape.
+   */
+  navelLift = false;
   /** How far along her navel's axis the apex is held this frame (`apexHeight`; from the outer ring's plane). */
   apexAlong = 0;
   /** Her navel's vertices round its tip this frame: across the axis from the outer ring's centre (3) and above her smooth surface (1). */
@@ -140,11 +148,14 @@ export class GarmentDetail {
     // the cloth tee's own dome, its height at the tip, with the three corners of the cloth's triangle over the tip held
     // at the tip's height: a tent, as the cloth tee's own outie is, rather than a flat top as wide as the triangle
     // her navel: the cloth point nearest its axis is laid ON the axis, the apex of a tent over it (`apexOver`)
-    this.apex = this.apexOver(positions, count, ds[0], this.tips[0]);
+    // her navel: the cloth on its own shape, as her skin under each particle stands (the room draws her navel a little
+    // flatter than her clothes feel it, `navelSoft.felt`, so it stays under the cloth); lifted off it only for a probe
+    this.apex = this.navelLift ? this.apexOver(positions, count, ds[0], this.tips[0]) : -1;
     if (this.apex >= 0) this.apexAlong = this.apexHeight(positions, ds[0], this.tips[0], this.apex);
-    ds.forEach((d, i) => domeOver(d, positions, A, count, this.around[i] ? this.tips[i] : undefined, i === 0 ? 1 : 1 - nip, i === 0 ? 1 - nav : 1 - nip, 0,
+    ds.forEach((d, i) => (i === 0 && !this.navelLift) || domeOver(d, positions, A, count, this.around[i] ? this.tips[i] : undefined, i === 0 ? 1 : 1 - nip, i === 0 ? 1 - nav : 1 - nip, 0,
       i === 0 && this.apex >= 0 ? [this.apex] : this.cover.subarray(i * 3, i * 3 + 3), i === 0 && this.apex >= 0 ? this.apexAlong : undefined));
   }
+
 
   /**
    * What the room draws through the fabric at BREAST and NAVEL DETAIL `keep` (0 none, 1 all): the cloth tee's own, each
@@ -157,15 +168,8 @@ export class GarmentDetail {
    * (by (r/r')², the relief's volume kept). `gaps` is `GarmentCloth.detailGap` (navel, then the nipples; non-finite:
    * as the tee), `touch` how far off the tip the cloth stands when it lies on it.
    */
-  shading(keep: DetailKeepLike, gaps?: { readonly navel: number; readonly nipples: readonly number[] }, touch = 0): ClothDetailState {
-    let base = this.spots.cloth(keep);
-    // her navel pressed by the garment (`navelShows` over 1, the room's NAVEL_PRESS): drawn from its own tip as it stood,
-    // not from its pressed centre -- pressed, her outie's middle sinks under her smooth surface and drew a dimple
-    const sh = keep.navelShows, t0 = this.tips[0];
-    if (base.navel && sh !== undefined && Number.isFinite(sh) && sh > 1 && t0.top > 0) {
-      const stood = t0.top * Math.min(NAVEL_SHOWS_MOST, sh) * clamp01(keep.navel);
-      if (stood > base.navel.height) base = { ...base, navel: { ...base.navel, height: stood } };
-    }
+  shading(keep: { readonly nipple: number; readonly navel: number }, gaps?: { readonly navel: number; readonly nipples: readonly number[] }, touch = 0): ClothDetailState {
+    const base = this.spots.cloth(keep);
     if (!gaps) return base;
     const soften = <T extends { readonly height: number; readonly radius: number }>(spot: T, gap: number | undefined, i: number): T => {
       // spread by the cloth's distance off the tip, and by as much as the dome's flat top was widened past the cloth tee's

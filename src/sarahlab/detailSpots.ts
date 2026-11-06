@@ -80,21 +80,8 @@ const posed = (): Posed => ({ c: [0, 0, 0], n: [0, 0, 1], base: [0, 0, 0], rho: 
 export const DETAIL_LOOK = Object.freeze({ navelRadius: 0.35, innieThrough: 0.5, nippleRadius: 0.3, nippleRelief: 0.3, domeIn: 0.5, domeOut: 0.9, wideOut: 1.6, fittedNippleGap: 0.9 });
 
 /** BREAST and NAVEL DETAIL: 0 hidden, 1 all of it. */
-export interface DetailKeepLike {
-  readonly nipple: number;
-  readonly navel: number;
-  /**
-   * How much farther out her navel stood before the garment over it pressed it (`NAVEL_PRESS`): her navel is DRAWN
-   * through the fabric as it stood, at NAVEL DETAIL, while its SHAPE under the fabric is pressed. 1 (or absent) when
-   * nothing presses it.
-   */
-  readonly navelShows?: number;
-}
+export interface DetailKeepLike { readonly nipple: number; readonly navel: number }
 const clamp01 = (x: number) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
-/** `navelShows`, at least 1 (a garment never draws her navel less than it is) and at most NAVEL_SHOWS_MOST. */
-const shows = (keep: DetailKeepLike) => { const s = keep.navelShows; return typeof s === 'number' && Number.isFinite(s) ? Math.min(NAVEL_SHOWS_MOST, Math.max(1, s)) : 1; };
-/** The most a pressed navel is drawn up to as it stood (an outie pressed nearly flat). GAME TUNING. */
-export const NAVEL_SHOWS_MOST = 4;
 
 export class DetailSpots {
   readonly navel: Posed = posed();
@@ -148,7 +135,7 @@ export class DetailSpots {
   cloth(keep: DetailKeepLike): ClothDetailState {
     const L = DETAIL_LOOK, nv = this.navel;
     return {
-      navel: { center: nv.c, normal: nv.n, height: (nv.h >= 0 ? nv.h * shows(keep) : nv.h * L.innieThrough) * clamp01(keep.navel), radius: L.navelRadius * nv.rho },
+      navel: { center: nv.c, normal: nv.n, height: (nv.h >= 0 ? nv.h : nv.h * L.innieThrough) * clamp01(keep.navel), radius: L.navelRadius * nv.rho },
       nipples: this.nipples.slice(0, this.points.nipples.length).map((d) => ({ center: d.c, normal: d.n, height: L.nippleRelief * clamp01(keep.nipple), radius: L.nippleRadius * d.rho })),
     };
   }

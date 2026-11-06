@@ -16,6 +16,8 @@ import type { NavelPiece } from './navelPiece';
 export interface NavelSoft {
   /** how far out (0 no pressure .. 1 all of it); the shaders read it every frame */
   readonly out: { value: number };
+  /** how far out her clothes feel it (`NavelOffset.felt`): as `out`, or a little farther when a garment is over it */
+  readonly felt: { value: number };
   /** lay her navel for no pressure (`xIn`) and all of it (`xOut`), her morph weights as `weights` (navelPiece's numbers) */
   lay(weights: Readonly<Record<string, number>>, xIn: number, xOut: number): void;
   /** have a material of her body draw it */
@@ -32,7 +34,16 @@ const WIDTH = 2048;
  * reader sees her navel laid in (`xIn`) while she is drawn with it pushed out, and the cloth laid over the first is
  * pierced by the second (Joshua, 2026-11-03: "the bellybutton pokes through all the clothes again").
  */
-export interface NavelOffset { readonly out: { readonly value: number }; readonly delta: Float32Array }
+export interface NavelOffset {
+  readonly out: { readonly value: number };
+  readonly delta: Float32Array;
+  /**
+   * How far out the readers of her body on the CPU FEEL her navel (clothSkin, skinPose, clothingPose): her clothes. As
+   * far as it is drawn (`out`), unless a garment is over it: then it is drawn a little flatter than her clothes feel it,
+   * so the cloth -- lying on her navel's own shape, its points about 1.2 cm apart -- always covers what is drawn.
+   */
+  readonly felt?: { readonly value: number };
+}
 
 /** The navel offset a mesh draws with, if it has one (`createNavelSoft` puts it on the mesh). */
 export function navelOffsetOf(mesh: THREE.Object3D): NavelOffset | null {
@@ -42,7 +53,7 @@ export function navelOffsetOf(mesh: THREE.Object3D): NavelOffset | null {
 
 /** Vertex v's navel offset now (mesh space, before her bones) into `out`: zero away from her navel. */
 export function navelOffsetAt(s: NavelOffset, v: number, out: { x: number; y: number; z: number }): void {
-  const k = s.out.value, d = s.delta, o = v * 4;
+  const k = (s.felt ?? s.out).value, d = s.delta, o = v * 4;
   if (!k || o + 2 >= d.length) { out.x = 0; out.y = 0; out.z = 0; return; }
   out.x = k * d[o]; out.y = k * d[o + 1]; out.z = k * d[o + 2];
 }
@@ -51,17 +62,18 @@ export function createNavelSoft(mesh: THREE.SkinnedMesh, piece: NavelPiece): Nav
   const geom = mesh.geometry as THREE.BufferGeometry, n = geom.getAttribute('position').count, H = Math.ceil(n / WIDTH);
   const texOf = () => { const t = new THREE.DataTexture(new Float32Array(WIDTH * H * 4), WIDTH, H, THREE.RGBAFormat, THREE.FloatType); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true; return t; };
   const posTex = texOf(), nrmTex = texOf();
-  const out = { value: 0 }, uPos = { value: posTex }, uNrm = { value: nrmTex }, uW = { value: WIDTH };
+  const out = { value: 0 }, felt = { value: 0 }, uPos = { value: posTex }, uNrm = { value: nrmTex }, uW = { value: WIDTH };
   // every copy of every point the piece writes
   const d = piece.data, verts: number[] = [];
   for (let k = 0; k < d.count; k++) if (d.flags[k] & 1) for (let j = d.splitStart[k]; j < d.splitStart[k + 1]; j++) verts.push(d.splits[j]);
   const keep = new Float32Array(verts.length * 6);
   const patched = new WeakSet<THREE.Material>();
   // the readers of her body on the CPU add what the shaders add (navelOffsetOf)
-  const offset: NavelOffset = { out, delta: posTex.image.data as Float32Array };
+  const offset: NavelOffset = { out, felt, delta: posTex.image.data as Float32Array };
   (mesh.userData as { navelSoft?: NavelOffset }).navelSoft = offset;
   return {
     out,
+    felt,
     lay(weights, xIn, xOut) {
       const P = (geom.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, nA = geom.getAttribute('normal') as THREE.BufferAttribute | undefined, N = nA ? (nA.array as Float32Array) : null;
       // all the way out, kept; then as it is with nothing behind it, left in her rest shape

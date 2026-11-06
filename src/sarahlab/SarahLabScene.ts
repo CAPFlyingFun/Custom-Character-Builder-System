@@ -273,7 +273,7 @@ import { HIP_TURN_FIELD, createHipTurn, type HipTurn } from './hipTurn';
 import { birthAt, birthLength, birthLine, REALISTIC_STRETCH, type BirthMoment, type BirthPace } from './birthSequence';
 /** GAME TUNING: all of it within `near` of a knee, none past `far` (metres); `passes` of `lambda` each */
 const KNEE_SMOOTH = Object.freeze({ near: 0.06, far: 0.12, passes: 60, lambda: 0.6, restore: 0 });
-import { DEFAULT_VULVA_KEEP, navelPressOf } from './detailMaterials';
+import { DEFAULT_VULVA_KEEP } from './detailMaterials';
 import { attachJiggle, bellyTune, breastTune, createJiggleUniforms, feltAcceleration, GRAVITY, GRAVITY_SHARE, LEG_TUNE, restingMass, stepMass, type LegBones, type Mass } from './softBody';
 import { applyMilk, applyWomb, applyZeroRefine, babyAnchors, babyWeightState, chestAnchors, chestFieldWeights, groinAnchors, groinFieldWeights, loadMilk, milkAnchors, milkBalanceState, milkFieldWeights, milkState, MILK_PATH, babyFieldWeights, loadWomb, loadZeroRefine, sidesAnchors, sidesFieldWeights, zeroRefineWeight, UPPER_FIELD_PREFIX, WOMB_PATH, ZERO_FIELD, ZERO_REFINE_PATH } from './zeroRefine';
 import { NAVEL_MORPHS, type NavelPiece } from './navelPiece';
@@ -2226,33 +2226,25 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * still should have a visible effect"; "the bellybutton also doesn't appear with the slider… the overrides should be
    * working"): BREAST and NAVEL DETAIL as the outfit editor holds them, MANUAL where set, else AUTO from the tee's fabric.
    */
-  function clothKeep(): { nipple: number; navel: number; navelShows: number } {
-    const k = fabric?.garmentDetail('shirtSpandexLite') ?? { nipple: 0.45, navel: 0.8 };
-    // her navel drawn through the fabric as it stood before the garment pressed it (`clothPress`): how much farther out
-    // that is than it is pressed, at her pressure now
-    const o = navelSoft ? navelSpring.x : navelPress, raw = navelRawXAt(o);
-    const looked = 1 - Math.max(raw, 1 - k.navel), pressed = 1 - Math.max(raw, clothPress(k.navel));
-    return { ...k, navelShows: pressed > 0.02 && looked > pressed ? (looked / pressed) * (1 + navelStandIn * (1 - pressed / looked)) : 1 };
+  function clothKeep(): { nipple: number; navel: number } {
+    return fabric?.garmentDetail('shirtSpandexLite') ?? { nipple: 0.45, navel: 0.8 };
   }
-  /**
-   * How much of the shape a pressed navel no longer gives the garment its drawn relief stands in for, as a share of
-   * what was pressed away (0: drawn only as her navel stood; 1: as much again). From the front the tee's bump over her
-   * whole outie was most of her navel's look, so what is pressed away is drawn back. GAME TUNING (a probe may move it).
-   */
-  let navelStandIn = 2;
-  /**
-   * How flat the garment over her middle presses her navel (Joshua, 2026-11-05: the side view "boxy... not smooth
-   * following the rounded shape"; going ahead with SHAPE and LOOK split): what NAVEL DETAIL hides, or what its fabric
-   * presses (`NAVEL_PRESS`: a stretch knit more than a loose thick one), whichever is more. Her navel's SHAPE: held out
-   * by her whole outie, the tight tee stood off her belly round it and fell from it in a straight run to where her belly
-   * curves away below. What shows of it is NAVEL DETAIL, drawn as it stood (`clothKeep`'s navelShows).
-   */
+  /** How flat a garment over her middle softens her navel: what NAVEL DETAIL hides (or what a probe holds, if more). */
   function clothPress(navelKeep = clothKeep().navel): number {
-    return Math.max(1 - navelKeep, navelPressOf(fabric?.garmentMaterial('shirtSpandexLite')));
+    return Math.max(1 - navelKeep, navelPressHeld ?? 0);
   }
+  /**
+   * How much flatter her navel is DRAWN under a garment than the garment FEELS it (`navelSoft.felt`; Joshua,
+   * 2026-11-06: "render like you did - a graph... of how the bellybutton is shape and match it up"). The cloth lies on her
+   * navel's own shape, but its points are about 1.2 cm apart and her navel about 3 cm across, so between two of them it
+   * cuts under the crown by 2 to 3.5 mm (measured, 73% and 100%); drawn this much flatter, her navel stays under it. GAME TUNING.
+   */
+  const NAVEL_UNDER = 0.35;
+  /** A probe pressing her navel flatter under a garment (`navelClothPress` hook), or null. */
+  let navelPressHeld: number | null = null;
   /**
    * Under the light tee -- the cloth or the fitted one, or the procedural garment -- her navel is softened the way paint
-   * softens it: toward an ordinary navel by as much as the garment presses it (`clothPress`). (Not the fitted tee's own
+   * softens it: toward an ordinary navel by what NAVEL DETAIL hides (`clothPress`). (Not the fitted tee's own
    * navel: its shapes follow hers, and settled to an ordinary navel it would dip where hers does; that one is settled
    * onto its smooth surface instead, in the shader.)
    */
@@ -4606,7 +4598,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!navelSpring.primed) { navelSpring.x = navelPress; navelSpring.primed = true; }
     { const w = 2 * Math.PI * 1.4, steps = Math.max(1, Math.ceil(dt / 0.01)), h = dt / steps;
       for (let i = 0; i < steps; i++) { navelSpring.v += (w * w * (navelPress - navelSpring.x) - 2 * 0.65 * w * navelSpring.v) * h; navelSpring.x += navelSpring.v * h; } }
-    if (navelSoft) navelSoft.out.value = Math.max(-0.1, Math.min(1.3, navelSpring.x));
+    if (navelSoft) {
+      // (under a garment drawn NAVEL_UNDER flatter than her clothes feel it: the cloth lies on her navel's own shape, and
+      // what is drawn stays under it -- Joshua, 2026-11-06, "match it up")
+      const k = Math.max(-0.1, Math.min(1.3, navelSpring.x)), over = clothWorn() || fittedTee() || !!garmentRoom;
+      navelSoft.felt.value = k; navelSoft.out.value = over && k > 0 ? k * (1 - NAVEL_UNDER) : k;
+    }
     // her fitted clothes' navels with hers, as it moves (a kick, a contraction, her womb settling after the birth)
     if (navelSoft && navelLaid) for (const mesh of skinned) {
       const at = mesh.morphTargetDictionary?.[NAVEL_FLAT_TARGET], inf = mesh.morphTargetInfluences;
@@ -7508,7 +7505,37 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { tested, seen: out.length, worst: out.sort((a, b) => b.by - a.by).slice(0, k) };
         },
         garmentShade: (on: boolean) => { garmentShade = on; return true; },
-        navelStandIn: (x?: number) => { if (x !== undefined && Number.isFinite(x)) navelStandIn = Math.max(0, x); const k = clothKeep(); return { standIn: navelStandIn, keep: k, press: clothPress(k.navel), drawn: garmentRoom?.cloth.detailShading(k)?.navel ?? null }; },
+        // (her navel's SIDE PROFILE, for a graph: her skin and the shirt along the line down her middle through her navel's
+        // tip -- `v` up her body, `out` along her navel's axis from its tip -- within `half` of it and `band` of the line)
+        navelSlice: (half = 7, band = 0.6, frame?: { tipAt: number[]; n: number[] }) => {
+          const det = (garmentRoom?.cloth as unknown as { detail?: { posed: { navel: { n: number[]; base: number[] } }; tips: { k: number[]; along: number }[] } } | undefined)?.detail;
+          const bm = bodyOf()?.mesh as THREE.SkinnedMesh | undefined;
+          if (!bm) return null;
+          let n: number[], tipAt: number[];
+          if (frame) { n = frame.n; tipAt = frame.tipAt; }
+          else if (det) { const d = det.posed.navel, t = det.tips[0]; n = d.n; tipAt = [0, 1, 2].map((c) => d.base[c] + t.k[c] + d.n[c] * t.along); }
+          else return null;
+          const upDot = n[1], up = [-n[0] * upDot, 1 - n[1] * upDot, -n[2] * upDot], ul = Math.hypot(up[0], up[1], up[2]) || 1;
+          up[0] /= ul; up[1] /= ul; up[2] /= ul;
+          const side = [n[1] * up[2] - n[2] * up[1], n[2] * up[0] - n[0] * up[2], n[0] * up[1] - n[1] * up[0]];
+          const slice = (P: ArrayLike<number>, count: number) => { const out: [number, number][] = [];
+            for (let i = 0; i < count; i++) { const dx = P[i * 3] - tipAt[0], dy = P[i * 3 + 1] - tipAt[1], dz = P[i * 3 + 2] - tipAt[2];
+              if (!Number.isFinite(dx)) continue;
+              const v = dx * up[0] + dy * up[1] + dz * up[2], s = dx * side[0] + dy * side[1] + dz * side[2], o = dx * n[0] + dy * n[1] + dz * n[2];
+              if (Math.abs(v) <= half && Math.abs(s) <= band && o > -half) out.push([+v.toFixed(3), +o.toFixed(3)]); }
+            return out; };
+          const vc = bm.geometry.getAttribute('position').count, P = new Float32Array(vc * 3), one = [0, 0, 0];
+          const skinNow = () => { const sp = new SkinPose(bm); sp.refresh(); for (let i = 0; i < vc; i++) { sp.posedVertex(i, one); P[i * 3] = one[0]; P[i * 3 + 1] = one[1]; P[i * 3 + 2] = one[2]; } return slice(P, vc); };
+          // (her skin as her clothes feel it, and as it is drawn)
+          const felt = skinNow(), feltWas = navelSoft ? navelSoft.felt.value : 0;
+          if (navelSoft) navelSoft.felt.value = navelSoft.out.value;
+          const drawn = skinNow();
+          if (navelSoft) navelSoft.felt.value = feltWas;
+          const shirt = garmentRoom ? garmentRoom.cloth.positions : null;
+          return { skin: felt, drawn, shirt: shirt ? slice(shirt, shirt.length / 3) : [], tipAt, n, press: clothPress(), keep: clothKeep() };
+        },
+        navelLift: (on?: boolean) => { const det = (garmentRoom?.cloth as unknown as { detail?: { navelLift: boolean } } | undefined)?.detail; if (!det) return null; if (on !== undefined) det.navelLift = on; return det.navelLift; },
+        navelClothPress: (x?: number | null) => { if (x !== undefined) { navelPressHeld = x === null || !Number.isFinite(x) ? null : Math.max(0, Math.min(1, x)); applyLook(); } return { held: navelPressHeld, press: clothPress() }; },
         garmentProfile: (i = 0) => garmentRoom?.cloth.detailProfile(i) ?? null,
         garmentDetailShade: (patch?: { spread?: number; widen?: number; slope?: number; grow?: number }) => garmentRoom?.cloth.detailShade(patch) ?? null,
         garmentStats: () => garmentRoom?.cloth.stats() ?? null,
