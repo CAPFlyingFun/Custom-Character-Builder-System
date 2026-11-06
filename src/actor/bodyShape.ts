@@ -25,7 +25,7 @@
  */
 
 export type BodyControl =
-  | 'bellyTilt' | 'bellyHeight' | 'bellyWidth' | 'bellyDepth' | 'bellyUpper' | 'bellyLower' | 'navel' | 'pregnancyWeeks' | 'navelAfter' | 'babyWeight' | 'bellyFirmness' | 'bellyBounce' | 'babyFloat' | 'babyKicks'
+  | 'bellyTilt' | 'bellyHeight' | 'bellyWidth' | 'bellyDepth' | 'bellyUpper' | 'bellyLower' | 'navel' | 'navelAfter' | 'babyWeight' | 'bellyFirmness' | 'bellyBounce' | 'babyFloat' | 'babyKicks'
   | 'breastSize' | 'breastWidth' | 'breastHeight' | 'breastDepth' | 'breastSpacing' | 'breastPosition' | 'breastDroop' | 'breastUpper' | 'breastLower' | 'milk' | 'milkBalance' | 'breastFirmness' | 'breastBounce'
   | 'height' | 'upperLeg' | 'lowerLeg' | 'torso' | 'neck' | 'upperArm' | 'forearm' | 'shoulders' | 'waist' | 'hips' | 'legGap' | 'head' | 'hands' | 'feet';
 
@@ -33,7 +33,7 @@ export interface BodyControlSpec {
   readonly key: BodyControl;
   readonly group: 'belly' | 'breasts' | 'build';
   readonly label: string;
-  readonly unit: '°' | 'cm' | '%' | 'wk' | '';
+  readonly unit: '°' | 'cm' | '%' | '';
   readonly min: number;
   readonly max: number;
   readonly step: number;
@@ -58,10 +58,7 @@ export const BODY_CONTROLS: readonly BodyControlSpec[] = Object.freeze([
   // Joshua, 2026-10-24: "a manual bellybutton in/out slider... how much of an innie or outie bellybutton is there
   // independent of the automatic bellybutton size per belly % like the breast size"
   { key: 'navel', group: 'belly', label: 'Navel', unit: '%', min: -100, max: 100, step: 1, fallback: 0, spread: 15, help: 'innie or outie from what her pregnancy gives: below 0 deeper in, above 0 further out' },
-  // Joshua, 2026-11-03: her pregnancy apart from her belly's size ("Sarah in the story is 32 weeks, and I have her starting
-  // belly at 73%, but for someone else... their belly might be at 50% with twins at 18 weeks"): what presses her navel out.
-  // 40 is full term, so the approved body at 100% is as it was; 0 not pregnant (her navel in, whatever her belly's size).
-  { key: 'pregnancyWeeks', group: 'belly', label: 'Pregnancy', unit: 'wk', min: 0, max: 42, step: 1, fallback: 40, spread: 10, help: 'weeks pregnant, apart from belly size: 0 is not pregnant; it is what presses her navel out' },
+  // (her pregnancy is not a body control: PREGNANT and her weeks are her own record, sarahlab/pregnancy.ts)
   // Joshua, 2026-11-03: "a random variable from 0-3; 0 = goes back in, 1 = stays out for a while before fading back, 2 =
   // stays out permanently at maybe -50% less depth" -- a varied body draws its own
   { key: 'navelAfter', group: 'belly', label: 'Navel after birth', unit: '', min: 0, max: 2, step: 1, fallback: 1, spread: 1, help: 'after her baby is born: 0 goes back in, 1 stays out a while then fades, 2 stays out at half for good' },
@@ -247,5 +244,5 @@ export function controlLine(key: BodyControl, value: number): string {
   const shown = s.step < 1 || Math.abs(value - Math.round(value)) > 0.05 ? value.toFixed(1) : value.toFixed(0);
   // a plus sign only where the control runs both ways from its middle: an amount (milk, firmness, bounce) has no minus
   const signed = s.unit !== '°' && s.min < 0 && value > 0 ? `+${shown}` : shown;
-  return `${s.label.toUpperCase()} · ${signed}${s.unit === '%' ? '%' : s.unit === 'cm' ? ' cm' : s.unit === 'wk' ? ' weeks' : s.unit === '' ? '' : '°'}${value === s.fallback ? ' (approved)' : ''}`;
+  return `${s.label.toUpperCase()} · ${signed}${s.unit === '%' ? '%' : s.unit === 'cm' ? ' cm' : s.unit === '' ? '' : '°'}${value === s.fallback ? ' (approved)' : ''}`;
 }

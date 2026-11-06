@@ -56,6 +56,72 @@ export const BUMP_WEEKS: Readonly<Record<number, readonly (readonly [number, num
   3: [[0, 12], [100, 29], [150, 32.5], [200, 35]],
 });
 
+/** The week she delivers, by how many babies: one at full term; twins around 36-37 weeks, triplets around 33-35. BIOLOGICAL SHAPE. */
+export const DELIVERY_WEEKS: Readonly<Record<number, number>> = Object.freeze({ 1: 40, 2: 37, 3: 34 });
+
+/** The belly % the chart gives a week (`weekForBump` the other way): 0 up to week 12, its last % past its last week. */
+export function bumpForWeek(week: number, babies = 1): number {
+  const t = BUMP_WEEKS[Math.round(babies)] ?? BUMP_WEEKS[1], w = Number.isFinite(week) ? week : 0;
+  if (w <= t[0][1]) return t[0][0];
+  for (let i = 1; i < t.length; i++) if (w <= t[i][1]) { const [b0, w0] = t[i - 1], [b1, w1] = t[i]; return b0 + (b1 - b0) * (w - w0) / (w1 - w0); }
+  return t[t.length - 1][0];
+}
+
+/**
+ * HER CHART (Joshua, 2026-11-05; her numbers, `pregnancy.ts`): which % of the chart her belly stands for. Her belly in
+ * her first week is the chart's 0% (it shows nothing before week 12); her belly at delivery is the chart's at her
+ * delivery week; the exact week typed is the chart's at that week. Between them a straight line, past the last the
+ * chart's own growth. What she has not typed gives way to what she has (a week typed for a belly past the chart's
+ * delivery % moves that delivery out with it); a typed number that cannot be on one chart with the others -- a week
+ * before her belly shows, a belly % not between its neighbours' -- is not used, and `unused` says which.
+ */
+export interface HerChart {
+  /** [her belly %, the chart's belly %], each rising */
+  readonly anchors: readonly (readonly [number, number])[];
+  readonly unused: readonly ('week' | 'delivery')[];
+  /** what is in force: her first week's belly %, her delivery's belly % and week (typed, or the chart's) */
+  readonly firstWeekBump: number;
+  readonly deliveryBump: number;
+  readonly deliveryWeek: number;
+}
+export interface PregnancyNumbers { readonly week: number | null; readonly weekAtBump: number | null; readonly firstWeekBump: number | null; readonly deliveryBump: number | null; readonly deliveryWeek: number | null }
+export function herChart(babies: number, p: PregnancyNumbers): HerChart {
+  const n = Math.min(3, Math.max(1, Math.round(Number.isFinite(babies) ? babies : 1)));
+  const deliveryWeek = p.deliveryWeek ?? DELIVERY_WEEKS[n], dChart = bumpForWeek(deliveryWeek, n), unused: ('week' | 'delivery')[] = [];
+  let first = p.firstWeekBump ?? 0, delivery = p.deliveryBump ?? dChart;
+  let pin: [number, number] | null = null;
+  if (p.week !== null && p.weekAtBump !== null) {
+    const c = bumpForWeek(p.week, n), at = p.weekAtBump;
+    let ok = c > 0;
+    // (her first week's belly below it, as typed, or moved down out of its way)
+    if (ok && !(first < at)) { if (p.firstWeekBump === null) first = at - c; else ok = false; }
+    // (and her delivery's on the side of it the weeks say)
+    if (ok && c < dChart && !(at < delivery)) { if (p.deliveryBump === null) delivery = at + (dChart - c); else ok = false; }
+    if (ok && c > dChart && !(at > delivery)) { if (p.deliveryBump === null) delivery = at - (c - dChart); else ok = false; }
+    if (ok && c === dChart) { if (p.deliveryBump === null) delivery = at; else ok = at === delivery; }
+    if (ok && !(first < delivery)) ok = false;
+    if (ok) { if (c !== dChart) pin = [at, c]; } else unused.push('week');
+  }
+  if (!(first < delivery)) { if (p.deliveryBump !== null) unused.push('delivery'); delivery = first + dChart; }
+  const anchors = [[first, 0], [delivery, dChart], ...(pin ? [pin] : [])].sort((a, b) => a[1] - b[1]) as [number, number][];
+  return { anchors, unused, firstWeekBump: first, deliveryBump: delivery, deliveryWeek };
+}
+
+/** The % of the chart her belly stands for at `bumpPercent` (her own belly %): `bumpPercent` itself while nothing is typed. */
+export function chartBump(bumpPercent: number, babies: number, p: PregnancyNumbers): number {
+  if (p.week === null && p.firstWeekBump === null && p.deliveryBump === null && p.deliveryWeek === null) return bumpPercent;
+  const a = herChart(babies, p).anchors, b = Number.isFinite(bumpPercent) ? bumpPercent : 0;
+  if (b <= a[0][0]) return Math.max(0, a[0][1] + (b - a[0][0]));
+  for (let i = 1; i < a.length; i++) if (b <= a[i][0]) { const [h0, c0] = a[i - 1], [h1, c1] = a[i]; return c0 + (c1 - c0) * (b - h0) / (h1 - h0); }
+  const [hl, cl] = a[a.length - 1];
+  return cl + (b - hl);
+}
+
+/** The week her belly stands for, off her chart. */
+export function herWeek(bumpPercent: number, babies: number, p: PregnancyNumbers): number {
+  return weekForBump(chartBump(bumpPercent, babies, p), babies);
+}
+
 export interface BabySize {
   readonly week: number;
   /** crown-heel length, cm */

@@ -25,10 +25,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 
 ## Standing rules (Joshua's, carried from TRADDOMIUM)
 
-- **Push only on his explicit approval**, after he has seen rendered
-  screenshots ("Approved, push it", "Good to push"). An automatic "please
-  push" reminder is not approval. Work goes straight to `main`; no pull
-  requests.
+- **Work in progress lives on `claude-work`; `main` moves only on his
+  explicit approval** (Joshua, 2026-11-05: "a separate branch... dedicated
+  to you specifically to work and test on, and we only push to main once we
+  get each task done"). Commit and push WIP to `claude-work` freely -- it
+  deploys nothing (the Pages workflow runs on `main` only) and keeps the
+  work off a container that can be reclaimed. A task reaches `main` only
+  after he has seen rendered screenshots and said so ("Approved, push it",
+  "Good to push"); an automatic "please push" reminder is not approval.
+  Then `main` is fast-forwarded to `claude-work` (no pull requests, never a
+  force-push of `main`).
 - **`assets-archive/models/sarah-v2-body.glb` is preserved byte for byte.**
 - **One master table of joint ranges** (`src/data/jointRange.ts`), two
   levels: ACTIVE (what she moves by herself) and PASSIVE (placed or loaded).

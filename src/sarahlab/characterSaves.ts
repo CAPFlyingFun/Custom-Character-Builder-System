@@ -5,7 +5,8 @@
  *
  * A save is a NAME (Sarah, Lena, ...) holding a body, an outfit, or both:
  *   - the BODY: which model, her bump (the STARTING size; the story clock that grows and later eases it is the game's,
- *     later), every body-shape control, the belly refinement, and RANDOMIZE's ranges and locks (`actor/bodyRandom.ts`);
+ *     later), every body-shape control, the belly refinement, RANDOMIZE's ranges and locks (`actor/bodyRandom.ts`), and
+ *     her pregnancy -- PREGNANT on or off and her weeks as typed (`pregnancy.ts`), numbers the game can grow her by;
  *   - the CLOTHES: the outfit she wears, each paint layer (its template and dial settings, or the hand-painted mask
  *     when there is no template), its fabric, colour, stitch and detail-through-paint, each modelled garment's fabric,
  *     the shirt length, the outfit's BREAST and NAVEL DETAIL (each AUTO or a manual value: `DetailOverride`), the
@@ -36,6 +37,7 @@ import type { CoverageParams } from './paintTemplates';
 import type { RandomRule, RandomRules } from '../actor/bodyRandom';
 import { builtToJson, sanitizeBuilt, type BuiltPieces } from './strapData';
 import { readTint } from './fabricTint';
+import { readPregnancy, type Pregnancy } from './pregnancy';
 import {
   GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, sameGarment, type GarmentRecord, type GarmentSettings,
 } from './garment/settings';
@@ -53,6 +55,12 @@ export interface SavedBody {
   readonly refine: boolean;
   /** RANDOMIZE's ranges and locks (`RandomRules`), as kept; each is clamped to its slider when used. */
   readonly random: RandomRules;
+  /**
+   * Her pregnancy (`pregnancy.ts`): PREGNANT on or off, and her weeks as typed (the exact week for a belly %, her belly %
+   * at week 1 and at delivery, the delivery week; each null when not typed). Left out by a save from before, which
+   * `pregnancyOf` reads from her shape.
+   */
+  readonly pregnancy?: Pregnancy;
 }
 
 export interface SavedLayer {
@@ -371,7 +379,7 @@ function readRandom(v: unknown): RandomRules {
 }
 function readBody(v: unknown): SavedBody | null {
   if (!isRecord(v) || typeof v.model !== 'string') return null;
-  return { model: str(v.model, 40), bump: num(v.bump, 0, 1000, 0), shape: str(v.shape, 20_000), refine: v.refine === true, random: readRandom(v.random) };
+  return { model: str(v.model, 40), bump: num(v.bump, 0, 1000, 0), shape: str(v.shape, 20_000), refine: v.refine === true, random: readRandom(v.random), ...(isRecord(v.pregnancy) ? { pregnancy: readPregnancy(v.pregnancy) } : {}) };
 }
 function readRef(v: unknown): OutfitRef | null {
   if (!isRecord(v) || typeof v.basedOn !== 'string' || !isRecord(v.overrides)) return null;

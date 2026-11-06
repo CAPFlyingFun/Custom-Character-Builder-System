@@ -38,6 +38,7 @@ import { GarmentPanel } from './garmentPanel';
 import { FaceMotion } from './faceMotion';
 import { patchHairMaterial } from './hairMaterial';
 import { SARAH_LOOK } from './sarahLook';
+import { PREGNANCY_DEFAULT, PREGNANCY_RANGE, pregnancyOf, pregnantLine, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
 import { BUILD_INFO } from '../ui/buildInfo';
 import { IRIS_CHOICES, browsLine, eyesLine, lipsLine, mouthLine, nextEyeMode } from './faceChoices';
@@ -91,7 +92,7 @@ import { applyBuildToBones, applyBuildToMesh, buildBoneOffsets, buildMeshFields,
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
-import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babyLine, babySolid, carriedShare, weekForBump, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
+import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PUBIC_PRESS, pubicPressWant, setPush, jiggleOf as jiggleOfMesh, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type SoftBellyWant } from './softBody';
 import { createVulvaPatch, VULVA_OPEN, type VulvaPatch } from './vulvaMesh';
@@ -283,7 +284,7 @@ import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
 import {
   SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
-  labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, isPregnant, pregnantLine, PREGNANT_WEEKS_DEFAULT, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
+  labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
 } from './sarahLabTool';
@@ -700,9 +701,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const DEPTH_FIELD = 'shape:bellyDepth';
   let babyRoot: THREE.Object3D | null = null, babyHolder: THREE.Object3D | null = null, babySac: THREE.Mesh | null = null;
   let babyShown = false, babyLoading = false, babyKey = '';
-  /** PREGNANT (P5): is she, by her own body control; and the week PREGNANT ON gives back (the one she had) */
-  const pregnant = (): boolean => isPregnant(body.pregnancyWeeks);
-  let pregnantWeeksWas = PREGNANT_WEEKS_DEFAULT;
+  /** PREGNANT (P5): is she -- on or off, nothing else (her weeks are typed: `pregnancy`, below) */
+  const pregnant = (): boolean => pregnancy.pregnant;
+  /** the % of the chart her belly stands for, off her own chart (baby.ts `chartBump`): `b` itself while nothing is typed */
+  const onChart = (b = bump): number => chartBump(b, babyCount, pregnancy);
   // HER BABY'S BIRTH (birthSequence.ts): its clock (null: not begun), whether it runs, its pace, where it is now, her
   // canal as drawn this frame, and her baby's head's middle (its model's units)
   let birthTimeInput: HTMLInputElement | null = null;
@@ -888,6 +890,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // the body's own proportions (Joshua, 2026-10-15): all approved values to start, so she
   // looks exactly as approved until a control moves
   let body: BodyShape = SARAH_LOOK ? parseShape(SARAH_LOOK.body.shape) : defaultBodyShape();
+  // HER PREGNANCY (pregnancy.ts, Joshua 2026-11-05): PREGNANT on or off and her weeks as typed, kept with her body
+  let pregnancy: Pregnancy = SARAH_LOOK ? pregnancyOf(SARAH_LOOK.body) : PREGNANCY_DEFAULT;
   let shaped: { mesh: THREE.SkinnedMesh; fields: ShapeFields }[] = [];
   // HER BUILD (Joshua, 2026-10-26: "a height adjuster so you can raise or shorten the length of the legs, hips, arms,
   // hands and more basic body controls"; actor/bodyBuild.ts, view/bodyBuild.ts): measured on her approved v2 body once
@@ -1249,6 +1253,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const buttons: Record<string, HTMLButtonElement> = {};
   /** the BIRTH row's buttons (dimmed, with the rest of a pregnancy's, while she is not pregnant) */
   let birthButtons: HTMLButtonElement[] = [];
+  /** HER WEEKS' boxes (pregnancy.ts), by `SARAH_LAB_FIELD`, and the week box's own label */
+  const weekBoxes = new Map<string, HTMLInputElement>();
+  let weekLabel: HTMLElement | null = null;
   /** FACE's own controls: the held-open mouth, and the eye-colour swatches. */
   let faceMouthInput: HTMLInputElement | null = null;
   const irisButtons: HTMLButtonElement[] = [];
@@ -1410,6 +1417,34 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       b.disabled = !on; b.style.opacity = on ? '1' : '.4';
     }
   }
+  /** HER PREGNANCY changed (PREGNANT, or a week typed): her babies fitted again for the week her belly stands for */
+  function setPregnancy(next: Pregnancy): void { pregnancy = next; babyDirty = true; babyFitAt = -Infinity; applyLook(); applyMotion(); refresh(); }
+  /** HER WEEKS' boxes: what is typed, or blank with what is in force in grey; and the line under them */
+  function refreshWeeks(): void {
+    const chart = herChart(babyCount, pregnancy), here = herWeek(bump, babyCount, pregnancy), mine = weekIsFor(pregnancy, bump);
+    const put = (field: string, typed: number | null, inForce: string, on = true) => {
+      const i = weekBoxes.get(field);
+      if (!i) return;
+      if (document.activeElement !== i) i.value = typed === null ? '' : String(typed);
+      i.placeholder = inForce; i.disabled = !on; i.style.opacity = on ? '1' : '.4';
+    };
+    if (weekLabel) weekLabel.textContent = `WEEK AT ${Math.round(bump)}%`;
+    put(SARAH_LAB_FIELD.pregnancyWeek, mine ? pregnancy.week : null, pregnant() ? weekText(here) : '–', pregnant());
+    for (const [k, on] of [['week', pregnant() && pregnancy.week !== null], ['first', pregnancy.firstWeekBump !== null], ['delivery', pregnancy.deliveryBump !== null], ['deliveryWeek', pregnancy.deliveryWeek !== null]] as const) {
+      const b = buttons[`${SARAH_LAB_ACTION.pregnancyClear}${k}`];
+      if (b) { b.disabled = !on; b.style.opacity = on ? '1' : '.4'; }
+    }
+    put(SARAH_LAB_FIELD.pregnancyFirst, pregnancy.firstWeekBump, String(Math.round(chart.firstWeekBump)));
+    put(SARAH_LAB_FIELD.pregnancyDelivery, pregnancy.deliveryBump, String(Math.round(chart.deliveryBump)));
+    put(SARAH_LAB_FIELD.pregnancyDeliveryWeek, pregnancy.deliveryWeek, weekText(chart.deliveryWeek));
+    const line = fields[SARAH_LAB_FIELD.pregnancyLine];
+    if (!line) return;
+    if (!pregnant()) { line.textContent = 'not pregnant · her weeks are kept for when she is (PREGNANT · ON)'; return; }
+    const from = mine ? 'as typed' : nothingTyped(pregnancy) ? `the chart's for ${BABIES_NAME[babyCount] === 'ONE' ? 'one baby' : BABIES_NAME[babyCount].toLowerCase()}` : 'off her chart';
+    const pinned = pregnancy.week !== null && !mine && pregnancy.weekAtBump !== null ? ` · ${weekText(pregnancy.week)} wk typed for ${Math.round(pregnancy.weekAtBump)}%` : '';
+    const unused = chart.unused.map((u) => u === 'week' ? ' · the typed week is not used: it must be past week 12 and its belly % between her week 1 and delivery' : ' · her delivery % is not used: it must be above her week 1').join('');
+    line.textContent = `her week now ${weekText(here)} (${from})${pinned}${unused}`;
+  }
   function refresh(): void {
     if (fields.status) fields.status.textContent = statusLine(loaded && model?.visible === true, failed, garments, hasBelly, modelIndex) + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
     refreshSkin();
@@ -1426,6 +1461,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (f3) f3.textContent = birthBulgeLine(birthBulgePct, VULVA_OPEN.bulge * 100);
       if (birthBulgeInput && Number(birthBulgeInput.value) !== birthBulgePct) birthBulgeInput.value = String(birthBulgePct); }
     if (bumpInput && Number(bumpInput.value) !== bump) bumpInput.value = String(bump);
+    refreshWeeks();
     for (const spec of BODY_RANDOM_SPECS) {
       const b = lockButtons.get(spec.key);
       if (!b) continue;
@@ -1507,13 +1543,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     for (const t of SIZE_TILT_PRESETS_DEG) lit(buttons[`tilt${t}`], body.bellyTilt === t);
     if (buttons.outfit) buttons.outfit.textContent = `OUTFIT · ${outfitName(wantedOutfit ?? outfit)}${wantedOutfit !== null ? ' …' : ''}`;
     if (buttons.model) buttons.model.textContent = modelLine(modelIndex);
-    if (buttons.pregnant) { buttons.pregnant.textContent = pregnantLine(body.pregnancyWeeks); lit(buttons.pregnant, pregnant()); }
+    if (buttons.pregnant) { buttons.pregnant.textContent = pregnantLine(pregnancy); lit(buttons.pregnant, pregnant()); }
     if (buttons.baby) { buttons.baby.textContent = !pregnant() ? 'SEE BABY · not pregnant' : babyShown ? (babyCount > 1 ? 'HIDE BABIES' : 'HIDE BABY') : (babyCount > 1 ? 'SEE BABIES' : 'SEE BABY'); lit(buttons.baby, babyShown); }
     // (an unavailable action never looks like one that works: a baby's controls dimmed while she is not pregnant)
     for (const b of [buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick, ...birthButtons]) if (b) { b.disabled = !pregnant(); b.style.opacity = pregnant() ? '1' : '.4'; }
     if (buttons.babies) buttons.babies.textContent = `BABIES · ${BABIES_NAME[babyCount]}`;
     if (buttons.babyLie) buttons.babyLie.textContent = `LIE · ${babyLie === 'auto' ? 'AUTO' : babyLie === 'random' ? 'RANDOM' : LIE_NAME[babyLie].toUpperCase()}`;
-    if (babyNote) { babyNote.textContent = babyShown ? `${babyCount > 1 ? 'BABIES' : 'BABY'} · ${babyLoading ? 'loading…' : babyRoot ? `${babyLine(bump, body.babyWeight, babyCount)}${babyCurled < 0.995 ? ` · drawn ${Math.round((1 - babyCurled) * 100)}% smaller to fit` : ''}${babyAutoDepth >= 0.5 ? ` · depth +${Math.round(babyAutoDepth)}% to fit` : ''}${babyBalanceDeg >= 0.05 ? ` · sags ${babyBalanceDeg.toFixed(1)}°` : ''} · ${babyRoots().map((r, i) => `${babyCount > 1 ? `${'ABC'[i]} ` : ''}${LIE_NAME[(r.userData.lie as Lie | undefined) ?? 'head']}`).join(', ')}` : 'not loaded'}` : ''; babyNote.style.display = babyShown ? '' : 'none'; }
+    if (babyNote) { babyNote.textContent = babyShown ? `${babyCount > 1 ? 'BABIES' : 'BABY'} · ${babyLoading ? 'loading…' : babyRoot ? `${babyLine(onChart(), body.babyWeight, babyCount)}${babyCurled < 0.995 ? ` · drawn ${Math.round((1 - babyCurled) * 100)}% smaller to fit` : ''}${babyAutoDepth >= 0.5 ? ` · depth +${Math.round(babyAutoDepth)}% to fit` : ''}${babyBalanceDeg >= 0.05 ? ` · sags ${babyBalanceDeg.toFixed(1)}°` : ''} · ${babyRoots().map((r, i) => `${babyCount > 1 ? `${'ABC'[i]} ` : ''}${LIE_NAME[(r.userData.lie as Lie | undefined) ?? 'head']}`).join(', ')}` : 'not loaded'}` : ''; babyNote.style.display = babyShown ? '' : 'none'; }
     if (buttons.refine) {
       // only v2 has the switchable curve: the button is not shown for v1
       buttons.refine.style.display = SARAH_LAB_MODELS[modelIndex].id.startsWith('v2') ? '' : 'none';
@@ -2377,6 +2413,49 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       r.append(lockButton(spec));
       right.append(r, rangeRow(spec));
     }
+    {
+      // HER WEEKS (Joshua, 2026-11-05: "add a text box you can type in the exact week to the % if you have an exact week
+      // for that %. Also, you could add the 1st week of pregnancy %, and the delivery week %... then the game can use those
+      // numbers later"). Each box is blank until something is typed, and shows in grey what is in force meanwhile; blank
+      // again, or its ↺, is nothing typed. Together they are her chart (baby.ts `herChart`), kept with her body.
+      const wrap = document.createElement('div'); wrap.dataset.tab = 'body';
+      wrap.style.cssText = 'display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:3px 5px;font-size:11px;letter-spacing:.04em;margin:2px 0 4px;border-top:1px solid rgba(255,255,255,0.12);padding-top:6px';
+      const head = document.createElement('div');
+      head.style.cssText = 'grid-column:1 / -1;font:700 11px system-ui,sans-serif;letter-spacing:.08em';
+      const sub = document.createElement('span'); sub.textContent = ' · type what you know; blank is the chart\'s';
+      sub.style.cssText = 'font-weight:500;letter-spacing:.03em;opacity:.7';
+      head.append('HER WEEKS', sub);
+      wrap.appendChild(head);
+      const box = (field: string, range: readonly [number, number], step: number, set: (v: number | null) => void): HTMLInputElement => {
+        const i = document.createElement('input');
+        i.type = 'number'; i.inputMode = 'decimal'; i.min = String(range[0]); i.max = String(range[1]); i.step = String(step);
+        i.dataset.field = field;
+        i.style.cssText = 'width:54px;height:24px;border-radius:6px;border:1px solid #ffffff30;background:#0d1117;color:#e8e2d8;font:600 12px system-ui;padding:0 4px';
+        // (applied when the box is left or Enter pressed, not at each key: typing 32 is never a 3 first)
+        i.addEventListener('change', () => { const v = typedNumber(i.value, range); if (v === undefined) refresh(); else set(v); });
+        i.addEventListener('keydown', (e) => e.stopPropagation());
+        weekBoxes.set(field, i);
+        return i;
+      };
+      // (one row each: its name, its box, its unit, its ↺)
+      const row = (label: string | HTMLElement, input: HTMLInputElement, unit: string, clear: () => void, action: string) => {
+        const l = typeof label === 'string' ? Object.assign(document.createElement('span'), { textContent: label }) : label;
+        const reset = btn('↺', action, clear);
+        reset.title = 'nothing typed: the chart\'s'; reset.style.padding = '2px 8px'; reset.style.fontSize = '12px';
+        buttons[action] = reset;
+        wrap.append(l, input, Object.assign(document.createElement('span'), { textContent: unit }), reset);
+      };
+      weekLabel = document.createElement('span');
+      row(weekLabel, box(SARAH_LAB_FIELD.pregnancyWeek, PREGNANCY_RANGE.week, 0.1, (v) => setPregnancy(typeWeek(pregnancy, v, bump))), 'wk', () => setPregnancy(typeWeek(pregnancy, null, bump)), `${SARAH_LAB_ACTION.pregnancyClear}week`);
+      row('WEEK 1 BELLY', box(SARAH_LAB_FIELD.pregnancyFirst, PREGNANCY_RANGE.bump, 1, (v) => setPregnancy({ ...pregnancy, firstWeekBump: v })), '%', () => setPregnancy({ ...pregnancy, firstWeekBump: null }), `${SARAH_LAB_ACTION.pregnancyClear}first`);
+      row('DELIVERY BELLY', box(SARAH_LAB_FIELD.pregnancyDelivery, PREGNANCY_RANGE.bump, 1, (v) => setPregnancy({ ...pregnancy, deliveryBump: v })), '%', () => setPregnancy({ ...pregnancy, deliveryBump: null }), `${SARAH_LAB_ACTION.pregnancyClear}delivery`);
+      row('DELIVERY WEEK', box(SARAH_LAB_FIELD.pregnancyDeliveryWeek, PREGNANCY_RANGE.deliveryWeek, 0.1, (v) => setPregnancy({ ...pregnancy, deliveryWeek: v })), 'wk', () => setPregnancy({ ...pregnancy, deliveryWeek: null }), `${SARAH_LAB_ACTION.pregnancyClear}deliveryWeek`);
+      const line = document.createElement('div');
+      line.dataset.field = SARAH_LAB_FIELD.pregnancyLine; fields[SARAH_LAB_FIELD.pregnancyLine] = line;
+      line.style.cssText = 'grid-column:1 / -1;font-size:10px;opacity:.8;line-height:1.35';
+      wrap.appendChild(line);
+      right.appendChild(wrap);
+    }
     slider(SARAH_LAB_FIELD.fingers, curl, (v) => { curl = v; }, 100, 'pose');
     armsInput = slider(SARAH_LAB_FIELD.arms, armsDeg, (v) => { armsDeg = v; armsOverride = true; }, 90, 'pose');
     // her birth opening, closed to the full 10 cm (with the birth poses: LEGS APART, SQUAT, RECLINE)
@@ -2465,11 +2544,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     buttons.turn = btn('TURN', SARAH_LAB_ACTION.turn, () => { turning = !turning; });
     // a nudge up, as a hop would: the bump lags, drops and settles
     buttons.bounce = btn('BOUNCE', SARAH_LAB_ACTION.bounce, () => { masses.belly.vy -= 0.3; masses.breastL.vy -= 0.3; masses.breastR.vy -= 0.3; });
-    // PREGNANT (P5): on or off, by her own Pregnancy control -- off keeps the week she had, on gives it back
-    buttons.pregnant = btn(pregnantLine(body.pregnancyWeeks), SARAH_LAB_ACTION.pregnant, () => {
-      if (pregnant()) { pregnantWeeksWas = body.pregnancyWeeks; setBody({ ...body, pregnancyWeeks: 0 }); }
-      else setBody({ ...body, pregnancyWeeks: pregnantWeeksWas > 0 ? pregnantWeeksWas : PREGNANT_WEEKS_DEFAULT });
-      babyDirty = true; babyFitAt = -Infinity;
+    // PREGNANT (P5): on or off and nothing else -- her weeks are what is typed (HER WEEKS, under her belly's size)
+    buttons.pregnant = btn(pregnantLine(pregnancy), SARAH_LAB_ACTION.pregnant, () => {
+      setPregnancy({ ...pregnancy, pregnant: !pregnancy.pregnant });
     });
     buttons.baby = btn('SEE BABY', SARAH_LAB_ACTION.baby, () => { showBaby(!babyShown); refresh(); });
     buttons.babies = btn('BABIES · ONE', SARAH_LAB_ACTION.babies, () => { if (birthClock !== null) birthControl('reset'); babyCount = (babyCount % 3) + 1; babyDirty = true; babyFitAt = -Infinity; applyLook(); refresh(); });
@@ -2612,12 +2689,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     characters = characterPanel({
       read: () => book.read(),
       write: (b) => book.write(b),
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy }),
       clothes: () => currentClothes(),
       wornFrom: () => wornFrom,
       putOnBody: (saved) => {
         bump = Math.max(0, Math.min(BUMP_MAX_PERCENT, Math.round(saved.bump)));
         body = parseShape(saved.shape);
+        pregnancy = pregnancyOf(saved); babyDirty = true; babyFitAt = -Infinity;
         refine = saved.refine;
         randomRules = saved.random;
         const index = SARAH_LAB_MODELS.findIndex((m) => m.id === saved.model);
@@ -2659,7 +2737,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       read: () => book.read(),
       write: (b) => { book.write(b); characters?.refresh(); },
       clothes: clothesNow,
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy }),
       characterName: () => characters?.name() ?? '',
       builtins: () => OUTFITS.filter((o) => (o.paint ? recovered : o.name !== 'none')).map((o) => o.name),
       // her own outfit first, then the rest in the room's order
@@ -3033,7 +3111,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // SIT as the room sits her: its correctives, and her bump's tilt handed to her thighs (`seated` 1)
         seat: (on) => { pose = on ? 'sit' : 'tpose'; seated = on ? 1 : 0; sitAmount = on ? 1 : 0; sitMoving = false; applyLook(); applyMotion(); },
         facts: {
-          look: SARAH_LOOK?.clothes.outfit ?? null, outfit: OUTFITS[outfit].name, bump, shape: serializeShape(body), bellyCurve, refine,
+          look: SARAH_LOOK?.clothes.outfit ?? null, outfit: OUTFITS[outfit].name, bump, shape: serializeShape(body), pregnancy, bellyCurve, refine,
           skin: { chosen: skinId, worn: skinWorn, own: b.material.map === ownMap(b.material), painted: !!painted },
           cloth: { on: clothOn, wanted: clothWanted, made: !!cloth }, fittedTee: !!fittedTee(), fittedLaid, keep,
           teeDetail: fitted ? fitted.spots.fitted(keep, fitted.navel) : null,
@@ -4484,7 +4562,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (pose === 'stand') softUpright.lerp(softDown, Math.min(1, dt * 2)).normalize();
     const down = softHeld ? heldDown(softHeld.lean, softHeld.side) : softDown;
     // how full her womb is: her belly's size against full term, her babies' and their fluid's share, less once born
-    const fullness = (bump / 100) * birthBellyShare * (babyRoot ? carriedShare(bump, body.babyWeight, babyCount) : 1);
+    const fullness = (bump / 100) * birthBellyShare * (babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1);
     // her baby's place in her womb: lower sags her belly, further forward deepens it; settling into her pelvis in labour
     // it drops (and once born, it is out of her)
     let baby: { low: number; forward: number } | null = null;
@@ -4501,7 +4579,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // pelvis in labour counts as dropped all the way), a contraction -- and once her baby is born, by what her womb left
     // (NAVEL AFTER BIRTH); a spring carries it there, a little past and back
     const born = allOut(birthNow);
-    if (!born) { navelPress = navelPressure(body.pregnancyWeeks, babyRoot ? carriedShare(bump, body.babyWeight, babyCount) : 1, baby && birthNow ? { low: baby.low + 0.7 * birthNow.engage, forward: baby.forward } : baby, birthNow?.contraction ?? 0); navelPeak = birthNow ? Math.max(navelPeak, navelPress) : navelPress; navelBornFor = 0; }
+    if (!born) { navelPress = navelPressure(pregnant() ? herWeek(bump, babyCount, pregnancy) : 0, babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1, baby && birthNow ? { low: baby.low + 0.7 * birthNow.engage, forward: baby.forward } : baby, birthNow?.contraction ?? 0); navelPeak = birthNow ? Math.max(navelPeak, navelPress) : navelPress; navelBornFor = 0; }
     else { navelBornFor += dt; navelPress = navelAfterBirth(body.navelAfter, navelPeak, navelBornFor); }
     if (!navelSpring.primed) { navelSpring.x = navelPress; navelSpring.primed = true; }
     { const w = 2 * Math.PI * 1.4, steps = Math.max(1, Math.ceil(dt / 0.01)), h = dt / steps;
@@ -4558,7 +4636,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her left in the world, for the sway
     side.set(1, 0, 0).applyQuaternion(qSide.copy(meshQ).invert());
     const volume = bustVolume(bump, body.breastSize), milkL = body.milk * (body.milkBalance < 0 ? 1 + 0.4 * body.milkBalance / 100 : 1), milkR = body.milk * (body.milkBalance > 0 ? 1 - 0.4 * body.milkBalance / 100 : 1);
-    const tunes = { belly: bellyTune(bump, body.bellyFirmness, body.babyWeight, body.bellyBounce, babyRoot ? carriedShare(bump, body.babyWeight, babyCount) : 1), breastL: breastTune(volume, milkL, body.breastFirmness, 'left', body.breastBounce), breastR: breastTune(volume, milkR, body.breastFirmness, 'right', body.breastBounce) };
+    const tunes = { belly: bellyTune(bump, body.bellyFirmness, body.babyWeight, body.bellyBounce, babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1), breastL: breastTune(volume, milkL, body.breastFirmness, 'left', body.breastBounce), breastR: breastTune(volume, milkR, body.breastFirmness, 'right', body.breastBounce) };
     for (const key of ['belly', 'breastL', 'breastR'] as const) {
       const a = anchors[key];
       a.bone.localToWorld(tmp.copy(a.local)).multiplyScalar(1 / M);
@@ -4797,7 +4875,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     balloonWombKey = key;
     // (and, settling, held further inside her than her skin, as a womb shrinking back is: not right under her belly)
     if (settled) for (let i = 0; i < skin.length; i += 3) skin[i + 2] -= BIRTH_WOMB_IN * (1 - birthBellyShare) / BIRTH_SHRINK;
-    try { vulva.setWomb(wombFromSkin(skin, weekForBump(bump * birthBellyShare, babyCount)), bone); } catch (error) { console.error('[sarahlab] her womb for the balloon could not be laid', error); vulva.setWomb(null); }
+    try { vulva.setWomb(wombFromSkin(skin, weekForBump(onChart(bump * birthBellyShare), babyCount)), bone); } catch (error) { console.error('[sarahlab] her womb for the balloon could not be laid', error); vulva.setWomb(null); }
   }
   function bellySkin(): Float32Array | null {
     const b = bodyOf(), f = babyFrame;
@@ -4967,7 +5045,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const unit = depthUnit(), depth = babySkinDepth && babySkinDepth.length === skin.length ? babySkinDepth : null;
       if (babyAutoDepth && depth) for (let i = 0; i < skin.length; i++) skin[i] -= babyAutoDepth * unit * depth[i];
       babySolidOf ??= babySolid(babyAll ?? babyPoints, babyCurl);
-      const lies = babyLies(), them = babiesInHer(babyPoints, babyAll ?? babyPoints, babySolidOf, bump, body.babyWeight, babyCurl, skin, depth, unit, lies), fits = them.fits;
+      const lies = babyLies(), them = babiesInHer(babyPoints, babyAll ?? babyPoints, babySolidOf, onChart(), body.babyWeight, babyCurl, skin, depth, unit, lies), fits = them.fits;
       babyWomb = them.womb; babyPushField = them.push; babyCurled = them.shrink; babyBalanceDeg = them.balance;
       // her belly deepened as they need (her shape fields laid again, only when it moved enough to see)
       if (Math.abs(them.depth - babyAutoDepth) > 0.25) { babyAutoDepth = them.depth; applyLook(); babyDirty = false; }
@@ -4986,8 +5064,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       babyRooms = floatRoom(babyPoints, fits, babyWomb);
       // each its placenta, where the babies leave the lining room, near its navel; its cord laid afresh when they change
       const navels = fits.map((f) => babyNavel ? babyNavel.model.clone().multiplyScalar(f.scale).applyQuaternion(f.quaternion).add(f.position) : f.position.clone());
-      babyPlacentas = placentaSpots(babyPoints, fits, babyWomb, weekForBump(bump, babyCount), navels);
-      const wk = weekForBump(bump, babyCount);
+      babyPlacentas = placentaSpots(babyPoints, fits, babyWomb, weekForBump(onChart(), babyCount), navels);
+      const wk = weekForBump(onChart(), babyCount);
       // (as thick as its navel at the size it is: BABY_NAVEL)
       if (babyCords.length !== fits.length) { babyCords = fits.map((f) => new Cord(cordLength(wk), BABY_NAVEL.radius * f.scale)); cordLaid = fits.map(() => false); }
       babyCords.forEach((c, i) => { c.length = cordLength(wk); c.radius = BABY_NAVEL.radius * fits[i].scale; });
@@ -5794,7 +5872,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // way from the placenta to her opening (the rest of it hangs out of her), gone once the placenta is out of her
       const innerTo = out ? cordOpen : navelAt, innerWay = out ? undefined : navelWay;
       if (cordCut) cord.length = Math.max(4 * cord.radius, AFTERBIRTH.innerSlack * cordA.distanceTo(cordOpen));
-      else cord.length = cordLength(weekForBump(bump, babyCount));
+      else cord.length = cordLength(weekForBump(onChart(), babyCount));
       // (kept in her womb, but not once the placenta has left it down her canal)
       const innerIn = !(cordCut && (bm?.placentaDown ?? 0) > 0);
       if (!cordLaid[i]) { cord.lay(cordA, innerTo, babyWomb!.centre.clone().add(jiggle.belly.value)); cordLaid[i] = true; for (let k = 0; k < 30; k++) cord.step(1 / 60, cordA, innerTo, babyWomb!, jiggle.belly.value, bodies, i, { bWay: innerWay, inWomb: innerIn }); }
@@ -7312,7 +7390,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         kicks: () => jiggle.kickAt.value.map((k, i) => ({ at: [k.x, k.y, k.z].map((x) => +x.toFixed(4)), mm: Math.round(k.w * 1000), dir: [jiggle.kickDir.value[i].x, jiggle.kickDir.value[i].y, jiggle.kickDir.value[i].z].map((x) => +x.toFixed(3)) })),
         babiesSet: (count: number, lie: string, seed?: number) => { babyCount = Math.min(3, Math.max(1, Math.round(count))); babyLie = (LIE_MODES as readonly string[]).includes(lie) ? lie as typeof babyLie : 'auto'; if (seed) babyLieSeed = seed; babyDirty = true; babyFitAt = -Infinity; applyLook(); refresh(); return true; },
         pushOff: (off: boolean) => { babyPushOff = off; if (babyPushField) layPush(babyPushField); return true; },
-        baby: (on?: boolean) => { if (on !== undefined) { showBaby(on); refresh(); } return { shown: babyShown, loaded: !!babyRoot, held: !!babyHolder, line: babyLine(bump, body.babyWeight, babyCount), count: babyCount, lies: babyRoots().map((r) => r.userData.lie ?? null), at: babyRoot ? { position: babyRoot.position.toArray(), scale: babyRoot.scale.x, pushMm: babyPushField ? Math.round(babyPushField.most * 1000) : null, depthPct: babyAutoDepth, balanceDeg: babyBalanceDeg, shrink: babyCurled, fitMs: babyRoot.userData.fitMs ?? null, womb: babyWomb ? { centre: babyWomb.centre.toArray(), top: babyWomb.centre.y + sacRadius(babyWomb, 0, 1, 0), bottom: babyWomb.centre.y - sacRadius(babyWomb, 0, -1, 0), front: babyWomb.centre.z + sacRadius(babyWomb, 0, 0, 1), back: babyWomb.centre.z - sacRadius(babyWomb, 0, 0, -1), half: sacRadius(babyWomb, 1, 0, 0) } : null } : null }; },
+        baby: (on?: boolean) => { if (on !== undefined) { showBaby(on); refresh(); } return { shown: babyShown, loaded: !!babyRoot, held: !!babyHolder, line: babyLine(onChart(), body.babyWeight, babyCount), count: babyCount, lies: babyRoots().map((r) => r.userData.lie ?? null), at: babyRoot ? { position: babyRoot.position.toArray(), scale: babyRoot.scale.x, pushMm: babyPushField ? Math.round(babyPushField.most * 1000) : null, depthPct: babyAutoDepth, balanceDeg: babyBalanceDeg, shrink: babyCurled, fitMs: babyRoot.userData.fitMs ?? null, womb: babyWomb ? { centre: babyWomb.centre.toArray(), top: babyWomb.centre.y + sacRadius(babyWomb, 0, 1, 0), bottom: babyWomb.centre.y - sacRadius(babyWomb, 0, -1, 0), front: babyWomb.centre.z + sacRadius(babyWomb, 0, 0, 1), back: babyWomb.centre.z - sacRadius(babyWomb, 0, 0, -1), half: sacRadius(babyWomb, 1, 0, 0) } : null } : null }; },
         masses: () => ({ belly: { ...masses.belly }, breastL: { ...masses.breastL }, breastR: { ...masses.breastR }, shown: { belly: jiggle.belly.value.toArray(), breastL: jiggle.breastL.value.toArray(), breastR: jiggle.breastR.value.toArray() }, anchored: !!anchors }),
         kick: (vy: number, vx = 0, vz = 0) => { for (const m of Object.values(masses)) { m.vy += vy; m.vx += vx; m.vz += vz; } },
         settle: (frames: number, dt = 1 / 60) => { if (!cloth || !model) return null; for (let k = 0; k < frames; k++) { model.updateMatrixWorld(true); if (clothRefit) { refitCloth(cloth); clothRefit = false; } cloth.frame(dt); } return cloth.stats(); },

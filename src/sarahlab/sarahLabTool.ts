@@ -116,8 +116,10 @@ export const SARAH_LAB_ACTION = Object.freeze({
   recline: 'sarahlab:recline',
   turn: 'sarahlab:turn',
   bounce: 'sarahlab:bounce',
-  /** PREGNANT on or off (P5): her body control `pregnancyWeeks` at 0 or back at the week she had (sarahLabTool `pregnantLine`) */
+  /** PREGNANT on or off (P5): on or off and nothing else -- her weeks are typed, each its own box (pregnancy.ts) */
   pregnant: 'sarahlab:pregnant',
+  /** `${pregnancyClear}week` / `first` / `delivery` / `deliveryWeek`: one of HER WEEKS back to nothing typed (the chart's) */
+  pregnancyClear: 'sarahlab:pregnancy-clear-',
   /** SEE BABY: her baby in her womb, her body seen through (baby.ts) */
   baby: 'sarahlab:baby',
   /** BABIES (one, twins, triplets) and how each LIES (auto, head down, breech, sideways, random) */
@@ -195,6 +197,13 @@ export const SARAH_LAB_FIELD = Object.freeze({
   /** `${birth}<control>`: a BIRTH control's line (holdCm, firmness, headPush); its slider follows it */
   birth: 'sarahlab-birth-',
   bump: 'sarahlab-bump',
+  /** HER WEEKS (pregnancy.ts), each a box that may be left blank: the exact week for her belly %, her belly % at week 1,
+   * at delivery, and the delivery week; and the line under them (the week her belly stands for, and from what) */
+  pregnancyWeek: 'sarahlab-pregnancy-week',
+  pregnancyFirst: 'sarahlab-pregnancy-first',
+  pregnancyDelivery: 'sarahlab-pregnancy-delivery',
+  pregnancyDeliveryWeek: 'sarahlab-pregnancy-delivery-week',
+  pregnancyLine: 'sarahlab-pregnancy-line',
   fingers: 'sarahlab-fingers',
   /** her birth opening (vulvaMesh.ts): closed to the full 10 cm, for looking at it in the room */
   birthOpen: 'sarahlab-birth-open',
@@ -885,24 +894,6 @@ export function fingerBend(curlPercent: number, jointInChain: number, thumb: boo
   const limit = limits[Math.min(limits.length - 1, Math.max(0, jointInChain))];
   const curl = Math.min(100, Math.max(0, Number.isFinite(curlPercent) ? curlPercent : 0)) / 100;
   return curl * limit * (Math.PI / 180);
-}
-
-/**
- * PREGNANT, ON OR OFF (P5; Joshua, 2026-11-03: "being able to select a female character with a belly without it
- * automatically thinking she's pregnant just because the belly slider is say at 30%... Maybe add a toggle for that";
- * 2026-11-04: "the belly skin should equal the womb size. The womb size should equal the baby size if pregnancy is
- * selected. Otherwise, the default shape of the belly will be the preset approved shape"). It is her body control
- * `pregnancyWeeks` (actor/bodyShape.ts: 0 is not pregnant), so it is kept in her character save with the rest of her
- * body, and her belly slider -- her LOOK -- is never touched by it. Off, nothing of a pregnancy is there: no baby, no womb
- * grown round one, no placenta, no kicks, no birth, and her belly is the slider's approved shape and nothing pushes it.
- */
-export function isPregnant(pregnancyWeeks: number): boolean {
-  return Number.isFinite(pregnancyWeeks) && pregnancyWeeks > 0;
-}
-/** The week PREGNANT ON goes back to: the one she had, or full term when she never had one. */
-export const PREGNANT_WEEKS_DEFAULT = 40;
-export function pregnantLine(pregnancyWeeks: number): string {
-  return isPregnant(pregnancyWeeks) ? `PREGNANT · ON (${Math.round(pregnancyWeeks)} wk)` : 'PREGNANT · OFF';
 }
 
 export function fingersLine(curlPercent: number): string {
