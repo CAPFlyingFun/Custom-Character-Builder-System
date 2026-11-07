@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { DRAPE_PROBE, TunicDrape } from '../src/sarahlab/tunicDrape';
+import { CUT_ATTRIBUTE, DRAPE_PROBE, TunicDrape } from '../src/sarahlab/tunicDrape';
 import { BODY_REGIONS, type BodyMap } from '../src/sarahlab/bodyRegions';
 
 const regionOf = (id: string) => BODY_REGIONS.findIndex((r) => r.id === id) + 1;
@@ -173,5 +173,35 @@ describe('TunicDrape: its hem band alone (a painted shirt\'s smooth bottom edge)
     for (const [x, z] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) expect(b.some((p) => (p.x * x + p.z * z) / Math.hypot(p.x, p.z) > 0.95), `${x},${z}`).toBe(true);
     // lying on her: no further out than a few millimetres past her skin (0.18), in front too
     expect(Math.max(...b.map((p) => Math.hypot(p.x, p.z)))).toBeLessThan(0.19);
+  });
+});
+
+describe('TunicDrape seated: the hem band\'s edge over her thighs (LAP_CLEAR)', () => {
+  // Joshua, 2026-11-06, seated: "why when sitting, is the side of the shirt not smooth... Is it not following the updated
+  // thighs?" -- seated, the band (a painted shirt's bottom edge) ends just over the tops of her thighs where they leave
+  // her, cut crisp (`drapeCut`); standing, nothing of it is cut
+  const cutOf = (seated: boolean) => {
+    const { body, map } = sitting(seated), drape = new TunicDrape(body, map, -0.3);
+    drape.wear(-0.01, undefined, null, true);
+    drape.update(0);
+    const P = drape.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, C = drape.mesh.geometry.getAttribute(CUT_ATTRIBUTE) as THREE.BufferAttribute;
+    // (the rows drawn: the rest are folded onto the hem, drawn nowhere)
+    const drawn = Math.min(P.count, (drape.mesh.geometry.drawRange.count / (6 * 80) + 1) * 80);
+    const kept: THREE.Vector3[] = [], cut: THREE.Vector3[] = [];
+    for (let i = 0; i < drawn; i++) (C.getX(i) >= 0.5 ? kept : cut).push(new THREE.Vector3().fromBufferAttribute(P, i));
+    return { kept, cut };
+  };
+
+  it('standing: nothing cut', () => {
+    expect(cutOf(false).cut.length).toBe(0);
+  });
+
+  it('seated: over her thighs and round her sides to them, cut up to just over their tops (0.07 over her hips); behind her, not', () => {
+    const { kept, cut } = cutOf(true);
+    expect(cut.length).toBeGreaterThan(0);
+    // what is cut is over her thighs and round her sides to them (not behind her), and below their tops plus LAP_CLEAR
+    expect(cut.every((p) => p.z > -0.1 && p.y < 0.07 + 0.012)).toBe(true);
+    // in front, what is kept is above her thighs' tops
+    expect(kept.filter((p) => p.z > 0.12 && Math.abs(p.x) > 0.05).every((p) => p.y > 0.06)).toBe(true);
   });
 });

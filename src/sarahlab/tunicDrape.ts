@@ -136,6 +136,17 @@ const LEFT_OUT = new Set(['face', 'scalp', 'neck', 'handL', 'handR', 'footL', 'f
  * seated, near 90. Standing, none of her is lap and the drape is built exactly as it was. GAME TUNING.
  */
 const LAP_TOP = [-0.04, -0.12] as const, LAP_THIGH = [-0.25, -0.4] as const, LAP_TILT = (50 * Math.PI) / 180;
+/**
+ * Seated, a painted shirt (its hem band alone, `bandOnly`) ends, in each direction round her, at least this far over the
+ * tops of her thighs where they leave her (a share of her trunk: 6 mm); its paint goes from there down. Its own hem is a
+ * line on her skin as she stood, across the bend of her hip, and sitting bent it into teeth up her side, where the band,
+ * in her thigh, could not cover it (Joshua, 2026-11-06: "why when sitting, is the side of the shirt not smooth... Is it
+ * not following the updated thighs?"). Level round her, it is a straight edge. Her thighs count out to LAP_NEAR past the
+ * band's outline (their tops further out, by her knees, are no part of where the shirt ends). GAME TUNING.
+ */
+const LAP_CLEAR = 0.01, LAP_NEAR = 0.05;
+/** How many rows the seated cut's ramp spans: wider than its edge climbs between neighbouring directions. GAME TUNING. */
+const CUT_ROWS = 8;
 const LEGS = new Set(['thighL', 'thighR', 'kneeL', 'kneeR', 'calfL', 'calfR']);
 
 const smooth01 = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
@@ -181,6 +192,26 @@ export function leadToward(material: THREE.Material): void {
     }`);
   };
   material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|drape-lead-3`; };
+  material.needsUpdate = true;
+}
+
+/**
+ * Where the drape is CUT (`drapeCut`, one value a point: 1 kept, 0 cut off), drawn crisp where it crosses one half -- a
+ * seated painted shirt's edge over her thighs (LAP_CLEAR), which rises from her seat round her hips and is not one of
+ * the drape's level rows: a fade between rows drew it as a blur (2026-11-06). Every other point is 1.
+ */
+export const CUT_ATTRIBUTE = 'drapeCut';
+const cutting = new WeakSet<THREE.Material>();
+export function cutAt(material: THREE.Material): void {
+  if (cutting.has(material)) return;
+  cutting.add(material);
+  const previous = material.onBeforeCompile, cacheKey = material.customProgramCacheKey;
+  material.onBeforeCompile = function (shader, renderer) {
+    previous.call(this, shader, renderer);
+    shader.vertexShader = `attribute float ${CUT_ATTRIBUTE};\nvarying float vDrapeCut;\n` + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\nvDrapeCut = ${CUT_ATTRIBUTE};`);
+    shader.fragmentShader = 'varying float vDrapeCut;\n' + shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vDrapeCut < 0.5) discard;');
+  };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|drape-cut-1`; };
   material.needsUpdate = true;
 }
 
@@ -249,6 +280,7 @@ export class TunicDrape {
     geometry.setAttribute('fabricRest', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     geometry.setAttribute('fabricRestNormal', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 4).fill(1), 4));
+    geometry.setAttribute(CUT_ATTRIBUTE, new THREE.BufferAttribute(new Float32Array(n).fill(1), 1));
     geometry.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint16Array(n * 4), 4));
     geometry.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(n * 4), 4));
     // wound so each face looks out of her (columns go round counter-clockwise seen from above, rows go down)
@@ -307,6 +339,7 @@ export class TunicDrape {
     // drawn over her skin where the two are one surface
     m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -4;
     leadToward(m);
+    cutAt(m);
   }
 
   /** Once a frame: rebuild if her shape changed, and carry her belly's motion over. */
@@ -624,12 +657,35 @@ export class TunicDrape {
         for (let c = 0; c < COLUMNS; c++) paintHem[c] = Math.max(was[c], (was[(c + COLUMNS - 1) % COLUMNS] + 2 * was[c] + was[(c + 1) % COLUMNS]) / 4);
       }
     }
+    // seated, only its hem band: where it ends in each direction, at least just over the tops of her thighs (LAP_CLEAR)
+    const seatedEdge = this.bandOnly && lapN > 0, edgeT = new Float64Array(COLUMNS), cut = new Float32Array(n).fill(1);
+    for (let c = 0; c < COLUMNS; c++) edgeT[c] = Math.max(bottom, paintHem[c]);
+    if (seatedEdge) {
+      const lapTop = new Float64Array(COLUMNS).fill(-Infinity), outline = (c: number) => R[(rows - 1) * COLUMNS + c];
+      for (let k = 0; k < nc; k++) {
+        if (!lap[k]) continue;
+        const dx = px[k] - ax, dz = pz[k] - az;
+        const c = ((Math.round((Math.atan2(dz, dx) / (2 * Math.PI)) * COLUMNS) % COLUMNS) + COLUMNS) % COLUMNS;
+        if (Math.hypot(dx, dz) > outline(c) + LAP_NEAR * T) continue;
+        lapTop[c] = Math.max(lapTop[c], (py[k] - hipY) / T + LAP_CLEAR);
+      }
+      // round her smoothly, never down into her thighs: a direction with none of them keeps its own hem
+      for (let c = 0; c < COLUMNS; c++) edgeT[c] = Math.max(edgeT[c], lapTop[c]);
+      for (let pass = 0; pass < 3; pass++) {
+        const was = edgeT.slice();
+        for (let c = 0; c < COLUMNS; c++) edgeT[c] = (was[(c + COLUMNS - 1) % COLUMNS] + 2 * was[c] + was[(c + 1) % COLUMNS]) / 4;
+      }
+      for (let c = 0; c < COLUMNS; c++) edgeT[c] = Math.max(edgeT[c], lapTop[c]);
+    }
     for (let r = 0; r < rows; r++) {
       const t = T_TOP - r * step, top = smooth01((T_TOP - t) / TOP_FADE);
       for (let c = 0; c < COLUMNS; c++) {
         // (seated, a long shirt's drape ends where she reaches, `bottom`, and its hem band there)
-        const i = r * COLUMNS + c, band = 1 - smooth01((t - Math.max(bottom, paintHem[c]) - HEM_BAND) / HEM_BAND);
-        // (only its hem band, lying on her: `bandOnly`)
+        const i = r * COLUMNS + c, band = 1 - smooth01((t - edgeT[c] - HEM_BAND) / HEM_BAND);
+        // (only its hem band, lying on her: `bandOnly`; seated, ending over a row where `edgeT` says)
+        // (seated, its edge is CUT, crisp, where `edgeT` says: `cutAt`. Its ramp is wider than the edge climbs from one
+        // direction to the next round her, so between them the cut runs straight, not in a step a direction)
+        cut[i] = seatedEdge ? Math.max(0, Math.min(1, (t - edgeT[c]) / (CUT_ROWS * step) + 0.5)) : 1;
         if (this.bandOnly) { falling[i] = 0; alpha[i] = band * top; continue; }
         falling[i] = smooth01(alpha[i]) * top; alpha[i] = Math.max(smooth01(alpha[i]), band) * top;
       }
@@ -674,7 +730,7 @@ export class TunicDrape {
       }
     }
 
-    const P = g.getAttribute('position') as THREE.BufferAttribute, C = g.getAttribute('color') as THREE.BufferAttribute;
+    const P = g.getAttribute('position') as THREE.BufferAttribute, C = g.getAttribute('color') as THREE.BufferAttribute, CUT = g.getAttribute(CUT_ATTRIBUTE) as THREE.BufferAttribute;
     const FR = g.getAttribute('fabricRest') as THREE.BufferAttribute, FN = g.getAttribute('fabricRestNormal') as THREE.BufferAttribute;
     const SI = g.getAttribute('skinIndex') as THREE.BufferAttribute, SW = g.getAttribute('skinWeight') as THREE.BufferAttribute;
     const targets = g.morphAttributes.position as THREE.BufferAttribute[] | undefined;
@@ -805,12 +861,12 @@ export class TunicDrape {
       whole[r * COLUMNS + c] = m;
     }
     for (let k = 0; k < nc; k++) {
-      // (her lap, seated, is never under it: the paint on her thighs is the shirt lying on them)
-      const r = rowOf(k);
-      if (r < 0) continue;
+      // (her lap, seated, is never under it; where the shirt ends over it (`seatedEdge`), the paint goes from there down)
+      const onLap = lap[k] === 1, r = onLap ? -1 : rowOf(k);
+      if (r < 0 && !(onLap && seatedEdge)) continue;
       const dx = px[k] - ax, dz = pz[k] - az;
       const c = ((Math.round((Math.atan2(dz, dx) / (2 * Math.PI)) * COLUMNS) % COLUMNS) + COLUMNS) % COLUMNS, i = r * COLUMNS + c;
-      if (r < rows) {
+      if (r >= 0 && r < rows) {
         const clear = (radius[i] - Math.hypot(dx, dz)) / T;
         // only under drape that is whole there: under a part still fading in, the paint stays, or what is under the
         // shirt would show through the fade as dark patches
@@ -821,7 +877,8 @@ export class TunicDrape {
       const row = (hipY + T_TOP * T - py[k]) / (step * T);
       // (only its hem band: the paint goes from a row above the band's bottom edge, under the solid band, so that edge --
       // level and smooth -- is the shirt's bottom edge all round, not the paint's own, which wobbles)
-      const below = this.bandOnly ? (row - (rows - 1)) / 2 + 1 : 0.5 + (row - (rows - 1) - 0.5) / 2;
+      const edgeRow = seatedEdge ? (T_TOP - edgeT[c]) / step : rows - 1;
+      const below = this.bandOnly ? (row - edgeRow) / 2 + 1 : 0.5 + (row - (rows - 1) - 0.5) / 2;
       this.hang[cand[k]] = Math.max(this.hang[cand[k]], Math.max(0, Math.min(1, below)));
     }
     this.hangVersion++;
@@ -834,6 +891,7 @@ export class TunicDrape {
         const i = r * COLUMNS + c, o = i * CH, rr = radius[i];
         const x = ax + rr * cosA[c], z = az + rr * sinA[c];
         C.setXYZW(i, 1, 1, 1, alpha[i]);
+        CUT.setX(i, cut[i]);
         FR.setXYZ(i, x + val[o + B], y + val[o + B + 1], z + val[o + B + 2]);
         const nl = Math.hypot(val[o + B + 3], val[o + B + 4], val[o + B + 5]) || 1;
         FN.setXYZ(i, val[o + B + 3] / nl, val[o + B + 4] / nl, val[o + B + 5] / nl);
@@ -889,7 +947,7 @@ export class TunicDrape {
       }
       N.needsUpdate = true;
     }
-    for (const a of [P, C, FR, FN, SI, SW, ...(targets ?? [])]) a.needsUpdate = true;
+    for (const a of [P, C, CUT, FR, FN, SI, SW, ...(targets ?? [])]) a.needsUpdate = true;
     g.computeBoundingSphere();
     const sourceJiggle = jiggleOf(body);
     if (sourceJiggle && attachJiggle(this.mesh, sourceJiggle.uniforms)) {
