@@ -1361,6 +1361,33 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** A probe's note of the skin the frozen tee covered when it looked (`frozenPokes`). */
   let frozenCovered: number[] = [];
   /**
+   * The tee's own sheet as it is drawn now, for a probe: frozen (as its shader draws it), or the live cloth's (world;
+   * NaN for a point it does not draw), with its triangles (the drawn ones only).
+   */
+  function teeSheetNow(): { position: Float32Array; normal: Float32Array; index: number[] } | null {
+    if (frozen) {
+      const { position, normal } = frozen.drawnNow();
+      return { position, normal, index: Array.from(frozen.meshes[0].geometry.getIndex()!.array as ArrayLike<number>) };
+    }
+    if (!garmentRoom) return null;
+    const m = garmentRoom.cloth.mesh, g = m.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal'), idx = g.getIndex();
+    m.updateMatrixWorld(true);
+    const nm = new THREE.Matrix3().getNormalMatrix(m.matrixWorld), position = new Float32Array(P.count * 3).fill(NaN), normal = new Float32Array(P.count * 3), p = new THREE.Vector3();
+    const start = g.drawRange.start, end = Math.min(idx ? idx.count : P.count, start + g.drawRange.count), index: number[] = [];
+    for (let e = start; e < end; e++) {
+      const i = idx ? idx.getX(e) : e;
+      index.push(i);
+      if (Number.isFinite(position[i * 3])) continue;
+      p.fromBufferAttribute(P, i).applyMatrix4(m.matrixWorld).toArray(position, i * 3);
+      p.fromBufferAttribute(N, i).applyMatrix3(nm).normalize().toArray(normal, i * 3);
+    }
+    return { position, normal, index };
+  }
+  /** What `teeAlone` hid, to put back. */
+  let teeAloneWas: (() => void)[] = [];
+  /** `teeSeams`'s note of each of the tee's edges' length when it was marked (welded point pairs, "a,b" to length). */
+  let teeEdgesAt: Map<string, number> | null = null;
+  /**
    * THE NEW TEE'S SETTINGS (Stage 3, `garment/settings.ts`): what its panel shows, what it is cut and tailored from, and
    * what a save of the outfit keeps. An outfit puts on its save's or its own (`adoptGarment`); the panel changes them.
    * `garmentCommitted` is the pattern they ask for once a finger has let go (`tailorKey`): a re-tailor setting dragged
@@ -7799,21 +7826,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const body = clothBody();
           if ((!frozen && !garmentRoom) || !body || !measure) return null;
           model?.updateMatrixWorld(true);
-          const sheetNow = (): { position: Float32Array; normal: Float32Array } => {
-            if (frozen) return frozen.drawnNow();
-            const m = garmentRoom!.cloth.mesh, g = m.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal'), idx = g.getIndex();
-            m.updateMatrixWorld(true);
-            const nm = new THREE.Matrix3().getNormalMatrix(m.matrixWorld), position = new Float32Array(P.count * 3).fill(NaN), normal = new Float32Array(P.count * 3), p = new THREE.Vector3();
-            const start = g.drawRange.start, end = Math.min(idx ? idx.count : P.count, start + g.drawRange.count);
-            for (let e = start; e < end; e++) {
-              const i = idx ? idx.getX(e) : e;
-              if (Number.isFinite(position[i * 3])) continue;
-              p.fromBufferAttribute(P, i).applyMatrix4(m.matrixWorld).toArray(position, i * 3);
-              p.fromBufferAttribute(N, i).applyMatrix3(nm).normalize().toArray(normal, i * 3);
-            }
-            return { position, normal };
-          };
-          const { position: F, normal: FN } = sheetNow(), cell = 2, grid = new Map<string, number[]>();
+          const { position: F, normal: FN } = teeSheetNow()!, cell = 2, grid = new Map<string, number[]>();
           for (let f = 0; f < F.length / 3; f++) {
             if (!Number.isFinite(F[f * 3])) continue;
             const key = `${Math.floor(F[f * 3] / cell)},${Math.floor(F[f * 3 + 1] / cell)},${Math.floor(F[f * 3 + 2] / cell)}`;
@@ -7856,6 +7869,88 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her upper arms are the sleeves' to cover; her forearms and hands may leave the tee's cover by right)
           const arm = out.filter((p) => p.kind === 'arm');
           return { covered: frozenCovered.length, frontMost: +front.toFixed(1), pokes: out.length, torso: torso.length, torsoOver3mm: torso.filter((p) => p.out > 0.3).length, arm: arm.length, armOver3mm: arm.filter((p) => p.out > 0.3).length, hand: out.filter((p) => p.kind === 'hand').length, leg: out.filter((p) => p.kind === 'leg').length, worst: torso.slice(0, k), worstLimb: arm.slice(0, 6) };
+        },
+        // THE TEE ALONE (Joshua, 2026-11-07: "render the shirt by itself in a wireframe... hide the entire body so it's
+        // easier to see holes"): everything else in the room hidden -- her body drawn neither in colour nor in depth, so
+        // the tee's own far side shows through any hole -- and the tee in wireframe when `wire`; off puts it all back
+        teeAlone: (on: boolean, wire = true) => {
+          for (const undo of teeAloneWas.reverse()) undo();
+          teeAloneWas = [];
+          if (!on) return true;
+          const tee = new Set<THREE.Object3D>(frozen ? frozen.meshes : garmentRoom ? garmentRoom.cloth.drawn : []);
+          if (!tee.size) return false;
+          const holds = (o: THREE.Object3D): boolean => { let found = false; o.traverse((c) => { if (tee.has(c)) found = true; }); return found; };
+          const materials = (m: THREE.Mesh) => (Array.isArray(m.material) ? m.material : [m.material]);
+          three.traverse((o) => {
+            const m = o as THREE.Mesh;
+            if (!m.isMesh) return;
+            if (tee.has(m)) {
+              for (const mat of materials(m)) { const was = (mat as THREE.MeshStandardMaterial).wireframe; (mat as THREE.MeshStandardMaterial).wireframe = wire; teeAloneWas.push(() => { (mat as THREE.MeshStandardMaterial).wireframe = was; }); }
+            } else if (holds(m)) {
+              for (const mat of materials(m)) { const c = mat.colorWrite, d = mat.depthWrite; mat.colorWrite = false; mat.depthWrite = false; teeAloneWas.push(() => { mat.colorWrite = c; mat.depthWrite = d; }); }
+            } else { const v = m.visible; m.visible = false; teeAloneWas.push(() => { m.visible = v; }); }
+          });
+          return true;
+        },
+        // the tee's OPEN EDGES and STRETCH (its sheet as drawn now, its points welded where they meet within 0.1 mm):
+        // each run of edges with a triangle on one side only -- the neckline, the hem, the cuffs, and any hole -- with its
+        // length and where it lies (cm from her pelvis, turned as she is: y up, z her front); `mark` notes every edge's
+        // length now, and after, the most stretched since then
+        teeSeams: (mark?: boolean, k = 6) => {
+          const sheet = teeSheetNow(), body = clothBody();
+          if (!sheet || !body || !measure) return null;
+          const { position: X, index } = sheet, n = X.length / 3, cell = 0.05, tol = 0.01;
+          const root = Int32Array.from({ length: n }, (_, i) => i), find = (i: number): number => { while (root[i] !== i) i = root[i] = root[root[i]]; return i; };
+          const grid = new Map<string, number[]>(), used = new Uint8Array(n);
+          for (const i of index) used[i] = 1;
+          for (let i = 0; i < n; i++) {
+            if (!used[i] || !Number.isFinite(X[i * 3])) continue;
+            const cx = Math.floor(X[i * 3] / cell), cy = Math.floor(X[i * 3 + 1] / cell), cz = Math.floor(X[i * 3 + 2] / cell);
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (const j of grid.get(`${cx + dx},${cy + dy},${cz + dz}`) ?? []) {
+              if (Math.hypot(X[i * 3] - X[j * 3], X[i * 3 + 1] - X[j * 3 + 1], X[i * 3 + 2] - X[j * 3 + 2]) <= tol) root[find(i)] = find(j);
+            }
+            const key = `${cx},${cy},${cz}`;
+            (grid.get(key) ?? grid.set(key, []).get(key)!).push(i);
+          }
+          const edgeCount = new Map<string, number>(), edgeEnds = new Map<string, [number, number]>();
+          for (let t = 0; t + 2 < index.length; t += 3) for (const [u, w] of [[index[t], index[t + 1]], [index[t + 1], index[t + 2]], [index[t + 2], index[t]]]) {
+            const a = find(u), b = find(w);
+            if (a === b) continue;
+            const key = a < b ? `${a},${b}` : `${b},${a}`;
+            edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1); edgeEnds.set(key, [u, w]);
+          }
+          const hip = body.skeleton.bones[measure.joints.pelvis].getWorldPosition(new THREE.Vector3()), turn = (model?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion()).invert();
+          const local = (i: number) => new THREE.Vector3(X[i * 3], X[i * 3 + 1], X[i * 3 + 2]).sub(hip).applyQuaternion(turn);
+          // the open edges, gathered into runs (edges meeting at a point)
+          const open = [...edgeCount].filter(([, c]) => c === 1).map(([key]) => key.split(',').map(Number) as [number, number]);
+          const runOf = new Map<number, number>(), link = new Map<number, number[]>();
+          for (const [a, b] of open) { (link.get(a) ?? link.set(a, []).get(a)!).push(b); (link.get(b) ?? link.set(b, []).get(b)!).push(a); }
+          const runs: { edges: number; points: number; lengthCm: number; at: number[]; low: number; high: number }[] = [];
+          for (const start of link.keys()) {
+            if (runOf.has(start)) continue;
+            const id = runs.length, stack = [start], pts: number[] = [];
+            runOf.set(start, id);
+            while (stack.length) { const a = stack.pop()!; pts.push(a); for (const b of link.get(a)!) if (!runOf.has(b)) { runOf.set(b, id); stack.push(b); } }
+            const c = new THREE.Vector3(); let low = Infinity, high = -Infinity, len = 0;
+            for (const a of pts) { const l = local(a); c.add(l); low = Math.min(low, l.y); high = Math.max(high, l.y); }
+            for (const [a, b] of open) if (runOf.get(a) === id) len += Math.hypot(X[a * 3] - X[b * 3], X[a * 3 + 1] - X[b * 3 + 1], X[a * 3 + 2] - X[b * 3 + 2]);
+            c.divideScalar(pts.length);
+            runs.push({ edges: open.filter(([a]) => runOf.get(a) === id).length, points: pts.length, lengthCm: +len.toFixed(1), at: [+c.x.toFixed(1), +c.y.toFixed(1), +c.z.toFixed(1)], low: +low.toFixed(1), high: +high.toFixed(1) });
+          }
+          runs.sort((a, b) => b.lengthCm - a.lengthCm);
+          // the edges stretched most since the mark
+          const lengthOf = (key: string) => { const [u, w] = edgeEnds.get(key)!; return Math.hypot(X[u * 3] - X[w * 3], X[u * 3 + 1] - X[w * 3 + 1], X[u * 3 + 2] - X[w * 3 + 2]); };
+          if (mark) { teeEdgesAt = new Map([...edgeEnds.keys()].map((key) => [key, lengthOf(key)])); }
+          const stretched: { times: number; cm: number; at: number[] }[] = [];
+          if (teeEdgesAt && !mark) for (const key of edgeEnds.keys()) {
+            const was = teeEdgesAt.get(key);
+            if (!(was !== undefined && was > 0.05)) continue;
+            const now = lengthOf(key), [u] = edgeEnds.get(key)!, l = local(u);
+            stretched.push({ times: +(now / was).toFixed(2), cm: +now.toFixed(2), at: [+l.x.toFixed(1), +l.y.toFixed(1), +l.z.toFixed(1)] });
+          }
+          stretched.sort((a, b) => b.times - a.times);
+          const lone = [...new Set(Array.from({ length: n }, (_, i) => (used[i] ? find(i) : -1)).filter((r) => r >= 0))].length;
+          return { tee: frozen ? 'frozen' : 'live', points: lone, edges: edgeCount.size, openRuns: runs.length, runs: runs.slice(0, 12), stretched: stretched.slice(0, k), over2x: stretched.filter((e) => e.times > 2).length, over1_5x: stretched.filter((e) => e.times > 1.5).length };
         },
         steps: () => ({ heels: sneakers?.heels().map((h) => +(h / M).toFixed(4)) ?? null, heard: stepsHeard, sound: tileSteps.on, walkedM: +walked.toFixed(3), strideM: measure && rig ? +(humanStride(measure, 'walk', bump / 100) / rig.bindScale).toFixed(3) : null }),
         drapeInside: (o2?: { hide?: boolean; units?: number; factor?: number; noDepth?: boolean; opaque?: boolean; hang?: boolean; body?: boolean; list?: boolean }) => {
