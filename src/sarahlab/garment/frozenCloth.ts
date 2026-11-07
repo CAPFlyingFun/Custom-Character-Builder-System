@@ -83,6 +83,8 @@ export interface FreezeOptions {
   readonly stiff?: ArrayLike<number>;
   /** Bones whose skin it never takes (her forearms and hands: a tee's hem lies near them, and is never carried by them). */
   readonly ignore?: ReadonlySet<number>;
+  /** How near her skin a point is carried by that skin alone (`FREEZE.onM`; 0: never -- a probe's comparison). */
+  readonly onSkinM?: number;
   /** World units to the metre (the room's 100); default 1. */
   readonly unitsPerMetre?: number;
   /**
@@ -523,7 +525,7 @@ export class FrozenCloth {
     for (let i = 0; i < np; i++) {
       const d = surface.distance[i] / perM;
       if (!Number.isFinite(particles.position[i * 3])) continue;
-      const t = !(d >= 0) ? 0 : Math.min(1, Math.max(0, (FREEZE.offM - d) / (FREEZE.offM - FREEZE.onM)));
+      const t = !(d >= 0) || options.onSkinM === 0 ? 0 : Math.min(1, Math.max(0, (FREEZE.offM - d) / (FREEZE.offM - (options.onSkinM ?? FREEZE.onM))));
       stiff[i] = t * t * (3 - 2 * t);
       if (stiff[i] >= 0.999) onSkin++; else if (stiff[i] > 0) between++; else off++;
     }

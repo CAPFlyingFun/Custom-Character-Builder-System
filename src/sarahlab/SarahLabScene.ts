@@ -2305,7 +2305,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     return { facing: { hip: body.skeleton.bones[measure.joints.pelvis].getWorldPosition(new THREE.Vector3()).toArray(), front: model.getWorldDirection(new THREE.Vector3()).toArray() } };
   }
   /** CLOTH · FROZEN: the new tee as it lies this frame, made a garment on her skeleton (frozenCloth.ts), and kept. */
-  function freezeTee(tune: { passes?: number; legShare?: number; morphs?: string[] } = {}): void {
+  function freezeTee(tune: { passes?: number; legShare?: number; morphs?: string[]; onSkinM?: number } = {}): void {
     const body = clothBody();
     if (!garmentRoom || !body || !model || frozen) return;
     model.updateMatrixWorld(true);
@@ -7808,7 +7808,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // is in front of what -- it hidden, its depth bias, its depth test or blending off, her body's colour off, what is drawn)
         // her sneakers' heels over the floor (metres) and the steps heard so far (footsteps.ts)
         // the new tee FROZEN (true) or LIVE (false), as the button does; nothing: as it is. What is kept, and how big
-        freeze: (on?: boolean, tune?: { passes?: number; legShare?: number; standoffM?: number; morphs?: string[]; seamPasses?: number }) => {
+        freeze: (on?: boolean, tune?: { passes?: number; legShare?: number; morphs?: string[]; onSkinM?: number }) => {
           // (frozen already and tuned: frozen again from the cloth as it was left -- stood as she was when it was frozen)
           if (on === true && frozen && tune) { frozen.dispose(); frozen = null; }
           if (on === true && !frozen) freezeTee(tune);
@@ -7879,16 +7879,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (!on) return true;
           const tee = new Set<THREE.Object3D>(frozen ? frozen.meshes : garmentRoom ? garmentRoom.cloth.drawn : []);
           if (!tee.size) return false;
-          const holds = (o: THREE.Object3D): boolean => { let found = false; o.traverse((c) => { if (tee.has(c)) found = true; }); return found; };
           const materials = (m: THREE.Mesh) => (Array.isArray(m.material) ? m.material : [m.material]);
           three.traverse((o) => {
             const m = o as THREE.Mesh;
             if (!m.isMesh) return;
             if (tee.has(m)) {
               for (const mat of materials(m)) { const was = (mat as THREE.MeshStandardMaterial).wireframe; (mat as THREE.MeshStandardMaterial).wireframe = wire; teeAloneWas.push(() => { (mat as THREE.MeshStandardMaterial).wireframe = was; }); }
-            } else if (holds(m)) {
+            } else {
+              // (drawn neither in colour nor depth rather than hidden: the room shows and hides some of her parts frame by
+              // frame -- her womb's x-ray among them -- and her body holds the tee, so hiding it would hide the tee too)
               for (const mat of materials(m)) { const c = mat.colorWrite, d = mat.depthWrite; mat.colorWrite = false; mat.depthWrite = false; teeAloneWas.push(() => { mat.colorWrite = c; mat.depthWrite = d; }); }
-            } else { const v = m.visible; m.visible = false; teeAloneWas.push(() => { m.visible = v; }); }
+            }
           });
           return true;
         },
