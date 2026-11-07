@@ -160,7 +160,6 @@ export const SARAH_LAB_ACTION = Object.freeze({
   clothDefaults: 'sarahlab:cloth-defaults',
   /** SNEAKERS: her sneakers on or off (sneakers.ts; Joshua, 2026-11-07) */
   sneakers: 'sarahlab:sneakers',
-  clothFreeze: 'sarahlab:cloth-freeze',
   /** STEP SOUND: her steps on a tile floor in her sneakers on or off (footsteps.ts; Joshua, 2026-11-07) */
   stepSound: 'sarahlab:step-sound',
   /** the cloth tee's neckline, cut deeper as a U or a V (Joshua, 2026-10-24) */
@@ -232,7 +231,6 @@ export const SARAH_LAB_FIELD = Object.freeze({
   cloth: 'sarahlab-cloth',
   /** `${clothDial}<dial>`: one of the cloth's dials */
   clothDial: 'sarahlab-cloth-dial-',
-  clothFreeze: 'sarahlab-cloth-freeze',
   /** FACE: the mouth held open, the brows' and lips' amounts */
   faceMouth: 'sarahlab-face-mouth',
   faceBrows: 'sarahlab-face-brows',

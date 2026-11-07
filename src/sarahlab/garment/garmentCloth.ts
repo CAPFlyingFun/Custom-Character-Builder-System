@@ -1228,28 +1228,10 @@ export class GarmentCloth {
     return N;
   }
 
-  /**
-   * Where on her skin each particle lies now, to freeze the cloth there (`frozenCloth.ts`): per PARTICLE, the three body
-   * vertices of the triangle its contact with her found and where on it (barycentric); -1 where it is not worn. Read
-   * after a `frame`, with her pose as that frame had it.
-   */
-  frozenContacts(): { corners: Int32Array; bary: Float32Array } {
-    const n = this.active, b = this.skin.contactBinding(this.sim.positions.subarray(0, n * 3)), N = this.sewn.count;
-    const corners = new Int32Array(N * 3).fill(-1), bary = new Float32Array(N * 3);
-    for (let i = 0; i < b.count; i++) {
-      const p = this.order[i];
-      for (let k = 0; k < 3; k++) { corners[p * 3 + k] = b.tri[i * 3 + k]; bary[p * 3 + k] = b.bary[i * 3 + k]; }
-    }
-    return { corners, bary };
-  }
-
-  /** Per particle, 1 where it is the body's (it never takes her arm as its skin), 0 a sleeve's. */
-  get bodyParticles(): Uint8Array { return this.trunkOnly; }
-
-  /** What it draws now: its own sheet, and the cloth drawn finely round her navel when that is drawn. */
+  /** What it draws now: its own sheet, and the cloth drawn finely round her navel when that is drawn (a probe's look at the tee alone). */
   get drawn(): THREE.Mesh[] { return this.navelPatch.mesh.visible ? [this.mesh, this.navelPatch.mesh] : [this.mesh]; }
 
-  /** The particles' positions now (world, 3 each, particle order; NaN where not worn): for a probe, and to freeze it (frozenCloth.ts). */
+  /** The particles' positions now (world, 3 each, particle order; NaN where not worn): for a probe. */
   get positions(): Float32Array {
     const x = this.sim.positions, out = new Float32Array(this.sewn.count * 3).fill(NaN);
     for (let i = 0; i < this.active; i++) { const p = this.order[i]; out[p * 3] = x[i * 3]; out[p * 3 + 1] = x[i * 3 + 1]; out[p * 3 + 2] = x[i * 3 + 2]; }
