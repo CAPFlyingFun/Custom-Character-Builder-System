@@ -160,6 +160,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   clothDefaults: 'sarahlab:cloth-defaults',
   /** SNEAKERS: her sneakers on or off (sneakers.ts; Joshua, 2026-11-07) */
   sneakers: 'sarahlab:sneakers',
+  /** STEP SOUND: her steps on a tile floor in her sneakers on or off (footsteps.ts; Joshua, 2026-11-07) */
+  stepSound: 'sarahlab:step-sound',
   /** the cloth tee's neckline, cut deeper as a U or a V (Joshua, 2026-10-24) */
   neckShape: 'sarahlab:neck-shape',
   /** the cloth tee's SLEEVES: its cap sleeves as made, or a tank's armholes (Joshua, 2026-10-25) */

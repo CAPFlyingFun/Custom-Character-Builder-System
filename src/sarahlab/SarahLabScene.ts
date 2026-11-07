@@ -93,6 +93,7 @@ import { applyShapeFields, baseShapeFields, liftShapeFields, type ShapeFields, t
 import { BUILD_PROFILES, buildAmounts, buildKey, heightLine, heldSegments, profileOf, withProfile, type BuildAmounts, type BuildSegment } from '../actor/bodyBuild';
 import { applyBuildToBones, applyBuildToMesh, buildBoneOffsets, buildMeshFields, prepareBuildRig, standingLift, type BuildMeshFields, type BuildRig } from '../view/bodyBuild';
 import { Sneakers } from './sneakers';
+import { StepWatch, TileSteps } from './footsteps';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
@@ -297,6 +298,8 @@ import { blendJointTurns, sitEase, stepSit } from './poseBlend';
 const M = UNITS_PER_METRE;
 /** What the story bake leaves out (`bakeForStory`): her vulva's own parts, inside her and under what she wears. */
 const STORY_LEAVES_OUT = new Set(['sarahVulva', 'sarahVagina', 'sarahLips', 'sarahOuterRing']);
+/** A build key no build has: her bones laid again whatever her build (her approved build's key is ''). */
+const STALE_BUILD = '\u0000stale';
 /** How far two fingers may pan the camera's aim (metres above the floor): her feet to just above her head. GAME TUNING. */
 const PAN_BOTTOM = 0.05, PAN_TOP = 1.85;
 /**
@@ -914,10 +917,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let sneakers: Sneakers | null = null, sneakersOn = false;
   /** The body her sneakers were last made for (or tried for): put on before she loaded, they are made once she has. */
   let sneakersFor: THREE.Object3D | null = null;
+  /** Her steps on a tile floor in her sneakers (footsteps.ts): which heel came down when, and the sound of it. */
+  const stepWatch = new StepWatch(), tileSteps = new TileSteps();
+  let stepsHeard = 0;
   /** Her sneakers shown now: on, and not in a birth position. */
   const sneakersShown = () => sneakersOn && !!sneakers && !isBirthPose(pose);
   function setSneakers(on: boolean): void {
     sneakersOn = on;
+    // (put on by a tap, the sound of her steps can start now)
+    if (on) tileSteps.unlock();
     if (on && !sneakers && buildRig && measure && model) {
       sneakersFor = model;
       const b = bodyOf(), s = b ? shaped.find((x) => x.mesh === b.mesh) : undefined;
@@ -927,8 +935,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     if (sneakers) sneakers.visible = sneakersShown();
     if (buttons.sneakers) buttons.sneakers.textContent = `SNEAKERS · ${sneakersOn ? 'ON' : 'OFF'}`;
-    // (standing on their soles now, or off them)
-    bonesBuilt = ''; layBuildBones(currentBuild());
+    // (standing on their soles now, or off them -- laid again even at her approved build, whose key is '')
+    bonesBuilt = STALE_BUILD; layBuildBones(currentBuild());
   }
   let buildBox: HTMLElement | null = null;
   let babyNote: HTMLElement | null = null;
@@ -2354,6 +2362,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // controls are built here as they always were, each marked with the section it belongs to (`data-tab`), and
     // studioLayout.ts sorts them into the inspector, rail and stage at the end of this function
     root.style.cssText = 'position:absolute;inset:0;font:600 13px system-ui,sans-serif;color:var(--sl-ink,#e8e2d8);touch-action:none;user-select:none;-webkit-user-select:none';
+    // (any touch wakes the sound of her steps, as a phone requires before it plays anything: footsteps.ts)
+    root.addEventListener('pointerdown', () => { if (sneakersOn) tileSteps.unlock(); }, { capture: true });
     // the orbit: the whole screen under the controls
     root.addEventListener('pointerdown', (e) => {
       if ((e.target as HTMLElement).closest('button,input,select,summary')) return;
@@ -2580,9 +2590,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (on the new tee as on the cloth tee: laid again where it settled)
       buttons.clothReset = btn('LAY CLOTH AGAIN', SARAH_LAB_ACTION.clothReset, () => { clothRestart = true; garmentRoom?.cloth.restart(); });
       buttons.clothDefaults = btn('CLOTH DEFAULTS', SARAH_LAB_ACTION.clothDefaults, () => { clothTune = CLOTH_TUNE_DEFAULT; for (const [k, i] of clothDialInputs) i.value = String(clothTune[k as keyof ClothTune]); tuneCloth(); clothRestart = true; garmentRoom?.cloth.restart(); });
-      // her sneakers (sneakers.ts), on and off
+      // her sneakers (sneakers.ts), on and off; and the sound of her steps in them (footsteps.ts)
       buttons.sneakers = btn('SNEAKERS · OFF', SARAH_LAB_ACTION.sneakers, () => setSneakers(!sneakersOn));
-      buttons.sneakers.style.padding = '7px 10px'; buttons.sneakers.style.fontSize = '11px'; r.appendChild(buttons.sneakers);
+      buttons.stepSound = btn('STEP SOUND · ON', SARAH_LAB_ACTION.stepSound, () => {
+        tileSteps.on = !tileSteps.on; tileSteps.unlock();
+        buttons.stepSound.textContent = `STEP SOUND · ${tileSteps.on ? 'ON' : 'OFF'}`;
+      });
+      for (const b of [buttons.sneakers, buttons.stepSound]) { b.style.padding = '7px 10px'; b.style.fontSize = '11px'; r.appendChild(b); }
       for (const b of [buttons.clothReset, buttons.clothDefaults]) { b.style.padding = '7px 10px'; b.style.fontSize = '11px'; r.appendChild(b); }
       right.appendChild(r);
     }
@@ -6672,7 +6686,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (her sneakers off in a birth position, on again out of it -- and her lift onto their soles with them; put on
       // before she had loaded, made now she has)
       if (sneakersOn && !sneakers && buildRig && model && sneakersFor !== model) setSneakers(true);
-      if (sneakers && sneakers.visible !== sneakersShown()) { sneakers.visible = sneakersShown(); bonesBuilt = ''; layBuildBones(currentBuild()); }
+      if (sneakers && sneakers.visible !== sneakersShown()) { sneakers.visible = sneakersShown(); bonesBuilt = STALE_BUILD; layBuildBones(currentBuild()); }
       settleBelly(dt);
       naturalOpening(dt);
       keepBirthRoom();
@@ -6697,6 +6711,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         twinHandShare += Math.max(-dt / BABY_HANDS.seconds, Math.min(dt / BABY_HANDS.seconds, twinTo - twinHandShare)); }
       garmentRoom?.applyPose();
       place();
+      // her steps: each sneaker's heel coming down onto the floor is heard (on the tiles of a lab)
+      if (sneakers && sneakers.visible) {
+        for (const { foot, strength } of stepWatch.update(sneakers.heels().map((h) => h / M), dt)) { tileSteps.step(strength, foot); stepsHeard++; }
+      } else stepWatch.reset();
       feelMotion(dt);
       // her face: her eyes, her blinks, her jaw
       faceFrame(dt);
@@ -7626,6 +7644,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         },
         // (the painted shirt's drape, tunicDrape.ts: how much of it is drawn inside her as fitted; and for a look at what
         // is in front of what -- it hidden, its depth bias, its depth test or blending off, her body's colour off, what is drawn)
+        // her sneakers' heels over the floor (metres) and the steps heard so far (footsteps.ts)
+        steps: () => ({ heels: sneakers?.heels().map((h) => +(h / M).toFixed(4)) ?? null, heard: stepsHeard, sound: tileSteps.on, walkedM: +walked.toFixed(3), strideM: measure && rig ? +(humanStride(measure, 'walk', bump / 100) / rig.bindScale).toFixed(3) : null }),
         drapeInside: (o2?: { hide?: boolean; units?: number; factor?: number; noDepth?: boolean; opaque?: boolean; hang?: boolean; body?: boolean; list?: boolean }) => {
           if (o2?.body !== undefined) { const bm = bodyOf()?.mesh; if (bm) (bm.material as THREE.Material).colorWrite = o2.body; }
           if (o2?.list) { const seen: string[] = []; three.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh && mm.visible) { let v = true; for (let p: THREE.Object3D | null = mm; p; p = p.parent) if (!p.visible) v = false; if (v) seen.push(`${mm.name || mm.type}:${(Array.isArray(mm.material) ? mm.material[0] : mm.material)?.name ?? ''}`); } }); return seen; }
@@ -7922,6 +7942,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
 
     dispose() {
       disposed = true;
+      tileSteps.dispose();
       if (creaseTimer) clearTimeout(creaseTimer);
       crease.dispose();
       dropPainter();

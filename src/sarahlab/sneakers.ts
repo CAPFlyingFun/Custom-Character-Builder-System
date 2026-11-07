@@ -662,6 +662,8 @@ export class Sneakers {
   private readonly base: { readonly position: Float32Array; readonly normal: Float32Array }[] = [];
   private readonly fields: (BuildMeshFields | null)[] = [];
   private fitted = '';
+  /** Each shoe's heel, its lowest point under her heel, where her ankle bone carries it (for her steps: footsteps.ts). */
+  private readonly heelsAt: { readonly bone: THREE.Bone; readonly local: THREE.Vector3 }[] = [];
 
   constructor(body: THREE.SkinnedMesh, basePos: Float32Array, toRest: THREE.Matrix4, ankles: readonly number[]) {
     const n = basePos.length / 3, rest = new Float32Array(basePos.length), v = new THREE.Vector3();
@@ -734,6 +736,18 @@ export class Sneakers {
       this.meshes.push(mesh);
       this.base.push({ position: position.slice(), normal: (nrm.array as Float32Array).slice() });
       this.fields.push(null);
+      // its heel: the lowest of its outsole in its back 6 cm, held in her ankle bone's frame as she was bound
+      {
+        const sole = built.groups.find((x) => x.material === 'outsole')!;
+        let low = -1;
+        for (let k = sole.start; k < sole.start + sole.count; k++) {
+          const p = built.index[k], dx = built.position[3 * p] - measured.origin[0], dz = built.position[3 * p + 2] - measured.origin[2];
+          if (dx * measured.along[0] + dz * measured.along[2] > 0.06) continue;
+          if (low < 0 || built.position[3 * p + 1] < built.position[3 * low + 1]) low = p;
+        }
+        const at = new THREE.Vector3().fromArray(position, 3 * Math.max(0, low)).applyMatrix4(body.bindMatrix).applyMatrix4(body.skeleton.boneInverses[ankle]);
+        this.heelsAt.push({ bone: bones[ankle], local: at });
+      }
     }
     this.lift = lift;
   }
@@ -756,6 +770,12 @@ export class Sneakers {
       }
       P.needsUpdate = true; N.needsUpdate = true;
     });
+  }
+
+  /** Each heel's height now, in her world's units (her pose as last laid on her bones). */
+  heels(): number[] {
+    const at = new THREE.Vector3();
+    return this.heelsAt.map(({ bone, local }) => { bone.updateWorldMatrix(true, false); return at.copy(local).applyMatrix4(bone.matrixWorld).y; });
   }
 
   set visible(on: boolean) { for (const m of this.meshes) m.visible = on; }
