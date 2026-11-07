@@ -10,7 +10,7 @@
  *
  * Its shape, in level slices from her waist down to the hem, round an upright axis through her:
  * - In each slice, the outline that a band pulled round her would take: the convex outline of her trunk and both thighs
- *   (never her arms; and seated, never her lap -- LAP_LIFT). It spans the gap between her thighs, front and back, and
+ *   (never her arms; and seated, never her lap -- LAP_TILT). It spans the gap between her thighs, front and back, and
  *   lies flat over her groin.
  * - Down from slice to slice, fabric falls: it cannot come back in toward her faster than DRAPE_SLOPE for each step
  *   down, at her sides. In front it hangs from her belly nearly straight down (FRONT_SLOPE), open underneath, as a tee
@@ -68,6 +68,8 @@ const STAND_OFF = 0.008;
 const SKIN_PASSES = 16, OFF_PASSES = 8;
 /** Where her smoothed skin falls short of her skin, the most of it within this many rows and columns is put back (`build`). */
 const SHORT_ROWS = 6, SHORT_COLUMNS = 2;
+/** The most the hem band alone (`bandOnly`) is lifted back out of her smoothed skin (a share of her trunk: 1.5 cm). GAME TUNING. */
+const BAND_LIFT = 0.025;
 /** A faded point lies under her skin where the outline is within this much of it (a share of her trunk, about 7 mm),
  * and under the outline where it stands twice that clear. */
 const FADED_UNDER = 0.012;
@@ -119,20 +121,21 @@ export const DRAPE_MOTION_TARGETS = Object.freeze(['bellyTilt', 'bellyBob', 'bel
 /** Never part of the outline: her arms and hands (handled by `arm`), head, neck and feet. */
 const LEFT_OUT = new Set(['face', 'scalp', 'neck', 'handL', 'handR', 'footL', 'footR']);
 /**
- * Her LAP: a leg laid forward, as her thighs are when she sits -- her mid-thigh (LAP_THIGH, its rest height below her
- * hip joints) risen by more than LAP_LIFT of how far below them it hangs at rest. A shirt does not hang round her lap;
- * it hangs from her belly ONTO it, and the paint is the shirt where it lies on her thighs. Measured in level slices with
- * the rest of her, her thighs were in every slice near her hips: the outline reached her knees, the shirt stood out over
- * her lap as a shelf with ragged flaps over her knees, and the upright axis everything is measured round was pulled
- * forward toward them (Joshua, 2026-11-06, seated: "the shirt is flaring out too much and looks weird... did it get
- * taken half way?"). So the whole of a leg laid forward is left out of the slices (even the underside of her thigh by
- * her seat: kept, it stood out along her thigh as shards over the seat); the drape hangs from her belly and spans the
- * gap between her thighs, and where it meets her lap it goes into her thighs, as a shirt's fall ends on them.
- * Standing, her stance alone raises her legs' skin by up to a fifth of that (measured, 2026-11-06: 0.2 at a 150% bump,
- * whose stance bends her; about 0.08 with none); seated, about four fifths. Standing, none of her is lap and the drape is
- * built exactly as it was. GAME TUNING.
+ * Her LAP: a leg laid forward, as her thighs are when she sits -- the line down her thigh, from its top (LAP_TOP) to its
+ * middle (LAP_THIGH: her rest height below her hip joints, so the same skin whatever her legs' length), leaning more than
+ * LAP_TILT from straight down. A shirt does not hang round her lap; it hangs from her belly ONTO it, and the paint is the
+ * shirt where it lies on her thighs. Measured in level slices with the rest of her, her thighs were in every slice near
+ * her hips: the outline reached her knees, the shirt stood out over her lap as a shelf with ragged flaps over her knees,
+ * and the upright axis everything is measured round was pulled forward toward them (Joshua, 2026-11-06, seated: "the
+ * shirt is flaring out too much and looks weird... did it get taken half way?"). So the whole of a leg laid forward is
+ * left out of the slices (even the underside of her thigh by her seat: kept, it stood out along her thigh as shards over
+ * the seat); the drape hangs from her belly and spans the gap between her thighs, and where it meets her lap it goes
+ * into her thighs, as a shirt's fall ends on them. By the thigh's lean, not by how far it has risen: with every slider at
+ * its least her legs are 40% shorter than her map's rest heights, and standing her mid-thigh stood as high as a lap
+ * (the drape flared out as a skirt). Standing, a thigh leans a few degrees (her stance with a big bump bends her);
+ * seated, near 90. Standing, none of her is lap and the drape is built exactly as it was. GAME TUNING.
  */
-const LAP_THIGH = [-0.25, -0.4] as const, LAP_LIFT = 0.4;
+const LAP_TOP = [-0.04, -0.12] as const, LAP_THIGH = [-0.25, -0.4] as const, LAP_TILT = (50 * Math.PI) / 180;
 const LEGS = new Set(['thighL', 'thighR', 'kneeL', 'kneeR', 'calfL', 'calfR']);
 
 const smooth01 = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
@@ -198,10 +201,20 @@ export class TunicDrape {
   private readonly maxRows: number;
   private hem: number | null = null;
   private hemLift = HEM_LIFT_FLAT;
+  /**
+   * Only its hem band (`wear`): a level band round her at the hem, all the way round, front and back, on her skin and
+   * spanning her hollows as the drape did (the cleft of her seat, the creases of her groin: Joshua, 2026-11-06, "along
+   * the buttock and groin area... an offset that was smoother to look more like a shirt"), and nothing else of it -- it
+   * does not hang from her bump, and there is no flap under her belly or over her lap. A painted shirt that ends
+   * above her groin needs no more than that: its paint's own hem is fixed to her skin at rest and wobbles where her hips
+   * bend, and the band is the smooth, level bottom edge over it (Joshua, 2026-11-06, asked: "Hem band only"; "Also, do
+   * along the backside").
+   */
+  private bandOnly = false;
   /** How much of the shirt's paint each vertex of her has (`wear`), or null. */
   private covered: ((v: number) => number) | null = null;
   /** For a probe: of the points that show, how many are drawn inside her skin as measured, and the deepest (mm); and how
-   * many of her vertices were her lap, left out (LAP_LIFT), and how far the axis is from her hip joints' slice (mm). */
+   * many of her vertices were her lap, left out (LAP_TILT), and how far the axis is from her hip joints' slice (mm). */
   inside = { shown: 0, inside: 0, worstMm: 0, lap: 0, axisMm: 0 };
   private dirty = true;
   private lastBuild = -Infinity;
@@ -274,8 +287,9 @@ export class TunicDrape {
    * The hem, on her trunk, or null to take the drape off; and how much of the shirt's paint each vertex of her has
    * (`covered`, 0 to 1), so the drape stays whole over wherever it ends -- read when it is next built.
    */
-  wear(hem: number | null, hemLift = HEM_LIFT_FLAT, covered: ((v: number) => number) | null = null): void {
-    if (hem !== this.hem || hemLift !== this.hemLift) this.dirty = true;
+  wear(hem: number | null, hemLift = HEM_LIFT_FLAT, covered: ((v: number) => number) | null = null, bandOnly = false): void {
+    if (hem !== this.hem || hemLift !== this.hemLift || bandOnly !== this.bandOnly) this.dirty = true;
+    this.bandOnly = bandOnly;
     this.hem = hem;
     this.hemLift = hemLift;
     this.covered = covered;
@@ -333,20 +347,24 @@ export class TunicDrape {
     let hipY = 0, k = 0;
     for (let i = 0; i < nc; i++) { const t = map.trunk[cand[i]]; if (Math.abs(t) < 0.02) { hipY += py[i] - t * T; k++; } }
     hipY = k ? hipY / k : 0;
-    // her lap, if she is sitting (LAP_LIFT): left out of every slice, and of everything measured from them
+    // her lap, if she is sitting (LAP_TILT): left out of every slice, and of everything measured from them
     const lap = new Uint8Array(nc);
     let lapN = 0;
     if (DRAPE_PROBE.lap) {
-      // each leg: how far her mid-thigh has risen, as a share of how far below her hips it is at rest
-      const side = new Int8Array(nc), rose = [0, 0, 0], drop = [0, 0, 0];
+      // each leg: how far the line down its thigh, top to middle, leans from straight down
+      const side = new Int8Array(nc), sum = Array.from({ length: 3 }, () => [0, 0, 0, 0, 0, 0, 0, 0]);
       for (let i = 0; i < nc; i++) {
         const id = BODY_REGIONS[map.region[cand[i]] - 1]?.id ?? '';
         if (!LEGS.has(id)) continue;
-        const t = map.trunk[cand[i]];
-        side[i] = id.endsWith('L') ? 1 : 2;
-        if (t <= LAP_THIGH[0] && t >= LAP_THIGH[1]) { rose[side[i]] += (py[i] - hipY) / T - t; drop[side[i]] -= t; }
+        const t = map.trunk[cand[i]], s2 = (side[i] = id.endsWith('L') ? 1 : 2), a = sum[s2];
+        if (t <= LAP_TOP[0] && t >= LAP_TOP[1]) { a[0] += px[i]; a[1] += py[i]; a[2] += pz[i]; a[3]++; }
+        if (t <= LAP_THIGH[0] && t >= LAP_THIGH[1]) { a[4] += px[i]; a[5] += py[i]; a[6] += pz[i]; a[7]++; }
       }
-      const lifted = [false, drop[1] > 0 && rose[1] > LAP_LIFT * drop[1], drop[2] > 0 && rose[2] > LAP_LIFT * drop[2]];
+      const lifted = sum.map((a, s2) => {
+        if (!s2 || !a[3] || !a[7]) return false;
+        const dx = a[4] / a[7] - a[0] / a[3], dy = a[5] / a[7] - a[1] / a[3], dz = a[6] / a[7] - a[2] / a[3];
+        return Math.atan2(Math.hypot(dx, dz), -dy) > LAP_TILT;
+      });
       for (let i = 0; i < nc; i++) if (lifted[side[i]]) { lap[i] = 1; lapN++; }
     }
     // ...and, seated, it hangs no lower than she reaches: a long shirt's hem is down on her lap with the paint, and what
@@ -489,7 +507,8 @@ export class TunicDrape {
       for (let i = 0; i < n; i++) R[i] = Math.max(tmp[i], skinS[i] ? Math.max(skinS[i], skin[i] - SKIN_SLACK * T) : skin[i]);
       for (let r = 1; r < rows; r++) for (let c = 0; c < COLUMNS; c++) {
         const i = r * COLUMNS + c;
-        R[i] = Math.max(R[i], R[i - COLUMNS] - fall[c] * step * T);
+        // (only its hem band: it does not hang from her bump or her seat, where nothing joins it to her above)
+        R[i] = Math.max(R[i], R[i - COLUMNS] - (this.bandOnly ? DRAPE_SLOPE : fall[c]) * step * T);
       }
     }
     // 3. how far it stands off her, smoothed (so what shows is whole patches, not single points either side of the line)
@@ -610,6 +629,8 @@ export class TunicDrape {
       for (let c = 0; c < COLUMNS; c++) {
         // (seated, a long shirt's drape ends where she reaches, `bottom`, and its hem band there)
         const i = r * COLUMNS + c, band = 1 - smooth01((t - Math.max(bottom, paintHem[c]) - HEM_BAND) / HEM_BAND);
+        // (only its hem band, lying on her: `bandOnly`)
+        if (this.bandOnly) { falling[i] = 0; alpha[i] = band * top; continue; }
         falling[i] = smooth01(alpha[i]) * top; alpha[i] = Math.max(smooth01(alpha[i]), band) * top;
       }
     }
@@ -680,7 +701,10 @@ export class TunicDrape {
         // (Not where the outline stands well clear of her -- beside where the shirt hangs from her bump -- or the triangles
         // from a hanging point down under her skin uncovered the skin the hanging shirt had taken the paint off.)
         const under = skin[i] > 0 ? smooth01(((R[i] - skin[i]) / T - FADED_UNDER) / FADED_UNDER) : 1;
-        let rr = alpha[i] > 0.01 ? R[i] + STAND_OFF * T * smooth01((standOff[i] - 0.6) / 0.4) * (1 - hangs[c])
+        // (only its hem band: it spans her hollows as the drape did -- the cleft of her seat, the creases of her groin --
+        // and stands no further off at her sides, where nothing falls)
+        const so = standOff[i];
+        let rr = alpha[i] > 0.01 ? R[i] + (this.bandOnly ? 0 : STAND_OFF * T * smooth01((so - 0.6) / 0.4) * (1 - hangs[c]))
           : (1 - under) * (Math.min(R[i], skin[i]) - 2 * LIFT * T) + under * (R[i] - LIFT * T);
         // what does not stand off her lies ON her skin, not on the outline round her: the outline can sit a few
         // millimetres out where it bridges a hollow. A half-faded strip there showed past her silhouette as torn fabric
@@ -692,7 +716,7 @@ export class TunicDrape {
         // millimetres off her, half see-through against the background, and read as frayed fabric on each side of her belly
         // from the front (Joshua, 2026-10-23: "looks like part of the shirt is frayed out just a little bit"). Laid on her
         // skin, over the shirt's own paint, its fading cannot be seen
-        if (skin[i] > 0 && alpha[i] > 0.01 && rr > skin[i]) rr -= (1 - Math.min(standOff[i], smooth01((alpha[i] - OPAQUE_FROM) / (1 - OPAQUE_FROM)))) * (rr - skin[i]);
+        if (skin[i] > 0 && alpha[i] > 0.01 && rr > skin[i]) rr -= (1 - Math.min(so, smooth01((alpha[i] - OPAQUE_FROM) / (1 - OPAQUE_FROM)))) * (rr - skin[i]);
         // wherever it shows at all, never inside her: the smoothed outline may dip a millimetre under her skin, and where
         // it was still fading in (where it starts to fall from her seat) nothing lifted it back out -- her skin stood
         // through the shirt there, worst over her seat with a big bump, whose stance leans her back (Joshua, 2026-10-23:
@@ -749,6 +773,10 @@ export class TunicDrape {
       }
       smooth(most, SHORT_ROWS - SHORT_COLUMNS, false);
       smooth(most, SHORT_COLUMNS, true);
+      // (only its hem band: no more than BAND_LIFT. Where her skin jumps between rows -- a big bump resting on her lap,
+      // its underside a shelf over her hips -- the most within reach was the whole jump, and the band stood up to 11 cm
+      // off her in streaks, with every slider at its most, seated. The lift is for her rounded seat, a centimetre)
+      if (this.bandOnly) for (let i = 0; i < n; i++) most[i] = Math.min(most[i], BAND_LIFT * T);
       // never inside her where it shows, and a hair out where it shows fully (the rule above, against her smoothed skin)
       for (let i = 0; i < n; i++) if (shown(i)) radius[i] = skinSmooth[i] + (DRAPE_PROBE.lift ? most[i] : 0) + Math.max(off[i], this.hemLift * T * smooth01(alpha[i] / 0.5));
     }
@@ -791,7 +819,10 @@ export class TunicDrape {
       // below the hem, as she stands now, no shirt at all: a big bump hangs lower than the shirt reaches, but its paint
       // (measured on her at rest) still ran on down it -- seen from below, red under the hem
       const row = (hipY + T_TOP * T - py[k]) / (step * T);
-      this.hang[cand[k]] = Math.max(this.hang[cand[k]], Math.max(0, Math.min(1, 0.5 + (row - (rows - 1) - 0.5) / 2)));
+      // (only its hem band: the paint goes from a row above the band's bottom edge, under the solid band, so that edge --
+      // level and smooth -- is the shirt's bottom edge all round, not the paint's own, which wobbles)
+      const below = this.bandOnly ? (row - (rows - 1)) / 2 + 1 : 0.5 + (row - (rows - 1) - 0.5) / 2;
+      this.hang[cand[k]] = Math.max(this.hang[cand[k]], Math.max(0, Math.min(1, below)));
     }
     this.hangVersion++;
     for (let r = 0; r < rows; r++) {
@@ -850,7 +881,7 @@ export class TunicDrape {
           // (Joshua, 2026-10-22, circled at 100-200%). Not the hem band, though, where it lies on her: turned out all
           // round her it was lit brighter than the painted shirt above it, a band that read as a flared, sweater-like
           // seam (2026-10-23)
-          if (pass === NORMAL_PASSES - 1) { const l0 = Math.hypot(x, y, z) || 1; const k = FACE_OUT * Math.max(standOff[r * COLUMNS + c], falling[r * COLUMNS + c] * falling[r * COLUMNS + c]); x = x / l0 + k * cosA[c]; y /= l0; z = z / l0 + k * sinA[c]; }
+          if (pass === NORMAL_PASSES - 1) { const l0 = Math.hypot(x, y, z) || 1; const k = FACE_OUT * Math.max(this.bandOnly ? 0 : standOff[r * COLUMNS + c], falling[r * COLUMNS + c] * falling[r * COLUMNS + c]); x = x / l0 + k * cosA[c]; y /= l0; z = z / l0 + k * sinA[c]; }
           const l = Math.hypot(x, y, z) || 1;
           b[i * 3] = x / l; b[i * 3 + 1] = y / l; b[i * 3 + 2] = z / l;
         }

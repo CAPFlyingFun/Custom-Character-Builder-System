@@ -1,5 +1,5 @@
 /**
- * THE PAINTED SHIRT'S DRAPE, SEATED (tunicDrape.ts, LAP_LIFT; Joshua, 2026-11-06: "the shirt is flaring out too much and
+ * THE PAINTED SHIRT'S DRAPE, SEATED (tunicDrape.ts, LAP_TILT; Joshua, 2026-11-06: "the shirt is flaring out too much and
  * looks weird... did it get taken half way?"). Her thighs laid forward are her lap: left out of the slices the drape is
  * measured in, so it hangs from her and does not stand out over her lap to her knees. Standing, her legs hang, none of
  * her is lap, and the drape is exactly what it was.
@@ -69,9 +69,9 @@ describe('TunicDrape seated', () => {
   });
 
   it('standing, her legs hang: none of her is lap, and the drape is built exactly as without the rule', () => {
-    // (straight, and as a big bump's stance holds them: her legs' skin a fifth higher than at rest, which at her knees is
-    // far up her knees -- measured on her at 150%)
-    for (const stance of [1, 0.8]) {
+    // (straight; as a big bump's stance holds them, her legs' skin a fifth higher than at rest -- measured on her at 150%;
+    // and with every slider at its least, her legs 40% shorter than her map's rest heights)
+    for (const stance of [1, 0.8, 0.6]) {
       DRAPE_PROBE.lap = true;
       const on = drapeOf(false, stance);
       expect(on.lap).toBe(0);
@@ -124,5 +124,54 @@ describe('TunicDrape seated: the axis', () => {
     drape.wear(-0.15);
     drape.update(0);
     expect(drape.inside.axisMm).toBe(0);
+  });
+});
+
+describe('TunicDrape: its hem band alone (a painted shirt\'s smooth bottom edge)', () => {
+  // A trunk of radius 0.18 with a bump in front between 0.05 and 0.35 above her hips, 0.12 proud of it at its fullest.
+  // Joshua, 2026-11-06: the painted shirt's drape taken off ("Remove that bottom flap skin"), then its smooth bottom edge
+  // back ("Hem band only", "Also, do along the backside")
+  function bumped(): { body: THREE.SkinnedMesh; map: BodyMap } {
+    const pos: number[] = [], nor: number[] = [], region: number[] = [], trunk: number[] = [], around: number[] = [];
+    for (let j = 0; j <= 80; j++) for (let a = 0; a < 64; a++) {
+      const t = -0.2 + j * 0.01, c = Math.cos((2 * Math.PI * a) / 64), s = Math.sin((2 * Math.PI * a) / 64);
+      const bump = t > 0.05 && t < 0.35 && s > 0 ? 0.12 * Math.sin(Math.PI * (t - 0.05) / 0.3) * s * s : 0, r = 0.18 + bump;
+      pos.push(r * c, t, r * s); nor.push(c, 0, s); region.push(regionOf(t < 0 ? 'hips' : 'belly')); trunk.push(t); around.push((s + 1) / 2);
+    }
+    const g = new THREE.BufferGeometry(), n = pos.length / 3;
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Uint16Array(n * 4), 4));
+    const sw = new Float32Array(n * 4);
+    for (let v = 0; v < n; v++) sw[v * 4] = 1;
+    g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+    const body = new THREE.SkinnedMesh(g), bone = new THREE.Bone();
+    body.add(bone); body.updateMatrixWorld(true); body.bind(new THREE.Skeleton([bone]));
+    return { body, map: { region: Uint8Array.from(region), trunk: Float32Array.from(trunk), around: Float32Array.from(around), arm: new Float32Array(n).fill(NaN), trunkLength: 1 } as BodyMap };
+  }
+  const shownOf = (drape: TunicDrape) => {
+    const P = drape.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, C = drape.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const out: THREE.Vector3[] = [];
+    for (let i = 0; i < P.count; i++) if (C.getW(i) > 0.01) out.push(new THREE.Vector3().fromBufferAttribute(P, i));
+    return out;
+  };
+
+  it('shows only a band at the hem, all the way round her, front and back, lying on her: no flap hanging from her bump', () => {
+    const { body, map } = bumped(), hem = -0.1;
+    const whole = new TunicDrape(body, map, -0.3);
+    whole.wear(hem);
+    whole.update(0);
+    const band = new TunicDrape(body, map, -0.3);
+    band.wear(hem, undefined, null, true);
+    band.update(0);
+    const w = shownOf(whole), b = shownOf(band);
+    // the whole drape hangs from her bump in front, down to its hem
+    expect(Math.max(...w.filter((p) => p.y < 0).map((p) => p.z))).toBeGreaterThan(0.24);
+    // the band: nothing higher than its own band and fade (two HEM_BANDs over the hem, a little more for the rows' step)
+    expect(Math.max(...b.map((p) => p.y))).toBeLessThan(hem + 0.08);
+    // all round her: in front, behind and at both sides
+    for (const [x, z] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) expect(b.some((p) => (p.x * x + p.z * z) / Math.hypot(p.x, p.z) > 0.95), `${x},${z}`).toBe(true);
+    // lying on her: no further out than a few millimetres past her skin (0.18), in front too
+    expect(Math.max(...b.map((p) => Math.hypot(p.x, p.z)))).toBeLessThan(0.19);
   });
 });

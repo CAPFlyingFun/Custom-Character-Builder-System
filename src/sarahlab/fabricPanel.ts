@@ -885,14 +885,14 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (p && p.has(i) && layerShown(i) && paintChoices[i].fabric && templates[i] && templates[i]!.params.length !== null) top = i;
     }
     const map = regionMap();
-    // (no drape on a painted shirt now: PAINTED_SHIRT_DRAPE)
-    if (!PAINTED_SHIRT_DRAPE || top < 0 || painting || !p || !map || !(body as THREE.SkinnedMesh).isSkinnedMesh) { drape?.wear(null); unhang(); layHang(); return; }
+    // (how much of the drape a painted shirt wears: PAINTED_SHIRT_DRAPE)
+    if (PAINTED_SHIRT_DRAPE === 'off' || top < 0 || painting || !p || !map || !(body as THREE.SkinnedMesh).isSkinnedMesh) { drape?.wear(null); unhang(); layHang(); return; }
     drapeLayer = top;
     if (drape && drape.mesh.parent !== body) { drape.dispose(); drape = null; }
     if (!drape) drape = new TunicDrape(body as THREE.SkinnedMesh, map, shirtHem(map, 1));
     const c = paintChoices[top];
     // a sweater's hem is turned and ribbed, and stands a little proud; every other fabric's lies flat (Joshua, 2026-10-23)
-    drape.wear(shirtHem(map, templates[top]!.params.length!), paintChoices[top].fabric?.family === 'sweater' ? HEM_LIFT_RIBBED : HEM_LIFT_FLAT, (v) => p.coverAt(v, [top]));
+    drape.wear(shirtHem(map, templates[top]!.params.length!), paintChoices[top].fabric?.family === 'sweater' ? HEM_LIFT_RIBBED : HEM_LIFT_FLAT, (v) => p.coverAt(v, [top]), PAINTED_SHIRT_DRAPE === 'band');
     setFabricLayer(drape.mesh, drape.mesh.material as THREE.Material, 0, layerFor(body, c, c.fabric, 'plain'), { layers: 1, masked: false, rest: null });
     drape.feathered();
   }

@@ -293,12 +293,15 @@ export const DEFAULT_SHIRT_LENGTH = 0;
  */
 export const PAINTED_SHIRT_LONGEST = 0;
 /**
- * Whether a painted shirt wears the drape below its waist (`tunicDrape.ts`: the sheet that spans what paint cannot, from
- * her waist to the hem, with its hem band). Off: a painted shirt ends above the line it was made for (Joshua,
- * 2026-11-06: "Remove that bottom flap skin on the painted shirt… it shouldn't need it as it is higher than that line").
- * The drape itself is kept, whole and tested, for a painted shirt that may one day go lower again.
+ * How much of the drape below its waist a painted shirt wears (`tunicDrape.ts`: the sheet that spans what paint cannot,
+ * from her waist to the hem, with its hem band). 'band': its hem band alone, the smooth, level bottom edge all round her,
+ * front and back, lying on her skin -- no flap. A painted shirt ends above the line it was made for (Joshua, 2026-11-06:
+ * "Remove that bottom flap skin on the painted shirt… it shouldn't need it as it is higher than that line"); taken off
+ * whole, the paint's own hem was the edge, and it wobbled where her hips bend ("Work on creating smooth bottom edging…
+ * we went through this before"; asked, he chose "Hem band only", "Also, do along the backside"). 'full' is the whole
+ * drape as it was, kept for a painted shirt that may one day go lower again; 'off', none.
  */
-export const PAINTED_SHIRT_DRAPE = false;
+export const PAINTED_SHIRT_DRAPE: 'full' | 'band' | 'off' = 'band';
 /** A painted shirt's LENGTH as it may be worn: from 0 up to PAINTED_SHIRT_LONGEST. */
 export const paintedShirtLength = (length: number): number => Math.max(0, Math.min(PAINTED_SHIRT_LONGEST, Number.isFinite(length) ? length : 0));
 /** The crew opening's width round her neck, in neck radii (what `open` is for a crew at LINES.neckCrew). */
