@@ -1,7 +1,7 @@
 {
   "name": "custom-character-builder-system",
   "private": true,
-  "version": "0.6.3",
+  "version": "0.7.0",
   "type": "module",
   "description": "One character system for every game: bodies, clothes, poses, joint ranges, birth and holding, in the Character Room (TRADDOMIUM, Beyond Extinction, TMB-Story and after).",
   "scripts": {
