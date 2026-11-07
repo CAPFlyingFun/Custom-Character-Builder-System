@@ -7880,6 +7880,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const tee = new Set<THREE.Object3D>(frozen ? frozen.meshes : garmentRoom ? garmentRoom.cloth.drawn : []);
           if (!tee.size) return false;
           const materials = (m: THREE.Mesh) => (Array.isArray(m.material) ? m.material : [m.material]);
+          // (the tee's own materials are left alone wherever else they are used: the frozen tee shares the live cloth's)
+          const teeMaterials = new Set<THREE.Material>();
+          for (const m of tee) for (const mat of materials(m as THREE.Mesh)) teeMaterials.add(mat);
           three.traverse((o) => {
             const m = o as THREE.Mesh;
             if (!m.isMesh) return;
@@ -7888,7 +7891,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             } else {
               // (drawn neither in colour nor depth rather than hidden: the room shows and hides some of her parts frame by
               // frame -- her womb's x-ray among them -- and her body holds the tee, so hiding it would hide the tee too)
-              for (const mat of materials(m)) { const c = mat.colorWrite, d = mat.depthWrite; mat.colorWrite = false; mat.depthWrite = false; teeAloneWas.push(() => { mat.colorWrite = c; mat.depthWrite = d; }); }
+              for (const mat of materials(m)) { if (teeMaterials.has(mat)) continue; const c = mat.colorWrite, d = mat.depthWrite; mat.colorWrite = false; mat.depthWrite = false; teeAloneWas.push(() => { mat.colorWrite = c; mat.depthWrite = d; }); }
             }
           });
           return true;
