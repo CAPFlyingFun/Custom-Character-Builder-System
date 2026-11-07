@@ -2305,7 +2305,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     return { facing: { hip: body.skeleton.bones[measure.joints.pelvis].getWorldPosition(new THREE.Vector3()).toArray(), front: model.getWorldDirection(new THREE.Vector3()).toArray() } };
   }
   /** CLOTH · FROZEN: the new tee as it lies this frame, made a garment on her skeleton (frozenCloth.ts), and kept. */
-  function freezeTee(tune: { passes?: number; legShare?: number; morphs?: string[]; onSkinM?: number } = {}): void {
+  function freezeTee(tune: { passes?: number; legShare?: number; morphs?: string[] } = {}): void {
     const body = clothBody();
     if (!garmentRoom || !body || !model || frozen) return;
     model.updateMatrixWorld(true);
@@ -7808,13 +7808,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // is in front of what -- it hidden, its depth bias, its depth test or blending off, her body's colour off, what is drawn)
         // her sneakers' heels over the floor (metres) and the steps heard so far (footsteps.ts)
         // the new tee FROZEN (true) or LIVE (false), as the button does; nothing: as it is. What is kept, and how big
-        freeze: (on?: boolean, tune?: { passes?: number; legShare?: number; morphs?: string[]; onSkinM?: number }) => {
+        freeze: (on?: boolean, tune?: { passes?: number; legShare?: number; morphs?: string[] }) => {
           // (frozen already and tuned: frozen again from the cloth as it was left -- stood as she was when it was frozen)
           if (on === true && frozen && tune) { frozen.dispose(); frozen = null; }
           if (on === true && !frozen) freezeTee(tune);
           if (on === false && frozen) liveTee();
           return keptBig<FrozenSave>(FROZEN_KEY).then((saved) => ({
-            frozen: !!frozen, vertices: frozen?.vertices ?? 0, meshes: frozen?.meshes.map((m) => m.name) ?? [], note: frozenNote, held: frozen?.held ?? null,
+            frozen: !!frozen, vertices: frozen?.vertices ?? 0, meshes: frozen?.meshes.map((m) => m.name) ?? [], note: frozenNote,
             keptBytes: saved ? FrozenCloth.bytes(saved) : 0, live: !!garmentRoom?.cloth.mesh.visible,
           }));
         },

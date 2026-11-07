@@ -45,7 +45,7 @@ function asRef(c: SavedClothes | OutfitRef | null): OutfitRef {
 describe('a record through a file', () => {
   /** Every control and every dial away from its default, each within its range. */
   const hers = record(
-    { construction: 'setIn', gusset: 0, neckWidth: 0.22, neckCurve: 0.5, ease: { bust: 0.03, waist: 0.06, hip: 0.05 }, length: 75, frontHem: 0.02, backHem: -0.01, hemCurve: 0.4, sleeve: 80, neckDepth: 0.12, bellyRoom: 0.7 },
+    { construction: 'setIn', gusset: 0, neckWidth: 0.22, neckCurve: 0.5, ease: { bust: 0.03, waist: 0.06, hip: 0.05 }, length: 75, frontHem: 0.02, backHem: -0.01, hemCurve: 0.4, sleeve: 80, sleeveWidth: 0.11, neckDepth: 0.12, bellyRoom: 0.7 },
     { weight: 60, calm: 40, fit: 70, close: 80, stretch: 30, grip: 20, steps: 90 },
   );
 

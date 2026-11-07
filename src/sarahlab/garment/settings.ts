@@ -4,7 +4,8 @@
  *
  * Two kinds, as the Stage 1 plan has them (and the Stage 3 plan's changes to it):
  * - RE-TAILOR settings remake the pattern when a finger lets go (`tailorParams`, compared by `tailorKey`): the
- *   construction and gusset, the neckline's width and shape, the ease at her bust, waist and hip -- and the neckline's
+ *   construction and gusset, the neckline's width and shape, the ease at her bust, waist and hip and round her upper
+ *   arm (SLEEVE WIDTH, Joshua 2026-11-07: "Arm diameter can be adjustable to be smaller or wider") -- and the neckline's
  *   height while it is higher than the approved scoop (R2), since a cut cannot add cloth (`draftedNeckDrop`).
  * - INSTANT settings cut the finished tee while a finger drags (`cuts.ts`): its length, the front and back hems, the
  *   hem's curve, the sleeves' length, a neckline deeper than the scoop; and BELLY ROOM, a cut of the cloth's own lengths
@@ -34,6 +35,8 @@ export interface GarmentSettings {
   readonly neckCurve: number;
   /** BUST, WAIST and HIP FIT. */
   readonly ease: GarmentEase;
+  /** SLEEVE WIDTH: the sleeve's girth less her upper arm's, metres (the draft's `ease.sleeve`): narrower or wider. */
+  readonly sleeveWidth: number;
   // --- instant: cuts of the finished tee, as a finger drags ---
   /** LENGTH: a position on LENGTH_STOPS, 0 (crop) .. 100 (knee dress). */
   readonly length: number;
@@ -95,6 +98,7 @@ export const GARMENT_DEFAULTS: GarmentSettings = Object.freeze({
   neckWidth: null,
   neckCurve: 0,
   ease: Object.freeze({ bust: TEE_DEFAULTS.ease.bust, waist: TEE_DEFAULTS.ease.waist, hip: TEE_DEFAULTS.ease.hip }),
+  sleeveWidth: TEE_DEFAULTS.ease.sleeve,
   length: 25,
   frontHem: 0,
   backHem: 0,
@@ -104,15 +108,18 @@ export const GARMENT_DEFAULTS: GarmentSettings = Object.freeze({
   bellyRoom: 0,
 });
 
-/** Each number's range, [min, max] (ease: each of bust, waist and hip). */
+/**
+ * Each number's range, [min, max] (ease: each of bust, waist and hip). GAME TUNING. SLEEVE WIDTH: from 2 cm under her
+ * upper arm's girth (as tight as the fits go) to 20 cm over it (a loose, open sleeve); the approved tee's is 7.
+ */
 export const GARMENT_RANGES = Object.freeze({
-  gusset: [0, 1], neckWidth: [0.18, 0.30], neckCurve: [0, 1], ease: [-0.02, 0.10],
+  gusset: [0, 1], neckWidth: [0.18, 0.30], neckCurve: [0, 1], ease: [-0.02, 0.10], sleeveWidth: [-0.02, 0.20],
   length: [0, 100], frontHem: [-0.08, 0.08], backHem: [-0.08, 0.08], hemCurve: [0, 1],
   sleeve: [0, 100], neckDepth: [NECK_DEPTH_CREW, NECK_DEPTH_MAX], bellyRoom: [0, 1],
 } as const satisfies Record<string, readonly [number, number]>);
 
 /** The settings that remake the pattern; every other one cuts the finished tee (and NECKLINE DEPTH both: `draftedNeckDrop`). */
-export const RETAILOR_KEYS: readonly (keyof GarmentSettings)[] = Object.freeze(['construction', 'gusset', 'neckWidth', 'neckCurve', 'ease']);
+export const RETAILOR_KEYS: readonly (keyof GarmentSettings)[] = Object.freeze(['construction', 'gusset', 'neckWidth', 'neckCurve', 'ease', 'sleeveWidth']);
 
 /** Her landmarks for the instant controls, from the tee as tailored on her (`cuts.ts` garmentStops). */
 export interface GarmentStops {
@@ -156,6 +163,8 @@ export function clampGarmentSettings(raw: unknown, base: GarmentSettings = GARME
     neckWidth: r.neckWidth === null ? null : typeof r.neckWidth === 'number' && Number.isFinite(r.neckWidth) ? clampTo(r.neckWidth, R.neckWidth, 0) : base.neckWidth,
     neckCurve: clampTo(r.neckCurve, R.neckCurve, base.neckCurve),
     ease: { bust: clampTo(e.bust, R.ease, base.ease.bust), waist: clampTo(e.waist, R.ease, base.ease.waist), hip: clampTo(e.hip, R.ease, base.ease.hip) },
+    // (a save from before SLEEVE WIDTH has the approved tee's)
+    sleeveWidth: clampTo(r.sleeveWidth, R.sleeveWidth, base.sleeveWidth),
     length: clampTo(r.length, R.length, base.length),
     frontHem: clampTo(r.frontHem, R.frontHem, base.frontHem),
     backHem: clampTo(r.backHem, R.backHem, base.backHem),
@@ -185,7 +194,7 @@ export function tailorParams(s: GarmentSettings): Partial<TeeParams> {
     ...(s.neckWidth !== null ? { neckWidth: s.neckWidth } : {}),
     neckCurve: s.neckCurve,
     neckDrop: draftedNeckDrop(s),
-    ease: { ...TEE_DEFAULTS.ease, bust: s.ease.bust, waist: s.ease.waist, hip: s.ease.hip },
+    ease: { ...TEE_DEFAULTS.ease, bust: s.ease.bust, waist: s.ease.waist, hip: s.ease.hip, sleeve: s.sleeveWidth },
     extend: true,
   };
 }
@@ -193,7 +202,7 @@ export function tailorParams(s: GarmentSettings): Partial<TeeParams> {
 /** Equal for two settings that draft the same pattern (so moving an instant control never re-tailors). */
 export function tailorKey(s: GarmentSettings): string {
   const r = (x: number) => Math.round(x * 1e6) / 1e6;
-  return JSON.stringify([s.construction, r(s.gusset), r(s.neckWidth ?? CONSTRUCTION_DEFAULTS[s.construction].neckWidth), r(s.neckCurve), r(draftedNeckDrop(s)), r(s.ease.bust), r(s.ease.waist), r(s.ease.hip)]);
+  return JSON.stringify([s.construction, r(s.gusset), r(s.neckWidth ?? CONSTRUCTION_DEFAULTS[s.construction].neckWidth), r(s.neckCurve), r(draftedNeckDrop(s)), r(s.ease.bust), r(s.ease.waist), r(s.ease.hip), r(s.sleeveWidth)]);
 }
 
 /** Whether two settings are the same in every control (for "changed?"). */

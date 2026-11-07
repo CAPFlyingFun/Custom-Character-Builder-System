@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { closestSurface, FrozenCloth, nearestSkin, particleSkin, topBones } from '../src/sarahlab/garment/frozenCloth';
+import { FrozenCloth, nearestSkin, particleSkin, topBones } from '../src/sarahlab/garment/frozenCloth';
 
 /** Rows of the strip: 1.25 cm apart, as the cloth's particles are about 1.2 cm. */
 const ROWS = 161;
@@ -89,53 +89,6 @@ describe('the frozen tee', () => {
       // (the nearest carrying it most)
       expect(bary[i * 4]).toBeGreaterThanOrEqual(bary[i * 4 + 3]);
     }
-  });
-
-  it("finds the closest point of her skin's surface facing the cloth, as a search of every triangle would", () => {
-    // (a bumpy sheet of skin 40 cm square, 1 cm a square, facing up; some of it she cannot carry it by)
-    let seed = 11;
-    const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    const G = 41, skin = new Float32Array(G * G * 3), index: number[] = [], usable = new Uint8Array(G * G).fill(1);
-    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) skin.set([c * 0.01, 0.004 * Math.sin(c * 0.7) * Math.cos(r * 0.5) + 0.002 * rand(), r * 0.01], (r * G + c) * 3);
-    for (let r = 0; r + 1 < G; r++) for (let c = 0; c + 1 < G; c++) { const a = r * G + c; index.push(a, a + G, a + 1, a + 1, a + G, a + G + 1); }
-    for (let v = 0; v < G * G; v += 13) usable[v] = 0;
-    const n = 200, cloth = Float32Array.from({ length: n * 3 }, (_, i) => (i % 3 === 1 ? 0.004 + rand() * 0.02 : 0.05 + rand() * 0.3));
-    const up = Float32Array.from({ length: n * 3 }, (_, i) => (i % 3 === 1 ? 1 : 0));
-    const found = closestSurface(skin, usable, index, cloth, up, 16, 0.03);
-    const P = (v: number) => new THREE.Vector3(skin[v * 3], skin[v * 3 + 1], skin[v * 3 + 2]), q = new THREE.Vector3();
-    for (let i = 0; i < n; i++) {
-      const p = new THREE.Vector3(cloth[i * 3], cloth[i * 3 + 1], cloth[i * 3 + 2]);
-      let best = Infinity;
-      for (let t = 0; t < index.length / 3; t++) {
-        const [a, b, c] = [index[t * 3], index[t * 3 + 1], index[t * 3 + 2]];
-        if (!usable[a] || !usable[b] || !usable[c]) continue;
-        best = Math.min(best, new THREE.Triangle(P(a), P(b), P(c)).closestPointToPoint(p, q).distanceTo(p));
-      }
-      expect(found.distance[i]).toBeCloseTo(best, 6);
-      // (where it says, on the triangle it names)
-      const at = [0, 1, 2].reduce((s, j) => s.addScaledVector(P(found.corners[i * 3 + j]), found.bary[i * 3 + j]), new THREE.Vector3());
-      expect(at.distanceTo(p)).toBeCloseTo(best, 6);
-      for (let j = 0; j < 3; j++) expect(usable[found.corners[i * 3 + j]]).toBe(1);
-    }
-    // (cloth facing down lies on none of it: that skin faces away from it)
-    const down = closestSurface(skin, usable, index, cloth, up.map((v) => -v), 16, 0.03);
-    expect(Array.from(down.corners).every((v) => v === -1)).toBe(true);
-    expect(Array.from(down.distance).every((d) => Number.isNaN(d))).toBe(true);
-  });
-
-  it('carries a point ON her skin by that skin alone: 5 mm off her, it stays 5 mm off her round her knee too', () => {
-    const b = body(), c = cloth();
-    b.knee.rotation.z = 0.3; b.root.updateMatrixWorld(true);
-    const her0 = drawn(b.mesh), P = c.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-    for (let v = 0; v < P.count; v++) { P.setXYZ(v, her0[v].x, her0[v].y, her0[v].z + 0.005); c.particles.position.set([her0[v].x, her0[v].y, her0[v].z + 0.005], v * 3); }
-    const f = FrozenCloth.freeze(b.mesh, [{ mesh: c.mesh, particleOf: Array.from({ length: P.count }, (_, v) => v) }], c.particles, new THREE.MeshBasicMaterial(), null);
-    expect(f.held).toEqual({ onSkin: P.count, between: 0, off: 0 });
-    const at0 = drawn(f.meshes[0]);
-    for (let v = 0; v < P.count; v++) expect(at0[v].distanceTo(new THREE.Vector3(P.getX(v), P.getY(v), P.getZ(v)))).toBeLessThan(1e-5);
-    b.knee.rotation.z = 1.1; b.root.updateMatrixWorld(true);
-    const her = drawn(b.mesh), at = drawn(f.meshes[0]);
-    // (unsmoothed: its own skin's bones even where they change, so it is where that skin is, 5 mm out)
-    for (let v = 0; v < P.count; v++) expect(at[v].distanceTo(her[v].clone().add(new THREE.Vector3(0, 0, 0.005)))).toBeLessThan(1e-4);
   });
 
   it('is drawn exactly where the cloth was, and goes where her skin goes when she moves', () => {

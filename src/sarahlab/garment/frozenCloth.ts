@@ -7,12 +7,11 @@
  * her it had then, and carried from there by her bones as a fitted garment is, nothing simulated. So what is tried in
  * the room is what a story file would carry.
  *
- * - WHICH BONES carry a point: where it lies ON her skin, exactly that skin's, as paint is (Joshua, 2026-11-07: "a
- *   frozen sim shirt is like a painted shirt... use the same technique"): the closest point of her skin's surface is
- *   found for it as it lies when frozen, and it keeps its distance from it. Where it hangs off her or bridges her: the
- *   body's, those of her skin nearest it (never her forearms' or hands'); a sleeve's, those of the skin the live cloth
- *   found under it -- her legs' share held down so a hem hangs over her lap, smoothed a few passes over the cloth's own
- *   edges (`FREEZE`).
+ * - WHICH BONES carry a point: the body's, those of her skin nearest it as she stands (never her forearms' or hands');
+ *   a sleeve's, those of the skin the live cloth found under it -- so it goes where the skin under it goes, her legs'
+ *   share held down so a hem hangs over her lap, smoothed a few passes over the cloth's own edges (`FREEZE`). (Carried
+ *   by exactly the skin under each point, as paint is, measured worse on Joshua's Sarah, 2026-11-07: neighbouring
+ *   points pulled apart where her skin bends, 379 of her points through it walking against 56, 531 seated against 255.)
  * - HER BOUNCE: her belly's and breasts' follow weights the same way, so the tee moves with them as her skin does.
  * - EXACT AT THE FRAME IT WAS FROZEN: each point's rest place is the inverse of its own blend of her bones then, so it
  *   is drawn where the cloth was to the hundredth of a millimetre, and goes where her skin goes from there.
@@ -41,11 +40,6 @@ function shaderMove(uniforms: JiggleUniforms, weights: Float32Array, push: Float
  * How a frozen point takes her bones. GAME TUNING throughout, measured on Joshua's own Sarah (his exported character,
  * 2026-11-07), frozen standing, then seated and walking: how much of her skin the tee had covered came out through it.
  *
- * - `onM`: a point within this of her skin's surface (the closest point of it facing the way the cloth does there, among
- *   the triangles round the `surfaceNear` of her points nearest it) is ON her skin, and carried by that skin alone: its
- *   own bones, bounce and shapes, unsmoothed, so it keeps its distance from it as paint does (Joshua, 2026-11-07: "a
- *   frozen sim shirt is like a painted shirt... use the same technique"). Past `offM` it is off her skin, hanging or
- *   bridging, and carried as below; between, a blend of the two.
  * - `near`: the BODY's points carried by the 4 points of her skin nearest each as she stands (each by the inverse
  *   square of its distance, `softM` added; a grid of `cellM` finds them). Carried by the triangle the live cloth's own
  *   contact found, they never took her arm (the cloth's rule, so it is not dragged by it), and seated the underarm opened
@@ -60,7 +54,7 @@ function shaderMove(uniforms: JiggleUniforms, weights: Float32Array, push: Float
  *   35% there, her hips came through the back of the hem), round her sides between (`FreezeOptions.facing`).
  * - `bones`: four kept, what three skins with.
  */
-export const FREEZE = Object.freeze({ onM: 0.01, offM: 0.025, surfaceNear: 16, near: 4, cellM: 0.03, softM: 0.003, hugM: 0.008, hangM: 0.02, passes: 8, share: 0.5, bones: 4, legShare: 0.35, legShareBack: 1 });
+export const FREEZE = Object.freeze({ near: 4, cellM: 0.03, softM: 0.003, hugM: 0.008, hangM: 0.02, passes: 8, share: 0.5, bones: 4, legShare: 0.35, legShareBack: 1 });
 
 /**
  * How a freeze takes her bones: smoothing passes over the cloth (FREEZE.passes), and her LEGS -- the bones from each
@@ -76,15 +70,8 @@ export interface FreezeOptions {
   readonly legShares?: ArrayLike<number>;
   /** Her hips (world) and the way she faces (a unit vector, world): the hem in FRONT of her keeps `legShare`, behind her `FREEZE.legShareBack`. */
   readonly facing?: { readonly hip: readonly number[]; readonly front: readonly number[] };
-  /**
-   * Per particle, how much it is ON her skin (0 to 1, the freeze's: `FREEZE.onM`): that much of its own carry, her skin's
-   * under it, is kept as it is -- not smoothed toward its neighbours', nor its legs' share held down.
-   */
-  readonly stiff?: ArrayLike<number>;
   /** Bones whose skin it never takes (her forearms and hands: a tee's hem lies near them, and is never carried by them). */
   readonly ignore?: ReadonlySet<number>;
-  /** How near her skin a point is carried by that skin alone (`FREEZE.onM`; 0: never -- a probe's comparison). */
-  readonly onSkinM?: number;
   /** World units to the metre (the room's 100); default 1. */
   readonly unitsPerMetre?: number;
   /**
@@ -154,119 +141,11 @@ export function nearestSkin(skin: ArrayLike<number>, usable: ArrayLike<number> |
   return { corners, bary, distance };
 }
 
-/**
- * Where on triangle a, b, c (world, 3 each, at offsets a, b, c of `s`) the point x, y, z is nearest: its barycentric
- * weights into out at o (Ericson, Real-Time Collision Detection, 5.1.5).
- */
-function closestOnTriangle(s: ArrayLike<number>, a: number, b: number, c: number, x: number, y: number, z: number, out: Float64Array): void {
-  const ax = s[a], ay = s[a + 1], az = s[a + 2];
-  const abx = s[b] - ax, aby = s[b + 1] - ay, abz = s[b + 2] - az, acx = s[c] - ax, acy = s[c + 1] - ay, acz = s[c + 2] - az;
-  const apx = x - ax, apy = y - ay, apz = z - az;
-  const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
-  const set = (u: number, v: number, w: number) => { out[0] = u; out[1] = v; out[2] = w; };
-  if (d1 <= 0 && d2 <= 0) return set(1, 0, 0);
-  const bpx = x - s[b], bpy = y - s[b + 1], bpz = z - s[b + 2];
-  const d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
-  if (d3 >= 0 && d4 <= d3) return set(0, 1, 0);
-  const vc = d1 * d4 - d3 * d2;
-  if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v = d1 / (d1 - d3); return set(1 - v, v, 0); }
-  const cpx = x - s[c], cpy = y - s[c + 1], cpz = z - s[c + 2];
-  const d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
-  if (d6 >= 0 && d5 <= d6) return set(0, 0, 1);
-  const vb = d5 * d2 - d1 * d6;
-  if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w = d2 / (d2 - d6); return set(1 - w, 0, w); }
-  const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { const w = (d4 - d3) / ((d4 - d3) + (d5 - d6)); return set(0, 1 - w, w); }
-  const den = 1 / (va + vb + vc), v = vb * den, w = vc * den;
-  set(1 - v - w, v, w);
-}
-
-/**
- * Each point of `cloth` (world, 3 each; NaN: none) on the closest point of her skin's SURFACE: the corners of the
- * triangle of `index` (her body's, 3 a triangle; only those whose corners are all `usable`) it lies nearest, where on it
- * (barycentric), and how far from there. Only skin facing the way the cloth does there (`facing`, its outside, 3 each;
- * null: any) is the skin it lies ON: a body panel at her side faces out, as her side does, and the inside of her arm
- * faces it; a sleeve's underside faces her side, as the inside of her arm does. The triangles round the `k` of her
- * skin's points nearest it are tried (a grid of `cell`). Pure: for a test.
- */
-export function closestSurface(skin: ArrayLike<number>, usable: ArrayLike<number> | null, index: ArrayLike<number>, cloth: ArrayLike<number>, facing: ArrayLike<number> | null, k: number, cell: number): { corners: Int32Array; bary: Float32Array; distance: Float32Array } {
-  const ns = Math.floor(skin.length / 3), nt = Math.floor(index.length / 3), n = Math.floor(cloth.length / 3);
-  // each of her points' triangles (those it may be carried by), and each triangle's outside
-  const count = new Int32Array(ns + 1), normal = new Float32Array(nt * 3), ok = new Uint8Array(nt);
-  for (let t = 0; t < nt; t++) {
-    const a = index[t * 3], b = index[t * 3 + 1], c = index[t * 3 + 2];
-    if (usable && !(usable[a] && usable[b] && usable[c])) continue;
-    const ux = skin[b * 3] - skin[a * 3], uy = skin[b * 3 + 1] - skin[a * 3 + 1], uz = skin[b * 3 + 2] - skin[a * 3 + 2];
-    const vx = skin[c * 3] - skin[a * 3], vy = skin[c * 3 + 1] - skin[a * 3 + 1], vz = skin[c * 3 + 2] - skin[a * 3 + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz);
-    if (!(l > 0)) continue;
-    ok[t] = 1; normal[t * 3] = nx / l; normal[t * 3 + 1] = ny / l; normal[t * 3 + 2] = nz / l;
-    count[a + 1]++; count[b + 1]++; count[c + 1]++;
-  }
-  for (let v = 0; v < ns; v++) count[v + 1] += count[v];
-  const tris = new Int32Array(count[ns]), fill = count.slice(0, ns);
-  for (let t = 0; t < nt; t++) if (ok[t]) for (let j = 0; j < 3; j++) tris[fill[index[t * 3 + j]]++] = t;
-  const near = nearestSkin(skin, usable, cloth, k, cell, 0);
-  const corners = new Int32Array(n * 3).fill(-1), bary = new Float32Array(n * 3), distance = new Float32Array(n).fill(NaN);
-  const w = new Float64Array(3), tried = new Set<number>();
-  for (let i = 0; i < n; i++) {
-    const x = cloth[i * 3], y = cloth[i * 3 + 1], z = cloth[i * 3 + 2];
-    if (!Number.isFinite(x + y + z)) continue;
-    const fx = facing ? facing[i * 3] : 0, fy = facing ? facing[i * 3 + 1] : 0, fz = facing ? facing[i * 3 + 2] : 0, faced = Number.isFinite(fx + fy + fz) && fx * fx + fy * fy + fz * fz > 0;
-    let best = Infinity;
-    tried.clear();
-    for (let j = 0; j < k; j++) {
-      const v = near.corners[i * k + j];
-      if (v < 0) break;
-      for (let e = count[v]; e < count[v + 1]; e++) {
-        const t = tris[e];
-        if (tried.has(t)) continue;
-        tried.add(t);
-        if (faced && fx * normal[t * 3] + fy * normal[t * 3 + 1] + fz * normal[t * 3 + 2] <= 0) continue;
-        const a = index[t * 3], b = index[t * 3 + 1], c = index[t * 3 + 2];
-        closestOnTriangle(skin, a * 3, b * 3, c * 3, x, y, z, w);
-        const qx = w[0] * skin[a * 3] + w[1] * skin[b * 3] + w[2] * skin[c * 3] - x, qy = w[0] * skin[a * 3 + 1] + w[1] * skin[b * 3 + 1] + w[2] * skin[c * 3 + 1] - y, qz = w[0] * skin[a * 3 + 2] + w[1] * skin[b * 3 + 2] + w[2] * skin[c * 3 + 2] - z;
-        const d = qx * qx + qy * qy + qz * qz;
-        if (d >= best) continue;
-        best = d;
-        corners[i * 3] = a; corners[i * 3 + 1] = b; corners[i * 3 + 2] = c;
-        bary[i * 3] = w[0]; bary[i * 3 + 1] = w[1]; bary[i * 3 + 2] = w[2];
-      }
-    }
-    if (best < Infinity) distance[i] = Math.sqrt(best);
-  }
-  return { corners, bary, distance };
-}
-
 /** One drawn mesh to freeze: its vertices' particles when it has them (its own sheet), else each takes the nearest particle's (the navel's fine drawing). */
 export interface FreezeSource {
   readonly mesh: THREE.Mesh;
   readonly particleOf?: ArrayLike<number>;
 }
-
-/** Each particle's outside (world, 3 each; NaN: none drawn), from the normals of the sheets drawn by it. */
-function particleFacing(sources: readonly FreezeSource[], np: number): Float32Array {
-  const out = new Float32Array(np * 3), m = new THREE.Matrix3(), v = new THREE.Vector3();
-  for (const s of sources) {
-    const nor = s.mesh.geometry.getAttribute('normal');
-    if (!s.particleOf || !nor) continue;
-    s.mesh.updateMatrixWorld(true);
-    m.getNormalMatrix(s.mesh.matrixWorld);
-    for (let i = 0; i < nor.count; i++) {
-      const q = s.particleOf[i];
-      if (!(q >= 0 && q < np)) continue;
-      v.set(nor.getX(i), nor.getY(i), nor.getZ(i)).applyMatrix3(m);
-      if (!Number.isFinite(v.x + v.y + v.z)) continue;
-      out[q * 3] += v.x; out[q * 3 + 1] += v.y; out[q * 3 + 2] += v.z;
-    }
-  }
-  for (let q = 0; q < np; q++) {
-    const l = Math.hypot(out[q * 3], out[q * 3 + 1], out[q * 3 + 2]);
-    for (let c = 0; c < 3; c++) out[q * 3 + c] = l > 0 ? out[q * 3 + c] / l : NaN;
-  }
-  return out;
-}
-
 /** Her skin's skinning, read once: four bones and weights a vertex, and her bounce weights (null: none). */
 export interface SkinOf {
   readonly index: ArrayLike<number>;
@@ -284,14 +163,10 @@ type Blend = Map<number, number>;
  */
 export function particleSkin(skin: SkinOf, p: FreezeParticles & { readonly corners: ArrayLike<number>; readonly bary: ArrayLike<number> }, passes: number = FREEZE.passes, share: number = FREEZE.share, options: FreezeOptions = {}): { blends: (Blend | null)[]; jiggle: Float32Array } {
   const legs = options.legs, hip = options.hip ?? -1, legShare = Math.min(1, Math.max(0, options.legShare ?? FREEZE.legShare));
-  const stiffOf = (i: number) => Math.min(1, Math.max(0, options.stiff?.[i] ?? 0));
-  const legShareOf = (i: number) => { const own = Math.min(1, Math.max(0, options.legShares?.[i] ?? legShare)); return own + (1 - own) * stiffOf(i); };
+  const legShareOf = (i: number) => Math.min(1, Math.max(0, options.legShares?.[i] ?? legShare));
   const K = p.under ?? 3, n = Math.floor(p.corners.length / K), blends: (Blend | null)[] = new Array(n).fill(null), jiggle = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    // (worn where any of her skin carries it)
-    let carried = false;
-    for (let k = 0; k < K && !carried; k++) carried = p.corners[i * K + k] >= 0 && p.bary[i * K + k] > 0;
-    if (!carried) continue;
+    if (!(p.corners[i * K] >= 0)) continue;
     const b: Blend = new Map();
     for (let k = 0; k < K; k++) {
       const v = p.corners[i * K + k], s = p.bary[i * K + k];
@@ -321,13 +196,13 @@ export function particleSkin(skin: SkinOf, p: FreezeParticles & { readonly corne
   for (let pass = 0; pass < passes; pass++) {
     const nextB: (Blend | null)[] = blends.slice(), nextJ = jiggle.slice();
     for (let i = 0; i < n; i++) {
-      const own = blends[i], nb = near[i], s = share * (1 - stiffOf(i));
-      if (!own || nb.length === 0 || !(s > 0)) continue;
-      const mix: Blend = new Map(), k = s / nb.length;
-      for (const [bone, w] of own) mix.set(bone, (1 - s) * w);
+      const own = blends[i], nb = near[i];
+      if (!own || nb.length === 0) continue;
+      const mix: Blend = new Map(), k = share / nb.length;
+      for (const [bone, w] of own) mix.set(bone, (1 - share) * w);
       for (const q of nb) for (const [bone, w] of blends[q]!) mix.set(bone, (mix.get(bone) ?? 0) + k * w);
       nextB[i] = mix;
-      for (let c = 0; c < 3; c++) { let m = 0; for (const q of nb) m += jiggle[q * 3 + c]; nextJ[i * 3 + c] = (1 - s) * jiggle[i * 3 + c] + s * (m / nb.length); }
+      for (let c = 0; c < 3; c++) { let m = 0; for (const q of nb) m += jiggle[q * 3 + c]; nextJ[i * 3 + c] = (1 - share) * jiggle[i * 3 + c] + share * (m / nb.length); }
     }
     for (let i = 0; i < n; i++) blends[i] = nextB[i];
     jiggle.set(nextJ);
@@ -386,8 +261,8 @@ interface PackedMesh {
 /** How her detail through the tee is carried: per spot, its freeze-time matrix's inverse and the bones it is carried by. */
 interface SpotCarry { readonly inverse: number[]; readonly index: number[]; readonly weight: number[] }
 /**
- * The kept freeze's version: 2 since it is carried by her skin under it (2026-11-07); a freeze kept by v1, carried by the
- * cloth's contact, is not put back but frozen again.
+ * The kept freeze's version: 2 since her body is carried by her nearest skin and her soft body's move is taken off its
+ * rest (2026-11-07); a freeze kept by v1, carried by the cloth's contact, is not put back but frozen again.
  */
 export const FROZEN_SAVE_VERSION = 2;
 
@@ -467,9 +342,6 @@ export class FrozenCloth {
   /** Her soft body's uniforms its shader reads (her body's), for `drawnNow`. */
   private readonly bounce: JiggleUniforms | null;
 
-  /** How many of the cloth's points the freeze put on her skin, between, and off it (null: put back from a keep). */
-  held: { readonly onSkin: number; readonly between: number; readonly off: number } | null = null;
-
   private constructor(meshes: THREE.SkinnedMesh[], detail: FrozenSave['detail'], bounce: JiggleUniforms | null) {
     this.meshes = meshes; this.detail = detail; this.bounce = bounce;
   }
@@ -499,47 +371,16 @@ export class FrozenCloth {
       if (options.ignore) for (let j = 0; j < 4; j++) if (options.ignore.has(skin.index[i * 4 + j])) ignored += skin.weight[i * 4 + j];
       usable[i] = ignored < 0.5 ? 1 : 0;
     }
-    // ON HER SKIN (Joshua: "it measures all the points and distances to the closest vertices and it stays close to
-    // that"): where on her skin's surface each particle lies nearest -- the skin facing the way the cloth does there --
-    // and how far. Within FREEZE.onM it is carried by that skin's own bones, bounce and shapes alone, so it keeps its
-    // distance from it as paint would; past FREEZE.offM by the carry below; between, a blend of the two.
-    const facing = particleFacing(sources, np);
-    const bodyIndex = body.geometry.getIndex(), tri = bodyIndex ? (bodyIndex.array as ArrayLike<number>) : Uint32Array.from({ length: ns - (ns % 3) }, (_, v) => v);
-    const surfaceK = FREEZE.surfaceNear, cell = FREEZE.cellM * perM;
-    // (the cloth's outside the way her skin's is: turned round if, on the whole, it faces into her)
-    {
-      const any = closestSurface(world, usable, tri, particles.position, null, surfaceK, cell);
-      let agree = 0;
-      for (let i = 0; i < np; i++) {
-        if (!(any.distance[i] < FREEZE.offM * perM) || !Number.isFinite(facing[i * 3])) continue;
-        const [a, b, c] = [any.corners[i * 3], any.corners[i * 3 + 1], any.corners[i * 3 + 2]];
-        const ux = world[b * 3] - world[a * 3], uy = world[b * 3 + 1] - world[a * 3 + 1], uz = world[b * 3 + 2] - world[a * 3 + 2];
-        const vx = world[c * 3] - world[a * 3], vy = world[c * 3 + 1] - world[a * 3 + 1], vz = world[c * 3 + 2] - world[a * 3 + 2];
-        agree += facing[i * 3] * (uy * vz - uz * vy) + facing[i * 3 + 1] * (uz * vx - ux * vz) + facing[i * 3 + 2] * (ux * vy - uy * vx) > 0 ? 1 : -1;
-      }
-      if (agree < 0) for (let i = 0; i < facing.length; i++) facing[i] = -facing[i];
-    }
-    const surface = closestSurface(world, usable, tri, particles.position, facing, surfaceK, cell);
-    const stiff = new Float32Array(np);
-    let onSkin = 0, between = 0, off = 0;
-    for (let i = 0; i < np; i++) {
-      const d = surface.distance[i] / perM;
-      if (!Number.isFinite(particles.position[i * 3])) continue;
-      const t = !(d >= 0) || options.onSkinM === 0 ? 0 : Math.min(1, Math.max(0, (FREEZE.offM - d) / (FREEZE.offM - (options.onSkinM ?? FREEZE.onM))));
-      stiff[i] = t * t * (3 - 2 * t);
-      if (stiff[i] >= 0.999) onSkin++; else if (stiff[i] > 0) between++; else off++;
-    }
     const near = nearestSkin(world, usable, particles.position, FREEZE.near, FREEZE.cellM * perM, FREEZE.softM * perM);
-    const S = 3, K = S + FREEZE.near + given, corners = new Int32Array(np * K).fill(-1), bary = new Float32Array(np * K);
+    const K = FREEZE.near + given, corners = new Int32Array(np * K).fill(-1), bary = new Float32Array(np * K);
     for (let i = 0; i < np; i++) {
       const hasNear = near.corners[i * FREEZE.near] >= 0, hasContact = given > 0 && particles.corners![i * given] >= 0;
       const hang = !given || particles.nearest?.[i] || !hasContact ? 0
         : Math.min(1, Math.max(0, (near.distance[i] / perM - FREEZE.hugM) / (FREEZE.hangM - FREEZE.hugM)));
-      const on = surface.corners[i * 3] >= 0 ? stiff[i] : 0, rest = 1 - on;
-      const fromNear = hasNear ? (1 - hang) * rest : 0, fromContact = hasContact ? rest - fromNear : 0;
-      for (let j = 0; j < S; j++) { corners[i * K + j] = surface.corners[i * 3 + j]; bary[i * K + j] = on * surface.bary[i * 3 + j]; }
-      for (let j = 0; j < FREEZE.near; j++) { corners[i * K + S + j] = near.corners[i * FREEZE.near + j]; bary[i * K + S + j] = fromNear * near.bary[i * FREEZE.near + j]; }
-      for (let j = 0; j < given; j++) { corners[i * K + S + FREEZE.near + j] = particles.corners![i * given + j]; bary[i * K + S + FREEZE.near + j] = fromContact * particles.bary![i * given + j]; }
+      const fromNear = hasNear ? 1 - hang : 0, fromContact = hasContact ? 1 - fromNear : 0;
+      for (let j = 0; j < FREEZE.near; j++) { corners[i * K + j] = near.corners[i * FREEZE.near + j]; bary[i * K + j] = fromNear * near.bary[i * FREEZE.near + j]; }
+      for (let j = 0; j < given; j++) { corners[i * K + FREEZE.near + j] = particles.corners![i * given + j]; bary[i * K + FREEZE.near + j] = fromContact * particles.bary![i * given + j]; }
+      if (!fromNear && !fromContact) corners[i * K] = -1;
     }
     // her legs' share by which side of her hips each particle is on: in front of her, FREEZE's legShare; behind her (her
     // seat, which her legs carry as she sits), FREEZE.legShareBack; round her sides between
@@ -555,7 +396,7 @@ export class FrozenCloth {
       }
     }
     const carriers = { corners, bary, under: K };
-    const { blends, jiggle } = particleSkin(skin, { ...particles, ...carriers }, options.passes ?? FREEZE.passes, FREEZE.share, { ...options, stiff, ...(legShares ? { legShares } : {}) });
+    const { blends, jiggle } = particleSkin(skin, { ...particles, ...carriers }, options.passes ?? FREEZE.passes, FREEZE.share, { ...options, ...(legShares ? { legShares } : {}) });
     // her shapes that move with her pose, as her skin carrying each particle has them, and how much of each she has on now
     const dict = body.morphTargetDictionary ?? {}, shapes = body.geometry.morphAttributes.position ?? [], base = body.geometry.getAttribute('position');
     const named = (options.morphs ?? []).filter((name) => dict[name] !== undefined && shapes[dict[name]]);
@@ -666,9 +507,7 @@ export class FrozenCloth {
         carry: [detail.navel ? carryAt(detail.navel.center) : null, ...[0, 1].map((k) => (detail.nipples[k] ? carryAt(detail.nipples[k].center) : null))],
       };
     }
-    const made = new FrozenCloth(meshes, carried, bounce);
-    made.held = { onSkin, between, off };
-    return made;
+    return new FrozenCloth(meshes, carried, bounce);
   }
 
   /** A kept freeze put back on her (null: it could not be read). */

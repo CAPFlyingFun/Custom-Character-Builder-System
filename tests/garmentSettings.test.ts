@@ -70,8 +70,16 @@ describe('re-tailor and instant', () => {
     for (const patch of [{ length: 90 }, { frontHem: 0.05 }, { backHem: -0.03 }, { hemCurve: 1 }, { sleeve: 100 }, { neckDepth: 0.2 }, { bellyRoom: 0.6 }]) expect(key(patch), JSON.stringify(patch)).toBe(base);
   });
   it('every re-tailor setting does', () => {
-    for (const patch of [{ construction: 'setIn' as const }, { gusset: 0.2 }, { neckWidth: 0.24 }, { neckCurve: 1 }, { ease: { ...GARMENT_DEFAULTS.ease, bust: 0.05 } }, { neckDepth: NECK_DEPTH_CREW }]) expect(key(patch), JSON.stringify(patch)).not.toBe(base);
-    expect(RETAILOR_KEYS).toEqual(['construction', 'gusset', 'neckWidth', 'neckCurve', 'ease']);
+    for (const patch of [{ construction: 'setIn' as const }, { gusset: 0.2 }, { neckWidth: 0.24 }, { neckCurve: 1 }, { ease: { ...GARMENT_DEFAULTS.ease, bust: 0.05 } }, { sleeveWidth: 0.12 }, { neckDepth: NECK_DEPTH_CREW }]) expect(key(patch), JSON.stringify(patch)).not.toBe(base);
+    expect(RETAILOR_KEYS).toEqual(['construction', 'gusset', 'neckWidth', 'neckCurve', 'ease', 'sleeveWidth']);
+  });
+  it('SLEEVE WIDTH: the approved tee\'s 7 cm by default and for a save from before it, clamped to its range, drafted as the sleeve\'s ease', () => {
+    expect(GARMENT_DEFAULTS.sleeveWidth).toBe(TEE_DEFAULTS.ease.sleeve);
+    const { sleeveWidth: _gone, ...before } = GARMENT_DEFAULTS;
+    expect(clampGarmentSettings(before).sleeveWidth).toBe(TEE_DEFAULTS.ease.sleeve);
+    expect(clampGarmentSettings({ ...GARMENT_DEFAULTS, sleeveWidth: 1 }).sleeveWidth).toBe(GARMENT_RANGES.sleeveWidth[1]);
+    expect(clampGarmentSettings({ ...GARMENT_DEFAULTS, sleeveWidth: -1 }).sleeveWidth).toBe(GARMENT_RANGES.sleeveWidth[0]);
+    expect(tailorParams({ ...GARMENT_DEFAULTS, sleeveWidth: 0.15 }).ease?.sleeve).toBe(0.15);
   });
   it('the neckline is drafted only while it is higher than the scoop', () => {
     expect(draftedNeckDrop({ ...GARMENT_DEFAULTS, neckDepth: 0.2 })).toBe(TEE_DEFAULTS.neckDrop);

@@ -295,3 +295,32 @@ describe('her development, as the draft made it', () => {
     expect(front.lift(0.06, yU + 0.2)).toBeGreaterThan(back.lift(0.06, yU + 0.2));
   });
 });
+
+describe('SLEEVE WIDTH (the sleeve\'s ease round her upper arm: Joshua, 2026-11-07, "Arm diameter can be adjustable to be smaller or wider")', () => {
+  it('drafts and sews clean from its narrowest to its widest, the sleeve wider by what is added, at the underarm and the cuff', () => {
+    const made = (sleeve: number) => {
+      const draft = draftTee(measure, { ...TEE_DEFAULTS, construction: 'raglan', ease: { ...TEE_DEFAULTS.ease, sleeve } });
+      const counts = planSeams(draft.pattern), meshes = new Map<string, PieceMesh>();
+      for (const p of draft.pattern.pieces) {
+        const cs = new Map<string, number>();
+        for (const e of p.edges) cs.set(e.name, counts.get(edgeKey(p.id, e.name))!);
+        meshes.set(p.id, meshPiece(p, cs));
+      }
+      return { draft, report: validate(sew(draft.pattern, meshes), draft.pattern, meshes) };
+    };
+    // (her own arm's girth -2 cm, the approved tee's +7, the widest +20)
+    const [narrow, approved, wide] = [-0.02, TEE_DEFAULTS.ease.sleeve, 0.2].map(made);
+    for (const { report } of [narrow, approved, wide]) {
+      expect(report.problems).toEqual([]);
+      expect(report.components).toBe(1);
+      expect(report.openings.length).toBe(4);
+      expect(report.nonManifoldEdges).toBe(0);
+    }
+    // the sleeve's width at the underarm (its two corners) and its cuff, each the added ease wider
+    const underarm = (d: Draft) => { const xs = outline(piece(d, 'sleeveP')).filter(([, y]) => Math.abs(y) < 1e-9).map(([x]) => x); return Math.max(...xs) - Math.min(...xs); };
+    expect(underarm(wide.draft) - underarm(approved.draft)).toBeCloseTo(0.2 - TEE_DEFAULTS.ease.sleeve, 6);
+    expect(underarm(approved.draft) - underarm(narrow.draft)).toBeCloseTo(TEE_DEFAULTS.ease.sleeve + 0.02, 6);
+    expect(len(wide.draft, 'sleeveP', 'cuff')).toBeGreaterThan(len(approved.draft, 'sleeveP', 'cuff'));
+    expect(len(approved.draft, 'sleeveP', 'cuff')).toBeGreaterThan(len(narrow.draft, 'sleeveP', 'cuff'));
+  }, 120000);
+});

@@ -4,7 +4,7 @@
  *
  *   (status)       TAILORING THE NEW TEE… while the tee is re-tailored, otherwise nothing
  *   LENGTH & HEM   LENGTH and a chip for each of its stops, FRONT HEM, BACK HEM, HEM CURVE
- *   SLEEVES        SLEEVES and a chip for each of its stops
+ *   SLEEVES        SLEEVES and a chip for each of its stops, SLEEVE WIDTH
  *   NECKLINE       NECKLINE (its depth), NECK WIDTH, NECK SHAPE
  *   FIT            BELLY ROOM, BUST FIT, WAIST FIT, HIP FIT
  *   CONSTRUCTION   RAGLAN / SET-IN, GUSSET
@@ -12,7 +12,7 @@
  *
  * INSTANT controls cut the finished tee as a finger drags (length, the hems, the hem's curve, the sleeves, a neckline
  * deeper than the scoop, belly room); RE-TAILOR controls remake the pattern when the finger lets go (the neckline's
- * width and shape, the fits, the gusset, the construction, a neckline higher than the scoop), and while a finger drags
+ * width and shape, the fits, the sleeve's width, the gusset, the construction, a neckline higher than the scoop), and while a finger drags
  * one its line ends "let go to tailor". The panel never decides which kind a control is: a slider reports every move
  * with `final` false and its let-go (its `change` event, or a gesture the browser takes away) with `final` true, a chip
  * or a button reports `final` true, and the room cuts or re-tailors. What it reports is always the room's settings with
@@ -62,6 +62,7 @@ export const GARMENT_PANEL_FIELD = Object.freeze({
   backHem: 'sarahlab-garment-back-hem',
   hemCurve: 'sarahlab-garment-hem-curve',
   sleeve: 'sarahlab-garment-sleeve',
+  sleeveWidth: 'sarahlab-garment-sleeve-width',
   neckDepth: 'sarahlab-garment-neck-depth',
   neckWidth: 'sarahlab-garment-neck-width',
   neckCurve: 'sarahlab-garment-neck-curve',
@@ -177,6 +178,12 @@ export function fitLine(at: keyof GarmentEase, m: number): string {
   return mm === 0 ? `${FIT_NAMES[at]} · no ease` : `${FIT_NAMES[at]} · ${mm > 0 ? '+' : '−'}${cm(mm)} cm ease`;
 }
 
+/** SLEEVE WIDTH at `m` metres round her upper arm more than her arm's own girth (less, below 0). */
+export function sleeveWidthLine(m: number): string {
+  const mm = Math.round(m * 1000);
+  return mm === 0 ? 'SLEEVE WIDTH · her arm\'s own girth' : `SLEEVE WIDTH · ${mm > 0 ? '+' : '−'}${cm(mm)} cm round her arm`;
+}
+
 /** GUSSET at `v`: 0 none .. 1 the largest. */
 export function gussetLine(v: number): string {
   const p = Math.round(v * 100);
@@ -240,6 +247,10 @@ const SLIDERS: Readonly<Record<SliderKey, SliderSpec>> = Object.freeze({
     name: 'Sleeve length', scale: POSITION, range: R.sleeve, step: 1, get: (s) => s.sleeve, set: (s, x) => ({ ...s, sleeve: x }),
     line: (x, _s, stops) => sleeveLine(x, stops), presets: { stops: SLEEVE_STOPS, action: GARMENT_PANEL_ACTION.sleeveStop },
   },
+  sleeveWidth: {
+    name: 'Sleeve width', scale: MM, range: R.sleeveWidth, step: 5, get: (s) => s.sleeveWidth, set: (s, x) => ({ ...s, sleeveWidth: x }),
+    line: (x, _s, _stops, dragging) => sleeveWidthLine(x) + retailor(dragging),
+  },
   // as she wears it: no deeper than her crease, which is also where its slider ends
   neckDepth: {
     name: 'Neckline depth', scale: MM, range: R.neckDepth, step: 5, get: (s, stops) => Math.min(s.neckDepth, deepestNeck(stops)),
@@ -266,7 +277,7 @@ const SLIDERS: Readonly<Record<SliderKey, SliderSpec>> = Object.freeze({
 /** The panel's order, under its light headings. */
 const GROUPS: readonly { readonly title: string; readonly items: readonly (SliderKey | 'construction')[] }[] = [
   { title: 'LENGTH & HEM', items: ['length', 'frontHem', 'backHem', 'hemCurve'] },
-  { title: 'SLEEVES', items: ['sleeve'] },
+  { title: 'SLEEVES', items: ['sleeve', 'sleeveWidth'] },
   { title: 'NECKLINE', items: ['neckDepth', 'neckWidth', 'neckCurve'] },
   { title: 'FIT', items: ['bellyRoom', 'bust', 'waist', 'hip'] },
   { title: 'CONSTRUCTION', items: ['construction', 'gusset'] },

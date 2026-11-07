@@ -14,7 +14,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   GARMENT_PANEL_ACTION as A, GARMENT_PANEL_FIELD as F, GARMENT_PANEL_ROLE, GARMENT_TAILORING_LINE, GarmentPanel, bellyRoomLine, fitLine,
-  gussetLine, hemCurveLine, hemLine, lengthLine, neckDepthLine, neckShapeLine, neckWidthLine, sleeveLine, type GarmentPanelHooks,
+  gussetLine, hemCurveLine, hemLine, lengthLine, neckDepthLine, neckShapeLine, neckWidthLine, sleeveLine, sleeveWidthLine, type GarmentPanelHooks,
 } from '../src/sarahlab/garmentPanel';
 import { HEM_CURVE_RISE } from '../src/sarahlab/garment/cuts';
 import { TEE_DEFAULTS } from '../src/sarahlab/garment/draft';
@@ -79,7 +79,7 @@ describe('the controls', () => {
   it('every control is a line and, right after it, its slider, with its range and step', () => {
     const { root } = setup();
     const ranges: Record<string, readonly [number, number, number]> = {
-      [F.length]: [0, 100, 1], [F.frontHem]: [-80, 80, 5], [F.backHem]: [-80, 80, 5], [F.hemCurve]: [0, 100, 1], [F.sleeve]: [0, 100, 1],
+      [F.length]: [0, 100, 1], [F.frontHem]: [-80, 80, 5], [F.backHem]: [-80, 80, 5], [F.hemCurve]: [0, 100, 1], [F.sleeve]: [0, 100, 1], [F.sleeveWidth]: [-20, 200, 5],
       [F.neckDepth]: [10, 180, 5], // down to her crease
       [F.neckWidth]: [180, 300, 5], [F.neckCurve]: [0, 100, 1], [F.bellyRoom]: [0, 100, 1],
       [F.bust]: [-20, 100, 5], [F.waist]: [-20, 100, 5], [F.hip]: [-20, 100, 5], [F.gusset]: [0, 100, 1],
@@ -107,7 +107,7 @@ describe('the controls', () => {
     expect(status.dataset.field).toBe(F.status);
     expect(rest.map((g) => [g.firstElementChild!.textContent, [...g.querySelectorAll<HTMLElement>('[data-field]')].map((e) => e.dataset.field)])).toEqual([
       ['LENGTH & HEM', [F.length, F.frontHem, F.backHem, F.hemCurve]],
-      ['SLEEVES', [F.sleeve]],
+      ['SLEEVES', [F.sleeve, F.sleeveWidth]],
       ['NECKLINE', [F.neckDepth, F.neckWidth, F.neckCurve]],
       ['FIT', [F.bellyRoom, F.bust, F.waist, F.hip]],
       ['CONSTRUCTION', [F.gusset]],
@@ -173,6 +173,7 @@ describe('what the room hears', () => {
       ['backHem', -15, { backHem: -0.015 }, 'BACK HEM · 1.5 cm shorter at the centre'],
       ['hemCurve', 60, { hemCurve: 0.6 }, 'HEM CURVE · shirttail · sides up 4.8 cm'],
       ['sleeve', 80, { sleeve: 80 }, 'SLEEVES · Three-quarter · 45 cm'],
+      ['sleeveWidth', 120, { sleeveWidth: 0.12 }, 'SLEEVE WIDTH · +12 cm round her arm'],
       ['neckDepth', 120, { neckDepth: 0.12 }, 'NECKLINE · 12 cm deep'],
       ['neckWidth', 240, { neckWidth: 0.24 }, 'NECK WIDTH · 24 cm'],
       ['neckCurve', 40, { neckCurve: 0.4 }, 'NECK SHAPE · 40% toward V'],
@@ -281,7 +282,7 @@ describe('refresh', () => {
     expect(slider(root, F.neckDepth).max).toBe('300');
     set({
       length: 50, frontHem: -0.03, backHem: 0.08, hemCurve: 1, sleeve: 0, neckDepth: NECK_DEPTH_CREW, construction: 'setIn', gusset: 0,
-      neckWidth: null, neckCurve: 1, bellyRoom: 0.6, ease: { bust: 0.02, waist: 0, hip: -0.02 },
+      neckWidth: null, neckCurve: 1, bellyRoom: 0.6, ease: { bust: 0.02, waist: 0, hip: -0.02 }, sleeveWidth: 0.035,
     });
     setStops(STOPS);
     panel.refresh();
@@ -291,6 +292,7 @@ describe('refresh', () => {
       backHem: ['80', 'BACK HEM · 8 cm longer at the centre'],
       hemCurve: ['100', 'HEM CURVE · shirttail · sides up 8 cm'],
       sleeve: ['0', 'SLEEVES · Tank'],
+      sleeveWidth: ['35', 'SLEEVE WIDTH · +3.5 cm round her arm'],
       neckDepth: ['10', 'NECKLINE · crew · tailored when you let go'],
       neckWidth: ['200', 'NECK WIDTH · 20 cm'], // a set-in's own
       neckCurve: ['100', 'NECK SHAPE · V'],
@@ -495,6 +497,12 @@ describe('the lines', () => {
     expect(hemCurveLine(0)).toBe('HEM CURVE · level');
     expect(hemCurveLine(0.6)).toBe('HEM CURVE · shirttail · sides up 4.8 cm');
     expect(hemCurveLine(1)).toBe(`HEM CURVE · shirttail · sides up ${Math.round(HEM_CURVE_RISE * 1000) / 10} cm`);
+  });
+
+  it('SLEEVE WIDTH: how much more than her upper arm the sleeve goes round it, or less', () => {
+    expect(sleeveWidthLine(0.07)).toBe('SLEEVE WIDTH · +7 cm round her arm');
+    expect(sleeveWidthLine(0)).toBe("SLEEVE WIDTH · her arm's own girth");
+    expect(sleeveWidthLine(-0.015)).toBe('SLEEVE WIDTH · −1.5 cm round her arm');
   });
 
   it('SLEEVES: the stop and its length down her arm once she is measured, a tank and a cap by name', () => {
