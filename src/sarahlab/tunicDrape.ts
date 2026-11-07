@@ -10,7 +10,8 @@
  *
  * Its shape, in level slices from her waist down to the hem, round an upright axis through her:
  * - In each slice, the outline that a band pulled round her would take: the convex outline of her trunk and both thighs
- *   (never her arms). It spans the gap between her thighs, front and back, and lies flat over her groin.
+ *   (never her arms; and seated, never her lap -- LAP_LIFT). It spans the gap between her thighs, front and back, and
+ *   lies flat over her groin.
  * - Down from slice to slice, fabric falls: it cannot come back in toward her faster than DRAPE_SLOPE for each step
  *   down, at her sides. In front it hangs from her belly nearly straight down (FRONT_SLOPE), open underneath, as a tee
  *   does over a bump; behind it hangs from her seat a little less straight (BACK_SLOPE).
@@ -117,6 +118,22 @@ const REBUILD_MS = 200;
 export const DRAPE_MOTION_TARGETS = Object.freeze(['bellyTilt', 'bellyBob', 'bellySway']);
 /** Never part of the outline: her arms and hands (handled by `arm`), head, neck and feet. */
 const LEFT_OUT = new Set(['face', 'scalp', 'neck', 'handL', 'handR', 'footL', 'footR']);
+/**
+ * Her LAP: a leg laid forward, as her thighs are when she sits -- her mid-thigh (LAP_THIGH, its rest height below her
+ * hip joints) risen by more than LAP_LIFT of how far below them it hangs at rest. A shirt does not hang round her lap;
+ * it hangs from her belly ONTO it, and the paint is the shirt where it lies on her thighs. Measured in level slices with
+ * the rest of her, her thighs were in every slice near her hips: the outline reached her knees, the shirt stood out over
+ * her lap as a shelf with ragged flaps over her knees, and the upright axis everything is measured round was pulled
+ * forward toward them (Joshua, 2026-11-06, seated: "the shirt is flaring out too much and looks weird... did it get
+ * taken half way?"). So the whole of a leg laid forward is left out of the slices (even the underside of her thigh by
+ * her seat: kept, it stood out along her thigh as shards over the seat); the drape hangs from her belly and spans the
+ * gap between her thighs, and where it meets her lap it goes into her thighs, as a shirt's fall ends on them.
+ * Standing, her stance alone raises her legs' skin by up to a fifth of that (measured, 2026-11-06: 0.2 at a 150% bump,
+ * whose stance bends her; about 0.08 with none); seated, about four fifths. Standing, none of her is lap and the drape is
+ * built exactly as it was. GAME TUNING.
+ */
+const LAP_THIGH = [-0.25, -0.4] as const, LAP_LIFT = 0.4;
+const LEGS = new Set(['thighL', 'thighR', 'kneeL', 'kneeR', 'calfL', 'calfR']);
 
 const smooth01 = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
 
@@ -132,7 +149,7 @@ const smooth01 = (x: number) => { const c = Math.max(0, Math.min(1, x)); return 
  */
 export const DRAPE_LEAD = 0.2;
 /** For a probe: each of the 2026-11-06 changes on or off (`TunicDrape.reshape` to build again with them). */
-export const DRAPE_PROBE = { lift: true, covered: true, whole: true, lead: true };
+export const DRAPE_PROBE = { lift: true, covered: true, whole: true, lead: true, lap: true };
 /** The most the lead grows where the drape is seen at a slant (at most DRAPE_LEAD × this toward the eye: 6 mm). GAME TUNING. */
 export const DRAPE_LEAD_SLANT = 3;
 const leading = new WeakSet<THREE.Material>();
@@ -183,8 +200,9 @@ export class TunicDrape {
   private hemLift = HEM_LIFT_FLAT;
   /** How much of the shirt's paint each vertex of her has (`wear`), or null. */
   private covered: ((v: number) => number) | null = null;
-  /** For a probe: of the points that show, how many are drawn inside her skin as measured, and the deepest (mm). */
-  inside = { shown: 0, inside: 0, worstMm: 0 };
+  /** For a probe: of the points that show, how many are drawn inside her skin as measured, and the deepest (mm); and how
+   * many of her vertices were her lap, left out (LAP_LIFT). */
+  inside = { shown: 0, inside: 0, worstMm: 0, lap: 0 };
   private dirty = true;
   private lastBuild = -Infinity;
   private readonly motion: number[] = [];
@@ -310,14 +328,41 @@ export class TunicDrape {
     // shape exactly once. Baking soft displacement here as well would double it.
     for (let i = 0; i < nc; i++) { body.getVertexPosition(cand[i], p); px[i] = p.x; py[i] = p.y; pz[i] = p.z; }
 
-    const rows = Math.max(2, Math.min(this.maxRows, Math.ceil((T_TOP - hemT) / ROW_STEP) + 1));
-    const step = (T_TOP - hemT) / (rows - 1);
     // her height of each row, as she stands now (positions are in her own units, up is y; the map's trunk is height from
     // her hip joints at rest, which is how her hips are found)
     let hipY = 0, k = 0;
     for (let i = 0; i < nc; i++) { const t = map.trunk[cand[i]]; if (Math.abs(t) < 0.02) { hipY += py[i] - t * T; k++; } }
     hipY = k ? hipY / k : 0;
-    const rowOf = (i: number) => Math.round((hipY + T_TOP * T - py[i]) / (step * T));
+    // her lap, if she is sitting (LAP_LIFT): left out of every slice, and of everything measured from them
+    const lap = new Uint8Array(nc);
+    let lapN = 0;
+    if (DRAPE_PROBE.lap) {
+      // each leg: how far her mid-thigh has risen, as a share of how far below her hips it is at rest
+      const side = new Int8Array(nc), rose = [0, 0, 0], drop = [0, 0, 0];
+      for (let i = 0; i < nc; i++) {
+        const id = BODY_REGIONS[map.region[cand[i]] - 1]?.id ?? '';
+        if (!LEGS.has(id)) continue;
+        const t = map.trunk[cand[i]];
+        side[i] = id.endsWith('L') ? 1 : 2;
+        if (t <= LAP_THIGH[0] && t >= LAP_THIGH[1]) { rose[side[i]] += (py[i] - hipY) / T - t; drop[side[i]] -= t; }
+      }
+      const lifted = [false, drop[1] > 0 && rose[1] > LAP_LIFT * drop[1], drop[2] > 0 && rose[2] > LAP_LIFT * drop[2]];
+      for (let i = 0; i < nc; i++) if (lifted[side[i]]) { lap[i] = 1; lapN++; }
+    }
+    // ...and, seated, it hangs no lower than she reaches: a long shirt's hem is down on her lap with the paint, and what
+    // was left of the drape below her seat hung down through what she sits on, and between her knees to her shins
+    let bottom = hemT;
+    if (lapN) {
+      let lowest = Infinity;
+      for (let i = 0; i < nc; i++) if (!lap[i]) lowest = Math.min(lowest, (py[i] - hipY) / T);
+      if (Number.isFinite(lowest)) bottom = Math.max(hemT, Math.min(T_TOP - ROW_STEP, lowest));
+    }
+    // (its rows spaced as for the hem, only fewer of them: the axis below is measured in the row at her hip joints, and
+    // rows spaced for a higher hem put that row half a centimetre lower -- seated, where her seat spreads, enough to
+    // move the axis 2 cm back, out to her lower back, and every slice above was measured round a point on her skin)
+    const allRows = Math.max(2, Math.min(this.maxRows, Math.ceil((T_TOP - hemT) / ROW_STEP) + 1)), step = (T_TOP - hemT) / (allRows - 1);
+    const rows = Math.max(2, Math.min(allRows, Math.ceil((T_TOP - bottom) / step - 1e-9) + 1));
+    const rowOf = (i: number) => lap[i] ? -1 : Math.round((hipY + T_TOP * T - py[i]) / (step * T));
     const buckets: number[][] = Array.from({ length: rows }, () => []);
     for (let i = 0; i < nc; i++) { const r = rowOf(i); if (r >= 0 && r < rows) buckets[r].push(i); }
     // the upright axis: through the middle of her at her hip joints
@@ -513,7 +558,7 @@ export class TunicDrape {
     {
       const sum = new Float64Array(COLUMNS), cnt = new Float64Array(COLUMNS);
       for (let k = 0; k < nc; k++) {
-        if (Math.abs(map.trunk[cand[k]] - hemT) > PAINT_HEM_SLAB) continue;
+        if (lap[k] || Math.abs(map.trunk[cand[k]] - hemT) > PAINT_HEM_SLAB) continue;
         const c = ((Math.round((Math.atan2(pz[k] - az, px[k] - ax) / (2 * Math.PI)) * COLUMNS) % COLUMNS) + COLUMNS) % COLUMNS;
         sum[c] += (py[k] - hipY) / T; cnt[c]++;
       }
@@ -525,7 +570,7 @@ export class TunicDrape {
       const cov = DRAPE_PROBE.covered ? this.covered : null;
       if (cov) for (let k = 0; k < nc; k++) {
         const t = (py[k] - hipY) / T;
-        if (t <= hemT || t >= T_TOP - TOP_FADE || cov(cand[k]) >= 0.5) continue;
+        if (lap[k] || t <= hemT || t >= T_TOP - TOP_FADE || cov(cand[k]) >= 0.5) continue;
         const c = ((Math.round((Math.atan2(pz[k] - az, px[k] - ax) / (2 * Math.PI)) * COLUMNS) % COLUMNS) + COLUMNS) % COLUMNS;
         if (!(t <= (Number.isNaN(paintHem[c]) ? -Infinity : paintHem[c]))) paintHem[c] = t;
       }
@@ -546,7 +591,8 @@ export class TunicDrape {
     for (let r = 0; r < rows; r++) {
       const t = T_TOP - r * step, top = smooth01((T_TOP - t) / TOP_FADE);
       for (let c = 0; c < COLUMNS; c++) {
-        const i = r * COLUMNS + c, band = 1 - smooth01((t - Math.max(hemT, paintHem[c]) - HEM_BAND) / HEM_BAND);
+        // (seated, a long shirt's drape ends where she reaches, `bottom`, and its hem band there)
+        const i = r * COLUMNS + c, band = 1 - smooth01((t - Math.max(bottom, paintHem[c]) - HEM_BAND) / HEM_BAND);
         falling[i] = smooth01(alpha[i]) * top; alpha[i] = Math.max(smooth01(alpha[i]), band) * top;
       }
     }
@@ -693,7 +739,7 @@ export class TunicDrape {
       // (for a probe: where it shows, how much of it is drawn inside her skin as measured)
       let shownN = 0, inside = 0, worst = 0;
       for (let i = 0; i < n; i++) if (skin[i] > 0 && alpha[i] > 0.01) { shownN++; const d = skin[i] - radius[i]; if (d > 0.0005 * T) { inside++; worst = Math.max(worst, d); } }
-      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2) };
+      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2), lap: lapN };
       this.mesh.userData.drapeInside = this.inside;
     }
     // the skin it hangs clear of: each of her vertices against the drape AS DRAWN, at its own height and direction. (It
@@ -714,6 +760,7 @@ export class TunicDrape {
       whole[r * COLUMNS + c] = m;
     }
     for (let k = 0; k < nc; k++) {
+      // (her lap, seated, is never under it: the paint on her thighs is the shirt lying on them)
       const r = rowOf(k);
       if (r < 0) continue;
       const dx = px[k] - ax, dz = pz[k] - az;
