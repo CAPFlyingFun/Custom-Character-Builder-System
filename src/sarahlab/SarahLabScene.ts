@@ -920,8 +920,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /**
    * HER SNEAKERS (sneakers.ts; Joshua, 2026-11-07): built round her own foot the first time they are put on, carried by
    * her skeleton like her skin; standing, she is lifted onto their soles. Only on her approved v2 body (her build's rig).
+   * ON when the room opens (Joshua, 2026-11-07: "can the default have shoes shown?"), and for any character or outfit
+   * saved without a word on her shoes; one saved without them keeps her bare feet. Never in a bake (`?bake=`): the
+   * story's and the outfit pictures' files are baked as they were.
    */
-  let sneakers: Sneakers | null = null, sneakersOn = false;
+  let sneakers: Sneakers | null = null, sneakersOn = !new URLSearchParams(globalThis.location?.search ?? '').get('bake');
   /** The body her sneakers were last made for (or tried for): put on before she loaded, they are made once she has. */
   let sneakersFor: THREE.Object3D | null = null;
   /** Her steps on a tile floor in her sneakers (footsteps.ts): which heel came down when, and the sound of it. */
@@ -2625,7 +2628,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       buttons.clothReset = btn('LAY CLOTH AGAIN', SARAH_LAB_ACTION.clothReset, () => { clothRestart = true; garmentRoom?.cloth.restart(); });
       buttons.clothDefaults = btn('CLOTH DEFAULTS', SARAH_LAB_ACTION.clothDefaults, () => { clothTune = CLOTH_TUNE_DEFAULT; for (const [k, i] of clothDialInputs) i.value = String(clothTune[k as keyof ClothTune]); tuneCloth(); clothRestart = true; garmentRoom?.cloth.restart(); });
       // her sneakers (sneakers.ts), on and off; and the sound of her steps in them (footsteps.ts)
-      buttons.sneakers = btn('SNEAKERS · OFF', SARAH_LAB_ACTION.sneakers, () => setSneakers(!sneakersOn));
+      buttons.sneakers = btn(`SNEAKERS · ${sneakersOn ? 'ON' : 'OFF'}`, SARAH_LAB_ACTION.sneakers, () => setSneakers(!sneakersOn));
       buttons.stepSound = btn('STEP SOUND · ON', SARAH_LAB_ACTION.stepSound, () => {
         tileSteps.on = !tileSteps.on; tileSteps.unlock();
         buttons.stepSound.textContent = `STEP SOUND · ${tileSteps.on ? 'ON' : 'OFF'}`;
