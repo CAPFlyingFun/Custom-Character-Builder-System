@@ -204,6 +204,11 @@ export class ClothSkin {
   /** How many particles the last update moved to a nearer triangle (for a probe). */
   rescued = 0;
   private readonly looseOverArm: number;
+  /**
+   * Under her arm, where `looseOverArm` takes the floor away: true keeps it (her skin there pushes the cloth out as it
+   * pushes it everywhere else) and only stops her skin carrying it. Default false: no floor there, as it was built.
+   */
+  floorUnderArm = false;
 
   // --- which particle each slot is (`setOrder`) ---
   /**
@@ -697,7 +702,7 @@ export class ClothSkin {
       const q = this.prevPoint;
       if (q) {
         const overArm = keepOff && this.triArm !== null && this.triArm[t] > this.looseOverArm;
-        if (overArm && this.triLoose![t]) S[i] = NO_FLOOR;
+        if (overArm && this.triLoose![t] && !this.floorUnderArm) S[i] = NO_FLOOR;
         else if (was !== CARRY_FRESH && overArm) { C[i3] = q[f3]; C[i3 + 1] = q[f3 + 1]; C[i3 + 2] = q[f3 + 2]; }
         q[f3] = P[i3]; q[f3 + 1] = P[i3 + 1]; q[f3 + 2] = P[i3 + 2];
       }

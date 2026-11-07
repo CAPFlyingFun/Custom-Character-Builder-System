@@ -7740,6 +7740,52 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const arm = out.filter((p) => p.kind === 'arm');
           return { covered: teeCovered.length, frontMost: +front.toFixed(1), pokes: out.length, torso: torso.length, torsoOver3mm: torso.filter((p) => p.out > 0.3).length, arm: arm.length, armOver3mm: arm.filter((p) => p.out > 0.3).length, hand: out.filter((p) => p.kind === 'hand').length, leg: out.filter((p) => p.kind === 'leg').length, worst: torso.slice(0, k), worstLimb: arm.slice(0, 6) };
         },
+        // the new tee INSIDE her: each of its drawn points behind her skin nearest it (along her skin's normal there, her
+        // posed surface), more than 3 mm -- cloth her skin hides, through which a gap between her arm and her side shows
+        // as a hole. How many, the deepest (cm) and where (cm from her pelvis, turned as she is: y up, z her front)
+        teeInside: (k = 6) => {
+          const body = clothBody(), sheet = teeSheetNow();
+          if (!body || !sheet || !measure) return null;
+          model?.updateMatrixWorld(true); body.skeleton.update();
+          const P = body.geometry.getAttribute('position'), n = P.count, X = new Float32Array(n * 3), N = new Float32Array(n * 3), v = new THREE.Vector3();
+          for (let i = 0; i < n; i++) body.getVertexPosition(i, v).applyMatrix4(body.matrixWorld).toArray(X, i * 3);
+          const idx = body.geometry.getIndex(), tri = idx ? (idx.array as ArrayLike<number>) : null;
+          if (tri) for (let t = 0; t + 2 < tri.length; t += 3) {
+            const a = tri[t] * 3, b = tri[t + 1] * 3, c = tri[t + 2] * 3;
+            const ux = X[b] - X[a], uy = X[b + 1] - X[a + 1], uz = X[b + 2] - X[a + 2], wx = X[c] - X[a], wy = X[c + 1] - X[a + 1], wz = X[c + 2] - X[a + 2];
+            const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+            for (const q of [a, b, c]) { N[q] += nx; N[q + 1] += ny; N[q + 2] += nz; }
+          }
+          const cell = 2, grid = new Map<string, number[]>();
+          for (let i = 0; i < n; i++) { const key = `${Math.floor(X[i * 3] / cell)},${Math.floor(X[i * 3 + 1] / cell)},${Math.floor(X[i * 3 + 2] / cell)}`; (grid.get(key) ?? grid.set(key, []).get(key)!).push(i); }
+          const F = sheet.position, hip = body.skeleton.bones[measure.joints.pelvis].getWorldPosition(new THREE.Vector3()), turn = (model?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion()).invert();
+          const inside: { cm: number; at: number[] }[] = [];
+          for (let f = 0; f < F.length / 3; f++) {
+            const x = F[f * 3], y = F[f * 3 + 1], z = F[f * 3 + 2];
+            if (!Number.isFinite(x)) continue;
+            const cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
+            let best = -1, bd = Infinity;
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (const i of grid.get(`${cx + dx},${cy + dy},${cz + dz}`) ?? []) {
+              const d = (X[i * 3] - x) ** 2 + (X[i * 3 + 1] - y) ** 2 + (X[i * 3 + 2] - z) ** 2;
+              if (d < bd) { bd = d; best = i; }
+            }
+            if (best < 0) continue;
+            const l = Math.hypot(N[best * 3], N[best * 3 + 1], N[best * 3 + 2]) || 1;
+            const depth = ((x - X[best * 3]) * N[best * 3] + (y - X[best * 3 + 1]) * N[best * 3 + 1] + (z - X[best * 3 + 2]) * N[best * 3 + 2]) / l;
+            if (depth < -0.3) { const at = new THREE.Vector3(x, y, z).sub(hip).applyQuaternion(turn); inside.push({ cm: +(-depth).toFixed(2), at: [+at.x.toFixed(1), +at.y.toFixed(1), +at.z.toFixed(1)] }); }
+          }
+          inside.sort((a, b) => b.cm - a.cm);
+          return { inside: inside.length, over1cm: inside.filter((p) => p.cm > 1).length, deepest: inside.slice(0, k) };
+        },
+        // THE ARMPIT (Joshua, 2026-11-07: "collision is really important for all points on the shirt... allow to stretch
+        // and span natural bridges like around the arms"): her skin under her arm a floor for the body pieces too, and
+        // where up her upper arm its capsule starts; nothing given, as they are
+        armpit: (o?: { floor?: boolean; armStart?: number }) => {
+          if (!garmentRoom) return null;
+          if (o?.floor !== undefined) garmentRoom.cloth.floorUnderArm = o.floor;
+          if (o?.armStart !== undefined) garmentRoom.capsules = { ...garmentRoom.capsules, armStart: o.armStart };
+          return { floor: garmentRoom.cloth.floorUnderArm, armStart: garmentRoom.capsules.armStart ?? null };
+        },
         // the new tee's material as it draws (which faces, and how): a probe's look at whether a hole is a face turned away
         teeMaterial: (patch?: { side?: number; cut?: boolean }) => {
           const m = garmentRoom?.cloth.mesh.material as THREE.Material | undefined;

@@ -28,6 +28,8 @@ const RADIUS_SHARE = 0.85, LEG_RADIUS_SHARE = 1.05;
 export interface CapsuleRequest {
   readonly arms: boolean;
   readonly legs: boolean;
+  /** Where up her upper arm its capsule starts, a share of the way from her shoulder to her elbow (ARM_START when absent). */
+  readonly armStart?: number;
   /** The stool: its centre on the floor (world x, z), radius and seat height (world units); null for none. */
   readonly stool: { readonly x: number; readonly z: number; readonly radius: number; readonly top: number } | null;
 }
@@ -61,7 +63,7 @@ export function bodyCapsules(body: THREE.SkinnedMesh, bones: CapsuleBones, measu
     const g = measure.arms[s].girths;
     B[bones.shoulder[s]].getWorldPosition(tmpA); B[bones.elbow[s]].getWorldPosition(tmpB); B[bones.wrist[s]].getWorldPosition(tmpC);
     const upper = circle(maxBand(g, 3, 8)), fore = circle(maxBand(g, 12, 16));
-    put(tmpD.copy(tmpA).lerp(tmpB, ARM_START), tmpB, upper);
+    put(tmpD.copy(tmpA).lerp(tmpB, request.armStart ?? ARM_START), tmpB, upper);
     put(tmpB, tmpC, fore);
   }
   if (request.legs) for (let s = 0; s < 2; s++) {

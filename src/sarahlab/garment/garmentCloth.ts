@@ -397,9 +397,16 @@ export class GarmentCloth {
     this.fitSet = this.setVersion;
   }
 
+  /** Her skin under her arm a floor for the body pieces too (`ClothSkin.floorUnderArm`), kept across a rebind. */
+  get floorUnderArm(): boolean { return this.underArmFloor; }
+  set floorUnderArm(on: boolean) { this.underArmFloor = on; this.skin.floorUnderArm = on; }
+  private underArmFloor = false;
+
   private skinFor(binding: ClothBinding): ClothSkin {
     const o = this.options;
-    return new ClothSkin(o.body, binding, { thickness: this.skin?.thickness ?? o.standOff, armBones: o.armBones, trunkOnly: o.trunkOnly, ...(o.armpitRule === false ? {} : { looseOverArm: LOOSE_OVER_ARM }), rescueOver: RESCUE_OVER * o.unitsPerMetre, neighbours: neighboursOf(this.sewn) });
+    const skin = new ClothSkin(o.body, binding, { thickness: this.skin?.thickness ?? o.standOff, armBones: o.armBones, trunkOnly: o.trunkOnly, ...(o.armpitRule === false ? {} : { looseOverArm: LOOSE_OVER_ARM }), rescueOver: RESCUE_OVER * o.unitsPerMetre, neighbours: neighboursOf(this.sewn) });
+    skin.floorUnderArm = this.underArmFloor ?? false;
+    return skin;
   }
 
   /**
