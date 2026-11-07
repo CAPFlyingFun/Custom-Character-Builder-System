@@ -92,6 +92,7 @@ import { BODY_CONTROLS, BREAST_DIMENSIONS, clampShape, controlLine, defaultBodyS
 import { applyShapeFields, baseShapeFields, liftShapeFields, type ShapeFields, type ShapePost } from '../view/bodyShapeView';
 import { BUILD_PROFILES, buildAmounts, buildKey, heightLine, heldSegments, profileOf, withProfile, type BuildAmounts, type BuildSegment } from '../actor/bodyBuild';
 import { applyBuildToBones, applyBuildToMesh, buildBoneOffsets, buildMeshFields, prepareBuildRig, standingLift, type BuildMeshFields, type BuildRig } from '../view/bodyBuild';
+import { Sneakers } from './sneakers';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
@@ -294,6 +295,8 @@ import {
 import { blendJointTurns, sitEase, stepSit } from './poseBlend';
 
 const M = UNITS_PER_METRE;
+/** What the story bake leaves out (`bakeForStory`): her vulva's own parts, inside her and under what she wears. */
+const STORY_LEAVES_OUT = new Set(['sarahVulva', 'sarahVagina', 'sarahLips', 'sarahOuterRing']);
 /** How far two fingers may pan the camera's aim (metres above the floor): her feet to just above her head. GAME TUNING. */
 const PAN_BOTTOM = 0.05, PAN_TOP = 1.85;
 /**
@@ -904,6 +907,26 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const buildFields = new WeakMap<THREE.SkinnedMesh, BuildMeshFields>();
   let bonesBuilt = '';
   let standLift = 0;
+  /**
+   * HER SNEAKERS (sneakers.ts; Joshua, 2026-11-07): built round her own foot the first time they are put on, carried by
+   * her skeleton like her skin; standing, she is lifted onto their soles. Only on her approved v2 body (her build's rig).
+   */
+  let sneakers: Sneakers | null = null, sneakersOn = false;
+  /** Her sneakers shown now: on, and not in a birth position. */
+  const sneakersShown = () => sneakersOn && !!sneakers && !isBirthPose(pose);
+  function setSneakers(on: boolean): void {
+    sneakersOn = on;
+    if (on && !sneakers && buildRig && measure && model) {
+      const b = bodyOf(), s = b ? shaped.find((x) => x.mesh === b.mesh) : undefined;
+      if (b && s) {
+        try { sneakers = new Sneakers(b.mesh, s.fields.basePos, restOfMesh(b.mesh, model), [measure.joints.ankleL, measure.joints.ankleR]); } catch (error) { console.error('[sarahlab] her sneakers could not be made', error); sneakers = null; }
+      }
+    }
+    if (sneakers) sneakers.visible = sneakersShown();
+    if (buttons.sneakers) buttons.sneakers.textContent = `SNEAKERS · ${sneakersOn ? 'ON' : 'OFF'}`;
+    // (standing on their soles now, or off them)
+    bonesBuilt = ''; layBuildBones(currentBuild());
+  }
   let buildBox: HTMLElement | null = null;
   let babyNote: HTMLElement | null = null;
   // her crease under her breasts, untangled where her summed shapes fold it (bodyCrease.ts); the spring's shapes move
@@ -1690,7 +1713,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     bonesBuilt = build.key;
     const amounts = build.amounts ?? buildAmounts(defaultBodyShape(), buildRig.measure);
     applyBuildToBones(buildRig, amounts);
-    standLift = standingLift(buildRig, amounts);
+    // (and in her sneakers, up on their soles: their height under the ball of her foot, at her foot's size -- and her
+    // build laid on them as on her skin)
+    standLift = standingLift(buildRig, amounts) + (sneakersShown() ? sneakers!.lift * amounts.feet : 0);
+    sneakers?.fit(buildRig, amounts, build.key);
     place();
   }
 
@@ -2549,6 +2575,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (on the new tee as on the cloth tee: laid again where it settled)
       buttons.clothReset = btn('LAY CLOTH AGAIN', SARAH_LAB_ACTION.clothReset, () => { clothRestart = true; garmentRoom?.cloth.restart(); });
       buttons.clothDefaults = btn('CLOTH DEFAULTS', SARAH_LAB_ACTION.clothDefaults, () => { clothTune = CLOTH_TUNE_DEFAULT; for (const [k, i] of clothDialInputs) i.value = String(clothTune[k as keyof ClothTune]); tuneCloth(); clothRestart = true; garmentRoom?.cloth.restart(); });
+      // her sneakers (sneakers.ts), on and off
+      buttons.sneakers = btn('SNEAKERS · OFF', SARAH_LAB_ACTION.sneakers, () => setSneakers(!sneakersOn));
+      buttons.sneakers.style.padding = '7px 10px'; buttons.sneakers.style.fontSize = '11px'; r.appendChild(buttons.sneakers);
       for (const b of [buttons.clothReset, buttons.clothDefaults]) { b.style.padding = '7px 10px'; b.style.fontSize = '11px'; r.appendChild(b); }
       right.appendChild(r);
     }
@@ -3133,7 +3162,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const b = bodyOf();
       if (!b) throw new Error('[sarahlab] the story bake found no body');
       const meshes: THREE.SkinnedMesh[] = [];
-      model.traverseVisible((n) => { if ((n as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(n as THREE.SkinnedMesh); });
+      // (her body, her clothes and her hair: not what is inside her or only there for her birth -- her vulva's parts, under
+      // the leggings, came after the story file and drew more than one material each)
+      model.traverseVisible((n) => { if ((n as THREE.SkinnedMesh).isSkinnedMesh && !STORY_LEAVES_OUT.has(n.name)) meshes.push(n as THREE.SkinnedMesh); });
+      console.info('[sarahlab] story bake parts:', meshes.map((m) => m.name || '(unnamed)').join(', '));
       const keep = clothKeep();
       return collectStoryBake({
         renderer: ctx.renderer.gl, camera, meshes, body: b.mesh, hair: hairMeshes, splitPaint: options.splitPaint,
@@ -3694,7 +3726,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     };
     rig.apply(turnsFor('stand', standOut)); const stand = read();
     rig.apply(turnsFor('sit', poseOut)); const sit = read();
-    const seatTop = Math.min(0.55, Math.max(0.4, (sit.hips.y - sit.low) / M + 0.08 - 0.1));
+    // (in her sneakers, the seat is as high as puts their soles on the floor: her ankles, 8 cm up bare, as high over it as
+    // her ankles are over her soles, and the sneakers' soles under them -- at 8 cm their soles were in the floor)
+    const shod = sneakersShown() && buildRig ? (buildRig.measure.soleBelowAnkle + sneakers!.lift) * buildAmounts(body, buildRig.measure).feet - 0.08 : 0;
+    const seatTop = Math.min(0.55, Math.max(0.4, (sit.hips.y - sit.low) / M + 0.08 - 0.1)) + shod;
     // standing, her feet are here; seated, she is set so they stay there
     const standFeet = stand.feet.clone().add(v().set(0, standLift * M, 0));
     const seatedAt = v().set(standFeet.x - sit.feet.x, (seatTop + 0.1) * M - sit.hips.y, standFeet.z - sit.feet.z);
@@ -6249,6 +6284,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     ownFingers?.dispose(); ownFingers = null; withFingers = null; fingerFills?.dispose(); fingerFills = null;
     rig = null; measure = null; fingers = []; skinned = []; shaped = []; garments = []; hasBelly = false; anchors = null; legAnchors = null; navel = null; sidesAt = []; babyAt = []; chestAt = []; milkAt = []; groinAt = [];
     buildRig = null; bonesBuilt = ''; standLift = 0;
+    sneakers?.dispose(); sneakers = null;
     crease.reset(); if (creaseTimer) { clearTimeout(creaseTimer); creaseTimer = 0; }
     recovered = false; partMeshes.clear(); wantedOutfit = null; outfitRequest++;
     for (const run of inflight.values()) run.abort.abort();
@@ -6628,6 +6664,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (sitMoving) { sitAmount = stepSit(sitAmount, pose === 'sit' ? 1 : 0, dt); if (sitAmount === (pose === 'sit' ? 1 : 0)) { sitMoving = false; applyLook(); } }
       else sitAmount = pose === 'sit' ? 1 : 0;
       if (rig) rig.apply(currentTurns());
+      // (her sneakers off in a birth position, on again out of it -- and her lift onto their soles with them)
+      if (sneakers && sneakers.visible !== sneakersShown()) { sneakers.visible = sneakersShown(); bonesBuilt = ''; layBuildBones(currentBuild()); }
       settleBelly(dt);
       naturalOpening(dt);
       keepBirthRoom();

@@ -158,6 +158,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   /** the cloth laid on her again, and its dials back to their defaults */
   clothReset: 'sarahlab:cloth-reset',
   clothDefaults: 'sarahlab:cloth-defaults',
+  /** SNEAKERS: her sneakers on or off (sneakers.ts; Joshua, 2026-11-07) */
+  sneakers: 'sarahlab:sneakers',
   /** the cloth tee's neckline, cut deeper as a U or a V (Joshua, 2026-10-24) */
   neckShape: 'sarahlab:neck-shape',
   /** the cloth tee's SLEEVES: its cap sleeves as made, or a tank's armholes (Joshua, 2026-10-25) */
