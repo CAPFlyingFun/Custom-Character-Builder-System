@@ -145,7 +145,21 @@ const LAP_TOP = [-0.04, -0.12] as const, LAP_THIGH = [-0.25, -0.4] as const, LAP
  * band's outline (their tops further out, by her knees, are no part of where the shirt ends). GAME TUNING.
  */
 const LAP_CLEAR = 0.01, LAP_NEAR = 0.05;
-/** How many rows the seated cut's ramp spans: wider than its edge climbs between neighbouring directions. GAME TUNING. */
+/**
+ * IN FRONT, SEATED, HOW FAR IT RIDES UP IS ITS FABRIC'S (Joshua, 2026-11-06, asked whether the front should end at the
+ * bottom of her bump: "Depends on the fabric selected... more stretchy, will stay, more firm, ride up more... even if
+ * painted"). Its fabric's STRETCH (`wear`; fabricLibrary.ts), 0 to 1, is how much of the climb to just over her thighs
+ * (LAP_CLEAR) it is spared across the middle of her front: none, a firm knit's, and it rides all the way up, ending at
+ * the bottom of her bump; all, a stretch knit's, and it stays down between her thighs as far as it reaches. Only there
+ * (`around`, RIDE_FROM to RIDE_FROM + RIDE_OVER): over her thighs and at her sides it always ends level just over them --
+ * lower, its rows went into her thighs in a stair, and at her sides the teeth were back. GAME TUNING.
+ */
+const RIDE_FROM = 0.8, RIDE_OVER = 0.1;
+/**
+ * How many rows the seated cut's ramp spans. Never clamped, so where it crosses one half is a straight line between any
+ * two neighbouring directions however steeply its edge drops between them (where a stretch knit stays down in front, 9
+ * cm in a few). GAME TUNING.
+ */
 const CUT_ROWS = 8;
 const LEGS = new Set(['thighL', 'thighR', 'kneeL', 'kneeR', 'calfL', 'calfR']);
 
@@ -196,9 +210,10 @@ export function leadToward(material: THREE.Material): void {
 }
 
 /**
- * Where the drape is CUT (`drapeCut`, one value a point: 1 kept, 0 cut off), drawn crisp where it crosses one half -- a
- * seated painted shirt's edge over her thighs (LAP_CLEAR), which rises from her seat round her hips and is not one of
- * the drape's level rows: a fade between rows drew it as a blur (2026-11-06). Every other point is 1.
+ * Where the drape is CUT (`drapeCut`, one value a point: over one half kept, under it cut off), drawn crisp where it
+ * crosses one half -- a seated painted shirt's edge over her thighs (LAP_CLEAR), which rises from her seat round her
+ * hips and is not one of the drape's level rows: a fade between rows drew it as a blur (2026-11-06). Every other point
+ * is 1.
  */
 export const CUT_ATTRIBUTE = 'drapeCut';
 const cutting = new WeakSet<THREE.Material>();
@@ -242,11 +257,13 @@ export class TunicDrape {
    * along the backside").
    */
   private bandOnly = false;
+  /** Its fabric's stretch (`wear`), 0 firm .. 1 a stretch knit's: seated, how far its front stays down (RIDE_FROM). */
+  private stretch = 0;
   /** How much of the shirt's paint each vertex of her has (`wear`), or null. */
   private covered: ((v: number) => number) | null = null;
   /** For a probe: of the points that show, how many are drawn inside her skin as measured, and the deepest (mm); and how
    * many of her vertices were her lap, left out (LAP_TILT), and how far the axis is from her hip joints' slice (mm). */
-  inside = { shown: 0, inside: 0, worstMm: 0, lap: 0, axisMm: 0 };
+  inside = { shown: 0, inside: 0, worstMm: 0, lap: 0, axisMm: 0, stretch: 0, stayedDownMm: 0 };
   private dirty = true;
   private lastBuild = -Infinity;
   private readonly motion: number[] = [];
@@ -319,9 +336,11 @@ export class TunicDrape {
    * The hem, on her trunk, or null to take the drape off; and how much of the shirt's paint each vertex of her has
    * (`covered`, 0 to 1), so the drape stays whole over wherever it ends -- read when it is next built.
    */
-  wear(hem: number | null, hemLift = HEM_LIFT_FLAT, covered: ((v: number) => number) | null = null, bandOnly = false): void {
-    if (hem !== this.hem || hemLift !== this.hemLift || bandOnly !== this.bandOnly) this.dirty = true;
+  wear(hem: number | null, hemLift = HEM_LIFT_FLAT, covered: ((v: number) => number) | null = null, bandOnly = false, stretch = 0): void {
+    stretch = Math.max(0, Math.min(1, stretch));
+    if (hem !== this.hem || hemLift !== this.hemLift || bandOnly !== this.bandOnly || stretch !== this.stretch) this.dirty = true;
     this.bandOnly = bandOnly;
+    this.stretch = stretch;
     this.hem = hem;
     this.hemLift = hemLift;
     this.covered = covered;
@@ -486,7 +505,7 @@ export class TunicDrape {
     }
     // how much each direction is her front (her skin's own measure, averaged over the skin in it): there the fabric
     // hangs straight from her bump rather than falling back to her thighs
-    const fall = new Float64Array(COLUMNS).fill(DRAPE_SLOPE), hangs = new Float64Array(COLUMNS);
+    const fall = new Float64Array(COLUMNS).fill(DRAPE_SLOPE), hangs = new Float64Array(COLUMNS), aroundOf = new Float64Array(COLUMNS).fill(0.5);
     {
       const sum = new Float64Array(COLUMNS), cnt = new Float64Array(COLUMNS);
       for (let k = 0; k < nc; k++) {
@@ -496,6 +515,7 @@ export class TunicDrape {
         sum[c] += map.around[cand[k]]; cnt[c]++;
       }
       for (let c = 0; c < COLUMNS; c++) {
+        if (cnt[c]) aroundOf[c] = sum[c] / cnt[c];
         const front = cnt[c] ? smooth01((sum[c] / cnt[c] - FRONT_FROM) / FRONT_OVER) : 0;
         const back = cnt[c] ? smooth01((BACK_TO - sum[c] / cnt[c]) / BACK_OVER) : 0;
         fall[c] = DRAPE_SLOPE + (FRONT_SLOPE - DRAPE_SLOPE) * front + (BACK_SLOPE - DRAPE_SLOPE) * back;
@@ -657,9 +677,12 @@ export class TunicDrape {
         for (let c = 0; c < COLUMNS; c++) paintHem[c] = Math.max(was[c], (was[(c + COLUMNS - 1) % COLUMNS] + 2 * was[c] + was[(c + 1) % COLUMNS]) / 4);
       }
     }
-    // seated, only its hem band: where it ends in each direction, at least just over the tops of her thighs (LAP_CLEAR)
+    // seated, only its hem band: where it ends in each direction, at least just over the tops of her thighs (LAP_CLEAR).
+    // `edgeT` is where its band is, `cutT` where it is cut off: the same, but in front for a fabric that stays down
     const seatedEdge = this.bandOnly && lapN > 0, edgeT = new Float64Array(COLUMNS), cut = new Float32Array(n).fill(1);
     for (let c = 0; c < COLUMNS; c++) edgeT[c] = Math.max(bottom, paintHem[c]);
+    const cutT = edgeT.slice();
+    let stayedDown = 0;
     if (seatedEdge) {
       const lapTop = new Float64Array(COLUMNS).fill(-Infinity), outline = (c: number) => R[(rows - 1) * COLUMNS + c];
       for (let k = 0; k < nc; k++) {
@@ -675,7 +698,23 @@ export class TunicDrape {
         const was = edgeT.slice();
         for (let c = 0; c < COLUMNS; c++) edgeT[c] = (was[(c + COLUMNS - 1) % COLUMNS] + 2 * was[c] + was[(c + 1) % COLUMNS]) / 4;
       }
-      for (let c = 0; c < COLUMNS; c++) edgeT[c] = Math.max(edgeT[c], lapTop[c]);
+      for (let c = 0; c < COLUMNS; c++) { edgeT[c] = Math.max(edgeT[c], lapTop[c]); cutT[c] = edgeT[c]; }
+      // in front, its fabric says how much of that climb it keeps (RIDE_FROM): a stretch knit's band stays at its own hem
+      // and it goes on down between her thighs as far as it reaches (`bottom`), uncut
+      if (this.stretch > 0) {
+        const stays = new Float64Array(COLUMNS);
+        for (let c = 0; c < COLUMNS; c++) stays[c] = this.stretch * smooth01((aroundOf[c] - RIDE_FROM) / RIDE_OVER);
+        for (let pass = 0; pass < 3; pass++) {
+          const was = stays.slice();
+          for (let c = 0; c < COLUMNS; c++) stays[c] = (was[(c + COLUMNS - 1) % COLUMNS] + 2 * was[c] + was[(c + 1) % COLUMNS]) / 4;
+        }
+        for (let c = 0; c < COLUMNS; c++) {
+          const own = Math.max(bottom, paintHem[c]), down = (cutT[c] - bottom) * stays[c];
+          edgeT[c] -= (edgeT[c] - own) * stays[c];
+          cutT[c] -= down;
+          stayedDown = Math.max(stayedDown, down);
+        }
+      }
     }
     for (let r = 0; r < rows; r++) {
       const t = T_TOP - r * step, top = smooth01((T_TOP - t) / TOP_FADE);
@@ -683,9 +722,9 @@ export class TunicDrape {
         // (seated, a long shirt's drape ends where she reaches, `bottom`, and its hem band there)
         const i = r * COLUMNS + c, band = 1 - smooth01((t - edgeT[c] - HEM_BAND) / HEM_BAND);
         // (only its hem band, lying on her: `bandOnly`; seated, ending over a row where `edgeT` says)
-        // (seated, its edge is CUT, crisp, where `edgeT` says: `cutAt`. Its ramp is wider than the edge climbs from one
-        // direction to the next round her, so between them the cut runs straight, not in a step a direction)
-        cut[i] = seatedEdge ? Math.max(0, Math.min(1, (t - edgeT[c]) / (CUT_ROWS * step) + 0.5)) : 1;
+        // (seated, its edge is CUT, crisp, where `cutT` says: `cutAt`. Its ramp is never clamped, so between one
+        // direction and the next round her the cut runs straight, not in a step a direction)
+        cut[i] = seatedEdge ? (t - cutT[c]) / (CUT_ROWS * step) + 0.5 : 1;
         if (this.bandOnly) { falling[i] = 0; alpha[i] = band * top; continue; }
         falling[i] = smooth01(alpha[i]) * top; alpha[i] = Math.max(smooth01(alpha[i]), band) * top;
       }
@@ -840,7 +879,7 @@ export class TunicDrape {
       // (for a probe: where it shows, how much of it is drawn inside her skin as measured)
       let shownN = 0, inside = 0, worst = 0;
       for (let i = 0; i < n; i++) if (skin[i] > 0 && alpha[i] > 0.01) { shownN++; const d = skin[i] - radius[i]; if (d > 0.0005 * T) { inside++; worst = Math.max(worst, d); } }
-      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2), lap: lapN, axisMm: Math.round(axisMm) };
+      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2), lap: lapN, axisMm: Math.round(axisMm), stretch: this.stretch, stayedDownMm: Math.round(stayedDown * TRUNK_MM) };
       this.mesh.userData.drapeInside = this.inside;
     }
     // the skin it hangs clear of: each of her vertices against the drape AS DRAWN, at its own height and direction. (It
@@ -877,7 +916,14 @@ export class TunicDrape {
       const row = (hipY + T_TOP * T - py[k]) / (step * T);
       // (only its hem band: the paint goes from a row above the band's bottom edge, under the solid band, so that edge --
       // level and smooth -- is the shirt's bottom edge all round, not the paint's own, which wobbles)
-      const edgeRow = seatedEdge ? (T_TOP - edgeT[c]) / step : rows - 1;
+      // (seated, where it is cut between this direction and the next round her, not at the nearer one: in front, where a
+      // stretch knit goes on down between her thighs, the cut drops steeply from one direction to the next, and taken
+      // a direction at a time its paint ended on her in a stair)
+      let edgeRow = rows - 1;
+      if (seatedEdge) {
+        const f = (((Math.atan2(dz, dx) / (2 * Math.PI)) * COLUMNS) % COLUMNS + COLUMNS) % COLUMNS, c0 = Math.floor(f) % COLUMNS, u = f - Math.floor(f);
+        edgeRow = (T_TOP - (cutT[c0] * (1 - u) + cutT[(c0 + 1) % COLUMNS] * u)) / step;
+      }
       const below = this.bandOnly ? (row - edgeRow) / 2 + 1 : 0.5 + (row - (rows - 1) - 0.5) / 2;
       this.hang[cand[k]] = Math.max(this.hang[cand[k]], Math.max(0, Math.min(1, below)));
     }

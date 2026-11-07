@@ -891,8 +891,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     if (drape && drape.mesh.parent !== body) { drape.dispose(); drape = null; }
     if (!drape) drape = new TunicDrape(body as THREE.SkinnedMesh, map, shirtHem(map, 1));
     const c = paintChoices[top];
-    // a sweater's hem is turned and ribbed, and stands a little proud; every other fabric's lies flat (Joshua, 2026-10-23)
-    drape.wear(shirtHem(map, templates[top]!.params.length!), paintChoices[top].fabric?.family === 'sweater' ? HEM_LIFT_RIBBED : HEM_LIFT_FLAT, (v) => p.coverAt(v, [top]), PAINTED_SHIRT_DRAPE === 'band');
+    // a sweater's hem is turned and ribbed, and stands a little proud; every other fabric's lies flat (Joshua, 2026-10-23);
+    // seated, how far its front rides up is its fabric's stretch (Joshua, 2026-11-06)
+    const family = c.fabric ? fabricFamily(c.fabric.family) : null;
+    drape.wear(shirtHem(map, templates[top]!.params.length!), family?.id === 'sweater' ? HEM_LIFT_RIBBED : HEM_LIFT_FLAT, (v) => p.coverAt(v, [top]), PAINTED_SHIRT_DRAPE === 'band', family?.stretch ?? 0);
     setFabricLayer(drape.mesh, drape.mesh.material as THREE.Material, 0, layerFor(body, c, c.fabric, 'plain'), { layers: 1, masked: false, rest: null });
     drape.feathered();
   }

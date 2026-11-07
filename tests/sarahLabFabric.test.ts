@@ -46,6 +46,15 @@ describe('the fabric pack', () => {
     expect(tileUnits(FABRIC_FAMILIES[1], 2, 1)).toBe(10);
   });
 
+  it('gives each family a stretch, firm to stretchy: sweater, jersey, ribbed, athletic, pantyhose (Joshua, 2026-11-06)', () => {
+    const stretch = Object.fromEntries(FABRIC_FAMILIES.map((f) => [f.id, f.stretch]));
+    for (const f of FABRIC_FAMILIES) { expect(f.stretch).toBeGreaterThanOrEqual(0); expect(f.stretch).toBeLessThanOrEqual(1); }
+    expect(stretch.sweater).toBeLessThan(stretch.jersey);
+    expect(stretch.jersey).toBeLessThan(stretch.ribbed);
+    expect(stretch.ribbed).toBeLessThan(stretch.athletic);
+    expect(stretch.athletic).toBeLessThanOrEqual(stretch.pantyhose);
+  });
+
   it('fills on the same footprint the room uses for each garment', () => {
     const bits = Object.fromEntries(PAINT_FILLS.map((f) => [f.id, f.bits]));
     expect(bits.top).toBe(coverMask(['shirt']));

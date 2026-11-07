@@ -28,14 +28,21 @@ export interface FabricFamily {
   readonly sheer: boolean;
   /** How matte it reads under light, 0 glossy to 1 flat: knits are matte, athletic knit and nylon have a soft sheen. */
   readonly roughness: number;
+  /**
+   * How much it gives, 0 firm to 1 a stretch knit's: seated, a firm shirt rides up over her lap and a stretchy one
+   * stays down (Joshua, 2026-11-06: "Depends on the fabric selected... more stretchy, will stay, more firm, ride up
+   * more... even if painted"; tunicDrape.ts RIDE_FROM). Spandex blends and nylon cling and stay; a rib knit stretches
+   * far across; a cotton jersey tee gives a little; a heavy sweater knit hardly at all. GAME TUNING.
+   */
+  readonly stretch: number;
 }
 
 export const FABRIC_FAMILIES: readonly FabricFamily[] = Object.freeze(([
-  { id: 'jersey', name: 'Jersey', plain: 'fabrics/jersey-plain.jpg', trim: 'fabrics/jersey-trim.jpg', tileCm: 3, sheer: false, roughness: 0.92 },
-  { id: 'athletic', name: 'Athletic', plain: 'fabrics/athletic-plain.jpg', trim: 'fabrics/athletic-trim.jpg', tileCm: 5, sheer: false, roughness: 0.72 },
-  { id: 'sweater', name: 'Sweater', plain: 'fabrics/sweater-plain.jpg', trim: 'fabrics/sweater-trim.jpg', tileCm: 10, sheer: false, roughness: 0.97 },
-  { id: 'ribbed', name: 'Ribbed', plain: 'fabrics/ribbed-plain.jpg', trim: 'fabrics/ribbed-trim.jpg', tileCm: 8, sheer: false, roughness: 0.9 },
-  { id: 'pantyhose', name: 'Pantyhose', plain: 'fabrics/pantyhose-plain.jpg', trim: 'fabrics/pantyhose-trim.jpg', tileCm: 3, sheer: true, roughness: 0.6 },
+  { id: 'jersey', name: 'Jersey', plain: 'fabrics/jersey-plain.jpg', trim: 'fabrics/jersey-trim.jpg', tileCm: 3, sheer: false, roughness: 0.92, stretch: 0.5 },
+  { id: 'athletic', name: 'Athletic', plain: 'fabrics/athletic-plain.jpg', trim: 'fabrics/athletic-trim.jpg', tileCm: 5, sheer: false, roughness: 0.72, stretch: 0.9 },
+  { id: 'sweater', name: 'Sweater', plain: 'fabrics/sweater-plain.jpg', trim: 'fabrics/sweater-trim.jpg', tileCm: 10, sheer: false, roughness: 0.97, stretch: 0.15 },
+  { id: 'ribbed', name: 'Ribbed', plain: 'fabrics/ribbed-plain.jpg', trim: 'fabrics/ribbed-trim.jpg', tileCm: 8, sheer: false, roughness: 0.9, stretch: 0.75 },
+  { id: 'pantyhose', name: 'Pantyhose', plain: 'fabrics/pantyhose-plain.jpg', trim: 'fabrics/pantyhose-trim.jpg', tileCm: 3, sheer: true, roughness: 0.6, stretch: 1 },
 ] as FabricFamily[]).map((f) => Object.freeze(f)));
 
 export const fabricFamily = (id: FabricFamilyId): FabricFamily => FABRIC_FAMILIES.find((f) => f.id === id)!;

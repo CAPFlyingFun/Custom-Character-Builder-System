@@ -180,9 +180,9 @@ describe('TunicDrape seated: the hem band\'s edge over her thighs (LAP_CLEAR)', 
   // Joshua, 2026-11-06, seated: "why when sitting, is the side of the shirt not smooth... Is it not following the updated
   // thighs?" -- seated, the band (a painted shirt's bottom edge) ends just over the tops of her thighs where they leave
   // her, cut crisp (`drapeCut`); standing, nothing of it is cut
-  const cutOf = (seated: boolean) => {
+  const cutOf = (seated: boolean, stretch = 0) => {
     const { body, map } = sitting(seated), drape = new TunicDrape(body, map, -0.3);
-    drape.wear(-0.01, undefined, null, true);
+    drape.wear(-0.01, undefined, null, true, stretch);
     drape.update(0);
     const P = drape.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, C = drape.mesh.geometry.getAttribute(CUT_ATTRIBUTE) as THREE.BufferAttribute;
     // (the rows drawn: the rest are folded onto the hem, drawn nowhere)
@@ -203,5 +203,28 @@ describe('TunicDrape seated: the hem band\'s edge over her thighs (LAP_CLEAR)', 
     expect(cut.every((p) => p.z > -0.1 && p.y < 0.07 + 0.012)).toBe(true);
     // in front, what is kept is above her thighs' tops
     expect(kept.filter((p) => p.z > 0.12 && Math.abs(p.x) > 0.05).every((p) => p.y > 0.06)).toBe(true);
+  });
+
+  // Joshua, 2026-11-06, of the front ending at the bottom of her bump: "Depends on the fabric selected... more stretchy,
+  // will stay, more firm, ride up more... even if painted" (RIDE_FROM)
+  const between = (p: THREE.Vector3) => Math.abs(p.x) < 0.03 && p.z > 0.1;
+  it('between her thighs, a stretch knit stays further down the more it stretches; a firm one rides up', () => {
+    const at = (stretch: number) => { const b = cutOf(true, stretch).kept.filter(between); return { n: b.length, lowest: Math.min(...b.map((p) => p.y)) }; };
+    const firm = at(0), half = at(0.5), knit = at(1);
+    expect(half.lowest).toBeLessThan(firm.lowest - 0.005);
+    expect(knit.lowest).toBeLessThan(half.lowest - 0.005);
+    expect(knit.n).toBeGreaterThan(firm.n);
+  });
+
+  it('at her sides and behind her, a stretch knit ends exactly where a firm one does', () => {
+    const side = (pts: THREE.Vector3[]) => pts.filter((p) => p.z < 0.05).map((p) => p.toArray().map((v) => v.toFixed(5)).join()).sort();
+    const firm = cutOf(true, 0), knit = cutOf(true, 1);
+    expect(side(knit.cut).length).toBeGreaterThan(0);
+    expect(side(knit.cut)).toEqual(side(firm.cut));
+    expect(side(knit.kept)).toEqual(side(firm.kept));
+  });
+
+  it('standing, its fabric changes nothing', () => {
+    expect(cutOf(false, 1).cut.length).toBe(0);
   });
 });
