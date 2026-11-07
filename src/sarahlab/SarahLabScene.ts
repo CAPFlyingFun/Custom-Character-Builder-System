@@ -7738,6 +7738,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const arm = out.filter((p) => p.kind === 'arm');
           return { covered: teeCovered.length, frontMost: +front.toFixed(1), pokes: out.length, torso: torso.length, torsoOver3mm: torso.filter((p) => p.out > 0.3).length, arm: arm.length, armOver3mm: arm.filter((p) => p.out > 0.3).length, hand: out.filter((p) => p.kind === 'hand').length, leg: out.filter((p) => p.kind === 'leg').length, worst: torso.slice(0, k), worstLimb: arm.slice(0, 6) };
         },
+        // the new tee's material as it draws (which faces, and how): a probe's look at whether a hole is a face turned away
+        teeMaterial: (patch?: { side?: number }) => {
+          const m = garmentRoom?.cloth.mesh.material as THREE.Material | undefined;
+          if (!m) return null;
+          if (patch?.side !== undefined) { m.side = patch.side as THREE.Side; m.needsUpdate = true; }
+          return { name: m.name, side: m.side, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite };
+        },
         // THE TEE ALONE (Joshua, 2026-11-07: "render the shirt by itself in a wireframe... hide the entire body so it's
         // easier to see holes"): everything else in the room hidden -- her body drawn neither in colour nor in depth, so
         // the tee's own far side shows through any hole -- and the tee in wireframe when `wire`; off puts it all back
