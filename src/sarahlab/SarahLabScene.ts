@@ -36,7 +36,7 @@ import { NavelSurface } from './garment/navelSurface';
 import { NavelPatch } from './garment/navelPatch';
 import { DRAPE_PROBE, setDrapeLead } from './tunicDrape';
 import { setCutEdge } from './garment/cutEdge';
-import { FrozenCloth, type FrozenSave } from './garment/frozenCloth';
+import { FROZEN_SAVE_VERSION, FrozenCloth, type FrozenSave } from './garment/frozenCloth';
 import { keepBig, keptBig } from './keptStore';
 import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorKey, withConstruction, type GarmentRecord, type GarmentSettings } from './garment/settings';
 import { GarmentPanel } from './garmentPanel';
@@ -1356,6 +1356,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let frozenTried: RoomGarment | null = null;
   /** Why the last freeze could not be kept or put back, for its line; '' when it was. And how big what is kept is (bytes). */
   let frozenNote = '', frozenKept = 0;
+  /** The tee a freeze kept by an older room is to be made again on, once it is eased on (`restoreFrozen`); null for none. */
+  let frozenAgain: RoomGarment | null = null;
+  /** A probe's note of the skin the frozen tee covered when it looked (`frozenPokes`). */
+  let frozenCovered: number[] = [];
   /**
    * THE NEW TEE'S SETTINGS (Stage 3, `garment/settings.ts`): what its panel shows, what it is cut and tailored from, and
    * what a save of the outfit keeps. An outfit puts on its save's or its own (`adoptGarment`); the panel changes them.
@@ -2267,21 +2271,33 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const hip = bones.indexOf(bones[measure.joints.hipL]?.parent as THREE.Bone);
     return { ...(legs.size && hip >= 0 ? { legs, hip } : {}), ...(ignore.size ? { ignore } : {}) };
   }
+  /** Her hips (world) and the way she faces, for a freeze: which side of her the hem is on. */
+  function facingOf(): { facing?: { hip: number[]; front: number[] } } {
+    const body = clothBody();
+    if (!body || !measure || !model) return {};
+    return { facing: { hip: body.skeleton.bones[measure.joints.pelvis].getWorldPosition(new THREE.Vector3()).toArray(), front: model.getWorldDirection(new THREE.Vector3()).toArray() } };
+  }
   /** CLOTH · FROZEN: the new tee as it lies this frame, made a garment on her skeleton (frozenCloth.ts), and kept. */
-  function freezeTee(tune: { passes?: number; legShare?: number } = {}): void {
+  function freezeTee(tune: { passes?: number; legShare?: number; morphs?: string[] } = {}): void {
     const body = clothBody();
     if (!garmentRoom || !body || !model || frozen) return;
     model.updateMatrixWorld(true);
     const c = garmentRoom.cloth;
     try {
       frozen = FrozenCloth.freeze(body, c.drawn.map((m) => ({ mesh: m, particleOf: m === c.mesh ? c.sewn.vertexParticle : undefined })),
-        { position: c.positions, ...c.frozenContacts(), nearest: c.bodyParticles, pieces: c.bodyParticles, edges: c.sewn.edges }, c.mesh.material as THREE.Material, garmentShade ? c.detailShading(clothKeep()) : null,
-        { ...freezeBonesFor(body), unitsPerMetre: M, ...tune });
+        { position: c.positions, ...c.frozenContacts(), nearest: c.bodyParticles, edges: c.sewn.edges }, c.mesh.material as THREE.Material, garmentShade ? c.detailShading(clothKeep()) : null,
+        { ...freezeBonesFor(body), unitsPerMetre: M, morphs: [SEAT_TARGET, SEAT_V2_TARGET, ARM_RAISE_TARGETS.plusX, ARM_RAISE_TARGETS.minusX], ...facingOf(), ...tune });
     } catch (error) {
       console.error('[sarahlab] the tee could not be frozen', error);
       frozen = null; frozenNote = 'it could not be frozen'; refresh(); return;
     }
     frozenTried = garmentRoom;
+    keepFrozen();
+    applyLook(); refresh();
+  }
+  /** The frozen tee kept as it now is (its seated shape with it, once it has one). */
+  function keepFrozen(): void {
+    if (!frozen) return;
     frozenNote = '';
     const saved = frozen.save(), mine = frozen;
     frozenKept = FrozenCloth.bytes(saved);
@@ -2290,11 +2306,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       console.warn('[sarahlab] the frozen tee could not be kept');
       frozenNote = 'Frozen, but not kept: this browser would not keep it (a private window?)'; frozenKept = 0; refresh();
     });
-    applyLook(); refresh();
   }
   /** CLOTH · LIVE: the frozen tee off her and forgotten, and the cloth laid on her again and eased on as it is put on. */
   function liveTee(): void {
-    frozen?.dispose(); frozen = null; frozenNote = ''; frozenKept = 0;
+    frozen?.dispose(); frozen = null; frozenNote = ''; frozenKept = 0; frozenAgain = null;
     void keepBig(FROZEN_KEY, null);
     if (garmentRoom) { garmentRoom.cloth.restart(); garmentRoom.cloth.weightless = true; garmentDressT = 0; garmentPoseKey = pose; }
     applyLook(); refresh();
@@ -2307,6 +2322,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (still the tee it was looked up for, and nothing frozen on it meanwhile)
       const body = clothBody();
       if (!saved || !body || garmentRoom !== room || frozen || disposed) return;
+      // (kept by an older room, carried the old way: frozen again from the live tee once it is eased on)
+      if (saved.v !== FROZEN_SAVE_VERSION) { frozenAgain = room; frozenNote = 'Your kept freeze is from before the fix: it is frozen again once the tee is on her'; refresh(); return; }
       frozen = FrozenCloth.restore(body, saved, room.cloth.mesh.material as THREE.Material);
       frozenKept = frozen ? FrozenCloth.bytes(saved) : 0;
       frozenNote = frozen ? '' : 'The kept freeze could not be read: LIVE, and freeze it again';
@@ -6860,16 +6877,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // a kept freeze put back on the tee an outfit has put on her
         restoreFrozen();
       }
-      if (garmentRoom && model?.visible && frozen) {
-        // FROZEN: nothing simulated -- her bones carry it as they carry her skin, and her detail through it goes with her
-        garmentPoseKey = pose;
-        const material = frozen.meshes[0]?.material as THREE.Material | undefined;
-        if (material) {
-          setClothDetail(material, garmentShade ? frozen.carriedDetail() : null);
-          setClothNeckline(material, null); setClothTrim(material, null);
-          if (garmentAuto) setCutEdge(material, true);
-        }
-      } else if (garmentRoom && model?.visible) {
+      if (garmentRoom && model?.visible && !frozen) {
         // a pose switch lays it on her afresh; STAND to SIT and back is a move, and it is worn all the way through it
         if (pose !== garmentPoseKey) { garmentPoseKey = pose; if (!sitMoving) garmentRoom.cloth.restart(); }
         if (garmentRoom.capsules.stool !== null || sitAmount > 0) garmentRoom.capsules = { ...garmentRoom.capsules, stool: sitAmount > 0 && stool.visible ? { x: stool.position.x, z: stool.position.z, radius: 0.21 * M, top: stool.scale.y } : null };
@@ -6908,6 +6916,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         setClothNeckline(garmentRoom.cloth.mesh.material as THREE.Material, null); setClothTrim(garmentRoom.cloth.mesh.material as THREE.Material, null);
         if (garmentAuto) setCutEdge(garmentRoom.cloth.mesh.material as THREE.Material, true);
         if (Math.abs(clothFlattenWanted() - clothFlattenLaid) > 1e-3) applyLook();
+        // a freeze kept by an older room, made again now the tee is on her and has hung a moment
+        if (frozenAgain === garmentRoom && garmentDressT >= DRESS.done + 2) { frozenAgain = null; freezeTee(); }
+      }
+      if (garmentRoom && model?.visible && frozen) {
+        // FROZEN: nothing simulated -- her bones carry it as they carry her skin, her pose's shapes put on as she has them,
+        // and her detail through it goes with her
+        garmentPoseKey = pose;
+        const herBody = clothBody();
+        if (herBody) frozen.follow(herBody);
+        const material = frozen.meshes[0]?.material as THREE.Material | undefined;
+        if (material) {
+          setClothDetail(material, garmentShade ? frozen.carriedDetail() : null);
+          setClothNeckline(material, null); setClothTrim(material, null);
+          if (garmentAuto) setCutEdge(material, true);
+        }
       }
       // the fitted light tee (the cloth off): her nipples drawn through it and its own navel settled onto its smooth
       // surface, at the editor's BREAST and NAVEL DETAIL; her navel softened under it to match
@@ -7758,15 +7781,81 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // is in front of what -- it hidden, its depth bias, its depth test or blending off, her body's colour off, what is drawn)
         // her sneakers' heels over the floor (metres) and the steps heard so far (footsteps.ts)
         // the new tee FROZEN (true) or LIVE (false), as the button does; nothing: as it is. What is kept, and how big
-        freeze: (on?: boolean, tune?: { passes?: number; legShare?: number }) => {
+        freeze: (on?: boolean, tune?: { passes?: number; legShare?: number; standoffM?: number; morphs?: string[]; seamPasses?: number }) => {
           // (frozen already and tuned: frozen again from the cloth as it was left -- stood as she was when it was frozen)
           if (on === true && frozen && tune) { frozen.dispose(); frozen = null; }
           if (on === true && !frozen) freezeTee(tune);
           if (on === false && frozen) liveTee();
           return keptBig<FrozenSave>(FROZEN_KEY).then((saved) => ({
-            frozen: !!frozen, vertices: frozen?.vertices ?? 0, meshes: frozen?.meshes.map((m) => m.name) ?? [], note: frozenNote,
+            frozen: !!frozen, vertices: frozen?.vertices ?? 0, meshes: frozen?.meshes.map((m) => m.name) ?? [], note: frozenNote, held: frozen?.held ?? null,
             keptBytes: saved ? FrozenCloth.bytes(saved) : 0, live: !!garmentRoom?.cloth.mesh.visible,
           }));
+        },
+        // her skin coming through the FROZEN tee: `mark` notes which of her skin it covers now (each of her points
+        // within 1.5 cm of it, inside it); after, for those, which stand outside it and by how much (cm), with where
+        // (cm from her pelvis, turned as she is turned in the room: y up, z her front) -- the worst `k`
+        // (the tee as it is drawn: frozen, or the live cloth's sheet when it is not)
+        frozenPokes: (mark?: boolean, k = 20) => {
+          const body = clothBody();
+          if ((!frozen && !garmentRoom) || !body || !measure) return null;
+          model?.updateMatrixWorld(true);
+          const sheetNow = (): { position: Float32Array; normal: Float32Array } => {
+            if (frozen) return frozen.drawnNow();
+            const m = garmentRoom!.cloth.mesh, g = m.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal'), idx = g.getIndex();
+            m.updateMatrixWorld(true);
+            const nm = new THREE.Matrix3().getNormalMatrix(m.matrixWorld), position = new Float32Array(P.count * 3).fill(NaN), normal = new Float32Array(P.count * 3), p = new THREE.Vector3();
+            const start = g.drawRange.start, end = Math.min(idx ? idx.count : P.count, start + g.drawRange.count);
+            for (let e = start; e < end; e++) {
+              const i = idx ? idx.getX(e) : e;
+              if (Number.isFinite(position[i * 3])) continue;
+              p.fromBufferAttribute(P, i).applyMatrix4(m.matrixWorld).toArray(position, i * 3);
+              p.fromBufferAttribute(N, i).applyMatrix3(nm).normalize().toArray(normal, i * 3);
+            }
+            return { position, normal };
+          };
+          const { position: F, normal: FN } = sheetNow(), cell = 2, grid = new Map<string, number[]>();
+          for (let f = 0; f < F.length / 3; f++) {
+            if (!Number.isFinite(F[f * 3])) continue;
+            const key = `${Math.floor(F[f * 3] / cell)},${Math.floor(F[f * 3 + 1] / cell)},${Math.floor(F[f * 3 + 2] / cell)}`;
+            (grid.get(key) ?? grid.set(key, []).get(key)!).push(f);
+          }
+          const v = new THREE.Vector3(), P = body.geometry.getAttribute('position');
+          const offsetAt = (i: number): number | null => {
+            body.getVertexPosition(i, v).applyMatrix4(body.matrixWorld);
+            const cx = Math.floor(v.x / cell), cy = Math.floor(v.y / cell), cz = Math.floor(v.z / cell);
+            let best = -1, bd = 2.25; // (within 1.5 cm: what it lies close over)
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (const f of grid.get(`${cx + dx},${cy + dy},${cz + dz}`) ?? []) {
+              const d = (F[f * 3] - v.x) ** 2 + (F[f * 3 + 1] - v.y) ** 2 + (F[f * 3 + 2] - v.z) ** 2;
+              if (d < bd) { bd = d; best = f; }
+            }
+            return best < 0 ? null : (v.x - F[best * 3]) * FN[best * 3] + (v.y - F[best * 3 + 1]) * FN[best * 3 + 1] + (v.z - F[best * 3 + 2]) * FN[best * 3 + 2];
+          };
+          if (mark) {
+            const covered: number[] = [];
+            for (let i = 0; i < P.count; i++) { const o = offsetAt(i); if (o !== null && o < 0) covered.push(i); }
+            frozenCovered = covered;
+            return { covered: covered.length };
+          }
+          const hip = body.skeleton.bones[measure.joints.pelvis].getWorldPosition(new THREE.Vector3()), turn = (model?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion()).invert();
+          // (her skin sorted by the bones mostly carrying it: her arms' and legs' may leave the tee's cover by right)
+          const bones = body.skeleton.bones, limb = new Map<number, string>();
+          for (const [j, name] of [[measure.joints.shoulderL, 'arm'], [measure.joints.shoulderR, 'arm'], [measure.joints.elbowL, 'hand'], [measure.joints.elbowR, 'hand'], [measure.joints.hipL, 'leg'], [measure.joints.hipR, 'leg']] as const) bones[j]?.traverse((o) => { const b = bones.indexOf(o as THREE.Bone); if (b >= 0) limb.set(b, name); });
+          const si = body.geometry.getAttribute('skinIndex'), sw = body.geometry.getAttribute('skinWeight'), get = [si.getX, si.getY, si.getZ, si.getW], getW = [sw.getX, sw.getY, sw.getZ, sw.getW];
+          const kindOf = (i: number) => { const share: Record<string, number> = {}; for (let c = 0; c < 4; c++) { const kind = limb.get(get[c].call(si, i)) ?? 'torso'; share[kind] = (share[kind] ?? 0) + getW[c].call(sw, i); } return Object.entries(share).sort((a, b) => b[1] - a[1])[0][0]; };
+          const out: { v: number; out: number; at: number[]; kind: string }[] = [];
+          let front = -Infinity;
+          for (const i of frozenCovered) {
+            const o = offsetAt(i);
+            const local = v.clone().sub(hip).applyQuaternion(turn);
+            front = Math.max(front, local.z);
+            if (o === null || o <= 0.05) continue;
+            out.push({ v: i, out: +o.toFixed(2), at: [+local.x.toFixed(1), +local.y.toFixed(1), +local.z.toFixed(1)], kind: kindOf(i) });
+          }
+          out.sort((a, b) => b.out - a.out);
+          const torso = out.filter((p) => p.kind === 'torso');
+          // (her upper arms are the sleeves' to cover; her forearms and hands may leave the tee's cover by right)
+          const arm = out.filter((p) => p.kind === 'arm');
+          return { covered: frozenCovered.length, frontMost: +front.toFixed(1), pokes: out.length, torso: torso.length, torsoOver3mm: torso.filter((p) => p.out > 0.3).length, arm: arm.length, armOver3mm: arm.filter((p) => p.out > 0.3).length, hand: out.filter((p) => p.kind === 'hand').length, leg: out.filter((p) => p.kind === 'leg').length, worst: torso.slice(0, k), worstLimb: arm.slice(0, 6) };
         },
         steps: () => ({ heels: sneakers?.heels().map((h) => +(h / M).toFixed(4)) ?? null, heard: stepsHeard, sound: tileSteps.on, walkedM: +walked.toFixed(3), strideM: measure && rig ? +(humanStride(measure, 'walk', bump / 100) / rig.bindScale).toFixed(3) : null }),
         drapeInside: (o2?: { hide?: boolean; units?: number; factor?: number; noDepth?: boolean; opaque?: boolean; hang?: boolean; body?: boolean; list?: boolean }) => {
