@@ -35,7 +35,7 @@ import { BEND_COMPLIANCE } from './garment/garmentCloth';
 import { NavelSurface } from './garment/navelSurface';
 import { NavelPatch } from './garment/navelPatch';
 import { DRAPE_PROBE, setDrapeLead } from './tunicDrape';
-import { setCutEdge } from './garment/cutEdge';
+import { cutEdgeOn, setCutEdge } from './garment/cutEdge';
 import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorKey, withConstruction, type GarmentRecord, type GarmentSettings } from './garment/settings';
 import { GarmentPanel } from './garmentPanel';
 import { FaceMotion } from './faceMotion';
@@ -1350,6 +1350,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let garmentAuto: 'raglan' | 'setIn' | null = null, garmentProbed = false, garmentDressT = 0, garmentTailoring = false;
   /** A probe's look at the garment's shape alone: false draws her details through it as nothing (the shading off). */
   let garmentShade = true;
+  /** A probe's switch: the new tee's cut edges drawn by its material (true, as always), or its kept triangles whole. */
+  let teeCutDrawn = true;
   /** A probe's note of the skin the tee covered when it looked (`teePokes`). */
   let teeCovered: number[] = [];
   /**
@@ -6836,7 +6838,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // the cloth tee's cuts stay off a material the garment shares with it, and the garment's own are on (a probe's
         // plain tee carries no cut, so its edge is never dropped)
         setClothNeckline(garmentRoom.cloth.mesh.material as THREE.Material, null); setClothTrim(garmentRoom.cloth.mesh.material as THREE.Material, null);
-        if (garmentAuto) setCutEdge(garmentRoom.cloth.mesh.material as THREE.Material, true);
+        if (garmentAuto) setCutEdge(garmentRoom.cloth.mesh.material as THREE.Material, teeCutDrawn);
         if (Math.abs(clothFlattenWanted() - clothFlattenLaid) > 1e-3) applyLook();
       }
       // the fitted light tee (the cloth off): her nipples drawn through it and its own navel settled onto its smooth
@@ -7739,11 +7741,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { covered: teeCovered.length, frontMost: +front.toFixed(1), pokes: out.length, torso: torso.length, torsoOver3mm: torso.filter((p) => p.out > 0.3).length, arm: arm.length, armOver3mm: arm.filter((p) => p.out > 0.3).length, hand: out.filter((p) => p.kind === 'hand').length, leg: out.filter((p) => p.kind === 'leg').length, worst: torso.slice(0, k), worstLimb: arm.slice(0, 6) };
         },
         // the new tee's material as it draws (which faces, and how): a probe's look at whether a hole is a face turned away
-        teeMaterial: (patch?: { side?: number }) => {
+        teeMaterial: (patch?: { side?: number; cut?: boolean }) => {
           const m = garmentRoom?.cloth.mesh.material as THREE.Material | undefined;
           if (!m) return null;
           if (patch?.side !== undefined) { m.side = patch.side as THREE.Side; m.needsUpdate = true; }
-          return { name: m.name, side: m.side, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite };
+          // (its cut edges drawn by the material, or every kept triangle drawn whole)
+          if (patch?.cut !== undefined) { teeCutDrawn = patch.cut; setCutEdge(m, patch.cut); }
+          return { name: m.name, side: m.side, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite, cut: cutEdgeOn(m) };
         },
         // THE TEE ALONE (Joshua, 2026-11-07: "render the shirt by itself in a wireframe... hide the entire body so it's
         // easier to see holes"): everything else in the room hidden -- her body drawn neither in colour nor in depth, so
