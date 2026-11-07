@@ -80,3 +80,49 @@ describe('TunicDrape seated', () => {
     }
   });
 });
+
+describe('TunicDrape seated: the axis', () => {
+  // seated, her seat spreads back on what she sits on: at her hip joints' height, without her thighs, the slice is
+  // mostly seat, and an axis measured there came to within a centimetre of her lower back above it -- skin a
+  // centimetre out in any direction round it, and shards of drape at her sides (2026-11-06, at 100%)
+  function spread(): { body: THREE.SkinnedMesh; map: BodyMap } {
+    const { body, map } = sitting(true), g = body.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal');
+    const pos = Array.from(P.array as Float32Array), nor = Array.from(N.array as Float32Array);
+    const region = Array.from(map.region), trunk = Array.from(map.trunk), around = Array.from(map.around);
+    for (let j = 0; j <= 30; j++) for (let k = 0; k <= 30; k++) for (const y of [-0.015, 0, 0.015]) {
+      pos.push(-0.15 + j * 0.01, y, -0.18 - k * 0.008); nor.push(0, 0, -1);
+      region.push(regionOf('seat')); trunk.push(y); around.push(0);
+    }
+    const h = new THREE.BufferGeometry(), n = pos.length / 3;
+    h.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    h.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    h.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Uint16Array(n * 4), 4));
+    const sw = new Float32Array(n * 4);
+    for (let v = 0; v < n; v++) sw[v * 4] = 1;
+    h.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+    const b = new THREE.SkinnedMesh(h), bone = new THREE.Bone();
+    b.add(bone); b.updateMatrixWorld(true); b.bind(new THREE.Skeleton([bone]));
+    return { body: b, map: { region: Uint8Array.from(region), trunk: Float32Array.from(trunk), around: Float32Array.from(around), arm: new Float32Array(n).fill(NaN), trunkLength: 1 } as BodyMap };
+  }
+
+  it('runs through the middle of her trunk above her hips, not her seat\'s slice: nothing stands out past her sides', () => {
+    const { body, map } = spread(), drape = new TunicDrape(body, map, -0.3);
+    drape.wear(-0.01);
+    drape.update(0);
+    expect(drape.inside.lap).toBeGreaterThan(0);
+    // her seat pulled the hips' slice 9 cm back of her trunk's middle (0.15 of her trunk: 90 mm); the axis is her trunk's
+    expect(drape.inside.axisMm).toBeGreaterThan(60);
+    const P = drape.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, C = drape.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+    let widest = 0;
+    for (let i = 0; i < P.count; i++) if (C.getW(i) > 0.01 && P.getY(i) > 0.05) widest = Math.max(widest, Math.abs(P.getX(i)));
+    // above her seat, her sides are 0.18 out; the drape a centimetre past them at most
+    expect(widest).toBeLessThan(0.19);
+  });
+
+  it('standing, the axis is her hip joints\' slice, as it was', () => {
+    const { body, map } = sitting(false), drape = new TunicDrape(body, map, -0.3);
+    drape.wear(-0.15);
+    drape.update(0);
+    expect(drape.inside.axisMm).toBe(0);
+  });
+});

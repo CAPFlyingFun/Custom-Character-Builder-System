@@ -372,9 +372,13 @@ export function labTitle(version: string): string {
 /** The cloth's line while she is seated: the fitted tee is worn then, and the cloth waits for her to stand. */
 export const CLOTH_SEATED_LINE = 'CLOTH · seated: the fitted tee is worn until she stands';
 
-/** The SHIRT LENGTH line: 0 just above her crotch, 1 just above her knee. */
-export function shirtLengthLine(length: number): string {
-  const pct = Math.round(Math.max(0, Math.min(1, length)) * 100);
+/**
+ * The SHIRT LENGTH line: 0 just above her crotch, 1 just above her knee. With no length to choose (`longest` 0, as a
+ * painted shirt is now: paintTemplates.PAINTED_SHIRT_LONGEST), where every painted shirt ends, and where a longer one is.
+ */
+export function shirtLengthLine(length: number, longest = 1): string {
+  if (longest <= 0) return 'SHIRT LENGTH · just above the groin · longer shirts: CLOTH SIM';
+  const pct = Math.round(Math.max(0, Math.min(longest, length)) * 100);
   const where = pct <= 3 ? 'just above the crotch' : pct >= 97 ? 'just above the knee' : pct < 40 ? 'upper thigh' : pct < 70 ? 'mid-thigh' : 'above the knee';
   return `SHIRT LENGTH · ${pct}% · ${where}`;
 }

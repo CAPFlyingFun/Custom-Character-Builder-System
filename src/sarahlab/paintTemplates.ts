@@ -284,6 +284,23 @@ export function shirtHem(map: BodyMap, length: number): number {
 }
 /** The shirts' length until it is moved: 0%, his marked line just above her crotch (Joshua, 2026-10-22). */
 export const DEFAULT_SHIRT_LENGTH = 0;
+/**
+ * The longest a PAINTED shirt goes, as a LENGTH: 0, his line just above her groin (Joshua, 2026-11-06, drawn on her
+ * front and side: "for now, limit the lowest a painted shirt can go is right here… just above the groin so it can look
+ * natural. Anything more than that will have to be the sim shirts"). Paint lies on her skin: longer, it ran down her
+ * thighs as paint, and sitting, it lay on her lap like leggings ("shirts don't look like this"). The scale itself
+ * (`shirtHem`, to her knee) is unchanged. GAME TUNING (his call).
+ */
+export const PAINTED_SHIRT_LONGEST = 0;
+/**
+ * Whether a painted shirt wears the drape below its waist (`tunicDrape.ts`: the sheet that spans what paint cannot, from
+ * her waist to the hem, with its hem band). Off: a painted shirt ends above the line it was made for (Joshua,
+ * 2026-11-06: "Remove that bottom flap skin on the painted shirt… it shouldn't need it as it is higher than that line").
+ * The drape itself is kept, whole and tested, for a painted shirt that may one day go lower again.
+ */
+export const PAINTED_SHIRT_DRAPE = false;
+/** A painted shirt's LENGTH as it may be worn: from 0 up to PAINTED_SHIRT_LONGEST. */
+export const paintedShirtLength = (length: number): number => Math.max(0, Math.min(PAINTED_SHIRT_LONGEST, Number.isFinite(length) ? length : 0));
 /** The crew opening's width round her neck, in neck radii (what `open` is for a crew at LINES.neckCrew). */
 const CREW_OPEN = 1.5 + (0.97 - LINES.neckCrew) * 4;
 /** How far down the back strip, as a share of the cut's height behind, its rounded corner into the top edge begins. */
@@ -373,7 +390,7 @@ export const COVERAGE_DIALS: readonly CoverageDial[] = Object.freeze([
   { id: 'legEnd', name: 'LEG LENGTH', min: 0, max: 1 },
   { id: 'legCut', name: 'LEG CUT HEIGHT', min: -0.2, max: 0.35 },
   { id: 'hem', name: 'HEM / BELLY', min: -0.3, max: 0.75 },
-  { id: 'length', name: 'SHIRT LENGTH', min: 0, max: 1 },
+  { id: 'length', name: 'SHIRT LENGTH', min: 0, max: PAINTED_SHIRT_LONGEST },
   { id: 'neck', name: 'NECKLINE / TOP EDGE', min: 0.7, max: 1 },
   { id: 'sleeve', name: 'SLEEVE', min: -0.05, max: 1 },
 ].map((d) => Object.freeze(d)) as CoverageDial[]);
@@ -384,7 +401,8 @@ export function dialsFor(p: CoverageParams): CoverageDial['id'][] {
   if (p.riseFront !== null && p.riseFront > -5 && p.riseFront < 1) out.push('rise', 'riseBack');
   if (p.riseFront !== null && p.legStart > 0) out.push('legStart');
   if (p.legCut) out.push('legCut'); else if (p.riseFront !== null) out.push('legEnd');
-  if (p.length !== null) out.push('length');
+  // (a shirt's length is a dial only while a painted shirt has any length to choose from: PAINTED_SHIRT_LONGEST)
+  if (p.length !== null) { if (PAINTED_SHIRT_LONGEST > 0) out.push('length'); }
   else if (p.hemFront !== null && p.hemFront > -1) out.push('hem');
   if (p.neckFront !== null) out.push('neck');
   if (p.hemFront !== null) out.push('sleeve');
@@ -414,7 +432,7 @@ export function withDial(p: CoverageParams, dial: CoverageDial['id'], value: num
     case 'legEnd': return { ...p, legEnd: Math.max(value, p.legStart) };
     case 'legCut': return p.legCut ? { ...p, legCut: { ...p.legCut, side: value } } : p;
     case 'hem': return { ...p, hemFront: value, hemBack: (p.hemBack ?? value) + value - (p.hemFront ?? value) };
-    case 'length': return { ...p, length: Math.max(0, Math.min(1, value)) };
+    case 'length': return { ...p, length: paintedShirtLength(value) };
     // a bandeau's top edge, front and back together; otherwise the neckline's depth
     case 'neck': return p.topFront !== null ? { ...p, topFront: value, topBack: (p.topBack ?? value) + value - p.topFront } : { ...p, neckFront: value };
     case 'sleeve': return { ...p, sleeve: value };

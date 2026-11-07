@@ -41,7 +41,7 @@ import { TINT_BASE_COLOUR, readTint, tintLabel, tintPixels } from './fabricTint'
 import { HEM_LIFT_FLAT, HEM_LIFT_RIBBED, TunicDrape } from './tunicDrape';
 import { AUTO_DETAIL, type DetailOverride, type SavedClothes } from './characterSaves';
 import {
-  COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, dialValue, dialsFor, pieceKind, shirtHem,
+  COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
   withDial, type CoverageParams, type PieceKind,
 } from './paintTemplates';
 
@@ -580,7 +580,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   function moveDial(dial: (typeof COVERAGE_DIALS)[number]['id'], value: number): void {
     const i = layer(), t = i >= 0 ? templates[i] : null, p = bodyPaint(), map = regionMap();
     if (!t || !p || !map) return;
-    if (dial === 'length') shirtLength = value;
+    if (dial === 'length') shirtLength = paintedShirtLength(value);
     templates[i] = { id: t.id, params: withDial(t.params, dial, value) };
     p.setLayer(i, coverage(map, templates[i]!.params));
     sync(); draw(); touched();
@@ -885,7 +885,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (p && p.has(i) && layerShown(i) && paintChoices[i].fabric && templates[i] && templates[i]!.params.length !== null) top = i;
     }
     const map = regionMap();
-    if (top < 0 || painting || !p || !map || !(body as THREE.SkinnedMesh).isSkinnedMesh) { drape?.wear(null); unhang(); layHang(); return; }
+    // (no drape on a painted shirt now: PAINTED_SHIRT_DRAPE)
+    if (!PAINTED_SHIRT_DRAPE || top < 0 || painting || !p || !map || !(body as THREE.SkinnedMesh).isSkinnedMesh) { drape?.wear(null); unhang(); layHang(); return; }
     drapeLayer = top;
     if (drape && drape.mesh.parent !== body) { drape.dispose(); drape = null; }
     if (!drape) drape = new TunicDrape(body as THREE.SkinnedMesh, map, shirtHem(map, 1));
@@ -896,7 +897,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     drape.feathered();
   }
   function setShirtLength(length: number): void {
-    shirtLength = Math.max(0, Math.min(1, length));
+    shirtLength = paintedShirtLength(length);
     const p = bodyPaint(), map = regionMap();
     if (!p || !map) return;
     for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
@@ -1043,7 +1044,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   function putOnClothes(saved: Omit<SavedClothes, 'outfit'>): boolean {
     const p = bodyPaint(), map = regionMap();
     if (!p || !map) return false;
-    shirtLength = Math.max(0, Math.min(1, saved.shirtLength));
+    // (a look saved with a longer painted shirt is worn at the longest a painted shirt goes now)
+    shirtLength = paintedShirtLength(saved.shirtLength);
     for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
       const l = saved.layers[i] ?? null;
       if (l) {

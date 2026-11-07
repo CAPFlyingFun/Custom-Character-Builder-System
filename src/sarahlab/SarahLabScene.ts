@@ -5,7 +5,7 @@ import { garmentTexturePanel } from './garmentTexturePanel';
 import { fabricPanel, type FabricPanel } from './fabricPanel';
 import { strapBuilder, type StrapBuilder } from './strapBuilder';
 import { mapBody } from './bodyRegions';
-import { DEFAULT_SHIRT_LENGTH } from './paintTemplates';
+import { DEFAULT_SHIRT_LENGTH, PAINTED_SHIRT_LONGEST } from './paintTemplates';
 import { AUTO_DETAIL, EMPTY_BOOK, type CharacterBook, type SavedBody, type SavedClothes } from './characterSaves';
 import { characterPanel, type CharacterPanel } from './characterPanel';
 import { outfitPanel, type OutfitPanel, type OutfitSource } from './outfitPanel';
@@ -1489,7 +1489,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const lengthField = fields[SARAH_LAB_FIELD.shirtLength], length = fabric?.shirtLength() ?? DEFAULT_SHIRT_LENGTH;
     // it moves a painted shirt and nothing else: with none on, it says so and cannot be moved
     const shirtOn = fabric?.wearsShirt() ?? false;
-    if (lengthField) lengthField.textContent = shirtLengthLine(length) + (shirtOn ? '' : ' · painted shirts only');
+    if (lengthField) lengthField.textContent = shirtLengthLine(length, PAINTED_SHIRT_LONGEST) + (shirtOn ? '' : ' · painted shirts only');
     if (shirtLengthInput) shirtLengthInput.disabled = !shirtOn;
     if (shirtLengthInput && Number(shirtLengthInput.value) !== Math.round(length * 100)) shirtLengthInput.value = String(Math.round(length * 100));
     const armsField = fields[SARAH_LAB_FIELD.arms];
@@ -2513,7 +2513,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       }, 1000, 'pose');
       { const f = fields[SARAH_LAB_FIELD.birthTime]; if (f) f.textContent = 'TIMELINE · drag to any moment'; } }
     // a painted shirt's length, for every painted shirt she puts on (its drape follows: tunicDrape.ts)
-    shirtLengthInput = slider(SARAH_LAB_FIELD.shirtLength, Math.round(DEFAULT_SHIRT_LENGTH * 100), (v) => { fabric?.setShirtLength(v / 100); }, 100, 'outfit');
+    shirtLengthInput = slider(SARAH_LAB_FIELD.shirtLength, Math.round(DEFAULT_SHIRT_LENGTH * 100), (v) => { fabric?.setShirtLength(v / 100); }, Math.round(PAINTED_SHIRT_LONGEST * 100), 'outfit');
+    // (no length left to choose, the line stays and says where painted shirts end; the slider goes -- one that cannot
+    // move must not look as if it could)
+    if (PAINTED_SHIRT_LONGEST <= 0) { shirtLengthInput.remove(); shirtLengthInput = null; }
     // THE CLOTH EXPERIMENT: the light tee as cloth, and its length to mid-thigh (Joshua, 2026-10-23)
     buttons.cloth = btn('CLOTH SIM · ON', SARAH_LAB_ACTION.cloth, () => { clothWanted = !clothOn; void toggleCloth(); });
     buttons.cloth.dataset.tab = 'outfit';

@@ -201,8 +201,8 @@ export class TunicDrape {
   /** How much of the shirt's paint each vertex of her has (`wear`), or null. */
   private covered: ((v: number) => number) | null = null;
   /** For a probe: of the points that show, how many are drawn inside her skin as measured, and the deepest (mm); and how
-   * many of her vertices were her lap, left out (LAP_LIFT). */
-  inside = { shown: 0, inside: 0, worstMm: 0, lap: 0 };
+   * many of her vertices were her lap, left out (LAP_LIFT), and how far the axis is from her hip joints' slice (mm). */
+  inside = { shown: 0, inside: 0, worstMm: 0, lap: 0, axisMm: 0 };
   private dirty = true;
   private lastBuild = -Infinity;
   private readonly motion: number[] = [];
@@ -367,10 +367,27 @@ export class TunicDrape {
     for (let i = 0; i < nc; i++) { const r = rowOf(i); if (r >= 0 && r < rows) buckets[r].push(i); }
     // the upright axis: through the middle of her at her hip joints
     let ax = 0, az = 0, na = 0;
+    const r0 = Math.round(T_TOP / step);
     {
-      const r0 = Math.round(T_TOP / step), slice = [...(buckets[r0 - 1] ?? []), ...(buckets[r0] ?? []), ...(buckets[r0 + 1] ?? [])];
+      const slice = [...(buckets[r0 - 1] ?? []), ...(buckets[r0] ?? []), ...(buckets[r0 + 1] ?? [])];
       for (const i of slice) { ax += px[i]; az += pz[i]; na++; }
       ax = na ? ax / na : 0; az = na ? az / na : 0;
+    }
+    // ...but seated, through the middle of her trunk above them, row by row: there, without her thighs, her hips' slice
+    // is mostly her seat spread back on what she sits on, and the axis came to within a centimetre of her lower back
+    // above it (measured at 100%, 2026-11-06). Her skin there fell into any direction round it -- her sides too -- as
+    // skin a centimetre out, and the drape laid on it stood out at her sides in shards by her wrists
+    let axisMm = 0;
+    if (lapN) {
+      let sx = 0, sz = 0, nr = 0;
+      for (let r = 0; r <= Math.min(r0, rows - 1); r++) {
+        const b = buckets[r];
+        if (!b.length) continue;
+        let cx = 0, cz = 0;
+        for (const i of b) { cx += px[i]; cz += pz[i]; }
+        sx += cx / b.length; sz += cz / b.length; nr++;
+      }
+      if (nr) { axisMm = Math.hypot(sx / nr - ax, sz / nr - az) / T * TRUNK_MM; ax = sx / nr; az = sz / nr; }
     }
     const n = rows * COLUMNS;
     const R = new Float64Array(n), skin = new Float64Array(n), alpha = new Float32Array(n), standOff = new Float32Array(n), fixed = new Uint8Array(n);
@@ -739,7 +756,7 @@ export class TunicDrape {
       // (for a probe: where it shows, how much of it is drawn inside her skin as measured)
       let shownN = 0, inside = 0, worst = 0;
       for (let i = 0; i < n; i++) if (skin[i] > 0 && alpha[i] > 0.01) { shownN++; const d = skin[i] - radius[i]; if (d > 0.0005 * T) { inside++; worst = Math.max(worst, d); } }
-      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2), lap: lapN };
+      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2), lap: lapN, axisMm: Math.round(axisMm) };
       this.mesh.userData.drapeInside = this.inside;
     }
     // the skin it hangs clear of: each of her vertices against the drape AS DRAWN, at its own height and direction. (It

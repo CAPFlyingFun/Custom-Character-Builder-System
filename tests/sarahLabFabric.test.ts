@@ -216,8 +216,9 @@ describe('templates wrap round her (Joshua, 2026-10-20: no gaps at the hips, smo
       expect(Array.from(c).every((x) => x === 1), `${id}: ${Array.from(c).join(',')}`).toBe(true);
     }
     // and a shirt reaching the top of her thighs covers the hip's side too (at 0%, Joshua's line, its hem is right at
-    // her hip joints' height, so that side is the hem itself)
-    expect(coverage(m, withDial(t('teeShort'), 'length', 0.2))[1]).toBe(1);
+    // her hip joints' height, so that side is the hem itself). (The scale's own reach: a PAINTED shirt goes no lower
+    // than 0% now -- PAINTED_SHIRT_LONGEST)
+    expect(coverage(m, { ...t('teeShort'), length: 0.2 })[1]).toBe(1);
   });
 });
 
@@ -406,7 +407,7 @@ describe('U- and V-neck necklines (Joshua, 2026-10-22)', () => {
   });
 });
 
-import { DEFAULT_SHIRT_LENGTH, dialValue, dialsFor, legLandmarks, shirtHem } from '../src/sarahlab/paintTemplates';
+import { DEFAULT_SHIRT_LENGTH, PAINTED_SHIRT_LONGEST, dialValue, dialsFor, legLandmarks, paintedShirtLength, shirtHem } from '../src/sarahlab/paintTemplates';
 import { shirtLengthLine } from '../src/sarahlab/sarahLabTool';
 describe('shirt length (Joshua, 2026-10-22: "from knee-length up to just above the crotch")', () => {
   // her crotch's lowest skin at -0.2, knee skin from -0.9 to -0.7, thigh skin at -0.25 and -0.6
@@ -425,23 +426,35 @@ describe('shirt length (Joshua, 2026-10-22: "from knee-length up to just above t
     expect(shirtHem(m, 1)).toBeCloseTo(-0.7, 6);
     expect(shirtHem(m, 2)).toBe(shirtHem(m, 1));
   });
-  it('is the dial every tee offers in place of the hem, and its hem is level', () => {
+  it('is every tee\'s length in place of the hem (a dial while a painted shirt has a length to choose), and its hem is level', () => {
     for (const id of ['teeShort', 'teeU', 'teeV', 'teeLong', 'tank']) {
       expect(t(id).length, id).toBe(DEFAULT_SHIRT_LENGTH);
-      expect(dialsFor(t(id))).toContain('length');
+      expect(dialsFor(t(id)).includes('length')).toBe(PAINTED_SHIRT_LONGEST > 0);
       expect(dialsFor(t(id))).not.toContain('hem');
     }
     expect(t('crop').length).toBeNull();
-    const long = withDial(t('teeShort'), 'length', 1), short = withDial(t('teeShort'), 'length', 0);
-    expect(dialValue(long, 'length')).toBe(1);
-    // the thigh at -0.6 is under a knee-length shirt, not under the shortest; the one at -0.25 under the long one too
+    // the scale: the thigh at -0.6 is under a knee-length shirt, not under the shortest; the one at -0.25 under the long
+    // one too
+    const long = { ...t('teeShort'), length: 1 }, short = withDial(t('teeShort'), 'length', 0);
     expect(coverage(m, long)[6]).toBe(1);
     expect(coverage(m, short)[6]).toBe(0);
     expect(coverage(m, long)[5]).toBe(1);
+  });
+
+  it('a painted shirt goes no lower than just above her groin (Joshua, 2026-11-06: "Anything more than that will have to be the sim shirts")', () => {
+    expect(PAINTED_SHIRT_LONGEST).toBe(0);
+    for (const v of [0, 0.3, 1, 5, -1, NaN]) expect(paintedShirtLength(v), String(v)).toBe(Math.max(0, Math.min(PAINTED_SHIRT_LONGEST, v || 0)));
+    // asked for knee length, it is the longest a painted shirt goes: neither thigh is under it
+    const asked = withDial(t('teeShort'), 'length', 1);
+    expect(dialValue(asked, 'length')).toBe(PAINTED_SHIRT_LONGEST);
+    expect(coverage(m, asked)[6]).toBe(0);
+    expect(coverage(m, asked)[5]).toBe(0);
   });
   it('says where it ends', () => {
     expect(shirtLengthLine(0)).toContain('just above the crotch');
     expect(shirtLengthLine(1)).toContain('just above the knee');
     expect(shirtLengthLine(0.2)).toContain('20%');
+    // with no length left to choose, where every painted shirt ends, and where a longer one is
+    expect(shirtLengthLine(0.5, 0)).toBe('SHIRT LENGTH · just above the groin · longer shirts: CLOTH SIM');
   });
 });
