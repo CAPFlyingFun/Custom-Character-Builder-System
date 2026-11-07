@@ -140,6 +140,25 @@ describe('character saves', () => {
     expect(resolveClothes(book, same)!.detail).toEqual(AUTO_DETAIL);
   });
 
+  it('keeps her sneakers with her clothes: saved, read back, an override on a shared outfit, and none said kept as none', () => {
+    // (Joshua, 2026-11-07: her sneakers, sneakers.ts)
+    const shod: SavedClothes = { ...tee(0), shoes: 'sneakers' };
+    const back = importBook(exportBook(saveOutfit(EMPTY_BOOK, 'Lab day', shod, 't1')))!;
+    expect(back.outfits[0].clothes.shoes).toBe('sneakers');
+    expect(importBook(JSON.stringify({ version: 1, outfits: [{ name: 'x', clothes: { ...tee(0), shoes: 'boots' } }] }))!.outfits[0].clothes.shoes).toBeUndefined();
+    // on a shared outfit without them, her sneakers are one of her overrides, and resolve back
+    let book = saveOutfit(EMPTY_BOOK, 'Casual', tee(0), 't1');
+    const ref = clothesFor(book, shod, 'Casual');
+    expect('basedOn' in ref && ref.overrides.shoes).toBe('sneakers');
+    book = saveInto(book, 'Sarah', 'clothes', body(0), ref, 't2');
+    expect(resolveClothes(book, book.characters[0].clothes)!.shoes).toBe('sneakers');
+    // barefoot on that outfit is no change; a save from before shoes is barefoot when compared
+    const bare = clothesFor(book, { ...tee(0), shoes: 'none' }, 'Casual');
+    expect('basedOn' in bare && 'shoes' in bare.overrides).toBe(false);
+    expect(sameClothes(tee(0), { ...tee(0), shoes: 'none' })).toBe(true);
+    expect(sameClothes(tee(0), shod)).toBe(false);
+  });
+
   it('tells changed clothes from unchanged ones, and saving a copy as new never touches the original', () => {
     expect(sameClothes(tee(0), { ...tee(0), detail: AUTO_DETAIL })).toBe(true);
     expect(sameClothes(tee(0), tee(12))).toBe(false);

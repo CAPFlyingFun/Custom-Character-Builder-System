@@ -912,11 +912,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * her skeleton like her skin; standing, she is lifted onto their soles. Only on her approved v2 body (her build's rig).
    */
   let sneakers: Sneakers | null = null, sneakersOn = false;
+  /** The body her sneakers were last made for (or tried for): put on before she loaded, they are made once she has. */
+  let sneakersFor: THREE.Object3D | null = null;
   /** Her sneakers shown now: on, and not in a birth position. */
   const sneakersShown = () => sneakersOn && !!sneakers && !isBirthPose(pose);
   function setSneakers(on: boolean): void {
     sneakersOn = on;
     if (on && !sneakers && buildRig && measure && model) {
+      sneakersFor = model;
       const b = bodyOf(), s = b ? shaped.find((x) => x.mesh === b.mesh) : undefined;
       if (b && s) {
         try { sneakers = new Sneakers(b.mesh, s.fields.basePos, restOfMesh(b.mesh, model), [measure.joints.ankleL, measure.joints.ankleR]); } catch (error) { console.error('[sarahlab] her sneakers could not be made', error); sneakers = null; }
@@ -2083,7 +2086,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const built = builder?.built() ?? null;
     // an outfit whose tee is the new one keeps its settings and the dials it is worn with (never its mesh)
     const garment: GarmentRecord | null = OUTFITS[outfit]?.procedural ? { version: GARMENT_RECORD_VERSION, settings: garmentSettings, dials: clothTune } : null;
-    return { outfit: OUTFITS[outfit].name, ...(fabric?.clothes() ?? { shirtLength: DEFAULT_SHIRT_LENGTH, layers: [], garments: {} }), ...(built ? { built } : {}), ...(garment ? { garment } : {}) };
+    return { outfit: OUTFITS[outfit].name, ...(fabric?.clothes() ?? { shirtLength: DEFAULT_SHIRT_LENGTH, layers: [], garments: {} }), ...(built ? { built } : {}), ...(garment ? { garment } : {}), shoes: sneakersOn ? 'sneakers' : 'none' };
   }
   /**
    * The new tee's settings as an outfit goes on (Stage 3): a save's record -- its settings and the cloth dials it was
@@ -2121,6 +2124,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function putOnSaved(saved: SavedClothes, from: string | null, source: OutfitSource): void {
     wornFrom = from;
     nextSource = source;
+    // her shoes as the save has them (a save from before them, or one of the room's outfits, leaves her feet as they are)
+    if (saved.shoes && (saved.shoes === 'sneakers') !== sneakersOn) setSneakers(saved.shoes === 'sneakers');
     const { outfit: name, ...rest } = saved;
     const index = OUTFITS.findIndex((o) => o.name === name);
     pendingClothes = rest;
@@ -6664,7 +6669,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (sitMoving) { sitAmount = stepSit(sitAmount, pose === 'sit' ? 1 : 0, dt); if (sitAmount === (pose === 'sit' ? 1 : 0)) { sitMoving = false; applyLook(); } }
       else sitAmount = pose === 'sit' ? 1 : 0;
       if (rig) rig.apply(currentTurns());
-      // (her sneakers off in a birth position, on again out of it -- and her lift onto their soles with them)
+      // (her sneakers off in a birth position, on again out of it -- and her lift onto their soles with them; put on
+      // before she had loaded, made now she has)
+      if (sneakersOn && !sneakers && buildRig && model && sneakersFor !== model) setSneakers(true);
       if (sneakers && sneakers.visible !== sneakersShown()) { sneakers.visible = sneakersShown(); bonesBuilt = ''; layBuildBones(currentBuild()); }
       settleBelly(dt);
       naturalOpening(dt);

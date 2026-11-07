@@ -360,17 +360,18 @@ export function buildSneaker(foot: FootMeasure): SneakerBuild {
   for (const side of [1, -1] as const) {
     const base = P.length / 3;
     halfStart.push(base);
-    // texture places: along the shoe and round its section, both in metres, a knit repeat every 1.5 cm
+    // texture places: along the shoe and round its section, both in metres, a knit repeat every 1.5 cm -- round it from
+    // the top of the toe down each side, so the knit runs on unbroken over the seam where the two halves meet
     for (let i = 0; i < sec.length; i++) {
-      const r = sec[i], top = edge(r);
-      let arc = 0, prev = at(r, side, 0);
+      const r = sec[i], top = edge(r), pts: V3[] = [];
+      for (let j = 0; j <= ACROSS; j++) pts.push(at(r, side, (j / ACROSS) * top));
+      const arcs = [0];
+      for (let j = 1; j <= ACROSS; j++) arcs.push(arcs[j - 1] + Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1], pts[j][2] - pts[j - 1][2]));
       for (let j = 0; j <= ACROSS; j++) {
-        const phi = (j / ACROSS) * top, q = at(r, side, phi);
-        arc += Math.hypot(q[0] - prev[0], q[1] - prev[1], q[2] - prev[2]); prev = q;
         // darker overlays: the heel counter, and the eyelet stays along the throat
         const heel = r.t < 0.16 ? 1 - smooth01((r.t - 0.1) / 0.06) : 0;
         const stay = r.t > S.throatBack - 0.02 && r.t < S.throatFront ? smooth01((j / ACROSS - 0.72) / 0.12) : 0;
-        point(q, [r.u / 0.015, side * arc / 0.015], Math.max(heel * 0.55, stay * 0.8));
+        point(pts[j], [r.u / 0.015, side * (arcs[ACROSS] - arcs[j]) / 0.015], Math.max(heel * 0.55, stay * 0.8));
       }
     }
     for (let i = 0; i + 1 < sec.length; i++) for (let j = 0; j < ACROSS; j++) {
@@ -386,7 +387,10 @@ export function buildSneaker(foot: FootMeasure): SneakerBuild {
   // ---- the midsole: its side wall round the shoe, bite line to bottom, rounded at the bottom edge; its bottom; the
   // ledge from its top edge in to the upper
   from = I.length;
-  const ring: { r: Profile; side: 1 | -1 }[] = [...rows.map((r) => ({ r, side: 1 as const })), ...rows.slice().reverse().map((r) => ({ r, side: -1 as const }))];
+  // (round the rows it has any width at: past its tips, its two sides were one point many times over, and down its toe
+  // and its heel the same point twice, a seam its light showed)
+  const mids = rows.filter((r) => r.mw > 0);
+  const ring: { r: Profile; side: 1 | -1 }[] = [...mids.map((r) => ({ r, side: 1 as const })), ...mids.slice().reverse().map((r) => ({ r, side: -1 as const }))];
   const LEVELS = 7, ringBase = P.length / 3;
   const upperAt = (r: Profile, side: 1 | -1) => { const s = sec.find((x) => x.u === r.u); return s ? s.c + side * s.w : r.mc; };
   const wallAt = (r: Profile, side: 1 | -1, level: number): V3 => {
@@ -420,8 +424,8 @@ export function buildSneaker(foot: FootMeasure): SneakerBuild {
   // its bottom, the outsole: across from one side to the other, row by row
   from = I.length;
   const bottomBase = P.length / 3;
-  for (const r of rows) for (const side of [1, -1] as const) point(wallAt(r, side, 0), [r.u / 0.02, (r.mc + side * r.mw) / 0.02], 0);
-  for (let i = 0; i + 1 < rows.length; i++) {
+  for (const r of mids) for (const side of [1, -1] as const) point(wallAt(r, side, 0), [r.u / 0.02, (r.mc + side * r.mw) / 0.02], 0);
+  for (let i = 0; i + 1 < mids.length; i++) {
     const a = bottomBase + 2 * i, b = a + 1, c = a + 2, d = a + 3;
     I.push(a, c, b, b, c, d);
   }

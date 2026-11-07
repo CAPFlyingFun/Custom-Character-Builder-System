@@ -108,7 +108,15 @@ export interface SavedClothes {
    * absent for every other outfit, and in saves made before it, which load exactly as they did.
    */
   readonly garment?: GarmentRecord;
+  /**
+   * HER SHOES (sneakers.ts; Joshua, 2026-11-07): 'sneakers' or 'none'. Absent in saves made before them and in the
+   * room's own outfits: whatever she has on her feet stays on.
+   */
+  readonly shoes?: Shoes;
 }
+
+/** What she has on her feet. */
+export type Shoes = 'sneakers' | 'none';
 
 /** What a character changed on a library outfit: per paint layer her fabric choice and detail, her garments, her length. */
 export interface ClothesOverrides {
@@ -119,6 +127,8 @@ export interface ClothesOverrides {
   readonly detail?: DetailOverride | null;
   /** Her changes to the outfit's new tee; absent or null keeps the outfit's. */
   readonly garment?: GarmentOverride | null;
+  /** Her shoes when they differ from the outfit's; absent or null keeps the outfit's. */
+  readonly shoes?: Shoes | null;
 }
 
 /**
@@ -244,12 +254,15 @@ export function clothesFor(book: CharacterBook, current: SavedClothes, wornFrom:
   const detail = json(current.detail ?? AUTO_DETAIL) !== json(base.clothes.detail ?? AUTO_DETAIL) ? { detail: current.detail ?? AUTO_DETAIL } : {};
   // her tee against the outfit's, or against the default tee the room puts on for an outfit that holds no record
   const garment = current.garment ? garmentOverride(base.clothes.garment ?? GARMENT_RECORD_DEFAULT, current.garment) : null;
-  return { basedOn: base.name, overrides: { layers, garments, shirtLength: current.shirtLength !== base.clothes.shirtLength ? current.shirtLength : null, ...detail, ...(garment ? { garment } : {}) } };
+  // her shoes, where she has some the outfit says nothing of or other than it says
+  const shoes = current.shoes && current.shoes !== (base.clothes.shoes ?? 'none') ? { shoes: current.shoes } : {};
+  return { basedOn: base.name, overrides: { layers, garments, shirtLength: current.shirtLength !== base.clothes.shirtLength ? current.shirtLength : null, ...detail, ...(garment ? { garment } : {}), ...shoes } };
 }
 
 /** Two sets of clothes that put on the same: every layer, fabric, garment, length, detail and the new tee (for "changed?"). */
 export function sameClothes(a: SavedClothes, b: SavedClothes): boolean {
-  const norm = (c: SavedClothes) => json({ ...c, garment: undefined, detail: c.detail ?? AUTO_DETAIL, layers: c.layers.map((l) => l ?? null) });
+  // (her shoes last whoever said them, none said being none)
+  const norm = (c: SavedClothes) => json({ ...c, garment: undefined, shoes: undefined, detail: c.detail ?? AUTO_DETAIL, layers: c.layers.map((l) => l ?? null), feet: c.shoes ?? 'none' });
   // no record is the default tee, so a save from before it never reads as changed once the room puts the tee on
   return norm(a) === norm(b) && sameGarmentRecord(a.garment ?? GARMENT_RECORD_DEFAULT, b.garment ?? GARMENT_RECORD_DEFAULT);
 }
@@ -277,6 +290,8 @@ export function resolveClothes(book: CharacterBook, clothes: SavedClothes | Outf
     // with her changes, her tee whole: the outfit's record (the default when it holds none) under them; without, the
     // outfit's record as it is, and no record stays none
     ...(mine ? { garment: wornGarment(base.clothes.garment ?? GARMENT_RECORD_DEFAULT, mine) } : {}),
+    // her shoes over the outfit's
+    ...(o.shoes ? { shoes: o.shoes } : {}),
   };
 }
 
@@ -392,7 +407,7 @@ function readRef(v: unknown): OutfitRef | null {
   }) : [];
   return {
     basedOn: str(v.basedOn, 80),
-    overrides: { layers, garments, shirtLength: typeof o.shirtLength === 'number' ? num(o.shirtLength, 0, 1, 0) : null, ...(isRecord(o.detail) ? { detail: readDetail(o.detail) } : {}), ...readGarmentOverride(o.garment) },
+    overrides: { layers, garments, shirtLength: typeof o.shirtLength === 'number' ? num(o.shirtLength, 0, 1, 0) : null, ...(isRecord(o.detail) ? { detail: readDetail(o.detail) } : {}), ...readGarmentOverride(o.garment), ...readShoes(o.shoes) },
   };
 }
 function readClothes(v: unknown): SavedClothes | null {
@@ -407,7 +422,12 @@ function readClothes(v: unknown): SavedClothes | null {
     ...(isRecord(v.detail) ? { detail: readDetail(v.detail) } : {}),
     ...built(v.built),
     ...readGarment(v.garment),
+    ...readShoes(v.shoes),
   };
+}
+/** Her shoes from untrusted data: one of the known, else none said. */
+function readShoes(v: unknown): { shoes?: Shoes } {
+  return v === 'sneakers' || v === 'none' ? { shoes: v } : {};
 }
 /** Built pieces from untrusted data: only a readable set with something in it. */
 function built(v: unknown): { built?: BuiltPieces } {

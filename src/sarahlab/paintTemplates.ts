@@ -524,9 +524,10 @@ export function coverage(map: BodyMap, p: CoverageParams): Float32Array {
     if (p.riseFront !== null) {
       const rise = waistline(p, map.around[v]);
       if (Number.isFinite(s)) {
-        const isFoot = id === 'footL' || id === 'footR';
-        // a garment with feet (socks, stockings) runs on past the ankle with no hem there
-        const onLeg = isFoot ? (p.feet ? 1 : 0) : Math.min(p.feet ? 1 : soft(p.legEnd - s), p.legStart > 0 ? soft(s - p.legStart) : 1);
+        // a garment with feet (socks, stockings) runs on past the ankle with no hem there. Any other ends where its leg
+        // does, on her foot's skin too: her foot's region ends at a ragged line her bones' weights draw round her ankle,
+        // and a leg ending at her ankle ended on it -- ragged over the collar of her sneakers (2026-11-07)
+        const onLeg = Math.min(p.feet ? 1 : soft(p.legEnd - s), p.legStart > 0 ? soft(s - p.legStart) : 1);
         // the top of the thigh, the hips and the seat are also under the waistband
         c = Math.max(c, Math.min(onLeg, p.legStart > 0 ? 1 : soft(rise - t)));
       } else if (!Number.isFinite(a) && !NEVER.has(id) && id !== 'neck' && p.legStart <= 0) {
