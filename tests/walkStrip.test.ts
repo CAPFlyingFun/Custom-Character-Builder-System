@@ -4,7 +4,7 @@
  * and its stretches look alike, so the loop cannot be seen.
  */
 import { describe, expect, it } from 'vitest';
-import { STRIP, stripFade, stripOffset } from '../src/sarahlab/walkStrip';
+import { SLOPE, STRIP, slopeGrade, slopeLine, slopeNormal, stripFade, stripOffset } from '../src/sarahlab/walkStrip';
 
 /** Where in the pattern (stretches, 0..1) the strip shows at `z` metres from her, once she has walked `walked`: the
  * plane's v runs from 0 at z = +fade to 1 at z = -fade, and the texture repeats `2 fade / stretch` times along it. */
@@ -43,5 +43,37 @@ describe('the walking strip', () => {
     expect(stripFade(STRIP.fade)).toBe(0);
     expect(stripFade(-STRIP.fade - 1)).toBe(0);
     for (let z = STRIP.clear; z < STRIP.fade; z += 0.5) expect(stripFade(z + 0.5)).toBeLessThanOrEqual(stripFade(z));
+  });
+});
+
+describe('the slope (Joshua, 2026-11-08: "-30/-20/-10/0/+10/+20/+30")', () => {
+  const DEG = Math.PI / 180;
+  it('runs from -30 to +30, ahead of her or across her path', () => {
+    expect(SLOPE.most).toBe(30);
+    expect([...SLOPE.headings]).toEqual(['ahead', 'across']);
+  });
+  it('ahead: + rises in front of her (uphill), - falls (downhill)', () => {
+    expect(slopeGrade({ deg: 20, heading: 'ahead' }).z).toBeCloseTo(Math.tan(20 * DEG), 12);
+    expect(slopeGrade({ deg: -20, heading: 'ahead' }).z).toBeCloseTo(-Math.tan(20 * DEG), 12);
+    expect(slopeGrade({ deg: 20, heading: 'ahead' }).x).toBe(0);
+  });
+  it('across: + rises to her left, - to her right, whichever way her bind faces', () => {
+    expect(slopeGrade({ deg: 10, heading: 'across' }, 1).x).toBeCloseTo(Math.tan(10 * DEG), 12);
+    expect(slopeGrade({ deg: 10, heading: 'across' }, -1).x).toBeCloseTo(-Math.tan(10 * DEG), 12);
+    expect(slopeGrade({ deg: -10, heading: 'across' }, 1).x).toBeCloseTo(-Math.tan(10 * DEG), 12);
+  });
+  it('never past 30 either way; its normal leans away from the rise', () => {
+    expect(slopeGrade({ deg: 45, heading: 'ahead' }).z).toBeCloseTo(Math.tan(30 * DEG), 12);
+    expect(slopeGrade({ deg: -45, heading: 'ahead' }).z).toBeCloseTo(-Math.tan(30 * DEG), 12);
+    const [nx, ny, nz] = slopeNormal({ deg: 30, heading: 'ahead' });
+    expect(Math.hypot(nx, ny, nz)).toBeCloseTo(1, 12);
+    expect(nz).toBeLessThan(0);
+    expect(Math.acos(ny)).toBeCloseTo(30 * DEG, 12);
+  });
+  it('says what it is', () => {
+    expect(slopeLine({ deg: 0, heading: 'ahead' })).toBe('SLOPE · 0° · flat');
+    expect(slopeLine({ deg: 20, heading: 'ahead' })).toBe('SLOPE · +20° · uphill');
+    expect(slopeLine({ deg: -30, heading: 'ahead' })).toBe('SLOPE · −30° · downhill');
+    expect(slopeLine({ deg: -10, heading: 'across' })).toBe('SLOPE · −10° · across, rising to her right');
   });
 });

@@ -708,3 +708,75 @@ describe.each(BODIES)('humanFeet on $who', (body) => {
     expect(ra.rootDrop).toBe(rb.rootDrop);
   });
 });
+
+// ─── on a slope (Joshua, 2026-11-08) ─────────────────────────────────────
+
+describe.each(BODIES)('humanFeet on a slope ($who): "bending like the knees on the higher side and extending the opposite"', (body) => {
+  const DEG = Math.PI / 180;
+  /** A plane rising `gx` per metre along x and `gz` along z, with its normal. */
+  const plane = (gx: number, gz: number): Ground => (x, z) => {
+    const n = Math.hypot(gx, 1, gz);
+    return { y: gx * x + gz * z, grip: 1, nx: -gx / n, ny: 1 / n, nz: -gz / n };
+  };
+  /** Ankle ranges as the room passes them from its joint table, standing (radians). */
+  const CONFORM = { dorsiflexion: 36 * DEG, plantarflexion: 55 * DEG, inversion: 35 * DEG, eversion: 15 * DEG };
+  const stand = (ground: Ground, conform: typeof CONFORM | null) => {
+    const state = createFeet(body.measure, body.bind, FLOOR_Y, conform);
+    const step = run(state, body, animated(body), frameOver(ground), 90, []);
+    return { state, step };
+  };
+  const off = (g: Ground, p: Vec3) => p.y - g(p.x, p.z)!.y;
+  const kneeBend = (turns: readonly JointTurn[], leg: Leg) => {
+    const at = posed(body.bind, turns), h = at[leg.hip], k = at[leg.knee], a = at[leg.ankle];
+    const t = { x: k.x - h.x, y: k.y - h.y, z: k.z - h.z }, s = { x: a.x - k.x, y: a.y - k.y, z: a.z - k.z };
+    return Math.acos((t.x * s.x + t.y * s.y + t.z * s.z) / (Math.hypot(t.x, t.y, t.z) * Math.hypot(s.x, s.y, s.z)));
+  };
+
+  it('lays a planted foot ON a 10° slope rising ahead: its heel and its ball both on it', () => {
+    const g = plane(0, Math.tan(10 * DEG));
+    const { state, step } = stand(g, CONFORM);
+    for (const side of [0, 1]) {
+      const f = footWorld(body, state, step, side);
+      expect(Math.abs(off(g, f.ballContact))).toBeLessThan(0.004);
+      expect(Math.abs(off(g, f.heelContact))).toBeLessThan(0.004);
+      // (along the foot's own heading, which turns out a little: within 2 degrees of the slope's 10)
+      expect(Math.abs(state.feet[side].slopePitch - 10 * DEG)).toBeLessThan(2 * DEG);
+    }
+  });
+
+  it('with no conform keeps a planted foot level, as before: on its ball, its heel off the slope', () => {
+    const g = plane(0, Math.tan(10 * DEG));
+    const { state, step } = stand(g, null);
+    for (const side of [0, 1]) {
+      expect(state.feet[side].slopePitch).toBe(0);
+      expect(off(g, footWorld(body, state, step, side).heelContact)).toBeGreaterThan(0.01);
+    }
+  });
+
+  it('rolls each foot across a 30° slope only as far as its ankle goes: the high foot 15° (eversion), the low one 30° (inversion, inside 35°)', () => {
+    const left = body.measure.leftSign < 0 ? -1 : 1;
+    const { state } = stand(plane(Math.tan(30 * DEG) * left, 0), CONFORM);
+    // the high foot held at its eversion exactly; the low one the slope's 30 across its own heading (it turns out a little)
+    expect(Math.abs(state.feet[0].slopeRoll)).toBeCloseTo(15 * DEG, 6);
+    expect(Math.abs(Math.abs(state.feet[1].slopeRoll) - 30 * DEG)).toBeLessThan(2 * DEG);
+    // both rolled the slope's way: up toward her left
+    expect(Math.sign(state.feet[0].slopeRoll)).toBe(Math.sign(state.feet[1].slopeRoll));
+  });
+
+  it('walks down a 20° slope, and across one, with no lock dragged until it snaps (MAX_LOCK): leaving is judged against the ground the body stands on', () => {
+    const left = body.measure.leftSign < 0 ? -1 : 1;
+    for (const g of [plane(0, -Math.tan(20 * DEG)), plane(Math.tan(20 * DEG) * left, 0)]) {
+      const walk = stroll(body, 'walk', 1.4, g);
+      expect(walk.maxLockReleases).toBe(0);
+      expect(walk.locks).toBeGreaterThan(10);
+    }
+  });
+
+  it('bends the knee on the high side across a slope, and keeps the low leg straighter', () => {
+    const left = body.measure.leftSign < 0 ? -1 : 1;
+    const [legL, legR] = legs(body);
+    const { step } = stand(plane(Math.tan(10 * DEG) * left, 0), CONFORM);
+    expect(kneeBend(step.turns, legL)).toBeGreaterThan(kneeBend(step.turns, legR) + 5 * DEG);
+    expect(step.rootDrop).toBeGreaterThan(0.005);
+  });
+});

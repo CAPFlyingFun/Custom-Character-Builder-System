@@ -12,8 +12,43 @@
  *
  * The strip is STRIP.width wide -- its edges drawn -- with a thin line every metre and a bold one where each stretch
  * starts, and it fades out ahead of her and behind her, so its drawn ends are never seen.
+ *
+ * THE SLOPE (Joshua, 2026-11-08: "test on different gradient like flat floor at 0, 30 straight ahead, and walking
+ * (standing first) parallel to that angle"; then "we need to also add a downward slope... -30/-20/-10/0/+10/+20/+30"):
+ * the belt tilts up to SLOPE.most degrees either way, AHEAD of her (+ uphill, - downhill) or ACROSS her path (+ rising to
+ * her left, - to her right), like a treadmill's incline: a plane through where she stands, the belt running along it.
+ * The ground she walks on is that plane (`slopeGrade`, `slopeNormal`).
  */
 import * as THREE from 'three';
+
+/** Which way the slope runs under her: along her path, or across it. */
+export type SlopeHeading = 'ahead' | 'across';
+/** `deg`: + rises ahead of her (uphill) or to her left; - falls ahead (downhill) or rises to her right. */
+export interface StageSlope { readonly deg: number; readonly heading: SlopeHeading }
+/** The steepest the belt tilts either way, degrees: Joshua's 30. A staircase's pitch; the steepest city streets are
+ * about 17. */
+export const SLOPE = Object.freeze({ most: 30, headings: Object.freeze(['ahead', 'across'] as const) });
+const DEG = Math.PI / 180;
+
+/** How the ground rises, per metre, along x and along z (her left is +x when `leftSign` is +1), at this slope. */
+export function slopeGrade(s: StageSlope, leftSign = 1): { readonly x: number; readonly z: number } {
+  const t = Math.tan(Math.max(-SLOPE.most, Math.min(SLOPE.most, s.deg || 0)) * DEG);
+  return s.heading === 'across' ? { x: t * (leftSign < 0 ? -1 : 1), z: 0 } : { x: 0, z: t };
+}
+
+/** The ground's normal (unit) at this slope. */
+export function slopeNormal(s: StageSlope, leftSign = 1): readonly [number, number, number] {
+  const g = slopeGrade(s, leftSign), n = Math.hypot(g.x, 1, g.z);
+  return [-g.x / n, 1 / n, -g.z / n];
+}
+
+/** The SLOPE line in the room. */
+export function slopeLine(s: StageSlope): string {
+  const d = Math.round(s.deg || 0);
+  if (d === 0) return 'SLOPE · 0° · flat';
+  const way = s.heading === 'across' ? `across, rising to her ${d > 0 ? 'left' : 'right'}` : d > 0 ? 'uphill' : 'downhill';
+  return `SLOPE · ${d > 0 ? '+' : '−'}${Math.abs(d)}° · ${way}`;
+}
 
 /** The strip, metres. `width` and `stretch` are Joshua's 5 x 10 m; the rest GAME TUNING on renders. */
 export const STRIP = Object.freeze({
@@ -47,7 +82,11 @@ export function stripOffset(walked: number): number {
 const PX = Object.freeze({ across: 256, along: 1024 });
 
 export class WalkStrip {
+  /** What goes in the scene: the strip, tilted to the slope. */
+  readonly object = new THREE.Group();
   readonly mesh: THREE.Mesh;
+  /** Metres along the belt per metre she walks ahead (more, on a slope rising or falling ahead). */
+  private along = 1;
   private readonly texture: THREE.CanvasTexture | null;
   private readonly canvas: HTMLCanvasElement | null;
 
@@ -71,7 +110,16 @@ export class WalkStrip {
     this.mesh.rotation.x = -Math.PI / 2;
     this.mesh.renderOrder = -1;
     this.mesh.name = 'walkStrip';
-    this.mesh.visible = false;
+    this.object.add(this.mesh);
+    this.object.visible = false;
+  }
+
+  /** Tilt it to the slope, about where she stands. */
+  setSlope(s: StageSlope, leftSign = 1): void {
+    const g = slopeGrade(s, leftSign);
+    // rising toward +z is a turn about x by -atan; rising toward +x a turn about z by +atan
+    this.object.rotation.set(-Math.atan(g.z), 0, Math.atan(g.x));
+    this.along = Math.hypot(1, g.z);
   }
 
   /** Paint it in the stage's floor and rim colours (studioTheme.ts `THEME_STAGE`). */
@@ -95,11 +143,11 @@ export class WalkStrip {
 
   /** Where she is along it: `walked` metres from where she started. */
   setWalked(walked: number): void {
-    if (this.texture) this.texture.offset.y = stripOffset(walked);
+    if (this.texture) this.texture.offset.y = stripOffset(walked * this.along);
   }
 
   dispose(): void {
-    this.mesh.removeFromParent();
+    this.object.removeFromParent();
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
     this.texture?.dispose();

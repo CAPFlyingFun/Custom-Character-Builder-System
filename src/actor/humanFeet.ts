@@ -114,6 +114,15 @@
  *     ankle-to-ball line, on the animated heading — over FLATTEN_TIME,
  *     which is a heel strike's slap onto the floor, and a released foot
  *     turns back to the animation's over BLEND.
+ *     ON A SLOPE (Joshua, 2026-11-08, testing her on 0-30 degree ground:
+ *     "bending like the knees on the higher side and extending the
+ *     opposite"), flat is the ground's own: a body made with a CONFORM
+ *     (`createFeet`) turns each planted foot onto the slope under it --
+ *     toes up or down along its heading, rolled in or out across it -- but
+ *     never past the ankle's own range, which the caller reads from the
+ *     master joint table; the rest of the slope it stands on an edge of.
+ *     The ground says how it slopes by its normal (`FootGround`); ground
+ *     with none is level. Without a conform a foot goes level, as before.
  *
  *  7. RELEASE (BE three.js's RELEASE): while the body stands on nothing —
  *     airborne, jumping, falling, swimming — or when the ground under a
@@ -370,6 +379,14 @@ export const DROP_DOWN_TIME = 0.04;
 export const DROP_UP_TIME = 0.1;
 
 /**
+ * The most the root may rise or fall in one frame and still be carried by
+ * the drop (`groundFeet`'s ramp), as a fraction of leg length. GAME TUNING:
+ * a walk up a 30 degree slope climbs 1 cm a frame at 60 fps; more than a
+ * tenth of a leg in a frame is a teleport or a step, which eases as before.
+ */
+export const RAMP_FRAC = 0.1;
+
+/**
  * Below this a drop is arithmetic residue, not a posture, in metres: a
  * straight leg standing on the floor it was posed for computes a need of
  * 1e-16, and a body that never quite reaches zero would never report
@@ -443,6 +460,22 @@ export const FLATTEN_TIME = 0.1;
 export interface FootGround {
   readonly y: number;
   readonly grip: number;
+  /** The ground's surface normal there (unit, world), when it slopes; absent is straight up. */
+  readonly nx?: number;
+  readonly ny?: number;
+  readonly nz?: number;
+}
+
+/**
+ * How far a planted foot may turn to lie on sloping ground, radians: toes up (dorsiflexion) and down (plantarflexion)
+ * along its heading, and rolled with its inner edge up (inversion) or its outer edge up (eversion). The caller reads
+ * them from its joint table; this module keeps no copy of a range.
+ */
+export interface FootConform {
+  readonly dorsiflexion: number;
+  readonly plantarflexion: number;
+  readonly inversion: number;
+  readonly eversion: number;
 }
 
 export interface FeetFrame {
@@ -483,12 +516,20 @@ export interface FootState {
   onBall: boolean;
   /** Eased 0..1: how far a locked foot has turned from the animation's orientation to flat. */
   flat: number;
+  /** The slope it turns onto when flat, radians: toes up (+) along its heading, and rolled up toward the body's left
+   * (+), each as far as the conform allowed. Zero on level ground or with no conform. */
+  slopePitch: number;
+  slopeRoll: number;
   /** The held point — the ankle's or, once flat, the ball's world XZ, metres. Meaningful only while `locked`. */
   lockX: number;
   lockZ: number;
   /** The last ground found under this foot's ball (and the lead ahead of it), and under its heel, world metres. */
   groundY: number;
   heelGroundY: number;
+  /** That ground's normal, world, unit (straight up when it gave none). */
+  groundNX: number;
+  groundNY: number;
+  groundNZ: number;
   hasGround: boolean;
   /** The grip of that ground, 0..1. The next frame's slide reads it. */
   grip: number;
@@ -621,6 +662,13 @@ export interface FeetState {
   readonly feet: readonly [FootState, FootState];
   /** Metres the body is currently lowered by, smoothed. */
   rootDrop: number;
+  /** Last frame's root height, world metres (NaN before the first frame). */
+  rootYPrev: number;
+  /** How far a planted foot may turn onto a slope (`createFeet`); null keeps every planted foot level. The caller may
+   * change it between frames: a foot reaches further under the body's weight standing than walking. */
+  conform: FootConform | null;
+  /** +1 when the body's left is +X in its bind (`HumanMeasure.leftSign`), -1 when mirrored. */
+  readonly leftSign: number;
 
   readonly legs: readonly [LegRig, LegRig];
   readonly legLength: number;
@@ -648,6 +696,9 @@ interface GroundUnder {
   heelY: number;
   top: number;
   grip: number;
+  nx: number;
+  ny: number;
+  nz: number;
 }
 
 export interface FeetResult {
@@ -878,10 +929,15 @@ function newFoot(): FootState {
     locked: false,
     onBall: false,
     flat: 0,
+    slopePitch: 0,
+    slopeRoll: 0,
     lockX: 0,
     lockZ: 0,
     groundY: 0,
     heelGroundY: 0,
+    groundNX: 0,
+    groundNY: 1,
+    groundNZ: 0,
     hasGround: false,
     grip: 1,
     speed: Infinity,
@@ -952,9 +1008,10 @@ function newWork(): LegWork {
  *
  * `floorY` is the bind-frame height of the soles — the drawn body's
  * y = 0. Default 0; −1.0 on the two masters as `view/HumanRig` loads
- * them (see the header).
+ * them (see the header). `conform` lets a planted foot turn onto sloping
+ * ground (rule 6); without it every planted foot goes level.
  */
-export function createFeet(measure: HumanMeasure, bind: readonly BindJoint[], floorY = 0): FeetState {
+export function createFeet(measure: HumanMeasure, bind: readonly BindJoint[], floorY = 0, conform: FootConform | null = null): FeetState {
   const n = bind.length;
   const joints = measure.joints;
 
@@ -978,6 +1035,9 @@ export function createFeet(measure: HumanMeasure, bind: readonly BindJoint[], fl
     floorY,
     feet: [newFoot(), newFoot()],
     rootDrop: 0,
+    rootYPrev: NaN,
+    conform,
+    leftSign: measure.leftSign < 0 ? -1 : 1,
     legs: [
       readLegRig(bind, joints.hipL, joints.kneeL, joints.ankleL, floorY),
       readLegRig(bind, joints.hipR, joints.kneeR, joints.ankleR, floorY),
@@ -990,7 +1050,7 @@ export function createFeet(measure: HumanMeasure, bind: readonly BindJoint[], fl
     work: [newWork(), newWork()],
     view: [],
     result: { turns: [], rootDrop: 0 },
-    ground: { y: 0, heelY: 0, top: 0, grip: 1 },
+    ground: { y: 0, heelY: 0, top: 0, grip: 1, nx: 0, ny: 1, nz: 0 },
     q,
     v,
   };
@@ -1279,6 +1339,17 @@ export function groundFeet(
     flatAim.z = headZ * bindAlong;
     if (leg.ball >= 0 && len > 0 && foot.flat > 0) {
       qArc(flatQ, aim, flatAim);
+      // on a slope, flat is the ground's (rule 6): turned toes up or down about the foot's lateral axis, then rolled
+      // about its heading, each within the ankle's range -- from the ground found under it last frame
+      onSlope(state, foot, side, headX, headZ, cos, sin);
+      if (foot.slopePitch !== 0 || foot.slopeRoll !== 0) {
+        const tilt = state.q[1];
+        const hp = -foot.slopePitch * 0.5, hr = foot.slopeRoll * 0.5;
+        // R_heading(roll) · R_lateral(-pitch); lateral = up × heading = (headZ, 0, -headX)
+        qSet(tilt, headZ * Math.sin(hp), 0, -headX * Math.sin(hp), Math.cos(hp));
+        qMul(tilt, qSet(state.q[0], headX * Math.sin(hr), 0, headZ * Math.sin(hr), Math.cos(hr)), tilt);
+        qMul(flatQ, tilt, flatQ);
+      }
       qSlerp(flatQ, qSet(footQ, 0, 0, 0, 1), flatQ, foot.flat);
     } else {
       qSet(flatQ, 0, 0, 0, 1);
@@ -1349,9 +1420,23 @@ export function groundFeet(
     // LEAVING is the ANIMATION taking the foot away: well clear of its
     // ground, or off it at all and travelling. A body carried over a foot
     // the animation holds still is neither, so it keeps its lock.
+    // Clear of the ground the ANIMATION stands on, which is the ground under
+    // the body: on flat ground that is the foot's own, and on a slope a
+    // trailing foot's ground stands above it (downhill) or below it (uphill)
+    // by the slope's whole rise, which no toe-off lifts past -- so a lock
+    // held there was dragged until MAX_LOCK snapped it (Joshua's slopes,
+    // 2026-11-08: nine snaps in four seconds at 30 degrees downhill).
+    const animClear = ground !== null && rootGround !== null
+      ? foot.clear + (ground.y - rootGround.y)
+      : foot.clear;
+    // And off its OWN floor, as the animation has it: on a steep slope the
+    // body comes down so far for the leading leg to reach (9 cm at 20
+    // degrees downhill) that a toe-off is still under every ground, while
+    // the animation lifts the foot and carries it away.
+    const animLift = (work.low - floorY) / upm;
     const leaving =
-      foot.clear > UNLOCK_CLEAR_FRAC * legM ||
-      (foot.clear > LIFTOFF_FRAC * legM && foot.speed > UNLOCK_SPEED_FRAC * legM);
+      animClear > UNLOCK_CLEAR_FRAC * legM ||
+      ((animClear > LIFTOFF_FRAC * legM || animLift > LIFTOFF_FRAC * legM) && foot.speed > UNLOCK_SPEED_FRAC * legM);
     if (foot.locked && (!grounded || foot.stance < LOCK_OFF || leaving)) {
       release(foot, grounded, ankleX, ankleZ);
       atX = ankleX + foot.driftX;
@@ -1378,6 +1463,9 @@ export function groundFeet(
       foot.groundY = ground.y;
       foot.heelGroundY = ground.heelY;
       foot.grip = ground.grip;
+      foot.groundNX = ground.nx;
+      foot.groundNY = ground.ny;
+      foot.groundNZ = ground.nz;
       foot.hasGround = true;
     }
     if (!foot.hasGround || foot.weight <= 0) {
@@ -1445,6 +1533,16 @@ export function groundFeet(
 
   // The body settles onto its feet. Eased, never negative, never more
   // than MAX_DROP.
+  // A RAMP first (Joshua's slopes, 2026-11-08): where the ground under the
+  // body rises or falls as it walks, a planted foot's need changes by just
+  // as much each frame, and an easing trails a steady change -- a landing
+  // foot was left 0.8 cm short of a 10 degree slope, 2.5 cm of a 30. So the
+  // root's own rise or fall is carried by the drop as it happens (the body
+  // where it was, the easing then settling what is left), and flat ground,
+  // where the root never moves, settles exactly as before.
+  const rootRise = Number.isFinite(state.rootYPrev) ? frame.rootY - state.rootYPrev : 0;
+  state.rootYPrev = frame.rootY;
+  if (!frame.released && Math.abs(rootRise) <= RAMP_FRAC * legM) state.rootDrop = Math.max(0, state.rootDrop + rootRise);
   wantDrop = clamp(wantDrop, 0, MAX_DROP_FRAC * legM);
   const settleTime = wantDrop > state.rootDrop ? DROP_DOWN_TIME : DROP_UP_TIME;
   const settle = dt > 0 ? 1 - Math.exp(-dt / settleTime) : 0;
@@ -1544,7 +1642,40 @@ function groundUnder(
   into.heelY = heel === null ? y : heel.y;
   into.top = Math.max(into.y, into.heelY);
   into.grip = grip;
+  // the ball's ground's slope; level where it gives none
+  const n = Math.hypot(ball.nx ?? 0, ball.ny ?? 1, ball.nz ?? 0);
+  into.nx = n > 1e-9 ? (ball.nx ?? 0) / n : 0;
+  into.ny = n > 1e-9 ? (ball.ny ?? 1) / n : 1;
+  into.nz = n > 1e-9 ? (ball.nz ?? 0) / n : 0;
   return into;
+}
+
+/**
+ * The slope a planted foot turns onto (rule 6), written into its `slopePitch` and `slopeRoll`: the ground under it, in
+ * the bind frame (the yaw undone), seen along the foot's heading -- how steeply it rises ahead (toes up) and how steeply
+ * toward the body's left -- each held to the conform. Rising toward the body's left lifts a LEFT foot's outer edge
+ * (eversion) and a RIGHT foot's inner edge (inversion). No conform, no slope.
+ */
+function onSlope(state: FeetState, foot: FootState, side: number, headX: number, headZ: number, cos: number, sin: number): void {
+  const c = state.conform;
+  if (c === null || foot.groundNY <= 1e-6) {
+    foot.slopePitch = 0;
+    foot.slopeRoll = 0;
+    return;
+  }
+  // world to bind: the inverse of the frame's yaw
+  const nx = foot.groundNX * cos - foot.groundNZ * sin;
+  const nz = foot.groundNX * sin + foot.groundNZ * cos;
+  const ny = foot.groundNY;
+  // a ground rising ahead tips its normal back; rising toward +lateral (up × heading) tips it the other way
+  const pitch = Math.atan2(-(nx * headX + nz * headZ), ny);
+  const roll = Math.atan2(-(nx * headZ - nz * headX), ny);
+  foot.slopePitch = clamp(pitch, -c.plantarflexion, c.dorsiflexion);
+  // +lateral is the body's left when leftSign is +1
+  const towardLeft = roll * state.leftSign;
+  const outerUp = side === 0 ? towardLeft : -towardLeft;
+  const held = outerUp >= 0 ? Math.min(outerUp, c.eversion) : -Math.min(-outerUp, c.inversion);
+  foot.slopeRoll = (side === 0 ? held : -held) * state.leftSign;
 }
 
 /**

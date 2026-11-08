@@ -124,6 +124,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   photo: 'sarahlab:photo',
   stand: 'sarahlab:stand',
   walk: 'sarahlab:walk',
+  /** `${slope}<heading>`: which way the treadmill's slope runs under her (walkStrip.ts SLOPE.headings) */
+  slope: 'sarahlab:slope:',
   sit: 'sarahlab:sit',
   tpose: 'sarahlab:tpose',
   /** the birth positions (actor/humanBirth.ts) */
@@ -233,6 +235,8 @@ export const SARAH_LAB_FIELD = Object.freeze({
   /** the BIRTH timeline: where in it she is, to jump to any moment */
   birthTime: 'sarahlab-birth-time',
   arms: 'sarahlab-arms',
+  /** the SLOPE line: how far the treadmill tilts under STAND and WALK, and which way (walkStrip.ts) */
+  slope: 'sarahlab-slope',
   /** `${body}<control>`: a body control's line; its slider follows it */
   body: 'sarahlab-body-',
   bodyNote: 'sarahlab-body-note',

@@ -86,7 +86,7 @@ import { createSqueezeUniforms, patchSqueeze, setSqueeze } from './babySqueeze';
 import { createSkinUniforms, patchSkin, stepSkin } from './babySkin';
 import { measureHuman } from '../actor/humanSkeleton';
 import { bobDrop, walkWeight, weighWalk, WALK_WEIGHT } from '../actor/walkWeight';
-import { createFeet, groundFeet, type FeetState } from '../actor/humanFeet';
+import { createFeet, groundFeet, type FeetState, type FootConform } from '../actor/humanFeet';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -95,7 +95,7 @@ import { applyShapeFields, baseShapeFields, liftShapeFields, type ShapeFields, t
 import { BUILD_PROFILES, buildAmounts, buildKey, heightLine, heldSegments, profileOf, withProfile, type BuildAmounts, type BuildSegment } from '../actor/bodyBuild';
 import { applyBuildToBones, applyBuildToMesh, buildBoneOffsets, buildMeshFields, prepareBuildRig, standingLift, type BuildMeshFields, type BuildRig } from '../view/bodyBuild';
 import { Sneakers } from './sneakers';
-import { WalkStrip } from './walkStrip';
+import { SLOPE, WalkStrip, slopeGrade, slopeLine, slopeNormal, type SlopeHeading, type StageSlope } from './walkStrip';
 import { StepWatch, TileSteps } from './footsteps';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
@@ -482,7 +482,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   three.add(floor, ring);
   // the strip she walks (walkStrip.ts), in place of the floor while she walks
   const strip = new WalkStrip(M);
-  three.add(strip.mesh);
+  three.add(strip.object);
   // a plain stool for SIT, sized when she sits on it
   const stool = new THREE.Mesh(
     new THREE.CylinderGeometry(0.2 * M, 0.22 * M, 1, 28),
@@ -924,6 +924,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let bonesBuilt = '';
   /** Her feet while she walks (`feetFor`, `stepFeet`). */
   let walkFeet: WalkFeet | null = null;
+  /** The treadmill's slope under STAND and WALK (`setSlope`). */
+  let slope: StageSlope = { deg: 0, heading: 'ahead' };
   let standLift = 0;
   /** What the walk's weight moved her by this frame, room units (`weighOnFloor`); her soft parts feel her motion without it. */
   const walkOffset = new THREE.Vector3();
@@ -1322,6 +1324,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let textureSize: HTMLInputElement | null = null, textureLabel: HTMLElement | null = null;
   const swatchButtons = new Map<string, HTMLButtonElement>();
   let armsInput: HTMLInputElement | null = null;
+  let slopeInput: HTMLInputElement | null = null;
   let shirtLengthInput: HTMLInputElement | null = null;
   /**
    * THE CLOTH EXPERIMENT (Joshua, 2026-10-23: "make that one a true soft body/cloth with simulation over the whole
@@ -1575,6 +1578,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (shirtLengthInput && Number(shirtLengthInput.value) !== Math.round(length * 100)) shirtLengthInput.value = String(Math.round(length * 100));
     const armsField = fields[SARAH_LAB_FIELD.arms];
     if (armsField) armsField.textContent = armsLine(armsDeg, ARM_SIDES[armSide]);
+    const slopeField = fields[SARAH_LAB_FIELD.slope];
+    if (slopeField) slopeField.textContent = slopeLine(slope);
+    if (slopeInput && Number(slopeInput.value) !== slope.deg) slopeInput.value = String(slope.deg);
+    for (const h of SLOPE.headings) buttons[SARAH_LAB_ACTION.slope + h]?.setAttribute('aria-pressed', String(slope.heading === h));
     if (armsInput && Number(armsInput.value) !== armsDeg) armsInput.value = String(armsDeg);
     if (buttons.armSide) buttons.armSide.textContent = `ARMS · ${ARM_SIDES[armSide]}`;
     for (const c of BODY_CONTROLS) {
@@ -2582,6 +2589,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     slider(SARAH_LAB_FIELD.fingers, curl, (v) => { curl = v; }, 100, 'pose');
     armsInput = slider(SARAH_LAB_FIELD.arms, armsDeg, (v) => { armsDeg = v; armsOverride = true; }, 90, 'pose');
+    // THE SLOPE (walkStrip.ts): the treadmill tilted under STAND and WALK, -30 to +30, ahead of her or across her path
+    slopeInput = slider(SARAH_LAB_FIELD.slope, slope.deg, (v) => setSlope(v, slope.heading), SLOPE.most, 'pose', -SLOPE.most);
+    { const row = document.createElement('div'); row.dataset.tab = 'pose'; row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+      for (const h of SLOPE.headings) { const b = btn(h === 'ahead' ? 'AHEAD' : 'ACROSS', SARAH_LAB_ACTION.slope + h, () => setSlope(slope.deg, h)); buttons[SARAH_LAB_ACTION.slope + h] = b; row.append(b); }
+      right.appendChild(row); }
     // her birth opening, closed to the full 10 cm (with the birth poses: LEGS APART, SQUAT, RECLINE)
     birthOpenInput = slider(SARAH_LAB_FIELD.birthOpen, birthOpenPct, (v) => { birthOpenPct = v; vulva?.setOpen(v / 100); }, 100, 'pose');
     // and how far the area round it is pushed out, on its own (in a birth it opens first, and bulges once her baby's head
@@ -3785,7 +3797,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Her turns this frame: her pose, or on the way between standing and seated, the two blended (`poseBlend.ts`). */
   function currentTurns(): readonly JointTurn[] {
     // walking, her feet's turns (`stepFeet`)
-    if (pose === 'walk' && walkFeet?.fresh) return walkFeet.turns;
+    if (onStage() && walkFeet?.fresh) return walkFeet.turns;
     if (!sitMoving || sitAmount <= 0 || sitAmount >= 1) return turnsFor();
     return blendJointTurns(turnsFor('stand', standOut), turnsFor('sit', poseOut), sitEase(sitAmount), blendOut);
   }
@@ -3799,8 +3811,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   function place(): void {
     // walking, she walks the strip, and it is the floor (walkStrip.ts)
-    const onStrip = pose === 'walk';
-    strip.mesh.visible = onStrip; floor.visible = !onStrip; ring.visible = !onStrip;
+    const onStrip = onStage();
+    strip.object.visible = onStrip; floor.visible = !onStrip; ring.visible = !onStrip;
     if (onStrip) strip.setWalked(walked);
     if (!model || !rig || !measure) return;
     walkOffset.set(0, 0, 0);
@@ -3810,7 +3822,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (sitAmount <= 0 || !skin) {
       model.position.set(0, standLift * M, 0);
       model.updateMatrixWorld(true);
-      if (pose === 'walk' && skin) weighOnFloor(skin);
+      if (onStage() && skin) weighOnFloor(skin);
       stool.visible = false;
       if (!aimHeld) orbit.target.z = ORBIT_START.target.z;
       return;
@@ -3870,21 +3882,48 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     readonly out: MutableJointTurn[];
     /** This frame's pose with her feet on it: what `currentTurns` hands out while she walks. */
     readonly turns: MutableJointTurn[];
-    /** Whether `turns` is this walk's (it is not once she has stood, sat or lain since). */
+    /** Whether `turns` is this frame's (it is not once she has left the stage since). */
     fresh: boolean;
+    /** The pose her feet were set down for: another sets them down afresh. */
+    pose: SarahLabPose;
     /** Her body over the foot she stands on (world x, metres) and how far her feet brought her down (metres). */
     x: number;
     drop: number;
     /** How far her feet brought her down, by where in her stride (BOB_BINS of it): her rise and fall, for her bob. */
     readonly bins: Float64Array;
-    /** Each foot's sole as drawn -- her shoe's, or her foot's barefoot -- as its lowest points along it (`SOLE_POINTS`),
-     * and the height the lowest of them stands at in her bind (room units): a sole is on the floor there. */
+    /** Each foot's sole as drawn -- her shoe's, or her foot's barefoot -- as its lowest points along it and across it
+     * (`SOLE_POINTS` by `SOLE_ACROSS`), and the height the lowest of them stands at in her bind (room units): a sole is on
+     * the floor there. */
     readonly soles: readonly { readonly mesh: THREE.SkinnedMesh; readonly verts: Uint32Array; readonly floor: number }[];
   }
   /** Her stride's rise and fall is remembered a 24th of a stride at a time. GAME TUNING. */
   const BOB_BINS = 24;
-  /** The strip under her feet: flat and full grip. */
-  const STRIP_FLOOR = Object.freeze({ y: 0, grip: 1 });
+  /**
+   * THE SLOPE (Joshua, 2026-11-08: "test on different gradient like flat floor at 0, 30 straight ahead, and walking
+   * (standing first) parallel to that angle to see how it deals with bending like the knees on the higher side and
+   * extending the opposite"): the treadmill tilted under STAND and WALK (walkStrip.ts). Her feet stand on the plane it
+   * makes, each planted foot turned onto it as far as her ankle goes (humanFeet.ts `FootConform`), and no further: past
+   * that she stands on an edge of her foot -- on a slope too steep to walk heel first, on her toes ("most people... if
+   * it's too steep to walk (heel > toe), is just toe-to-toe").
+   */
+  /** Whether she is on the treadmill: walking, or standing on its slope. */
+  function onStage(): boolean { return pose === 'walk' || (pose === 'stand' && slope.deg !== 0); }
+  /** The stage's ground under (x, z) of the strip's frame, metres: a plane through where she started. */
+  function stageY(x: number, z: number): number { const g = slopeGrade(slope, measure?.leftSign ?? 1); return g.x * x + g.z * z; }
+  /**
+   * How far a planted foot turns onto the slope, from the master table (data/jointRange.ts): standing, her weight takes
+   * her ankle as far as it goes under load (the passive wall); walking, only as far as it bends by itself (active).
+   */
+  function conformFor(walking: boolean): FootConform {
+    const r = (m: 'dorsiflexion' | 'plantarflexion' | 'inversion' | 'eversion', level: RangeLevel) => rangeDeg('ankle', m, 'female', level) * THREE.MathUtils.DEG2RAD;
+    const level: RangeLevel = walking ? 'active' : 'passive';
+    return { dorsiflexion: r('dorsiflexion', level), plantarflexion: r('plantarflexion', level), inversion: r('inversion', level), eversion: r('eversion', level) };
+  }
+  function setSlope(deg: number, heading: SlopeHeading): void {
+    slope = { deg: Math.max(-SLOPE.most, Math.min(SLOPE.most, Math.round(deg))), heading };
+    strip.setSlope(slope, measure?.leftSign ?? 1);
+    refresh(); place();
+  }
   /** Her feet, for this body, build and lift; worked out again when any of them changes. Leaves her bones in her bind. */
   function feetFor(sk: THREE.SkinnedMesh): WalkFeet | null {
     if (!model || !rig || !measure) return null;
@@ -3897,41 +3936,55 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     rig.apply([]); model.updateMatrixWorld(true);
     const bind = rig.bind.map((b, i) => { bones[i].getWorldPosition(p); return { ...b, x: p.x / perUnit, y: p.y / perUnit, z: p.z / perUnit }; });
     const leg = Math.hypot(bind[j.hipL].x - bind[j.ankleL].x, bind[j.hipL].y - bind[j.ankleL].y, bind[j.hipL].z - bind[j.ankleL].z) / upm;
-    // each sole's lowest points along its length, read in her bind as she stands on the floor
+    // each sole's lowest points along its length and across it, read in her bind as she stands on the floor
     const soles = [j.ankleL, j.ankleR].map((ankle, k) => {
       const mesh = shod?.meshes[k] ?? sk, all = shod ? null : footVerts(sk, ankle), n = all ? all.length : mesh.geometry.getAttribute('position').count;
-      const pts: { i: number; y: number; z: number }[] = [];
-      for (let m = 0; m < n; m++) { const i = all ? all[m] : m; mesh.getVertexPosition(i, p); mesh.localToWorld(p); pts.push({ i, y: p.y, z: p.z }); }
+      const pts: { i: number; x: number; y: number; z: number }[] = [];
+      for (let m = 0; m < n; m++) { const i = all ? all[m] : m; mesh.getVertexPosition(i, p); mesh.localToWorld(p); pts.push({ i, x: p.x, y: p.y, z: p.z }); }
       const low = Math.min(...pts.map((q) => q.y)), bottom = pts.filter((q) => q.y < low + SOLE_DEPTH * M);
-      const z0 = Math.min(...bottom.map((q) => q.z)), z1 = Math.max(...bottom.map((q) => q.z)), best: ({ i: number; y: number } | null)[] = Array(SOLE_POINTS).fill(null);
-      for (const q of bottom) { const b = Math.min(SOLE_POINTS - 1, Math.floor(((q.z - z0) / Math.max(1e-6, z1 - z0)) * SOLE_POINTS)); if (!best[b] || q.y < best[b]!.y) best[b] = q; }
-      return { mesh, verts: Uint32Array.from(best.filter((q) => q !== null).map((q) => q!.i)), floor: low };
+      const span = (v: (q: { x: number; z: number }) => number) => { const a = Math.min(...bottom.map(v)), b = Math.max(...bottom.map(v)); return (q: { x: number; z: number }) => (v(q) - a) / Math.max(1e-6, b - a); };
+      const along = span((q) => q.z), across = span((q) => q.x), best: ({ i: number; y: number } | null)[] = Array(SOLE_POINTS * SOLE_ACROSS).fill(null);
+      // (and the tip and the back of each width: on a slope rising ahead, the tip of a shoe meets it first)
+      const tips: ({ i: number; z: number } | null)[] = Array(2 * SOLE_ACROSS).fill(null);
+      for (const q of bottom) {
+        const w = Math.min(SOLE_ACROSS - 1, Math.floor(across(q) * SOLE_ACROSS)), b = Math.min(SOLE_POINTS - 1, Math.floor(along(q) * SOLE_POINTS)) * SOLE_ACROSS + w;
+        if (!best[b] || q.y < best[b]!.y) best[b] = q;
+        if (!tips[2 * w] || q.z > tips[2 * w]!.z) tips[2 * w] = q;
+        if (!tips[2 * w + 1] || q.z < tips[2 * w + 1]!.z) tips[2 * w + 1] = q;
+      }
+      const verts = [...new Set([...best, ...tips].filter((q) => q !== null).map((q) => q!.i))];
+      return { mesh, verts: Uint32Array.from(verts), floor: low };
     });
-    walkFeet = { key, bind, upm, leg, state: createFeet(measure, bind, 0), out: [], turns: [], fresh: false, x: 0, drop: 0, bins: new Float64Array(BOB_BINS).fill(NaN), soles };
+    walkFeet = { key, bind, upm, leg, state: createFeet(measure, bind, 0), out: [], turns: [], fresh: false, pose, x: 0, drop: 0, bins: new Float64Array(BOB_BINS).fill(NaN), soles };
     return walkFeet;
   }
   /** Each sole is read as its lowest point in this many lengths of it, heel to toe, from the part of it within SOLE_DEPTH
    * (metres) of its bottom. GAME TUNING: a point every 2 cm of a shoe, cheap to follow every frame. */
   const SOLE_POINTS = 12;
   const SOLE_DEPTH = 0.03;
+  /** ...and in this many widths of it, inner edge to outer, so a foot rolled on a slope is read at its edges. */
+  const SOLE_ACROSS = 3;
   /** A step of her walk on her feet (`advance`, before her pose is laid on her bones). */
   function stepFeet(dt: number): void {
     const sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
     if (!sk || !rig || !measure) return;
     const f = feetFor(sk);
     if (!f) return;
-    // a new walk sets her feet down afresh, wherever she is along the strip
-    if (!f.fresh) { f.state = createFeet(measure, f.bind, 0); f.bins.fill(NaN); }
-    const phase = walkPhase(), left = measure.leftSign < 0 ? -1 : 1;
-    f.x = left * weightAt(phase).sway * f.leg;
-    const fed = groundFeet(f.state, measure, f.bind, turnsFor('walk', poseOut), {
-      dt, released: false, rootX: f.x, rootY: 0, rootZ: walked, rootYaw: 0, unitsPerMetre: f.upm, groundAt: () => STRIP_FLOOR,
+    // a new walk, or standing, sets her feet down afresh, wherever she is along the strip
+    if (!f.fresh || f.pose !== pose) { f.state = createFeet(measure, f.bind, 0); f.bins.fill(NaN); f.pose = pose; }
+    const walking = pose === 'walk', phase = walkPhase(), left = measure.leftSign < 0 ? -1 : 1;
+    f.state.conform = conformFor(walking);
+    f.x = walking ? left * weightAt(phase).sway * f.leg : 0;
+    const [nx, ny, nz] = slopeNormal(slope, measure.leftSign), under = { y: 0, grip: 1, nx, ny, nz };
+    const fed = groundFeet(f.state, measure, f.bind, turnsFor(walking ? 'walk' : 'stand', poseOut), {
+      dt, released: false, rootX: f.x, rootY: stageY(f.x, walked), rootZ: walked, rootYaw: 0, unitsPerMetre: f.upm,
+      groundAt: (x, z) => ((under.y = stageY(x, z)), under),
     }, f.out);
     while (f.turns.length < fed.turns.length) f.turns.push(newJointTurn());
     f.turns.length = fed.turns.length;
     fed.turns.forEach((t, i) => { const o = f.turns[i]; o.joint = t.joint; o.ax = t.ax; o.ay = t.ay; o.az = t.az; o.radians = t.radians; });
     f.drop = fed.rootDrop;
-    f.bins[Math.min(BOB_BINS - 1, Math.floor(phase * BOB_BINS))] = f.drop;
+    if (walking) f.bins[Math.min(BOB_BINS - 1, Math.floor(phase * BOB_BINS))] = f.drop;
     f.fresh = true;
   }
   /** The most and least her feet have brought her down through her stride (metres), or null before she has walked. */
@@ -3949,8 +4002,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const f = walkFeet;
     if (!f?.fresh) return;
     // her WALK bob's share of her rise and fall: she keeps her lowest, and comes that share of the way up from it
-    const range = bobRange(), extra = range ? bobDrop(-f.drop, -range.most, body.walkBob / 100) : 0;
-    walkOffset.set(f.x * M, -(f.drop + extra) * M, 0);
+    const range = pose === 'walk' ? bobRange() : null, extra = range ? bobDrop(-f.drop, -range.most, body.walkBob / 100) : 0;
+    // (drawn where she stands: the strip's ground under her root, against its ground under where she started)
+    walkOffset.set(f.x * M, (stageY(f.x, walked) - stageY(0, walked) - f.drop - extra) * M, 0);
     model.position.add(walkOffset); model.updateMatrixWorld(true);
     const sk = bodyOf()?.mesh ?? skin;
     bendKnees(sk, extra * M);
@@ -4024,9 +4078,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function keepSoles(sk: THREE.SkinnedMesh, f: WalkFeet): void {
     const p = new THREE.Vector3(), under: [number, number] = [0, 0];
     f.soles.forEach((sole, k) => {
-      let least = Infinity;
-      for (const i of sole.verts) { sole.mesh.getVertexPosition(i, p); sole.mesh.localToWorld(p); least = Math.min(least, p.y); }
-      under[k] = Math.max(0, sole.floor - least);
+      let most = 0;
+      // (the floor is the slope's, drawn through where she stands)
+      for (const i of sole.verts) { sole.mesh.getVertexPosition(i, p); sole.mesh.localToWorld(p); most = Math.max(most, sole.floor + stageY(p.x / M, p.z / M) * M - p.y); }
+      under[k] = most;
     });
     bendLegs(sk, under);
   }
@@ -4050,7 +4105,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const ball = leg.ball, end = ball >= 0 ? rig.bind.findIndex((b) => b.parent === ball) : -1;
       const b = bones[ball], e = bones[end];
       if (end < 0 || !b?.parent || e?.parent !== b) continue;
-      const B = wp(b), d = wp(e).sub(B), floorEnd = f.bind[end].y * perUnit;
+      const B = wp(b), d = wp(e).sub(B), E = wp(e), floorEnd = f.bind[end].y * perUnit + stageY(E.x / M, E.z / M) * M;
       if (d.y + B.y >= floorEnd) continue;
       const L = d.length(), across = Math.hypot(d.x, d.z);
       if (L < 1e-6 || across < 1e-6) continue;
@@ -6982,7 +7037,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (sitMoving) { sitAmount = stepSit(sitAmount, pose === 'sit' ? 1 : 0, dt); if (sitAmount === (pose === 'sit' ? 1 : 0)) { sitMoving = false; applyLook(); } }
       else sitAmount = pose === 'sit' ? 1 : 0;
       // walking, her feet take her pose first (stepFeet); out of the walk, the next walk sets them down afresh
-      if (pose === 'walk') stepFeet(dt);
+      if (onStage()) stepFeet(dt);
       else if (walkFeet) walkFeet.fresh = false;
       if (rig) rig.apply(currentTurns());
       // (her sneakers off in a birth position, on again out of it -- and her lift onto their soles with them; put on
@@ -8145,16 +8200,19 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // her walk on the strip (stepFeet), as drawn: each foot's ankle and ball in the STRIP's frame (metres; z is how far
         // along it, so a planted foot's stays put), whether her feet hold it, how far they brought her down, and -- with
         // `soles` -- each shoe's lowest point (or her foot's, barefoot) over the floor
+        // the treadmill's slope (walkStrip.ts): -30..+30, 'ahead' or 'across'
+        slope: (deg: number, heading: SlopeHeading = 'ahead') => { setSlope(deg, heading); return slopeLine(slope); },
         walkFeet: (soles = false) => {
           const f = walkFeet, sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
           if (!f?.fresh || !sk || !model) return null;
           model.updateMatrixWorld(true);
           const p = new THREE.Vector3(), at = (i: number) => { sk.skeleton.bones[i].getWorldPosition(p); return [+(p.x / M).toFixed(4), +(p.y / M).toFixed(4), +(p.z / M + walked).toFixed(4)]; };
-          const lowest = (m: THREE.SkinnedMesh) => { let y = Infinity, x = 0, z = 0; const n = m.geometry.getAttribute('position').count; for (let i = 0; i < n; i++) { m.getVertexPosition(i, p); m.localToWorld(p); if (p.y < y) { y = p.y; x = p.x; z = p.z; } } return [+(x / M).toFixed(4), +(y / M).toFixed(4), +(z / M + walked).toFixed(4)]; };
+          // (its height over the slope's floor, drawn through where she stands)
+          const lowest = (m: THREE.SkinnedMesh) => { let y = Infinity, x = 0, z = 0; const n = m.geometry.getAttribute('position').count; for (let i = 0; i < n; i++) { m.getVertexPosition(i, p); m.localToWorld(p); const over = p.y - stageY(p.x / M, p.z / M) * M; if (over < y) { y = over; x = p.x; z = p.z; } } return [+(x / M).toFixed(4), +(y / M).toFixed(4), +(z / M + walked).toFixed(4)]; };
           const shoes = soles ? (sneakersShown() && sneakers ? sneakers.meshes.map(lowest) : [lowest(sk)]) : null;
           return {
             walkedM: +walked.toFixed(4), x: +f.x.toFixed(4), drop: +f.drop.toFixed(4), bob: bobRange(), leg: +f.leg.toFixed(4), posedLeg: measure ? +(measure.legLength / f.upm).toFixed(4) : null, modelY: +(model.position.y / M).toFixed(4),
-            feet: f.state.feet.map((s, k) => ({ toe: (() => { const e = rig ? rig.bind.findIndex((b) => b.parent === f.state.legs[k].ball) : -1; return e >= 0 ? at(e) : null; })(), locked: s.locked, onBall: s.onBall, stance: +s.stance.toFixed(3), speed: +s.speed.toFixed(3), clear: +s.clear.toFixed(4), weight: +s.weight.toFixed(3), heel: +s.heelRise.toFixed(4), flat: +s.flat.toFixed(3), ankle: at(f.state.legs[k].ankle), ball: f.state.legs[k].ball >= 0 ? at(f.state.legs[k].ball) : null, locks: s.locks, maxLockReleases: s.maxLockReleases })),
+            feet: f.state.feet.map((s, k) => ({ toe: (() => { const e = rig ? rig.bind.findIndex((b) => b.parent === f.state.legs[k].ball) : -1; return e >= 0 ? at(e) : null; })(), locked: s.locked, onBall: s.onBall, stance: +s.stance.toFixed(3), applied: +s.applied.toFixed(3), liftShare: +s.liftShare.toFixed(3), need: +s.need.toFixed(4), heelRise: +s.heelRise.toFixed(4), targetOver: +(s.targetY - stageY(s.targetX, s.targetZ)).toFixed(4), slopePitch: +(s.slopePitch / THREE.MathUtils.DEG2RAD).toFixed(2), slopeRoll: +(s.slopeRoll / THREE.MathUtils.DEG2RAD).toFixed(2), speed: +s.speed.toFixed(3), clear: +s.clear.toFixed(4), weight: +s.weight.toFixed(3), heel: +s.heelRise.toFixed(4), flat: +s.flat.toFixed(3), ankle: at(f.state.legs[k].ankle), ball: f.state.legs[k].ball >= 0 ? at(f.state.legs[k].ball) : null, locks: s.locks, maxLockReleases: s.maxLockReleases })),
             soles: shoes,
           };
         },

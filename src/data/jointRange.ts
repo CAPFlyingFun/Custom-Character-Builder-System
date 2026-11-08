@@ -141,6 +141,10 @@ export const JOINT_RANGE = Object.freeze({
     /** passive: under the body's weight (a lunge, a squat's ankle) */
     dorsiflexion: m(13.8, 12.7, 'CDC_2011', 'MEASURED', p([36.5, 4.5], [36.5, 4.5], 'HOWE_2020')),
     plantarflexion: m(62.1, 54.6, 'CDC_2011'),
+    /** the foot rolled inner edge up (inversion) and outer edge up (eversion), at the subtalar joint; not split by sex.
+     * Read by her feet on a slope (actor/humanFeet.ts `FootConform`, through the Sarah lab). */
+    inversion: m(35, 35, 'AAOS'),
+    eversion: m(15, 15, 'AAOS'),
   }),
   neck: Object.freeze({
     flexion: m(45, 45, 'AAOS'),
@@ -178,6 +182,8 @@ export const JOINT_RANGE_WIRED = Object.freeze([
   ['hip', 'flexion'], ['hip', 'extension'], ['hip', 'abduction'], ['hip', 'adduction'], ['hip', 'internalRotation'], ['hip', 'externalRotation'],
   ['knee', 'flexion'], ['knee', 'hyperextension'],
   ['ankle', 'dorsiflexion'], ['ankle', 'plantarflexion'],
+  // (her feet on a slope: humanFeet's conform, through the Sarah lab -- with dorsi/plantarflexion above)
+  ['ankle', 'inversion'], ['ankle', 'eversion'],
   // (sarahlab/sarahLabTool.ts FINGER_LIMITS_DEG, held inside these by tests/jointRange.test.ts; and the room's P4 hand
   // shapes, read whole: SarahLabScene bendFinger)
   ['finger', 'mcpFlexion'], ['finger', 'pipFlexion'], ['finger', 'dipFlexion'], ['finger', 'mcpHyperextension'], ['finger', 'mcpSpread'],
