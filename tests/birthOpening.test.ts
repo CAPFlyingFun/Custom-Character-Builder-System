@@ -2,13 +2,14 @@
  * HER BIRTH OPENING (src/actor/birthCanal.ts, src/actor/birthDoors.ts; the skeleton-outward plan's Phase 1, step 4). The
  * cervix thins before it opens and opens to 10 cm; a term baby's head has room plane by plane through her measured
  * pelvis, least at her ischial spines and tuberosities; her canal opens round to a head's width without moving its
- * opening; and the opening's two doors (Joshua's drawing) meet closed, stand as wide as the tube open, and close as a
- * pneumatic door does -- quickly at first, slowing as they come to, never past shut.
+ * opening; and the opening's two doors (Joshua's drawing) meet closed, are laid round Joshua's 10 cm circle as it comes
+ * down -- touching it, never inside it, a half sphere round it with the lips together before they part round its widest
+ * -- and close as a pneumatic door does: quickly at first, slowing as they come to, never past shut.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BIRTH_OPENING, CANAL_OPENING, canalMouth, cervixAt, headPassage, openCanal, tightest } from '../src/actor/birthCanal';
-import { BIRTH_STAGES, DOORS, birthAngles, doorFrame, doorMeshes, doorOpening, foldAngles, fullSwing, swingDoors } from '../src/actor/birthDoors';
+import { BIRTH_HEAD, DOORS, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, swingDoors } from '../src/actor/birthDoors';
 import { CERVIX, layOrgans, lengthOf } from '../src/actor/pelvicOrgans';
 import { growWomb } from '../src/actor/pregnantWomb';
 
@@ -75,7 +76,8 @@ describe('her opening\'s doors', () => {
 
   it('closed, the lips meet; pushed open, the opening is as wide as the open tube', () => {
     expect(doorOpening(0)).toBeLessThan(0.005);
-    expect(doorOpening(1)).toBeGreaterThanOrEqual(CANAL_OPENING.diameterM);
+    // (round the circle's widest: its 10 cm, the open tube's, to a fraction of a millimetre)
+    expect(doorOpening(1)).toBeGreaterThan(CANAL_OPENING.diameterM - 0.0005);
     expect(doorMeshes(frame, 0).openM).toBeCloseTo(doorOpening(0), 9);
     const m = doorMeshes(frame, 1);
     expect(m.points.every(Number.isFinite)).toBe(true);
@@ -84,8 +86,8 @@ describe('her opening\'s doors', () => {
 
   it('a birth only ever opens them wider, from closed to the final push', () => {
     let last = 0;
-    for (let b = 0; b <= 1.0001; b += 0.025) { const w = doorOpening(b); expect(w).toBeGreaterThanOrEqual(last - 1e-9); last = w; }
-    expect(doorOpening(1)).toBeGreaterThan(CANAL_OPENING.diameterM);
+    for (let b = 0; b <= 1.0001; b += 0.025) { const w = doorOpening(b); expect(w).toBeGreaterThanOrEqual(last - 1e-4); last = w; }
+    expect(doorOpening(1)).toBeGreaterThan(CANAL_OPENING.diameterM - 0.0005);
   });
 
   it('let go, they close as a pneumatic door does: fast at first, slowing as they come to, never past shut', () => {
@@ -113,20 +115,36 @@ describe('her opening\'s doors', () => {
       const m = doorMeshes(frame, sw, f);
       expect(m.points.every(Number.isFinite)).toBe(true);
       expect(Math.max(...m.triangles)).toBeLessThan(m.points.length / 3);
-      expect(m.angles.hinge).toBeLessThanOrEqual(Math.max(birthAngles(sw).hinge, DOORS.foldDeg) + 1e-9);
+      // (the hand's fold on top of what the birth has laid)
+      expect(m.angles.hinge).toBeLessThanOrEqual(birthAngles(sw).hinge + DOORS.foldDeg + 1e-9);
     }
   });
 
-  it('a birth walks Joshua\'s stages: the inner piece and the hinge first, then the middle, the outer, then the final push', () => {
-    const at = (k: number) => birthAngles(k / (BIRTH_STAGES.length - 1));
-    expect(at(0)).toEqual({ hinge: 0, inner: 0, mid: 0, outer: 0 });
-    expect(at(1)).toEqual({ hinge: 15, inner: 30, mid: 0, outer: 0 });
-    expect(at(2)).toEqual({ hinge: 30, inner: 30, mid: 30, outer: 0 });
-    expect(at(3)).toEqual({ hinge: 30, inner: 30, mid: 30, outer: 30 });
-    // (the final push: its hinges as far as they go)
-    expect(at(4).hinge).toBeCloseTo((fullSwing() * 180) / Math.PI, 9);
-    expect(at(4).outer).toBe(30);
-    // (by hand the lip goes first)
+  it('a birth lays them round Joshua\'s 10 cm circle as it comes down: touching it, never inside it, the lips never past each other', () => {
+    expect(BIRTH_HEAD.diameterM).toBe(0.1);
+    expect(birthAngles(0)).toEqual({ hinge: 0, inner: 0, mid: 0, outer: 0 });
+    let last = Infinity;
+    for (let b = 0; b <= 1.0001; b += 0.05) {
+      const h = birthHead(b), d = doorSection(birthAngles(b)), r = h.radiusM;
+      // (it comes on down; what has come through stays as wide behind it)
+      expect(h.centreT).toBeLessThan(last); last = h.centreT;
+      const into = Math.max(...d.points.map(([x, t]) => (t >= h.centreT ? r - Math.abs(x) : r - Math.hypot(x, t - h.centreT))));
+      expect(into).toBeLessThan(0.0002);
+      expect(Math.min(...d.points.map((p) => p[0]))).toBeGreaterThan(DOORS.gap - 0.0002);
+      // (pressed against it: its lining touching it)
+      expect(Math.min(...d.points.slice(0, d.lining).map(([x, t]) => Math.hypot(x, t - h.centreT) - r))).toBeLessThan(0.0005);
+    }
+  });
+
+  it('pushed by the circle the main hinge turns out and the folds in: a half sphere round it, the lips together, before they part', () => {
+    const dome = [0.2, 0.3].map((b) => ({ a: birthAngles(b), open: doorOpening(b) }));
+    for (const { a, open } of dome) {
+      expect(a.hinge).toBeGreaterThan(20);
+      expect(a.mid).toBeLessThan(-20);
+      expect(a.outer).toBeLessThan(-20);
+      expect(open).toBeLessThan(0.01);
+    }
+    // (by hand the lip goes first, out)
     expect(foldAngles(0.2).outer).toBeGreaterThan(0);
     expect(foldAngles(0.2).inner).toBe(0);
     expect(doorMeshes(frame, 0, 1).angles.hinge).toBeCloseTo(DOORS.foldDeg, 6);

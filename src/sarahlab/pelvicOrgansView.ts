@@ -288,13 +288,14 @@ export class PelvicOrgansView {
     for (const t of this.touching) separate(t.a, t.b, t.gaps);
     this.draw();
     // her opening's doors: toward where BIRTH OPENING holds them, closing as a pneumatic door does
-    // (BIRTH OPENING walks them through Joshua's stages, closed to the final push: actor/birthDoors.ts BIRTH_STAGES)
+    // (BIRTH OPENING lays them round Joshua's 10 cm circle coming down, closed to its widest: actor/birthDoors.ts BIRTH_HEAD)
     this.swing = swingDoors(this.swing, this.grown ? this.open : 0, dt);
     this.fold = swingDoors(this.fold, this.foldWant, dt);
     this.drawDoors();
   }
 
-  /** How far a birth has pushed her opening's doors now (0 closed .. 1 the final push: actor/birthDoors.ts BIRTH_STAGES). */
+  /** How far a birth has pushed her opening's doors now (0 closed .. 1 open round the 10 cm circle's widest:
+   * actor/birthDoors.ts BIRTH_HEAD). */
   get doorSwing(): number { return this.swing; }
   /** FOLD BACK (0..1): her opening's doors folded back by hand -- their three pieces in turn, the lip's end first, then
    * their main hinges (actor/birthDoors.ts) -- going back as a pneumatic door does when let go. */

@@ -8,8 +8,9 @@
  * and each side of that funnel, with the lip below it (her outer skin's, the yellow), is a DOOR hung on its own hinge, one
  * each side of the tube, running front to back. Each door is three pieces with a fold between them and at its root
  * (Joshua: "add 3 more hinges in the skin itself"). Closed, the two lips meet in the middle. Pushed open from inside in a
- * birth (BIRTH OPENING) it goes through Joshua's stages -- its inner piece bulging out with its hinge starting to give,
- * then the middle, then the outer, then the final push swinging it open as far as the head needs (`BIRTH_STAGES`); folded back by hand (FOLD BACK) it turns out from the lip's end -- outer, middle, inner --
+ * birth (BIRTH OPENING) they are laid round Joshua's 10 cm test circle coming down the middle (`BIRTH_HEAD`): its main
+ * hinge turning out and its folds turning in, a half sphere round it with the lips together, then the lips parting round
+ * it to its widest; folded back by hand (FOLD BACK) it turns out from the lip's end -- outer, middle, inner --
  * and then its hinge (`foldAngles`); its hinge never takes it back through her skin. Let go, each goes back as a
  * pneumatic door closes -- quickly at first, slowing as it comes to (`swingDoors`). Her outer skin runs on out from each
  * hinge to her thighs and does not move.
@@ -67,7 +68,9 @@ export function doorFrame(canal: readonly P3[]): DoorFrame {
  * (0..1) is how thick it is and how far its lip hangs, as a share of its own: a door is thickest in its middle and thins
  * to its ends, front and back, as lips do.
  */
-function section(f = 1): { points: [number, number][]; along: number[]; hinge: [number, number]; lining: number; edge: number } {
+interface Section { points: [number, number][]; along: number[]; hinge: [number, number]; lining: number; edge: number }
+
+function section(f = 1): Section {
   const D = DOORS, R = CANAL_OPENING.diameterM / 2, h = D.hingeUp, g = D.gap, k = D.thick * f, lip = -0.1 * h - (D.lip - 0.1 * h) * f;
   const corners = (lipT: number): [number, number][] => [[R, h], [0.55 * R, 0.8 * h], [0.2 * R, 0.4 * h], [g, 0.1 * h], [g, lipT]];
   const ctrl = corners(lip), full = corners(-D.lip);
@@ -96,13 +99,6 @@ function section(f = 1): { points: [number, number][]; along: number[]; hinge: [
   };
 }
 
-/** How far a door swings to stand open, radians: its opening edge turned to stand straight below its hinge (the opening
- * then as wide as its hinges are apart). */
-export function fullSwing(): number {
-  const s = section(), [hx, ht] = s.hinge, [ex, et] = s.points[s.edge];
-  return -Math.PI / 2 - Math.atan2(et - ht, ex - hx);
-}
-
 /**
  * FOLDED BACK BY HAND (Joshua, 2026-11-08: "add 3 more hinges in the skin itself to basically fold over itself... You can
  * just open, pull it back... split in 3rd, and each 1/3 can rotate 30°... plus the main hinge as well provided it
@@ -111,34 +107,116 @@ export function fullSwing(): number {
  * its first quarter the outer third, then the middle, then the inner, then the door on its main hinge -- each by
  * `DOORS.foldDeg`, degrees.
  */
-export function foldAngles(fold: number): { outer: number; mid: number; inner: number; hinge: number } {
+export function foldAngles(fold: number): Angles {
   const f = Math.min(1, Math.max(0, Number.isFinite(fold) ? fold : 0)) * 4, part = (k: number) => Math.min(1, Math.max(0, f - k)) * DOORS.foldDeg;
   return { outer: part(0), mid: part(1), inner: part(2), hinge: part(3) };
 }
 
-/**
- * PUSHED OPEN FROM INSIDE, IN A BIRTH (Joshua, 2026-11-08: "for birth, do the opposite hybrid... It starts bulging the
- * inner, mid, outer, and once it's a max, then it acts like how it is now, which opens wide... with the baby's head
- * pushing from the inside outward"; and then, exactly: "technically for the birth with the bulge, the inner 3rd and main
- * joints would start together"). His stages, in order along `birth` (0..1), each joint going straight from one to the
- * next: [main hinge, inner, middle, outer] degrees -- the last one's hinge as far as the head needs (`fullSwing` at most).
- * Let go, it plays back the other way.
- */
-export const BIRTH_STAGES = Object.freeze([
-  { name: 'closed', hinge: 0, inner: 0, mid: 0, outer: 0 },
-  { name: 'starting pressure', hinge: 15, inner: 30, mid: 0, outer: 0 },
-  { name: 'bulging', hinge: 30, inner: 30, mid: 30, outer: 0 },
-  { name: 'bulged', hinge: 30, inner: 30, mid: 30, outer: 30 },
-  { name: 'final push', hinge: NaN, inner: 30, mid: 30, outer: 30 },
-] as const);
+/** A door's four joints, degrees: its main hinge and its three folds (+ turns it out, away from her middle). */
+export interface Angles { readonly outer: number; readonly mid: number; readonly inner: number; readonly hinge: number }
 
-/** The joints' angles at `birth` (0..1) along BIRTH_STAGES, degrees (the final push's hinge standing open). */
-export function birthAngles(birth: number, stages: readonly { readonly hinge: number; readonly inner: number; readonly mid: number; readonly outer: number }[] = BIRTH_STAGES): { outer: number; mid: number; inner: number; hinge: number } {
-  const S = stages, q = Math.min(1, Math.max(0, Number.isFinite(birth) ? birth : 0)) * (S.length - 1);
-  const k = Math.min(S.length - 2, Math.floor(q)), u = q - k, a = S[k], b = S[k + 1];
-  const hingeOf = (h: number) => (Number.isNaN(h) ? (fullSwing() * 180) / Math.PI : h);
-  const mix = (x: number, y: number) => x + (y - x) * u;
-  return { inner: mix(a.inner, b.inner), mid: mix(a.mid, b.mid), outer: mix(a.outer, b.outer), hinge: mix(hingeOf(a.hinge), hingeOf(b.hinge)) };
+/**
+ * PUSHED OPEN FROM INSIDE, IN A BIRTH, BY JOSHUA'S TEST CIRCLE (2026-11-08: "draw a 10cm circle and test the shape of the
+ * skin against it as it goes down… it needs to be flush and touching if possible to be circle"; and "having a real
+ * circle and slowly moving in the frame will help determine which joints will be moving"). A head's way, 10 cm across,
+ * comes down the middle of the opening; BIRTH OPENING is how far it has come, from just touching the closed doors to
+ * where the opening has stretched round its widest. Every joint (the main hinge and the three folds) is as stiff as the
+ * next, each pulled back toward closed by the closer; so at each step the doors lie as near closed as the circle lets
+ * them -- each joint turned only as far as the circle forces it -- never inside it, the lips never past each other, and a
+ * hinge never past shut. Which joints move, and when, is the circle's to say. Let go, it plays back the other way.
+ */
+export const BIRTH_HEAD = Object.freeze({
+  /** across, metres: Joshua's 10 cm, which is the open canal (CANAL_OPENING) and a term head's way. GAME TUNING. */
+  diameterM: CANAL_OPENING.diameterM,
+  /** how far it comes down between the steps it is solved at, metres. GAME TUNING (smooth enough to look at). */
+  stepM: 0.002,
+  /** how dear it is to stretch the opening, against bending the joints: a centimetre of opening as dear as this many
+   * degrees of bend (her lips are one ring, front to back, and the ring has to stretch for them to part). GAME TUNING. */
+  stretchDegPerCm: 60,
+});
+
+const RAD = Math.PI / 180;
+
+/** How hard a door is bent with its joints at `a` (radians: hinge, inner, middle, outer) round the circle centred `c`
+ * up the canal (the baby's body behind it as wide): its joints' bend, squared; its opening stretched; and -- far dearer --
+ * anything of it inside the circle, past the middle, or its hinge past shut. */
+function strain(s: Section, a: readonly number[], c: number): number {
+  const r = BIRTH_HEAD.diameterM / 2, K = 1e7, posed = pose(s, a[0], { inner: a[1] / RAD, mid: a[2] / RAD, outer: a[3] / RAD });
+  const S = ((BIRTH_HEAD.stretchDegPerCm * RAD) / 0.01) ** 2, lip = posed[s.lining - 1][0] - DOORS.gap;
+  let e = a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3] + K * 1e-4 * Math.min(0, a[0]) ** 2 + S * lip * lip;
+  for (const [x, t] of posed) {
+    // (the head, and the body behind it as wide: what has come through stays through)
+    const inside = t >= c ? r - Math.abs(x) : r - Math.hypot(x, t - c), past = DOORS.gap - x;
+    if (inside > 0) e += K * inside * inside;
+    if (past > 0) e += K * past * past;
+  }
+  return e;
+}
+
+/** The least of `f` near `from` (Nelder and Mead's simplex: no slopes needed). */
+function leastNear(f: (v: number[]) => number, from: readonly number[], step: number, rounds: number): number[] {
+  const n = from.length, pts: number[][] = [from.slice()];
+  for (let i = 0; i < n; i++) { const p = from.slice(); p[i] += step; pts.push(p); }
+  let val = pts.map(f);
+  for (let k = 0; k < rounds; k++) {
+    const order = val.map((_, i) => i).sort((i, j) => val[i] - val[j]);
+    const P = order.map((i) => pts[i]), V = order.map((i) => val[i]);
+    const mid = Array.from({ length: n }, (_, d) => P.slice(0, n).reduce((s, p) => s + p[d], 0) / n);
+    const along = (u: number) => mid.map((m, d) => m + u * (P[n][d] - m));
+    const xr = along(-1), fr = f(xr);
+    if (fr < V[0]) { const xe = along(-2), fe = f(xe); P[n] = fe < fr ? xe : xr; V[n] = Math.min(fe, fr); }
+    else if (fr < V[n - 1]) { P[n] = xr; V[n] = fr; }
+    else {
+      const xc = along(fr < V[n] ? -0.5 : 0.5), fc = f(xc);
+      if (fc < Math.min(fr, V[n])) { P[n] = xc; V[n] = fc; }
+      else for (let i = 1; i <= n; i++) { P[i] = P[i].map((x, d) => P[0][d] + 0.5 * (x - P[0][d])); V[i] = f(P[i]); }
+    }
+    pts.splice(0, pts.length, ...P); val = V;
+    if (V[n] - V[0] < 1e-12 && Math.abs(P[n][0] - P[0][0]) < 1e-6) break;
+  }
+  return pts[val.indexOf(Math.min(...val))];
+}
+
+/** The narrowest the opening is between the two doors, posed (metres). */
+const narrowest = (posed: readonly [number, number][]) => 2 * Math.min(...posed.map((p) => p[0]));
+
+let headWay: { centre: number[]; angles: Angles[] } | null = null;
+
+/** The circle's way down and the doors' joints at each step of it (worked out once). */
+function wayDown(): { centre: number[]; angles: Angles[] } {
+  if (headWay) return headWay;
+  const s = section(), r = BIRTH_HEAD.diameterM / 2;
+  // (it first touches the closed doors as high as any of them reaches into its way)
+  let c = -Infinity;
+  for (const [x, t] of s.points) if (Math.abs(x) < r) c = Math.max(c, t + Math.sqrt(r * r - x * x));
+  const centre = [c], angles: Angles[] = [{ hinge: 0, inner: 0, mid: 0, outer: 0 }];
+  let a = [0, 0, 0, 0];
+  for (let k = 0; k < 400; k++) {
+    c -= BIRTH_HEAD.stepM;
+    const here = c;
+    a = leastNear((v) => strain(s, v, here), leastNear((v) => strain(s, v, here), a, 0.05, 400), 0.01, 400);
+    centre.push(c);
+    angles.push({ hinge: a[0] / RAD, inner: a[1] / RAD, mid: a[2] / RAD, outer: a[3] / RAD });
+    // (until the opening has stretched round its widest: its lips up to the circle's middle)
+    if (pose(s, a[0], { inner: a[1] / RAD, mid: a[2] / RAD, outer: a[3] / RAD })[s.lining - 1][1] >= c) break;
+  }
+  return (headWay = { centre, angles });
+}
+
+/** Where the circle is at BIRTH OPENING `birth` (0..1): its centre's height up the canal from the opening, metres, in a
+ * door's section ([x, t], centred on x = 0). */
+export function birthHead(birth: number): { centreT: number; radiusM: number } {
+  const w = wayDown(), q = Math.min(1, Math.max(0, Number.isFinite(birth) ? birth : 0)) * (w.centre.length - 1), k = Math.min(w.centre.length - 2, Math.floor(q));
+  return { centreT: w.centre[k] + (w.centre[k + 1] - w.centre[k]) * (q - k), radiusM: BIRTH_HEAD.diameterM / 2 };
+}
+
+/** The joints' angles at BIRTH OPENING `birth` (0..1), degrees: as the circle has them there. */
+export function birthAngles(birth: number): Angles {
+  // (closed, as laid: nothing to work out until a birth starts)
+  if (!(birth > 0)) return { hinge: 0, inner: 0, mid: 0, outer: 0 };
+  const w = wayDown(), q = Math.min(1, Math.max(0, Number.isFinite(birth) ? birth : 0)) * (w.angles.length - 1);
+  const k = Math.min(w.angles.length - 2, Math.floor(q)), u = q - k, a = w.angles[k], b = w.angles[k + 1], mix = (x: number, y: number) => x + (y - x) * u;
+  return { hinge: mix(a.hinge, b.hinge), inner: mix(a.inner, b.inner), mid: mix(a.mid, b.mid), outer: mix(a.outer, b.outer) };
 }
 
 const turnAbout = (p: [number, number], c: [number, number], a: number): [number, number] => {
@@ -148,7 +226,7 @@ const turnAbout = (p: [number, number], c: [number, number], a: number): [number
 
 /** One door's section posed (the right one): folded at its three folds (each piece past a fold turned out with it, the
  * fold itself a short bend), then swung `hingeRad` on its main hinge. */
-function pose(s: ReturnType<typeof section>, hingeRad: number, folds: { outer: number; mid: number; inner: number }): [number, number][] {
+function pose(s: Section, hingeRad: number, folds: { outer: number; mid: number; inner: number }): [number, number][] {
   const lining = s.points.slice(0, s.lining), at = s.along.slice(0, s.lining);
   const pivot = (u: number): [number, number] => { let k = 1; while (k < at.length - 1 && at[k] < u) k++; const f = at[k] > at[k - 1] ? (u - at[k - 1]) / (at[k] - at[k - 1]) : 0; return [lining[k - 1][0] + (lining[k][0] - lining[k - 1][0]) * f, lining[k - 1][1] + (lining[k][1] - lining[k - 1][1]) * f]; };
   const bend = (x: number) => { const t = Math.min(1, Math.max(0, x / DOORS.foldBend + 0.5)); return t * t * (3 - 2 * t); };
@@ -168,38 +246,38 @@ function intoSkin(posed: readonly [number, number][], along: readonly number[], 
 }
 
 /**
- * The angles laid on a door (degrees) pushed open `birth` (BIRTH OPENING's way: from inside) and folded back `fold` (FOLD
- * BACK's: by hand), each joint as far as the further of the two takes it -- its main hinge only so far as keeps the door
- * off her outer skin.
+ * The angles laid on a door (degrees) pushed open `birth` (BIRTH OPENING's way: by the circle, from inside) and folded
+ * back `fold` (FOLD BACK's: by hand, on top of whatever the birth has laid) -- its main hinge only so far as keeps the
+ * door off her outer skin.
  */
-export function doorAngles(birth: number, fold = 0): { outer: number; mid: number; inner: number; hinge: number } {
+export function doorAngles(birth: number, fold = 0): Angles {
   const s = section(), b = birthAngles(birth), h = foldAngles(fold);
-  const want = { outer: Math.max(b.outer, h.outer), mid: Math.max(b.mid, h.mid), inner: Math.max(b.inner, h.inner) };
-  let hinge = (Math.max(b.hinge, h.hinge) * Math.PI) / 180;
+  const want = { outer: b.outer + h.outer, mid: b.mid + h.mid, inner: b.inner + h.inner };
+  let hinge = ((b.hinge + h.hinge) * Math.PI) / 180;
   if (intoSkin(pose(s, hinge, want), s.along, s.hinge)) { let lo = 0, hi = hinge; for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2; if (intoSkin(pose(s, m, want), s.along, s.hinge)) hi = m; else lo = m; } hinge = lo; }
   return { ...want, hinge: (hinge * 180) / Math.PI };
 }
 
 /** One door (the right one) posed at `angles` (degrees), in its cross-section's own [x, t] (metres): its outline (the
  * lining's points first), its main hinge and its three folds as they stand -- for drawing how it moves. */
-export function doorSection(angles: { outer: number; mid: number; inner: number; hinge: number }): { points: [number, number][]; lining: number; hinge: [number, number]; folds: [number, number][] } {
+export function doorSection(angles: Angles): { points: [number, number][]; lining: number; hinge: [number, number]; folds: [number, number][] } {
   const s = section(), a = { outer: angles.outer, mid: angles.mid, inner: angles.inner }, hinge = (angles.hinge * Math.PI) / 180;
   const posed = pose(s, hinge, a), at = s.along.slice(0, s.lining);
   const near = (u: number) => at.reduce((best, x, i) => (Math.abs(x - u) < Math.abs(at[best] - u) ? i : best), 0);
   return { points: posed, lining: s.lining, hinge: s.hinge, folds: [0, 1 / 3, 2 / 3].map((u) => posed[near(u)]) };
 }
 
-/** How wide the opening is between the lips, pushed open `birth` and folded back `fold`, metres. */
+/** How wide the opening is, pushed open `birth` and folded back `fold`: the narrowest between the two doors, metres. */
 export function doorOpening(birth: number, fold = 0): number {
   const s = section(), a = doorAngles(birth, fold);
-  return 2 * Math.abs(pose(s, (a.hinge * Math.PI) / 180, a)[s.edge][0]);
+  return narrowest(pose(s, (a.hinge * Math.PI) / 180, a));
 }
 
 /**
  * The doors in her rest frame, pushed open `birth` (0..1, BIRTH OPENING) and folded back `fold` (0..1, FOLD BACK): each
  * door's mesh, coloured lining or skin; how wide the opening is between the lips; and the angles laid (degrees).
  */
-export function doorMeshes(f: DoorFrame, birth: number, fold = 0): { points: Float32Array; triangles: Uint32Array; lining: Uint8Array; openM: number; angles: { outer: number; mid: number; inner: number; hinge: number } } {
+export function doorMeshes(f: DoorFrame, birth: number, fold = 0): { points: Float32Array; triangles: Uint32Array; lining: Uint8Array; openM: number; angles: Angles } {
   const D = DOORS, s = section(), n = s.points.length, J = D.stations, angles = doorAngles(birth, fold), hinge = (angles.hinge * Math.PI) / 180;
   const pts: number[] = [], tris: number[] = [], lining: number[] = [];
   const at = (x: number, t: number, along: number) => [0, 1, 2].map((c) => f.mouth[c] + f.x[c] * x + f.t[c] * t + f.n[c] * along);
@@ -216,7 +294,7 @@ export function doorMeshes(f: DoorFrame, birth: number, fold = 0): { points: Flo
       if (side > 0) tris.push(a, cc, b, b, cc, d); else tris.push(a, b, cc, b, d, cc);
     }
   }
-  return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris), lining: Uint8Array.from(lining), openM: 2 * Math.abs(pose(s, hinge, angles)[s.edge][0]), angles };
+  return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris), lining: Uint8Array.from(lining), openM: narrowest(pose(s, hinge, angles)), angles };
 }
 
 /** Her outer skin's test piece: a strip each side from the hinge out toward her thigh, rising as it goes (rest frame). */
