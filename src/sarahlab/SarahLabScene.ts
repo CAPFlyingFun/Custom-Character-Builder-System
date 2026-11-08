@@ -85,7 +85,7 @@ import { createSoftBaby, restorePose, stepSoftBaby, type SoftBaby } from './soft
 import { createSqueezeUniforms, patchSqueeze, setSqueeze } from './babySqueeze';
 import { createSkinUniforms, patchSkin, stepSkin } from './babySkin';
 import { measureHuman } from '../actor/humanSkeleton';
-import { walkWeight, weighWalk } from '../actor/walkWeight';
+import { footContact, walkWeight, weighWalk } from '../actor/walkWeight';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -3830,19 +3830,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * her turns, so her feet stay put). What it moved her by is kept in `walkOffset`: her soft parts feel her motion without
    * it, as they did before, the walk's bounce already fed to them (`walkBounceAccel`, tuned by Joshua 2026-10-08).
    */
-  function lowestSole(sk: THREE.SkinnedMesh): number {
-    if (!measure) return 0;
+  /** Each foot's lowest point, [left, right], world height. */
+  function lowestSoles(sk: THREE.SkinnedMesh): [number, number] {
+    if (!measure) return [0, 0];
     const bones = sk.skeleton.bones, q = new THREE.Quaternion(), p = new THREE.Vector3(), at = new THREE.Vector3();
-    let low = Infinity;
-    for (const ankle of [measure.joints.ankleL, measure.joints.ankleR]) {
+    const low = (ankle: number): number => {
       const bone = bones[ankle], shape = footShape(sk, ankle);
       bone.getWorldPosition(at);
-      if (!shape) { low = Math.min(low, at.y); continue; }
+      if (!shape) return at.y;
       bone.getWorldQuaternion(q);
       const P = shape.pts;
-      for (let k = 0; k < P.length; k += 3) low = Math.min(low, at.y + p.set(P[k], P[k + 1], P[k + 2]).applyQuaternion(q).y);
-    }
-    return low;
+      let least = Infinity;
+      for (let k = 0; k < P.length; k += 3) least = Math.min(least, at.y + p.set(P[k], P[k + 1], P[k + 2]).applyQuaternion(q).y);
+      return least;
+    };
+    return [low(measure.joints.ankleL), low(measure.joints.ankleR)];
   }
   function weighOnFloor(skin: THREE.SkinnedMesh): void {
     if (!model || !rig || !measure) return;
@@ -3853,13 +3855,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       rig.apply(turnsFor('stand', standOut)); model.updateMatrixWorld(true);
       readFootShapes(sk);
       const hip = sk.skeleton.bones[j.hipL].getWorldPosition(new THREE.Vector3()), ankle = sk.skeleton.bones[j.ankleL].getWorldPosition(new THREE.Vector3());
-      standSoles = { key, low: lowestSole(sk), leg: hip.distanceTo(ankle) };
+      standSoles = { key, low: Math.min(...lowestSoles(sk)), leg: hip.distanceTo(ankle) };
       rig.apply(currentTurns()); model.updateMatrixWorld(true);
     }
-    const left = measure.leftSign < 0 ? -1 : 1, w = walkWeight(walkPhase(), 'walk');
+    const left = measure.leftSign < 0 ? -1 : 1, phase = walkPhase(), w = walkWeight(phase, 'walk');
     walkOffset.set(left * w.sway * standSoles.leg, 0, 0);
     model.position.add(walkOffset); model.updateMatrixWorld(true);
-    const rise = standSoles.low - lowestSole(sk);
+    // stood on the feet she is standing on, each by how much it carries her: a swinging foot's toes never lift her
+    const [cl, cr] = footContact(phase, 'walk'), [ll, lr] = lowestSoles(sk);
+    const rise = standSoles.low - (cl * ll + cr * lr) / Math.max(1e-6, cl + cr);
     walkOffset.y = rise;
     model.position.y += rise; model.updateMatrixWorld(true);
   }
