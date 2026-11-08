@@ -87,6 +87,7 @@ import { createSkinUniforms, patchSkin, stepSkin } from './babySkin';
 import { measureHuman } from '../actor/humanSkeleton';
 import { bobDrop, walkWeight, weighWalk, WALK_WEIGHT } from '../actor/walkWeight';
 import { createFeet, groundFeet, type FeetState, type FootConform } from '../actor/humanFeet';
+import { BODY_KG, balanceAt, centreOfMass, extrapolatedCom, supportOutline, wombKg, wombPlace, type BodyPoints, type P2, type P3 } from '../actor/bodyMass';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -926,6 +927,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let walkFeet: WalkFeet | null = null;
   /** The treadmill's slope under STAND and WALK (`setSlope`). */
   let slope: StageSlope = { deg: 0, heading: 'ahead' };
+  /** BALANCE TEST on (`measureBalance`), and what it measured last. */
+  let balanceOn = false;
+  let stageBalance: { com: P3; heading: P2; speed: number; outline: P2[]; margin: number; nearest: P2 | null; kg: number; body: BodyPoints; womb: P3 } | null = null;
+  /** The stage's own clock (seconds, as her feet are stepped) and her centre of mass when it was last read, along the strip
+   * (metres: where she is drawn, plus how far she has walked), for its speed. */
+  let stageClock = 0, balanceWas: { t: number; x: number; z: number; vx: number; vz: number } | null = null;
+  /** Which feet were on the floor when last read, and her balance as her last foot came down (walking). */
+  let balanceDown: boolean[] | null = null, balanceStep: { margin: number; nearest: P2 | null; heading: P2; given: P2[]; com: P2 } | null = null;
   let standLift = 0;
   /** What the walk's weight moved her by this frame, room units (`weighOnFloor`); her soft parts feel her motion without it. */
   const walkOffset = new THREE.Vector3();
@@ -1582,6 +1591,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (slopeField) slopeField.textContent = slopeLine(slope);
     if (slopeInput && Number(slopeInput.value) !== slope.deg) slopeInput.value = String(slope.deg);
     for (const h of SLOPE.headings) buttons[SARAH_LAB_ACTION.slope + h]?.setAttribute('aria-pressed', String(slope.heading === h));
+    buttons[SARAH_LAB_ACTION.balance]?.setAttribute('aria-pressed', String(balanceOn));
+    const balanceField = fields[SARAH_LAB_FIELD.balance];
+    if (balanceField) balanceField.textContent = balanceLine();
     if (armsInput && Number(armsInput.value) !== armsDeg) armsInput.value = String(armsDeg);
     if (buttons.armSide) buttons.armSide.textContent = `ARMS · ${ARM_SIDES[armSide]}`;
     for (const c of BODY_CONTROLS) {
@@ -2593,7 +2605,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     slopeInput = slider(SARAH_LAB_FIELD.slope, slope.deg, (v) => setSlope(v, slope.heading), SLOPE.most, 'pose', -SLOPE.most);
     { const row = document.createElement('div'); row.dataset.tab = 'pose'; row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
       for (const h of SLOPE.headings) { const b = btn(h === 'ahead' ? 'AHEAD' : 'ACROSS', SARAH_LAB_ACTION.slope + h, () => setSlope(slope.deg, h)); buttons[SARAH_LAB_ACTION.slope + h] = b; row.append(b); }
-      right.appendChild(row); }
+      // BALANCE TEST (developer): her centre of mass and what holds it up, drawn
+      const balance = btn('BALANCE TEST', SARAH_LAB_ACTION.balance, () => setBalance(!balanceOn)); buttons[SARAH_LAB_ACTION.balance] = balance; row.append(balance);
+      right.appendChild(row);
+      const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.balance; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; fields[SARAH_LAB_FIELD.balance] = line; right.appendChild(line); }
     // her birth opening, closed to the full 10 cm (with the birth poses: LEGS APART, SQUAT, RECLINE)
     birthOpenInput = slider(SARAH_LAB_FIELD.birthOpen, birthOpenPct, (v) => { birthOpenPct = v; vulva?.setOpen(v / 100); }, 100, 'pose');
     // and how far the area round it is pushed out, on its own (in a birth it opens first, and bulges once her baby's head
@@ -3813,6 +3828,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // walking, she walks the strip, and it is the floor (walkStrip.ts)
     const onStrip = onStage();
     strip.object.visible = onStrip; floor.visible = !onStrip; ring.visible = !onStrip;
+    if (!onStrip) balanceDraw.group.visible = false;
     if (onStrip) strip.setWalked(walked);
     if (!model || !rig || !measure) return;
     walkOffset.set(0, 0, 0);
@@ -3894,7 +3910,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     /** Each foot's sole as drawn -- her shoe's, or her foot's barefoot -- as its lowest points along it and across it
      * (`SOLE_POINTS` by `SOLE_ACROSS`), and the height the lowest of them stands at in her bind (room units): a sole is on
      * the floor there. */
-    readonly soles: readonly { readonly mesh: THREE.SkinnedMesh; readonly verts: Uint32Array; readonly floor: number }[];
+    /** Each sole's points read every frame, the floor under them as she stands in her bind, and how high over it each
+     * point stood there (`clear`, world units: what is up off the floor when she stands flat, an arch or a toe's spring). */
+    readonly soles: readonly { readonly mesh: THREE.SkinnedMesh; readonly verts: Uint32Array; readonly floor: number; readonly clear: Float32Array }[];
   }
   /** Her stride's rise and fall is remembered a 24th of a stride at a time. GAME TUNING. */
   const BOB_BINS = 24;
@@ -3907,7 +3925,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * it's too steep to walk (heel > toe), is just toe-to-toe").
    */
   /** Whether she is on the treadmill: walking, or standing on its slope. */
-  function onStage(): boolean { return pose === 'walk' || (pose === 'stand' && slope.deg !== 0); }
+  function onStage(): boolean { return pose === 'walk' || (pose === 'stand' && (slope.deg !== 0 || balanceOn)); }
   /** The stage's ground under (x, z) of the strip's frame, metres: a plane through where she started. */
   function stageY(x: number, z: number): number { const g = slopeGrade(slope, measure?.leftSign ?? 1); return g.x * x + g.z * z; }
   /**
@@ -3919,9 +3937,163 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const level: RangeLevel = walking ? 'active' : 'passive';
     return { dorsiflexion: r('dorsiflexion', level), plantarflexion: r('plantarflexion', level), inversion: r('inversion', level), eversion: r('eversion', level) };
   }
+  /**
+   * BALANCE TEST (Trello #273 step 3b: "measure support polygon (planted sole contacts), projected centre of mass...
+   * Show telemetry, no giant permanent HUD"). On the treadmill, each frame: her centre of mass from her bones as drawn
+   * and her pregnancy's weight at her week (actor/bodyMass.ts), the outline round the points of her soles that touch
+   * the floor (`WalkFeet.soles`, BALANCE_TOUCH and BALANCE_SETTLE), and how far inside it her centre
+   * of mass falls straight down -- or, moving, where it is heading (Hof's extrapolated centre of mass: where she must
+   * have a foot to stop). Walking, it is heading past the foot she stands on for most of every step, as anyone's is: the
+   * next foot catches it, and how far inside her feet it was as that foot came down is what the line reads. Drawn, when
+   * asked for, as an instrument -- the outline on the floor, a plumb line from her centre of mass and a line on to where
+   * it is heading, green with room to spare, amber near the edge, red past it -- through her, as the finder is drawn in
+   * TRADDOMIUM.
+   */
+  /** A sole's point is on the floor within this of it, metres. GAME TUNING: a sole is read every 2 cm, so rocked onto its
+   * ball the point nearest the floor can be most of a centimetre off it. */
+  const BALANCE_TOUCH = 0.01;
+  /** ...or within this of where it stood on it in her bind (a point that stood off it there, as the skeleton's heel bone
+   * does), metres. GAME TUNING: no more, or a foot swinging past the floor would be read as on it. */
+  const BALANCE_SETTLE = 0.003;
+  /** The points of a sole that bear her weight when she stands flat: up to this high over the floor in her bind, metres.
+   * GAME TUNING: a shoe's sole and a foot's heel and ball pads -- and the skeleton's heel bone, held up off the floor by
+   * the 1-2 cm heel pad it does not have -- but not an arch. */
+  const BALANCE_BEARING = 0.02;
+  /** Her centre of mass's speed is smoothed over this long, seconds: a frame's jitter is not a lurch. GAME TUNING. */
+  const BALANCE_SPEED_EASE = 0.08;
+  /** Slower than this (m/s) she is standing still, as the line reads it. GAME TUNING. */
+  const BALANCE_MOVING = 0.05;
+  /** The margin under which she is near her edge, metres. GAME TUNING. */
+  const BALANCE_NEAR = 0.03;
+  const balanceDraw = (() => {
+    const group = new THREE.Group(); group.visible = false; group.renderOrder = 999;
+    const line = (n: number) => new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const mat = () => new THREE.LineBasicMaterial({ color: 0x2fbf71, depthTest: false, transparent: true });
+    const outline = new THREE.LineLoop(line(256), mat()), plumb = new THREE.Line(line(2), mat()), ahead = new THREE.Line(line(2), mat());
+    const dot = (r: number) => new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), new THREE.MeshBasicMaterial({ color: 0x2fbf71, depthTest: false, transparent: true }));
+    const com = dot(0.012 * M), foot = dot(0.008 * M), heading = dot(0.01 * M);
+    // (and the ground inside the outline, shaded: a fan from its middle, as the outline is convex)
+    const fillGeometry = line(257);
+    fillGeometry.setIndex(new THREE.BufferAttribute(new Uint16Array(3 * 256), 1));
+    const fill = new THREE.Mesh(fillGeometry, new THREE.MeshBasicMaterial({ color: 0x2fbf71, depthTest: false, transparent: true, opacity: 0.28, side: THREE.DoubleSide }));
+    for (const o of [fill, outline, plumb, ahead, com, foot, heading]) { o.renderOrder = 999; o.frustumCulled = false; group.add(o); }
+    three.add(group);
+    return { group, fill, outline, plumb, ahead, com, foot, heading };
+  })();
+  function measureBalance(sk: THREE.SkinnedMesh, f: WalkFeet): void {
+    if (!measure || !rig) return;
+    const bones = sk.skeleton.bones, j = measure.joints, v = new THREE.Vector3();
+    const at = (i: number): P3 => { bones[i].getWorldPosition(v); return [v.x / M, v.y / M, v.z / M]; };
+    const child = (i: number) => rig!.bind.findIndex((b) => b.parent === i);
+    const past = (a: P3, b: P3, m: number): P3 => { const d = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1; return [b[0] + ((b[0] - a[0]) / d) * m, b[1] + ((b[1] - a[1]) / d) * m, b[2] + ((b[2] - a[2]) / d) * m]; };
+    const head = at(j.head), neck = at(j.neck), top = child(j.head) >= 0 ? at(child(j.head)) : past(neck, head, 0.12);
+    const limb = (l: number, r: number) => [at(l), at(r)] as const;
+    const wrist = limb(j.wristL, j.wristR), elbow = limb(j.elbowL, j.elbowR), ankle = limb(j.ankleL, j.ankleR);
+    // a hand's middle (the third knuckle) 9 cm on from the wrist; a foot's heel under and behind the ankle, its toe its tip
+    const toe = f.state.legs.map((leg) => { const e = leg.ball >= 0 ? child(leg.ball) : -1; return e >= 0 ? at(e) : leg.ball >= 0 ? at(leg.ball) : at(leg.ankle); }) as unknown as [P3, P3];
+    const heel = ankle.map((a, k) => [a[0] - (toe[k][0] - a[0]) * 0.3, a[1] - 0.08, a[2] - (toe[k][2] - a[2]) * 0.3] as P3) as unknown as [P3, P3];
+    const hipL = at(j.hipL), hipR = at(j.hipR), mid: P3 = [(hipL[0] + hipR[0]) / 2, (hipL[1] + hipR[1]) / 2, (hipL[2] + hipR[2]) / 2];
+    const week = pregnant() ? herWeek(bump, babyCount, pregnancy) : 0, kg = wombKg(week), place = wombPlace(week);
+    // (the womb's weight where her baby's womb is, once it is laid out in her; till then where a womb that size sits)
+    const womb: P3 = babyWomb && babyHolder ? (() => { const c = babyHolder.localToWorld(babyWomb.centre.clone()); return [c.x / M, c.y / M, c.z / M] as P3; })() : [mid[0], mid[1] + place.up, mid[2] + place.forward];
+    const body: BodyPoints = {
+      headTop: top, neck, hipL, hipR, shoulder: limb(j.shoulderL, j.shoulderR), elbow, wrist, handEnd: [past(elbow[0], wrist[0], 0.09), past(elbow[1], wrist[1], 0.09)],
+      knee: limb(j.kneeL, j.kneeR), ankle, heel, toe,
+    };
+    const com = centreOfMass(body, BODY_KG, kg > 0 ? [{ kg, at: womb }] : []);
+    // what holds her up: the points of her soles that bear her weight standing flat, wherever they are back on the floor
+    // as they stood on it (over it along its normal, less their own height over it in her bind)
+    const touching: P2[] = [], g = slopeGrade(slope, measure.leftSign), across = Math.hypot(1, g.x, g.z), down = [false, false];
+    const contact: P2[][] = [[], []], print: P2[][] = [[], []];
+    f.soles.forEach((sole, k) => sole.verts.forEach((i, n) => {
+      if (sole.clear[n] > BALANCE_BEARING * M) return;
+      sole.mesh.getVertexPosition(i, v); sole.mesh.localToWorld(v);
+      const q: P2 = [v.x / M, v.z / M];
+      print[k].push(q);
+      // on the floor: within BALANCE_TOUCH of it, or within BALANCE_SETTLE of where it stood on it in her bind
+      const over = (v.y - stageY(q[0], q[1]) * M - sole.floor) / across;
+      if (over <= Math.max(BALANCE_TOUCH * M, sole.clear[n] + BALANCE_SETTLE * M)) { touching.push(q); contact[k].push(q); down[k] = true; }
+    }));
+    // and where it is heading: its speed along the strip, smoothed over BALANCE_SPEED_EASE, carried on (bodyMass.ts)
+    const zAlong = com[2] + walked, was = balanceWas, dt = was ? stageClock - was.t : 0;
+    let vx = was?.vx ?? 0, vz = was?.vz ?? 0;
+    if (!was || dt > 0.5) { vx = 0; vz = 0; } else if (dt > 1e-4) { const k = 1 - Math.exp(-dt / BALANCE_SPEED_EASE); vx += ((com[0] - was.x) / dt - vx) * k; vz += ((zAlong - was.z) / dt - vz) * k; }
+    if (!was || dt > 1e-4) balanceWas = { t: stageClock, x: com[0], z: zAlong, vx, vz };
+    const heading = extrapolatedCom([com[0], com[2]], [vx, vz], com[1] - stageY(com[0], com[2]));
+    const outline = supportOutline(touching), edge = balanceAt(outline, heading), margin = edge.margin;
+    // walking, her balance is caught step by step: as each foot comes down, how far inside her feet it is heading -- the
+    // ground the step gives her, all of that foot's sole where it lands (it comes down on its heel and rolls flat) and
+    // what the other foot still stands on (Hof's margin of stability at foot contact) -- kept till the next step
+    const landed = balanceDown ? down.map((d, k) => d && !balanceDown![k]) : [false, false];
+    if (landed.some(Boolean) && Math.hypot(vx, vz) >= BALANCE_MOVING) {
+      const given = supportOutline([0, 1].flatMap((k) => (landed[k] ? print[k] : contact[k]))), caught = balanceAt(given, heading);
+      balanceStep = { margin: caught.margin, nearest: caught.nearest, heading, given, com: [com[0], com[2]] };
+    }
+    balanceDown = down;
+    stageBalance = { com, heading, speed: Math.hypot(vx, vz), outline, margin, nearest: edge.nearest, kg, body, womb };
+    const field = fields[SARAH_LAB_FIELD.balance], text = balanceLine();
+    if (field && field.textContent !== text) field.textContent = text;
+    // drawn
+    // (coloured, walking, by how her last step caught her)
+    const judged = Math.hypot(vx, vz) >= BALANCE_MOVING && balanceStep ? balanceStep.margin : margin;
+    const d = balanceDraw, colour = judged >= BALANCE_NEAR ? 0x2fbf71 : judged >= 0 ? 0xf0a020 : 0xe5484d;
+    d.group.visible = balanceOn;
+    if (!balanceOn) return;
+    for (const o of [d.fill, d.outline, d.plumb, d.ahead, d.com, d.foot, d.heading]) (o.material as THREE.LineBasicMaterial | THREE.MeshBasicMaterial).color.setHex(colour);
+    const ring = d.outline.geometry.getAttribute('position') as THREE.BufferAttribute, n = Math.min(outline.length, ring.count);
+    outline.slice(0, n).forEach((q, k) => ring.setXYZ(k, q[0] * M, (stageY(q[0], q[1]) + 0.003) * M, q[1] * M));
+    ring.needsUpdate = true; d.outline.geometry.setDrawRange(0, n);
+    const filled = d.fill.geometry.getAttribute('position') as THREE.BufferAttribute;
+    let mx = 0, mz = 0; for (let k = 0; k < n; k++) { mx += outline[k][0] / n; mz += outline[k][1] / n; }
+    filled.setXYZ(0, mx * M, (stageY(mx, mz) + 0.002) * M, mz * M);
+    for (let k = 0; k < n; k++) filled.setXYZ(k + 1, ring.getX(k), ring.getY(k) - 0.001 * M, ring.getZ(k));
+    filled.needsUpdate = true;
+    // (a fan round it, its last triangle closing on its first point)
+    const fan = d.fill.geometry.getIndex()!, tri = fan.array as Uint16Array | Uint32Array;
+    for (let k = 0; k < n; k++) { tri[3 * k] = 0; tri[3 * k + 1] = k + 1; tri[3 * k + 2] = ((k + 1) % n) + 1; }
+    fan.needsUpdate = true; d.fill.geometry.setDrawRange(0, n >= 3 ? 3 * n : 0);
+    const floorY = stageY(com[0], com[2]);
+    const plumb = d.plumb.geometry.getAttribute('position') as THREE.BufferAttribute;
+    plumb.setXYZ(0, com[0] * M, com[1] * M, com[2] * M); plumb.setXYZ(1, com[0] * M, (floorY + 0.003) * M, com[2] * M); plumb.needsUpdate = true;
+    d.com.position.set(com[0] * M, com[1] * M, com[2] * M);
+    d.foot.position.set(com[0] * M, (floorY + 0.003) * M, com[2] * M);
+    // where it is heading, on the floor, once that is a centimetre on from it
+    const moving = Math.hypot(heading[0] - com[0], heading[1] - com[2]) > 0.01, aheadY = (stageY(heading[0], heading[1]) + 0.003) * M;
+    d.ahead.visible = d.heading.visible = moving;
+    const line2 = d.ahead.geometry.getAttribute('position') as THREE.BufferAttribute;
+    line2.setXYZ(0, com[0] * M, (floorY + 0.003) * M, com[2] * M); line2.setXYZ(1, heading[0] * M, aheadY, heading[1] * M); line2.needsUpdate = true;
+    d.heading.position.set(heading[0] * M, aheadY, heading[1] * M);
+  }
+  /** The BALANCE line. */
+  function balanceLine(): string {
+    if (!balanceOn) return 'BALANCE TEST · off';
+    const b = stageBalance;
+    if (!b || !onStage()) return 'BALANCE TEST · on the treadmill (STAND or WALK)';
+    const cm = Math.abs(b.margin * 100).toFixed(1), carrying = b.kg > 0.05 ? ` · carrying ${b.kg.toFixed(1)} kg` : '';
+    // which way past her feet, in her own frame: ahead, behind, to her left or right
+    const way = (m: { heading: P2; nearest: P2 | null }) => {
+      if (!m.nearest) return '';
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(model?.quaternion ?? new THREE.Quaternion()), dx = m.heading[0] - m.nearest[0], dz = m.heading[1] - m.nearest[1];
+      const along = dx * fwd.x + dz * fwd.z, side = (dx * fwd.z - dz * fwd.x) * (measure?.leftSign ?? 1);
+      return `, ${Math.abs(along) >= Math.abs(side) ? (along > 0 ? 'ahead' : 'behind') : side > 0 ? 'to her left' : 'to her right'}`;
+    };
+    if (b.speed >= BALANCE_MOVING) {
+      const s = balanceStep, moving = `moving ${b.speed.toFixed(1)} m/s`;
+      if (!s || !Number.isFinite(s.margin)) return `BALANCE · ${moving}${carrying}`;
+      const by = Math.abs(s.margin * 100).toFixed(1);
+      return `BALANCE · ${moving} · her last step caught her ${s.margin >= 0 ? `${by} cm inside her feet` : `${by} cm short${way(s)}`}${carrying}`;
+    }
+    if (!Number.isFinite(b.margin)) return 'BALANCE · no foot on the floor';
+    return b.margin >= 0 ? `BALANCE · ${cm} cm inside her feet${carrying}` : `BALANCE · ${cm} cm past her feet${way(b)}${carrying}`;
+  }
+  function setBalance(on: boolean): void { balanceOn = on; if (!on) { balanceDraw.group.visible = false; stageBalance = null; } refresh(); place(); }
   function setSlope(deg: number, heading: SlopeHeading): void {
+    const was = slope;
     slope = { deg: Math.max(-SLOPE.most, Math.min(SLOPE.most, Math.round(deg))), heading };
     strip.setSlope(slope, measure?.leftSign ?? 1);
+    // a new slope sets her feet down afresh on it: feet held where the old one had them would float over it or sink in
+    // (seen standing, 2026-11-08: the slope tilted from 10 to 20 degrees uphill under her, her heels were held off it)
+    if (walkFeet && (was.deg !== slope.deg || was.heading !== slope.heading)) { walkFeet.fresh = false; if (onStage()) stepFeet(0); }
     refresh(); place();
   }
   /** Her feet, for this body, build and lift; worked out again when any of them changes. Leaves her bones in her bind. */
@@ -3952,8 +4124,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         if (!tips[2 * w] || q.z > tips[2 * w]!.z) tips[2 * w] = q;
         if (!tips[2 * w + 1] || q.z < tips[2 * w + 1]!.z) tips[2 * w + 1] = q;
       }
-      const verts = [...new Set([...best, ...tips].filter((q) => q !== null).map((q) => q!.i))];
-      return { mesh, verts: Uint32Array.from(verts), floor: low };
+      const kept = [...new Map([...best, ...tips].filter((q) => q !== null).map((q) => [q!.i, q!])).values()] as { i: number; y: number }[];
+      return { mesh, verts: Uint32Array.from(kept.map((q) => q.i)), floor: low, clear: Float32Array.from(kept.map((q) => q.y - low)) };
     });
     walkFeet = { key, bind, upm, leg, state: createFeet(measure, bind, 0), out: [], turns: [], fresh: false, pose, x: 0, drop: 0, bins: new Float64Array(BOB_BINS).fill(NaN), soles };
     return walkFeet;
@@ -3966,12 +4138,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const SOLE_ACROSS = 3;
   /** A step of her walk on her feet (`advance`, before her pose is laid on her bones). */
   function stepFeet(dt: number): void {
+    stageClock += Math.max(0, dt);
     const sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
     if (!sk || !rig || !measure) return;
     const f = feetFor(sk);
     if (!f) return;
     // a new walk, or standing, sets her feet down afresh, wherever she is along the strip
-    if (!f.fresh || f.pose !== pose) { f.state = createFeet(measure, f.bind, 0); f.bins.fill(NaN); f.pose = pose; }
+    if (!f.fresh || f.pose !== pose) { f.state = createFeet(measure, f.bind, 0); f.bins.fill(NaN); f.pose = pose; balanceWas = null; balanceDown = null; balanceStep = null; }
     const walking = pose === 'walk', phase = walkPhase(), left = measure.leftSign < 0 ? -1 : 1;
     f.state.conform = conformFor(walking);
     f.x = walking ? left * weightAt(phase).sway * f.leg : 0;
@@ -4010,6 +4183,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     bendKnees(sk, extra * M);
     flatToes(sk, f);
     keepSoles(sk, f);
+    if (balanceOn) measureBalance(sk, f);
   }
 
   /**
@@ -8202,6 +8376,20 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // `soles` -- each shoe's lowest point (or her foot's, barefoot) over the floor
         // the treadmill's slope (walkStrip.ts): -30..+30, 'ahead' or 'across'
         slope: (deg: number, heading: SlopeHeading = 'ahead') => { setSlope(deg, heading); return slopeLine(slope); },
+        // BALANCE TEST: on or off, and what it measured (metres; margin + inside her feet, - past them)
+        stageBalance: (on?: boolean) => { if (on !== undefined) setBalance(on); const b = stageBalance; return b ? { com: b.com.map((x) => +x.toFixed(4)), heading: b.heading.map((x) => +x.toFixed(4)), speed: +b.speed.toFixed(3), step: balanceStep ? +balanceStep.margin.toFixed(4) : null, stepAt: balanceStep ? { com: balanceStep.com.map((x) => +x.toFixed(3)), heading: balanceStep.heading.map((x) => +x.toFixed(3)), given: balanceStep.given.map((q) => q.map((x) => +x.toFixed(3))) } : null, down: balanceDown, margin: +b.margin.toFixed(4), kg: +b.kg.toFixed(2), outline: b.outline.map((q) => [+q[0].toFixed(4), +q[1].toFixed(4)]), womb: b.womb.map((x) => +x.toFixed(4)), body: Object.fromEntries(Object.entries(b.body).map(([k, v]) => [k, JSON.parse(JSON.stringify(v, (_, x) => (typeof x === 'number' ? +x.toFixed(4) : x)))])), line: balanceLine() } : { line: balanceLine() }; },
+        // each sole's weight-bearing points (BALANCE_BEARING), heel to toe: how far each is off the floor past where it
+        // stood on it in her bind (metres, along the floor's normal)
+        soleBearing: () => {
+          const f = walkFeet; if (!f?.fresh || !measure) return null;
+          const v = new THREE.Vector3(), g = slopeGrade(slope, measure.leftSign), across = Math.hypot(1, g.x, g.z);
+          return f.soles.map((sole) => { const out: [number, number, number, number][] = []; sole.verts.forEach((i, n) => {
+            if (sole.clear[n] > BALANCE_BEARING * M) return;
+            sole.mesh.getVertexPosition(i, v); sole.mesh.localToWorld(v);
+            const over = (v.y - stageY(v.x / M, v.z / M) * M - sole.floor) / across;
+            out.push([+(v.z / M).toFixed(3), +((over - sole.clear[n]) / M).toFixed(4), +(over / M).toFixed(4), +(sole.clear[n] / M).toFixed(4)]);
+          }); return out.sort((p, q) => p[0] - q[0]); });
+        },
         walkFeet: (soles = false) => {
           const f = walkFeet, sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
           if (!f?.fresh || !sk || !model) return null;
