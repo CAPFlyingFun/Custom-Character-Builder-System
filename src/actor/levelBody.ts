@@ -8,7 +8,8 @@
  * about her ankles, and the point of her soles that was under her balance is carried round with them: rising ahead of
  * her ankles up a slope, falling behind them down one -- so up a slope she leans into it and down one she sits back, as
  * people do walking slopes (Leroux, Fung & Barbeau 2002: trunk and pelvis tilt forward uphill and back downhill, the
- * knees bending more downhill) and leaning forward standing on a toes-up slope (Kluzik, Horak & Peterka 2007). Her
+ * knees bending more downhill) and leaning forward standing on a toes-up slope ("Adaptation of postural orientation to
+ * changes in surface inclination", OHSU). Her
  * pregnancy's weight in front of her moves her balance forward; she takes it back as a pregnant woman does, her upper
  * body leaning back over her lower back -- which curves more to carry it (Whitcome, Shapiro & Lieberman 2007) -- and
  * her hips a little forward.
