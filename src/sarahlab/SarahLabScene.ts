@@ -89,6 +89,8 @@ import { bobDrop, walkWeight, weighWalk, WALK_WEIGHT } from '../actor/walkWeight
 import { createFeet, groundFeet, type FeetState, type FootConform } from '../actor/humanFeet';
 import { BODY_KG, balanceAt, centreOfMass, extrapolatedCom, supportOutline, wombKg, wombPlace, type BodyPoints, type P2, type P3 } from '../actor/bodyMass';
 import { LEVEL_NONE, easeLevel, levelBody, type Level } from '../actor/levelBody';
+import { PelvicOrgansView } from './pelvicOrgansView';
+import skeletonPelvis from '../data/pelvis/skeleton.json';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -926,6 +928,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let bonesBuilt = '';
   /** Her feet while she walks (`feetFor`, `stepFeet`). */
   let walkFeet: WalkFeet | null = null;
+  /** Her pelvic organs (v3: on her skeleton only, pelvicOrgansView.ts). */
+  let organs: PelvicOrgansView | null = null;
   /** The treadmill's slope under STAND and WALK (`setSlope`). */
   let slope: StageSlope = { deg: 0, heading: 'ahead' };
   /** BALANCE TEST on (`measureBalance`), and what it measured last. */
@@ -6894,6 +6898,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her hair goes with her body (it is in her model's tree); a request still under way is no longer wanted
     hairMeshes = []; hairRequest++;
     if (model) { three.remove(model); rig?.dispose(); release(model); model = null; }
+    organs?.dispose(); organs = null;
     dropBabyHolder();
     ownFingers?.dispose(); ownFingers = null; withFingers = null; fingerFills?.dispose(); fingerFills = null;
     rig = null; measure = null; fingers = []; skinned = []; shaped = []; garments = []; hasBelly = false; anchors = null; legAnchors = null; navel = null; sidesAt = []; babyAt = []; chestAt = []; milkAt = []; groinAt = [];
@@ -7046,6 +7051,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           } }
         // her rest frame (metres) as her spine bone carries it: where the baby is laid
         if (spine) babyFrame = { bone: spine, matrix: new THREE.Matrix4().copy(spine.matrixWorld).invert().multiply(loadedModel.matrixWorld), meshToRest: restOfMesh(skinMesh, loadedModel) };
+        // v3: her pelvic organs on her skeleton (the skeleton-outward plan, Phase 1), hung from her pelvis bone in her rest
+        // frame as it carries it, read here at her bind
+        const pelvisBone = bones[measure.joints.pelvis];
+        if (SARAH_LAB_MODELS[modelIndex].id === 'skeleton' && pelvisBone) {
+          organs = new PelvicOrgansView(skeletonPelvis, pelvisBone, new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld), M);
+          three.add(organs.group);
+        }
         babySkinAt = null; babyDepthOf = null;
         // her birth area shaped (birthArea.ts): a field on her body's shape, the same at every size
         if (babyFrame) {
@@ -7309,6 +7321,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         twinHandShare += Math.max(-dt / BABY_HANDS.seconds, Math.min(dt / BABY_HANDS.seconds, twinTo - twinHandShare)); }
       garmentRoom?.applyPose();
       place();
+      // her pelvic organs follow her pelvis as soft bodies (v3, on her skeleton)
+      organs?.update(dt);
       // her steps: each sneaker's heel coming down onto the floor is heard (on the tiles of a lab)
       if (sneakers && sneakers.visible) {
         for (const { foot, strength } of stepWatch.update(sneakers.heels().map((h) => h / M), dt)) { tileSteps.step(strength, foot); stepsHeard++; }
@@ -8443,6 +8457,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // `soles` -- each shoe's lowest point (or her foot's, barefoot) over the floor
         // the treadmill's slope (walkStrip.ts): -30..+30, 'ahead' or 'across'
         slope: (deg: number, heading: SlopeHeading = 'ahead') => { setSlope(deg, heading); return slopeLine(slope); },
+        // her pelvic organs (v3, on her skeleton): their layout (rest metres), how much her bladder holds, and how far each
+        // soft body is from where its bone holds it now (metres); `bladder` sets how much it holds
+        organs: (bladderMl?: number) => {
+          if (!organs) return null;
+          if (bladderMl !== undefined) organs.setBladder(bladderMl);
+          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway() };
+        },
         // her body kept level (actor/levelBody.ts): the posture she is easing toward and the one laid on her now (radians,
         // metres; lean and hips as world [x, z])
         level: () => ({ want: levelWant, now: level, line: walkNote('walkLean') }),
@@ -8789,6 +8810,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       garmentPanel?.dispose(); garmentPanel = null;
       hud?.remove();
       hud = null;
+      organs?.dispose(); organs = null;
       dropBabyHolder();
       babyCopies = [];
       if (babyRoot) { release(babyRoot); babyRoot = null; }
