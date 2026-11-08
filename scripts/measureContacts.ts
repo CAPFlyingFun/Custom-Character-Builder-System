@@ -88,7 +88,10 @@ export async function restOfRig(rig: { model: string; metresPerUnit: number }) {
   const parents = sk.bones.map((b) => sk.bones.indexOf(b.parent as THREE.Bone));
   const names = sk.bones.map((b) => b.name);
   const measure = measureHuman(names.map((name, k) => ({ name, parent: parents[k], x: joints[k * 3], y: joints[k * 3 + 1], z: joints[k * 3 + 2] })));
-  return { pos, tris: g.index!.array, joints, parents, names, measure, vertices: pa.count };
+  // (each point's heaviest bone, for anything measuring one bone's own part of her: scripts/measurePelvis.ts)
+  const si = g.getAttribute('skinIndex'), sw = g.getAttribute('skinWeight'), heaviest = new Uint16Array(pa.count);
+  for (let i = 0; i < pa.count; i++) { let best = 0; for (let k = 1; k < 4; k++) if (sw.getComponent(i, k) > sw.getComponent(i, best)) best = k; heaviest[i] = si.getComponent(i, best); }
+  return { pos, tris: g.index!.array, joints, parents, names, measure, vertices: pa.count, heaviest };
 }
 
 /** One rig's contact points, measured from its file as the room measures them. */
