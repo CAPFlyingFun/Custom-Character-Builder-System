@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BIRTH_OPENING, CANAL_OPENING, canalMouth, cervixAt, headPassage, openCanal, tightest } from '../src/actor/birthCanal';
-import { BIRTH_HEAD, DOORS, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, swingDoors } from '../src/actor/birthDoors';
+import { BIRTH_HEAD, DOORS, ENDS_SHUT, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoor, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
 import { CERVIX, layOrgans, lengthOf } from '../src/actor/pelvicOrgans';
 import { growWomb } from '../src/actor/pregnantWomb';
 
@@ -148,5 +148,55 @@ describe('her opening\'s doors', () => {
     expect(foldAngles(0.2).outer).toBeGreaterThan(0);
     expect(foldAngles(0.2).inner).toBe(0);
     expect(doorMeshes(frame, 0, 1).angles.hinge).toBeCloseTo(DOORS.foldDeg, 6);
+  });
+
+  it('pushed by the whole baby as it comes through (a stand-in): never inside it, the lips never past each other, at most 12.5 by 10 cm, open round its body until its feet are through, then closed', () => {
+    // (head first: its head 9.5 cm across her and 10.5 front to back, born facing down; its shoulders turned front to back,
+    // 12 cm, 8.5 across; on up 42 cm to its feet)
+    const head = { x: 0.0475, t: 0.05, n: 0.0525 };
+    const bodyHalf = (along: number) => (along < 0.12 ? 0.03 + ((along - 0.06) / 0.06) * 0.03 : 0.06 - Math.max(0, along - 0.3) * 0.25);
+    const into = (x: number, t: number, n: number, c: number) => {
+      const e = Math.hypot(x / head.x, (t - c) / head.t, n / head.n);
+      let d = e < 1 ? (1 - e) * head.x : -1;
+      const along = t - c;
+      if (along >= 0.06 && along <= 0.42) { const w = bodyHalf(along), r = Math.hypot(x / (0.0425 * (w / 0.06)), n / w); if (r < 1) d = Math.max(d, Math.min((1 - r) * 0.0425 * (w / 0.06), 0.42 - along)); }
+      return d;
+    };
+    const standIn = (c: number) => {
+      const pts: number[] = [], put = (x: number, t: number, n: number) => pts.push(...[0, 1, 2].map((k) => frame.mouth[k] + frame.x[k] * x + frame.t[k] * t + frame.n[k] * n));
+      for (let i = 0; i < 900; i++) { const u = Math.acos(1 - (2 * (i + 0.5)) / 900), v = i * 2.39996; put(head.x * Math.sin(u) * Math.cos(v), c + head.t * Math.cos(u), head.n * Math.sin(u) * Math.sin(v)); }
+      for (let i = 0; i < 1200; i++) { const along = 0.06 + (0.36 * i) / 1200, w = bodyHalf(along), a = i * 2.39996; put(0.0425 * (w / 0.06) * Math.cos(a), c + along, w * Math.sin(a)); }
+      // (its feet: the end of it closed)
+      for (let i = 0; i < 200; i++) { const w = bodyHalf(0.42), r = Math.sqrt((i + 0.5) / 200), a = i * 2.39996; put(0.0425 * (w / 0.06) * r * Math.cos(a), c + 0.42, w * r * Math.sin(a)); }
+      return Float32Array.from(pts);
+    };
+    const J = DOORS.stations, shut: Angles = { hinge: 0, inner: 0, mid: 0, outer: 0 };
+    let want = { right: Array(J).fill(shut) as Angles[], left: Array(J).fill(shut) as Angles[], ends: ENDS_SHUT as Ends }, now = { ...want };
+    let mostOpen = 0, mostLong = 0, bodyOpen = Infinity;
+    for (let c = 0.12; c > -0.6; c -= 0.008) {
+      const o = passingOutlines(frame, standIn(c), now.ends);
+      want = { right: want.right.map((w, j) => pressDoor(o.right[j], w, j)), left: want.left.map((w, j) => pressDoor(o.left[j], w, j)), ends: o.ends };
+      // (where they are held, at the places they were cut: what is drawn there is checked against the baby)
+      const m = doorMeshes(frame, 0, 0, { ...want, ends: now.ends });
+      for (let i = 0; i < m.points.length; i += 3) {
+        const d = [0, 1, 2].map((k) => m.points[i + k] - frame.mouth[k]), dot = (v: readonly number[]) => d[0] * v[0] + d[1] * v[1] + d[2] * v[2];
+        expect(into(dot(frame.x), dot(frame.t), dot(frame.n), c)).toBeLessThan(0.002);
+        // (the right door on its side of her middle, the left on its own)
+        expect(dot(frame.x) * (i < m.points.length / 2 ? 1 : -1)).toBeGreaterThan(DOORS.gap - 0.0005);
+      }
+      mostOpen = Math.max(mostOpen, m.openM); mostLong = Math.max(mostLong, want.ends.front + want.ends.back);
+      // (its body -- shoulders to hips -- in her opening)
+      if (c < -0.1 && c > -0.3) bodyOpen = Math.min(bodyOpen, m.openM);
+      now = { right: now.right.map((a, j) => followDoor(a, want.right[j], 1 / 60)), left: now.left.map((a, j) => followDoor(a, want.left[j], 1 / 60)), ends: followEnds(now.ends, o.ends, 1 / 60) };
+    }
+    expect(mostOpen).toBeLessThan(DOORS.acrossMost + 0.001);
+    expect(mostLong).toBeLessThanOrEqual(DOORS.lengthMost + 1e-9);
+    expect(mostLong).toBeGreaterThan(0.12);
+    expect(bodyOpen).toBeGreaterThan(0.08);
+    // (through and let go: closed)
+    expect(doorMeshes(frame, 0, 0, want).openM).toBeLessThan(0.005);
+    for (let k = 0; k < 180; k++) now = { right: now.right.map((a, j) => followDoor(a, want.right[j], 1 / 60)), left: now.left.map((a, j) => followDoor(a, want.left[j], 1 / 60)), ends: followEnds(now.ends, ENDS_SHUT, 1 / 60) };
+    expect(doorMeshes(frame, 0, 0, now).openM).toBeLessThan(0.005);
+    expect(now.ends.front + now.ends.back).toBeCloseTo(DOORS.length, 3);
   });
 });

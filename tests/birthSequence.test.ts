@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BIRTH_TIMING, birthAt, birthLength, birthLine, birthPlan, cervixLine, REALISTIC_STRETCH, TURN_DEG } from '../src/sarahlab/birthSequence';
+import { BIRTH_TIMING, birthAt, birthLength, birthLine, birthPlan, cervixLine, REALISTIC_STRETCH, SHOULDER_TILT, TURN_DEG } from '../src/sarahlab/birthSequence';
 
 describe('birth timeline', () => {
   const P = birthPlan();
@@ -190,5 +190,36 @@ describe("a triplet's third: cut first, then into the bassinet", () => {
     expect(birthAt(C.cut + 1 + BIRTH_TIMING.toHer + 0.01, 'fast', {}, 3).babies[2].onHer).toBe(1);
     // (the twins before it still lie on her the way one baby does)
     expect(P.babies[0].cut).toBeCloseTo(birthPlan().cut, 9);
+  });
+});
+
+describe('the accurate turn (v3, Joshua 2026-11-08: "Accurate on v3")', () => {
+  const P = birthPlan(), T = BIRTH_TIMING, out = P.birth + T.headOut, body = out + T.restitution;
+  it('born facing down, then turning out of her to face her thigh, its shoulders one above the other', () => {
+    expect(birthAt(P.pushing, 'fast', {}, 1, 'accurate').turnDeg).toBeCloseTo(TURN_DEG.inWomb, 6);
+    // (round to her front coming down her pelvis: crowning and born facing down)
+    for (let t = P.crowning; t <= out; t += 0.25) expect(Math.abs(birthAt(t, 'fast', {}, 1, 'accurate').turnDeg)).toBeLessThan(1e-6);
+    // (the quarter turn in the pause, only out of her)
+    let last = 0;
+    for (let t = out; t <= body; t += 0.1) { const d = birthAt(t, 'fast', {}, 1, 'accurate').turnDeg; expect(d).toBeGreaterThanOrEqual(last - 1e-9); last = d; }
+    expect(birthAt(body, 'fast', {}, 1, 'accurate').turnDeg).toBeCloseTo(TURN_DEG.born, 6);
+    expect(birthAt(P.after + 1, 'fast', {}, 1, 'accurate').turnDeg).toBeCloseTo(TURN_DEG.born, 6);
+    // (a twin to her other side)
+    expect(birthAt(P.after + 1, 'fast', {}, 2, 'accurate').babies.map((b) => Math.sign(b.turnDeg))).toEqual([1, -1]);
+  });
+
+  it('its top shoulder out first, its body dipped toward her tailbone, then its bottom one, lifted; none for v2', () => {
+    const tilt = (v: number) => birthAt(body + v * T.bodyOut, 'fast', {}, 1, 'accurate').shoulderTiltDeg;
+    expect(tilt(-0.1)).toBe(0);
+    expect(tilt(SHOULDER_TILT.downAt)).toBeCloseTo(-SHOULDER_TILT.down, 6);
+    expect(tilt(SHOULDER_TILT.upAt)).toBeCloseTo(SHOULDER_TILT.up, 6);
+    expect(tilt(1.01)).toBe(0);
+    for (let t = 0; t < P.total; t += 0.5) expect(birthAt(t).shoulderTiltDeg).toBe(0);
+    // (v2's turn as it was: all of it inside her)
+    expect(birthAt(P.birth + 0.5).turnDeg).toBeCloseTo(TURN_DEG.born, 6);
+    // (its head out only to its chin while it turns, its shoulders still in her; v2's a third of it out)
+    expect(birthAt(out, 'fast', {}, 1, 'accurate').down).toBeCloseTo(1 + SHOULDER_TILT.headOut, 6);
+    expect(birthAt(out).down).toBeCloseTo(1.35, 6);
+    expect(birthAt(P.after, 'fast', {}, 1, 'accurate').down).toBe(2);
   });
 });

@@ -87,6 +87,23 @@ export const MOST_BABIES = 3;
  * up/down"). It turns no more once out. */
 export const TURN_DEG = Object.freeze({ inWomb: 45, born: 90 });
 
+/**
+ * HOW ITS HEAD AND SHOULDERS TURN: `'inside'` as above (v2's: all of it turned before her opening, Joshua 2026-11-03), or
+ * `'accurate'` (v3, on her skeleton -- Joshua, 2026-11-08: "Accurate on v3"): the cardinal movements as most births go.
+ * Its head turns to face her back as it comes down her pelvis (internal rotation: the back of its head round from her
+ * front-left to her front) and is born facing down, the back of its head under her pubic bone; then, out of her, in the
+ * pause, it turns back to line up with its shoulders and on to face her thigh (restitution and external rotation:
+ * a quarter turn in all) as its shoulders turn inside her to lie one above the other; then the top shoulder comes out
+ * under her pubic bone first -- its body dipped toward her tailbone -- and the bottom one after it, its body lifted
+ * toward her front (`shoulderTiltDeg`), then the rest of it.
+ */
+export type BirthTurn = 'inside' | 'accurate';
+/** GAME TUNING: how far its body dips toward her tailbone for its top shoulder and lifts toward her front for its bottom
+ * one, degrees, and where in the body's push each is at its most (shares of `BIRTH_TIMING.bodyOut`); and how far its
+ * head comes out before it turns, in lengths of the baby (its middle past her opening by its radius and its neck: 0.13
+ * of a 51 cm baby is 6.6 cm -- its head out to its chin, its shoulders still in her) */
+export const SHOULDER_TILT = Object.freeze({ down: 15, up: 20, downAt: 0.3, upAt: 0.65, headOut: 0.13 });
+
 export interface BirthMoment {
   readonly stage: BirthStage;
   /** seconds since it began (at the pace it runs at) */
@@ -102,6 +119,9 @@ export interface BirthMoment {
   readonly down: number;
   /** the back of its head turned round from her left (degrees: 45 as it lies in her womb, 0 to her front) */
   readonly turnDeg: number;
+  /** its body dipped toward her tailbone (below 0) or lifted toward her front as its shoulders come out, degrees (the
+   * `'accurate'` turn's; 0 otherwise) */
+  readonly shoulderTiltDeg: number;
   /** the whole birth, 0 .. 1 */
   readonly progress: number;
   /** once it is out: lifted from where it was born onto her (0 .. 1) */
@@ -141,6 +161,9 @@ export interface BabyBirth {
   readonly down: number;
   /** as `BirthMoment.turnDeg`, mirrored to her other side for every other baby */
   readonly turnDeg: number;
+  /** its body dipped toward her tailbone (below 0) or lifted toward her front as its shoulders come out, degrees (0 but
+   * for the `'accurate'` turn) */
+  readonly shoulderTiltDeg: number;
   readonly onHer: number;
   readonly stretch: number;
   /** its own after: her opening eased back after IT (0 .. 1) */
@@ -198,7 +221,7 @@ export function squeeze(phase: number, long: number): number {
 }
 
 /** One baby at `t` (FAST seconds) by its own plan: where it is, and how hard she is pushing it (its contraction). */
-function babyAt(t: number, B: BabyPlan, i: number, pushes: number, crowningLong: number): BabyBirth & { contraction: number } {
+function babyAt(t: number, B: BabyPlan, i: number, pushes: number, crowningLong: number, turn: BirthTurn = 'inside'): BabyBirth & { contraction: number } {
   const T = BIRTH_TIMING;
   let contraction = 0, down = 0, onHer = 0, stretchK = 0, closing = 0;
   const lieTurn = i === 0 ? 1 : smooth(B.turnFrom, B.engageFrom, t);
@@ -218,8 +241,10 @@ function babyAt(t: number, B: BabyPlan, i: number, pushes: number, crowningLong:
   } else if (t < B.after) {
     const u = t - B.birth;
     contraction = u < T.headOut ? squeeze(u / T.headOut, 1) : u > T.headOut + T.restitution ? squeeze((u - T.headOut - T.restitution) / T.bodyOut, 1) : 0;
-    // the head out (its middle past her opening by a third of the baby), held while it turns, then the rest of it
-    down = u < T.headOut + T.restitution ? 1 + 0.35 * smooth(0, T.headOut, u) : 1.35 + 0.65 * smooth(T.headOut + T.restitution, T.headOut + T.restitution + T.bodyOut, u);
+    // the head out (its middle past her opening by a third of the baby -- or, turning as most births do, only to its chin,
+    // its shoulders still in her while they turn: SHOULDER_TILT.headOut), held while it turns, then the rest of it
+    const headTo = turn === 'accurate' ? SHOULDER_TILT.headOut : 0.35;
+    down = u < T.headOut + T.restitution ? 1 + headTo * smooth(0, T.headOut, u) : 1 + headTo + (1 - headTo) * smooth(T.headOut + T.restitution, T.headOut + T.restitution + T.bodyOut, u);
   } else {
     down = 2;
     const u = t - B.after;
@@ -235,17 +260,25 @@ function babyAt(t: number, B: BabyPlan, i: number, pushes: number, crowningLong:
   // gets to the opening, or not at all as it looks weird"): the pause after the head is a pause, nothing turning. Every
   // other baby to her other side.
   const side = i % 2 === 0 ? 1 : -1;
-  const turnDeg = side * (t < B.pushing ? TURN_DEG.inWomb : t < B.birth ? TURN_DEG.inWomb + (TURN_DEG.born - TURN_DEG.inWomb) * smooth(0.2, 0.75, down) : TURN_DEG.born);
+  let turnDeg = side * (t < B.pushing ? TURN_DEG.inWomb : t < B.birth ? TURN_DEG.inWomb + (TURN_DEG.born - TURN_DEG.inWomb) * smooth(0.2, 0.75, down) : TURN_DEG.born), shoulderTiltDeg = 0;
+  if (turn === 'accurate') {
+    // (round to her front coming down -- born facing down -- then, out of her, back and on to face her thigh)
+    const out = B.birth + T.headOut, body = out + T.restitution, S = SHOULDER_TILT;
+    turnDeg = side * (t < B.pushing ? TURN_DEG.inWomb : t < B.birth ? TURN_DEG.inWomb * (1 - smooth(0.2, 0.75, down)) : TURN_DEG.born * smooth(out, body, t));
+    // (its top shoulder under her pubic bone, its body dipped; then its bottom one, its body lifted; then straight on)
+    const v = (t - body) / T.bodyOut;
+    if (v > 0 && v < 1) shoulderTiltDeg = v < S.downAt ? -S.down * smooth(0, S.downAt, v) : v < S.upAt ? -S.down + (S.down + S.up) * smooth(S.downAt, S.upAt, v) : S.up * (1 - smooth(S.upAt, 1, v));
+  }
   const cut = t >= B.cut;
-  return { lieTurn, engage, down, turnDeg, onHer, stretch: clamp01(stretchK), closing, born: t >= B.after, cut, cutAt: cut ? B.cut : null, contraction };
+  return { lieTurn, engage, down, turnDeg, shoulderTiltDeg, onHer, stretch: clamp01(stretchK), closing, born: t >= B.after, cut, cutAt: cut ? B.cut : null, contraction };
 }
 
 /** The birth at `seconds` since it began, at `pace` (and `events`: a cut or placenta asked for sooner, FAST seconds), for
  * `count` babies born one after another. */
-export function birthAt(seconds: number, pace: BirthPace = 'fast', events: BirthEvents = {}, count = 1): BirthMoment {
+export function birthAt(seconds: number, pace: BirthPace = 'fast', events: BirthEvents = {}, count = 1, turn: BirthTurn = 'inside'): BirthMoment {
   const T = BIRTH_TIMING, n = Math.max(1, Math.min(MOST_BABIES, Math.round(count) || 1)), P = birthPlan(events, n), stretch = pace === 'realistic' ? REALISTIC_STRETCH : 1;
   const real = Math.max(0, Number.isFinite(seconds) ? seconds : 0), t = real / stretch;
-  const babies = P.babies.map((B, i) => babyAt(t, B, i, i === 0 ? T.pushCount : MULTIPLE_TIMING.pushCount, i === 0 ? T.crowning : MULTIPLE_TIMING.crowning));
+  const babies = P.babies.map((B, i) => babyAt(t, B, i, i === 0 ? T.pushCount : MULTIPLE_TIMING.pushCount, i === 0 ? T.crowning : MULTIPLE_TIMING.crowning, turn));
   // whose turn: the last baby whose rest before it has begun (the first from the start)
   let active = 0;
   for (let i = 1; i < n; i++) if (t >= P.babies[i - 1].after) active = i;
@@ -289,7 +322,7 @@ export function birthAt(seconds: number, pace: BirthPace = 'fast', events: Birth
   for (let k = 0; k < n; k++) if (placentas[k].separate > 0) pk = k;
   const pl = placentas[pk];
   const delivered = babies.reduce((sum, b) => sum + b.closing, 0) / n;
-  return { stage, seconds: real, contraction: clamp01(contraction), cervix: clamp01(cervix), engage: clamp01(A.engage), down: A.down, turnDeg: A.turnDeg, progress: clamp01(t / P.total), onHer: babies[0].onHer, stretch: shown.stretch, closing,
+  return { stage, seconds: real, contraction: clamp01(contraction), cervix: clamp01(cervix), engage: clamp01(A.engage), down: A.down, turnDeg: A.turnDeg, shoulderTiltDeg: A.shoulderTiltDeg, progress: clamp01(t / P.total), onHer: babies[0].onHer, stretch: shown.stretch, closing,
     cut: babies[0].cut, cutAt: babies[0].cutAt, placentaFor: v, separate: pl.separate, placentaDown: pl.placentaDown, bowl: pl.bowl, afterbirth,
     count: n, active, babies: babies.map(({ contraction: _c, ...b }) => b), placentas, delivered };
 }

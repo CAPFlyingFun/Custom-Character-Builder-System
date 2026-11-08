@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, birthAngles, doorFrame, doorMeshes, followDoor, outerSkin, passingOutlines, pressDoor, swingDoors, type Angles, type DoorFrame } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoor, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -32,6 +32,9 @@ const WOMB_SEEN = 0.45;
 const COLOURS = Object.freeze({ uterus: 0xb04a52, vagina: 0xd88895, bladder: 0xd8c25a });
 /** Her opening's doors: the canal's lining inside, her outer skin outside (the test piece). */
 const DOOR_COLOURS = Object.freeze({ lining: 0xd88895, skin: 0xe9c3aa });
+/** How near her opening her baby gives as it crosses it (babySqueeze.ts), metres either side: through her doors, from
+ * their hinges inside her to their lips pushed open outside. GAME TUNING. */
+const SQUEEZE_SLAB = 0.06;
 const G = 9.81;
 /** Faster than her body changes its motion, m/s²: a pose put on in one frame, not a movement. GAME TUNING (about 5 g;
  * walking's hardest heel strike shakes her pelvis by 1-2 g). */
@@ -114,7 +117,7 @@ export class PelvicOrgansView {
    * as it pushes them, front to back: where it holds each (`want`) and where each stands now (`now`) -- null once they
    * are all back where BIRTH OPENING has them (actor/birthDoors.ts `pressDoor`). */
   private passing: Float32Array | null = null;
-  private pressed: { want: { right: Angles[]; left: Angles[] }; now: { right: Angles[]; left: Angles[] } } | null = null;
+  private pressed: { want: { right: Angles[]; left: Angles[]; ends: Ends }; now: { right: Angles[]; left: Angles[]; ends: Ends } } | null = null;
   private pressTick = 0;
   private openNow = 0;
   /** Her week (null: not pregnant) and each baby's weight, g; and her womb grown for them. */
@@ -318,6 +321,8 @@ export class PelvicOrgansView {
   /** How far they are folded now (0..1) and the angles laid on them (degrees). */
   get doorFold(): number { return this.fold; }
   get doorAngles(): { outer: number; mid: number; inner: number; hinge: number } { return { ...this.laidAngles }; }
+  /** How far her opening's ends stand from its middle now (metres: front, back). */
+  get doorEnds(): { front: number; back: number } { return { ...(this.pressed?.now.ends ?? ENDS_SHUT) }; }
   /** How wide her opening stands now between its doors' lips, at its middle (metres). */
   get doorOpenM(): number { return this.openNow; }
 
@@ -350,24 +355,43 @@ export class PelvicOrgansView {
     return { points: rest.map((p) => this.holder.localToWorld(new THREE.Vector3(p[0], p[1], p[2]))), down, length: down[down.length - 1] };
   }
 
+  /**
+   * Where her baby may give a little as it crosses her opening (babySqueeze.ts, as v2's opening hands it over): her
+   * opening's middle, the way through it, along it and across it, and the most it stretches (Joshua's 12.5 by 10 cm) --
+   * what is wider than that is drawn in, never its head (`head`, `headR`: its middle and radius, world). World units.
+   */
+  passFrame(head: THREE.Vector3 | null, headR: number): { centre: THREE.Vector3; axis: THREE.Vector3; up: THREE.Vector3; across: THREE.Vector3; ra: number; rb: number; head: THREE.Vector3 | null; headR: number; slab: number } {
+    this.holder.updateMatrixWorld(true);
+    const f = this.doors.frame, m = this.holder.matrixWorld, dir = (v: readonly number[]) => new THREE.Vector3(v[0], v[1], v[2]).transformDirection(m);
+    return {
+      centre: this.holder.localToWorld(new THREE.Vector3(f.mouth[0], f.mouth[1], f.mouth[2])), axis: dir(f.t).negate(), up: dir(f.n), across: dir(f.x),
+      ra: (DOORS.lengthMost / 2) * this.units, rb: (DOORS.acrossMost / 2) * this.units, head, headR,
+      // (from inside her by her doors' hinges to past their lips open: what crosses them gives)
+      slab: SQUEEZE_SLAB,
+    };
+  }
+
   /** Her doors' sections pushed by what passes (each solved every other frame, the two halves in turn: a frame's time),
    * each following where it is held -- as fast as it is pushed, as the closer brings it back once let go -- and handed
    * back to BIRTH OPENING once nothing holds them. */
   private pressDoors(dt: number): void {
     if (!this.passing && !this.pressed) return;
     const J = DOORS.stations, uniform = birthAngles(this.grown ? this.swing : 0), row = (): Angles[] => Array.from({ length: J }, () => uniform);
-    this.pressed ??= { want: { right: row(), left: row() }, now: { right: row(), left: row() } };
+    this.pressed ??= { want: { right: row(), left: row(), ends: ENDS_SHUT }, now: { right: row(), left: row(), ends: ENDS_SHUT } };
     const P = this.pressed, tick = this.pressTick++;
     if (this.passing) {
-      const o = passingOutlines(this.doors.frame, this.passing);
+      // (sliced where her opening's ends stand now; its ends pushed apart as far as what crosses it reaches, to 12.5 cm)
+      const o = passingOutlines(this.doors.frame, this.passing, P.now.ends);
+      P.want.ends = o.ends;
       for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) {
         const touch = o[side][j];
         // (nothing of it at this section: closed; something: worked out every other frame)
         if (!touch) P.want[side][j] = uniform;
         else if ((j + tick) % 2 === 0) P.want[side][j] = pressDoor(touch, P.want[side][j], j);
       }
-    } else for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) P.want[side][j] = uniform;
-    let settled = !this.passing;
+    } else { for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) P.want[side][j] = uniform; P.want.ends = ENDS_SHUT; }
+    P.now.ends = followEnds(P.now.ends, P.want.ends, dt);
+    let settled = !this.passing && P.now.ends.front === ENDS_SHUT.front && P.now.ends.back === ENDS_SHUT.back;
     for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) {
       const a = (P.now[side][j] = followDoor(P.now[side][j], P.want[side][j], dt)), w = P.want[side][j];
       if (a.hinge !== w.hinge || a.inner !== w.inner || a.mid !== w.mid || a.outer !== w.outer) settled = false;
@@ -385,6 +409,9 @@ export class PelvicOrgansView {
     d.lining.forEach((l, i) => (l ? lining : skin).toArray(colour, i * 3));
     g.setAttribute('position', new THREE.BufferAttribute(d.points, 3)); g.setAttribute('color', new THREE.BufferAttribute(colour, 3));
     g.setIndex(new THREE.BufferAttribute(d.triangles, 1)); g.computeVertexNormals();
+    // (her skin round it, its ends going with her opening's)
+    const sg = this.doors.skin.geometry;
+    sg.setAttribute('position', new THREE.BufferAttribute(d.skin.points, 3)); sg.setIndex(new THREE.BufferAttribute(d.skin.triangles, 1)); sg.computeVertexNormals();
   }
 
   private draw(): void {
