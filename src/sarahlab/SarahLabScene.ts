@@ -85,6 +85,7 @@ import { createSoftBaby, restorePose, stepSoftBaby, type SoftBaby } from './soft
 import { createSqueezeUniforms, patchSqueeze, setSqueeze } from './babySqueeze';
 import { createSkinUniforms, patchSkin, stepSkin } from './babySkin';
 import { measureHuman } from '../actor/humanSkeleton';
+import { walkWeight, weighWalk } from '../actor/walkWeight';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -917,6 +918,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const buildFields = new WeakMap<THREE.SkinnedMesh, BuildMeshFields>();
   let bonesBuilt = '';
   let standLift = 0;
+  /** What the walk's weight moved her by this frame, room units (`weighOnFloor`); her soft parts feel her motion without it. */
+  const walkOffset = new THREE.Vector3();
+  /** Her lowest sole standing and her leg's length, world units, once a body and build (`weighOnFloor`). */
+  let standSoles: { key: string; low: number; leg: number } | null = null;
   /**
    * HER SNEAKERS (sneakers.ts; Joshua, 2026-11-07): built round her own foot the first time they are put on, carried by
    * her skeleton like her skin; standing, she is lifted onto their soles. Only on her approved v2 body (her build's rig).
@@ -3312,6 +3317,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
 
   // ------------------------------------------------------------- posing
+  /** Where in her stride she is (0..1): the stride in bind units, `bindScale` of them to the metre. */
+  function walkPhase(): number {
+    if (!rig || !measure) return 0;
+    return ((walked * rig.bindScale) / humanStride(measure, 'walk', bump / 100)) % 1;
+  }
+  const weightOut: MutableJointTurn[] = [];
   /** Her turns in pose `p` (the room's own by default), the base pose written into `out`. */
   function turnsFor(p: SarahLabPose = pose, out: MutableJointTurn[] = poseOut): readonly JointTurn[] {
     if (!rig || !measure) return [];
@@ -3330,10 +3341,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     } else if (p === 'sit') base = poseSeated(measure, rig.bind, { style: 'sit', seconds, posture: 'pregnant', bump: bump / 100, settled: settledSitFor(SARAH_LAB_MODELS[modelIndex].id) }, out);
     else {
       const stance = p === 'walk' ? 'walk' : 'stand';
-      // the stride is in bind units, `bindScale` of them to the metre
       const carry = bump / 100;
-      const phase = p === 'walk' ? ((walked * rig.bindScale) / humanStride(measure, 'walk', carry)) % 1 : 0;
+      const phase = p === 'walk' ? walkPhase() : 0;
       base = poseHuman(measure, rig.bind, { stance, phase, seconds, lean: 0, carry }, out);
+      // THE WALK'S WEIGHT (Joshua, 2026-11-08: "the body has no natural weight and bounce while walking"): her pelvis
+      // lists and twists, her chest turns against it, and `place` shifts her over her standing foot (walkWeight.ts)
+      if (stance === 'walk') base = weighWalk(measure, base, walkWeight(phase, stance), weightOut);
     }
     const overrideArms = p === 'tpose' || (!levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) && armsOverride);
     // T-POSE restores the whole bind pose. Other poses keep their torso and legs,
@@ -3768,12 +3781,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   function place(): void {
     if (!model || !rig || !measure) return;
+    walkOffset.set(0, 0, 0);
     const skin = findSkinnedMesh(model);
     if (isBirthPose(pose) && skin) { placeBirth(skin); return; }
     model.quaternion.identity();
     if (sitAmount <= 0 || !skin) {
       model.position.set(0, standLift * M, 0);
       model.updateMatrixWorld(true);
+      if (pose === 'walk' && skin) weighOnFloor(skin);
       stool.visible = false;
       if (!aimHeld) orbit.target.z = ORBIT_START.target.z;
       return;
@@ -3805,6 +3820,48 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     stool.position.set(seatedAt.x + sit.hips.x, (seatTop * M) / 2, seatedAt.z + sit.hips.z - 0.02 * M);
     // seated she used to be set with her hips 4 cm behind the room's middle: the view follows her back to frame her so
     orbit.target.z = ORBIT_START.target.z + (model.position.z + now.hips.z - (stand.hips.z + (-0.04 * M - stand.hips.z) * e));
+  }
+
+  /**
+   * WALKING WITH WEIGHT (Joshua, 2026-11-08: "the body has no natural weight and bounce while walking"; "Yes, add to the
+   * room"). Her lowest sole is stood on the floor as it is standing, so she rises over each straight leg and sinks between
+   * steps -- the walk's own rise and fall, lowest at double support, from her legs' angles rather than a curve laid on
+   * her -- and she is moved over the foot she stands on (`walkWeight`'s side shift; her legs lean back under her by it in
+   * her turns, so her feet stay put). What it moved her by is kept in `walkOffset`: her soft parts feel her motion without
+   * it, as they did before, the walk's bounce already fed to them (`walkBounceAccel`, tuned by Joshua 2026-10-08).
+   */
+  function lowestSole(sk: THREE.SkinnedMesh): number {
+    if (!measure) return 0;
+    const bones = sk.skeleton.bones, q = new THREE.Quaternion(), p = new THREE.Vector3(), at = new THREE.Vector3();
+    let low = Infinity;
+    for (const ankle of [measure.joints.ankleL, measure.joints.ankleR]) {
+      const bone = bones[ankle], shape = footShape(sk, ankle);
+      bone.getWorldPosition(at);
+      if (!shape) { low = Math.min(low, at.y); continue; }
+      bone.getWorldQuaternion(q);
+      const P = shape.pts;
+      for (let k = 0; k < P.length; k += 3) low = Math.min(low, at.y + p.set(P[k], P[k + 1], P[k + 2]).applyQuaternion(q).y);
+    }
+    return low;
+  }
+  function weighOnFloor(skin: THREE.SkinnedMesh): void {
+    if (!model || !rig || !measure) return;
+    const sk = bodyOf()?.mesh ?? skin, j = measure.joints;
+    const key = `${model.uuid}|${bonesBuilt}|${standLift.toFixed(5)}|${bump.toFixed(1)}`;
+    if (standSoles?.key !== key) {
+      // her soles standing, read once a body and build (her feet's shapes too, which want her standing and unturned)
+      rig.apply(turnsFor('stand', standOut)); model.updateMatrixWorld(true);
+      readFootShapes(sk);
+      const hip = sk.skeleton.bones[j.hipL].getWorldPosition(new THREE.Vector3()), ankle = sk.skeleton.bones[j.ankleL].getWorldPosition(new THREE.Vector3());
+      standSoles = { key, low: lowestSole(sk), leg: hip.distanceTo(ankle) };
+      rig.apply(currentTurns()); model.updateMatrixWorld(true);
+    }
+    const left = measure.leftSign < 0 ? -1 : 1, w = walkWeight(walkPhase(), 'walk');
+    walkOffset.set(left * w.sway * standSoles.leg, 0, 0);
+    model.position.add(walkOffset); model.updateMatrixWorld(true);
+    const rise = standSoles.low - lowestSole(sk);
+    walkOffset.y = rise;
+    model.position.y += rise; model.updateMatrixWorld(true);
   }
 
   /**
@@ -4764,7 +4821,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const tunes = { belly: bellyTune(bump, body.bellyFirmness, body.babyWeight, body.bellyBounce, babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1), breastL: breastTune(volume, milkL, body.breastFirmness, 'left', body.breastBounce), breastR: breastTune(volume, milkR, body.breastFirmness, 'right', body.breastBounce) };
     for (const key of ['belly', 'breastL', 'breastR'] as const) {
       const a = anchors[key];
-      a.bone.localToWorld(tmp.copy(a.local)).multiplyScalar(1 / M);
+      a.bone.localToWorld(tmp.copy(a.local)).sub(walkOffset).multiplyScalar(1 / M);
       accel.set(0, 0, 0);
       if (a.primed >= 1) {
         vel.copy(tmp).sub(a.p).divideScalar(dt);
@@ -4789,7 +4846,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her legs' tissue: each thigh and calf feels what its bone does there and lags it, as the belly does
     if (legAnchors) for (const key of ['thighL', 'thighR', 'calfL', 'calfR'] as const) {
       const a = legAnchors[key], t = key.startsWith('thigh') ? LEG_TUNE.thigh : LEG_TUNE.calf;
-      a.bone.localToWorld(tmp.copy(a.local)).multiplyScalar(1 / M);
+      a.bone.localToWorld(tmp.copy(a.local)).sub(walkOffset).multiplyScalar(1 / M);
       accel.set(0, 0, 0);
       if (a.primed >= 1) {
         vel.copy(tmp).sub(a.p).divideScalar(dt);
