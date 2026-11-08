@@ -18,8 +18,8 @@
  */
 import { NodeIO, Document } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { meshopt, prune } from '@gltf-transform/functions';
-import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
+import { meshopt, prune, simplify, weld as weldDocument } from '@gltf-transform/functions';
+import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +28,7 @@ const inFile = path.join(ROOT, 'assets-archive/models/meshy-female-skeleton.glb'
 const sarahFile = path.join(ROOT, 'public/models/sarah-v2-body-slim.glb');
 const outFile = path.join(ROOT, 'public/models/sarah-skeleton.glb');
 const t0 = Date.now(), log = (...a) => console.log(`[rigSkeleton ${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a);
-await MeshoptDecoder.ready; await MeshoptEncoder.ready;
+await MeshoptDecoder.ready; await MeshoptEncoder.ready; await MeshoptSimplifier.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
 const src = await io.read(inFile);
 const prim = src.getRoot().listMeshes()[0].listPrimitives()[0];
@@ -339,6 +339,27 @@ const skin = doc.createSkin('sarahSkeletonSkin').setSkeleton(nodes[0]).setInvers
 nodes.forEach((nd) => skin.addJoint(nd));
 const meshNode = doc.createNode('sarahSkeleton').setMesh(mesh).setSkin(skin);
 doc.createScene('Scene').addChild(armature).addChild(meshNode);
+// LIGHTER (Joshua, 2026-11-07: "The walking was lagging and it's probably because it's not optimized yet and still max
+// size"): Meshy's 380,000 vertices brought to a fifth of its triangles -- under her own body's 115,710 vertices -- the
+// fingers, ribs and the cut along the bite kept. Its texture seams and hard normals only stop the simplifier (a
+// skeleton wears no texture), so it is welded by position, simplified, and its normals made again, smooth. KEEP and
+// MOST_ERROR are GAME TUNING, chosen on renders against the full mesh (3.4x quicker to pose and draw, headless).
+const KEEP = 0.2, MOST_ERROR = 0.002;
+for (const m of doc.getRoot().listMeshes()) for (const pr of m.listPrimitives()) for (const sem of ['TEXCOORD_0', 'NORMAL']) { const a = pr.getAttribute(sem); if (a) { pr.setAttribute(sem, null); a.dispose(); } }
+await doc.transform(weldDocument(), simplify({ simplifier: MeshoptSimplifier, ratio: KEEP, error: MOST_ERROR, lockBorder: true }), prune());
+for (const m of doc.getRoot().listMeshes()) for (const pr of m.listPrimitives()) {
+  const Q = pr.getAttribute('POSITION').getArray(), J = pr.getIndices().getArray(), Nn = new Float32Array(Q.length);
+  // each vertex the area-weighted sum of its triangles' normals
+  for (let t = 0; t < J.length; t += 3) {
+    const a = J[t] * 3, b = J[t+1] * 3, c = J[t+2] * 3;
+    const ux = Q[b]-Q[a], uy = Q[b+1]-Q[a+1], uz = Q[b+2]-Q[a+2], vx = Q[c]-Q[a], vy = Q[c+1]-Q[a+1], vz = Q[c+2]-Q[a+2];
+    const nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx;
+    for (const k of [a, b, c]) { Nn[k] += nx; Nn[k+1] += ny; Nn[k+2] += nz; }
+  }
+  for (let k = 0; k < Nn.length; k += 3) { const l = Math.hypot(Nn[k], Nn[k+1], Nn[k+2]) || 1; Nn[k] /= l; Nn[k+1] /= l; Nn[k+2] /= l; }
+  pr.setAttribute('NORMAL', acc('VEC3', Nn));
+  log('lighter:', pr.getAttribute('POSITION').getCount(), 'vertices,', J.length / 3, 'triangles');
+}
 // packed as her own files are (EXT_meshopt_compression, quantized): the room reads its bind through the skin
 await doc.transform(prune(), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
 await io.write(outFile, doc);

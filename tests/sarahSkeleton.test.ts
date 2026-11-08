@@ -35,6 +35,14 @@ describe("her skeleton, rigged with her own bones", () => {
     expect(bones[68].parent).toBe(6);
   }, 60000);
 
+  it("is lighter than her body (Joshua: \"The walking was lagging\"): fewer vertices to pose and draw than her 115,710", async () => {
+    await MeshoptDecoder.ready;
+    const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
+    const prim = (await io.read(`public/${SARAH_SKELETON_MODEL}`)).getRoot().listMeshes()[0].listPrimitives()[0];
+    expect(prim.getAttribute('POSITION')!.getCount()).toBeLessThan(80000);
+    expect(prim.getAttribute('TEXCOORD_0')).toBeNull();
+  }, 60000);
+
   it("is measured by the room as she is: the same joint for every name, the left arm toward +x", async () => {
     const [bones, hers] = await Promise.all([bindOf(`public/${SARAH_SKELETON_MODEL}`), bindOf(`public/${SARAH_V2_BODY_MODEL}`)]);
     const a = measureHuman(bones as never), b = measureHuman(hers as never);
