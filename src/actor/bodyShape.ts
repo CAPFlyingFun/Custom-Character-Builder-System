@@ -9,9 +9,10 @@
  * a default. Every default is the approved body exactly: a shape of all defaults changes
  * nothing. The belly-size slider is NOT here: it stays the primary control, and every
  * belly and breast number here is a modifier RELATIVE to whatever size is selected (a +10%
- * width is 10% of that size's own bump, at 30% and at 200% alike). The third group, BUILD
+ * width is 10% of that size's own bump, at 30% and at 200% alike). The group BUILD
  * (height, lengths, widths and sizes), does not depend on the belly size; `bodyBuild.ts`
- * turns it into what a renderer applies.
+ * turns it into what a renderer applies. WALK is how she carries her weight walking (her
+ * hips' bob and sway; `walkWeight.ts`), hers like her shape and saved with it.
  *
  * What this file gives a future cast of characters, all pure and testable in node:
  *   - `defaultBodyShape`, `resetControl`: the approved values, whole or one at a time;
@@ -27,11 +28,12 @@
 export type BodyControl =
   | 'bellyTilt' | 'bellyHeight' | 'bellyWidth' | 'bellyDepth' | 'bellyUpper' | 'bellyLower' | 'navel' | 'navelAfter' | 'babyWeight' | 'bellyFirmness' | 'bellyBounce' | 'babyFloat' | 'babyKicks'
   | 'breastSize' | 'breastWidth' | 'breastHeight' | 'breastDepth' | 'breastSpacing' | 'breastPosition' | 'breastDroop' | 'breastUpper' | 'breastLower' | 'milk' | 'milkBalance' | 'breastFirmness' | 'breastBounce'
+  | 'walkBob' | 'walkSway'
   | 'height' | 'upperLeg' | 'lowerLeg' | 'torso' | 'neck' | 'upperArm' | 'forearm' | 'shoulders' | 'waist' | 'hips' | 'legGap' | 'head' | 'hands' | 'feet';
 
 export interface BodyControlSpec {
   readonly key: BodyControl;
-  readonly group: 'belly' | 'breasts' | 'build';
+  readonly group: 'belly' | 'breasts' | 'walk' | 'build';
   readonly label: string;
   readonly unit: '°' | 'cm' | '%' | '';
   readonly min: number;
@@ -91,6 +93,12 @@ export const BODY_CONTROLS: readonly BodyControlSpec[] = Object.freeze([
   { key: 'milkBalance', group: 'breasts', label: 'Milk balance', unit: '%', min: -100, max: 100, step: 1, fallback: 0, spread: 10, help: 'one breast a little fuller than the other: above 0 her left, below 0 her right' },
   { key: 'breastFirmness', group: 'breasts', label: 'Firmness', unit: '%', min: 0, max: 100, step: 1, fallback: 50, spread: 15, help: 'how the breasts move with her: lower is softer and swings more, higher is tighter and settles sooner (milk firms them too)' },
   { key: 'breastBounce', group: 'breasts', label: 'Bounce', unit: '%', min: 0, max: 200, step: 5, fallback: 100, spread: 20, help: 'how much of that motion shows: 0 holds the breasts still, 100 is as tuned, 200 twice as much' },
+  // Joshua, 2026-11-08, of her walk with weight: "Half the movement and it should be good or better yet... add a slider
+  // so I can tweak the up/down (bob), and left/right (sway) myself and then it can also be included in the JSON". Her
+  // walk is hers, so it is saved with her body. 100 is the halved walk (actor/walkWeight.ts `WALK_WEIGHT`), 200 the
+  // first one rendered: for the bob, all the rise and fall her legs give, which is as far as it can go.
+  { key: 'walkBob', group: 'walk', label: 'Bob', unit: '%', min: 0, max: 200, step: 5, fallback: 100, spread: 20, help: 'how much her hips rise and fall with each step: 0 keeps them level (her knees take it), 100 is as tuned (half what her legs give), 200 all of it' },
+  { key: 'walkSway', group: 'walk', label: 'Sway', unit: '%', min: 0, max: 200, step: 5, fallback: 100, spread: 20, help: 'how far her body moves over the foot she stands on: 0 not at all, 100 is as tuned (about 1.2 cm each way), 200 twice as much' },
   // Joshua, 2026-10-26: "add a height adjuster so you can raise or shorten the length of the legs, hips, arms, hands and
   // more basic body controls... I would say maybe the max/min per section is +/-30cm from the default positions".
   // What `bodyBuild.ts` turns into lengths and scales. The LENGTH ranges are MEASURED on sarah-v2-body-slim.glb: a

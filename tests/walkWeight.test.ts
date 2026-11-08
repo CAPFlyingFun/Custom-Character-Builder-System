@@ -63,6 +63,34 @@ describe('the walk carries weight', () => {
   it('a run shifts her less from side to side than a walk', () => {
     expect(Math.abs(walkWeight(0.45, 'run').sway)).toBeLessThan(Math.abs(walkWeight(0.55, 'walk').sway));
   });
+
+  it('shifts her by her WALK sway (Joshua, 2026-11-08: "Half the movement"; then a slider): 100% the halved 1.2 cm, 0 none, 200 the first walk', () => {
+    expect(WALK_WEIGHT.sway).toBeCloseTo(0.015, 12);
+    expect(walkWeight(0.55, 'walk', 1).sway).toBeCloseTo(walkWeight(0.55, 'walk').sway, 12);
+    expect(walkWeight(0.55, 'walk', 0).sway).toBe(0);
+    expect(walkWeight(0.55, 'walk', 2).sway).toBeCloseTo(0.03, 12);
+    // only the sway: her hips list and twist as they did
+    expect(walkWeight(0.55, 'walk', 0).list).toBeCloseTo(walkWeight(0.55, 'walk').list, 12);
+    expect(walkWeight(0.3, 'walk', 0).twist).toBeCloseTo(walkWeight(0.3, 'walk').twist, 12);
+  });
+});
+
+describe('her bob: how much of her legs\' rise and fall shows', () => {
+  it('keeps half of it as tuned, lowering her and never raising her', async () => {
+    const { bobDrop } = await import('../src/actor/walkWeight');
+    expect(WALK_WEIGHT.bob).toBe(0.5);
+    // her legs carry her from 0 (both feet down) to 3 at midstance: at 100% she comes 1.5 of the way up
+    expect(3 - bobDrop(3, 0)).toBeCloseTo(1.5, 12);
+    expect(bobDrop(0, 0)).toBe(0);
+    // at her lowest she is where her legs put her, at every setting
+    for (const a of [0, 0.5, 1, 2]) expect(bobDrop(-1, -1, a)).toBe(0);
+    // 0 keeps her level at her lowest; 200 is all of it, and more is no more (a leg cannot grow)
+    expect(2 - bobDrop(2, -1, 0)).toBeCloseTo(-1, 12);
+    expect(bobDrop(2, -1, 2)).toBe(0);
+    expect(bobDrop(2, -1, 3)).toBe(0);
+    // a reading a hair below the lowest sampled never asks her to be lifted
+    expect(bobDrop(-1.0001, -1, 1)).toBe(0);
+  });
 });
 
 describe('the feet that carry her', () => {

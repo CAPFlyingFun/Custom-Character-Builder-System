@@ -85,7 +85,7 @@ import { createSoftBaby, restorePose, stepSoftBaby, type SoftBaby } from './soft
 import { createSqueezeUniforms, patchSqueeze, setSqueeze } from './babySqueeze';
 import { createSkinUniforms, patchSkin, stepSkin } from './babySkin';
 import { measureHuman } from '../actor/humanSkeleton';
-import { footContact, walkWeight, weighWalk } from '../actor/walkWeight';
+import { bobDrop, footContact, walkWeight, weighWalk, WALK_WEIGHT } from '../actor/walkWeight';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -316,7 +316,7 @@ const DRESS = Object.freeze({ weightless: 1.2, raise: 0.55, out: 1.5, hold: 2.7,
 const GARMENT_REFIT_EVERY = 0.12;
 /** RANDOMIZE's group locks, as their buttons read. */
 // (`build` reads PROPORTIONS on screen: the room's Build tab is the strap builder's)
-const RANDOM_GROUPS = [['build', 'PROPORTIONS'], ['belly', 'BELLY'], ['breasts', 'BREAST']] as const;
+const RANDOM_GROUPS = [['build', 'PROPORTIONS'], ['belly', 'BELLY'], ['breasts', 'BREAST'], ['walk', 'WALK']] as const;
 /** A BUILD control's own segment, where it has one (its slider can be held at the segment's shortest or longest). */
 const SEGMENT_OF: Partial<Record<BodyControl, BuildSegment>> = { upperLeg: 'upperLeg', lowerLeg: 'lowerLeg', torso: 'torso', neck: 'neck', upperArm: 'upperArm', forearm: 'forearm' };
 /** What the fabric editor calls each garment. */
@@ -920,8 +920,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let standLift = 0;
   /** What the walk's weight moved her by this frame, room units (`weighOnFloor`); her soft parts feel her motion without it. */
   const walkOffset = new THREE.Vector3();
-  /** Her lowest sole standing and her leg's length, world units, once a body and build (`weighOnFloor`). */
-  let standSoles: { key: string; low: number; leg: number } | null = null;
+  /** Her lowest sole standing, her leg's length, and how low and high her legs carry her through a stride (`legsRise`),
+   * world units, once a body, build and sway (`weighOnFloor`). */
+  let standSoles: { key: string; low: number; leg: number; lo: number; hi: number } | null = null;
   /**
    * HER SNEAKERS (sneakers.ts; Joshua, 2026-11-07): built round her own foot the first time they are put on, carried by
    * her skeleton like her skin; standing, she is lifted onto their soles. Only on her approved v2 body (her build's rig).
@@ -1575,7 +1576,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     for (const c of BODY_CONTROLS) {
       const line = fields[`${SARAH_LAB_FIELD.body}${c.key}`];
       // seated, the tilt in use is not the one chosen: say both, so a sitting body never reads as the slider's
-      if (line) line.textContent = controlLine(c.key, body[c.key]) + (c.key === 'bellyTilt' && pose === 'sit' ? ` · seated ${effectiveTiltDeg(body.bellyTilt, 1).toFixed(1)}°` : '') + (c.key === 'breastSize' ? ` · bust ${bustVolume(bump, body.breastSize).toFixed(2)}×` : '') + (c.key === 'navel' ? ` · ${navelLine()}` : '') + (c.key === 'navelAfter' ? ` · ${['goes back in', 'stays out a while', 'stays out at half'][Math.round(body.navelAfter)] ?? ''}` : '') + (c.key === 'babyWeight' ? ` · ${babyWeightState(body.babyWeight, babyAt.length > 0, bellyCurve)}` : '') + (c.key === 'milk' ? ` · ${milkState(body.milk, body.milkBalance, milkAt.length > 0, bellyCurve)}` : '') + (c.key === 'milkBalance' ? ` · ${milkBalanceState(body.milkBalance)}` : '') + buildNote(c.key);
+      if (line) line.textContent = controlLine(c.key, body[c.key]) + (c.key === 'bellyTilt' && pose === 'sit' ? ` · seated ${effectiveTiltDeg(body.bellyTilt, 1).toFixed(1)}°` : '') + (c.key === 'breastSize' ? ` · bust ${bustVolume(bump, body.breastSize).toFixed(2)}×` : '') + (c.key === 'navel' ? ` · ${navelLine()}` : '') + (c.key === 'navelAfter' ? ` · ${['goes back in', 'stays out a while', 'stays out at half'][Math.round(body.navelAfter)] ?? ''}` : '') + (c.key === 'babyWeight' ? ` · ${babyWeightState(body.babyWeight, babyAt.length > 0, bellyCurve)}` : '') + (c.key === 'milk' ? ` · ${milkState(body.milk, body.milkBalance, milkAt.length > 0, bellyCurve)}` : '') + (c.key === 'milkBalance' ? ` · ${milkBalanceState(body.milkBalance)}` : '') + buildNote(c.key) + walkNote(c.key);
       const input = bodyInputs.get(c.key);
       if (input && Number(input.value) !== body[c.key]) input.value = String(body[c.key]);
     }
@@ -1690,6 +1691,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const seg = SEGMENT_OF[key];
     if (!seg || !heldSegments(body, buildRig.measure).includes(seg)) return '';
     return buildAmounts(body, buildRig.measure).add[seg] < 0 ? ' · at its shortest' : ' · at its longest';
+  }
+  /** What a WALK line adds once she has walked: what the slider gives her, in centimetres. */
+  function walkNote(key: BodyControl): string {
+    const s = standSoles;
+    if (!s || (key !== 'walkBob' && key !== 'walkSway')) return '';
+    const cm = (u: number) => ((u / M) * 100).toFixed(1);
+    if (key === 'walkBob') return ` · up and down ${cm(Math.min(1, (WALK_WEIGHT.bob * body.walkBob) / 100) * (s.hi - s.lo))} cm`;
+    return ` · ${cm(((WALK_WEIGHT.sway * body.walkSway) / 100) * s.leg)} cm each way`;
   }
 
   /** Her build as the controls ask for it, on the body measured (approved while there is none). */
@@ -2729,10 +2738,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         buttons[`groupLock-${group}`] = btn(`${label} 🔓`, `${SARAH_LAB_ACTION.randomGroupLock}${group}`, () => { randomRules = withGroupLock(randomRules, group, !randomRules.groups.includes(group)); refresh(); });
       }
       buttons.ranges = btn('RANGES', SARAH_LAB_ACTION.randomRanges, () => { rangesShown = !rangesShown; refresh(); });
-      for (const b of [buttons.randomize, buttons['groupLock-build'], buttons['groupLock-belly'], buttons['groupLock-breasts'], buttons.ranges]) { b.style.padding = '8px 10px'; b.style.fontSize = '12px'; row.appendChild(b); }
+      for (const b of [buttons.randomize, buttons['groupLock-build'], buttons['groupLock-belly'], buttons['groupLock-breasts'], buttons['groupLock-walk'], buttons.ranges]) { b.style.padding = '8px 10px'; b.style.fontSize = '12px'; row.appendChild(b); }
       right.appendChild(row);
     }
-    for (const [group, title] of [['build', 'HEIGHT & PROPORTIONS'], ['belly', 'BELLY SHAPE'], ['breasts', 'BREAST SHAPE']] as const) {
+    for (const [group, title] of [['build', 'HEIGHT & PROPORTIONS'], ['belly', 'BELLY SHAPE'], ['breasts', 'BREAST SHAPE'], ['walk', 'WALK']] as const) {
       const box = document.createElement('details');
       box.dataset.tab = 'body';
       box.style.cssText = 'border-top:1px solid rgba(255,255,255,0.12);padding-top:6px';
@@ -3320,8 +3329,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Where in her stride she is (0..1): the stride in bind units, `bindScale` of them to the metre. */
   function walkPhase(): number {
     if (!rig || !measure) return 0;
+    if (heldPhase !== null) return heldPhase;
     return ((walked * rig.bindScale) / humanStride(measure, 'walk', bump / 100)) % 1;
   }
+  /** A phase held while her stride is read through (`weighOnFloor`); otherwise null, and her phase is how far she walked. */
+  let heldPhase: number | null = null;
+  /** Her walk's weight at `phase`, her WALK sway on it (bodyShape.ts `walkSway`). */
+  const weightAt = (phase: number) => walkWeight(phase, 'walk', body.walkSway / 100);
   const weightOut: MutableJointTurn[] = [];
   /** Her turns in pose `p` (the room's own by default), the base pose written into `out`. */
   function turnsFor(p: SarahLabPose = pose, out: MutableJointTurn[] = poseOut): readonly JointTurn[] {
@@ -3346,7 +3360,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       base = poseHuman(measure, rig.bind, { stance, phase, seconds, lean: 0, carry }, out);
       // THE WALK'S WEIGHT (Joshua, 2026-11-08: "the body has no natural weight and bounce while walking"): her pelvis
       // lists and twists, her chest turns against it, and `place` shifts her over her standing foot (walkWeight.ts)
-      if (stance === 'walk') base = weighWalk(measure, base, walkWeight(phase, stance), weightOut);
+      if (stance === 'walk') base = weighWalk(measure, base, weightAt(phase), weightOut);
     }
     const overrideArms = p === 'tpose' || (!levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) && armsOverride);
     // T-POSE restores the whole bind pose. Other poses keep their torso and legs,
@@ -3846,26 +3860,99 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     };
     return [low(measure.joints.ankleL), low(measure.joints.ankleR)];
   }
+  /** How far her legs lift her at `phase`, as she is posed now: her standing soles' height less that of the feet carrying
+   * her, each by how much it carries her -- a swinging foot's toes never lift her. */
+  function legsRise(sk: THREE.SkinnedMesh, phase: number, standLow: number): number {
+    const [cl, cr] = footContact(phase, 'walk'), [ll, lr] = lowestSoles(sk);
+    return standLow - (cl * ll + cr * lr) / Math.max(1e-6, cl + cr);
+  }
+  /** Phases her stride is read at for its lowest (`weighOnFloor`). GAME TUNING: fine enough that the lowest is within a
+   * millimetre, few enough to read in a blink when a slider moves. */
+  const STRIDE_SAMPLES = 24;
+  const strideOut: MutableJointTurn[] = [];
   function weighOnFloor(skin: THREE.SkinnedMesh): void {
     if (!model || !rig || !measure) return;
+    // (placed again with no new pose since: her knees as her pose had them, not as they were bent)
+    unbendKnees();
     const sk = bodyOf()?.mesh ?? skin, j = measure.joints;
-    const key = `${model.uuid}|${bonesBuilt}|${standLift.toFixed(5)}|${bump.toFixed(1)}`;
+    const key = `${model.uuid}|${bonesBuilt}|${standLift.toFixed(5)}|${bump.toFixed(1)}|${body.walkSway}`;
     if (standSoles?.key !== key) {
       // her soles standing, read once a body and build (her feet's shapes too, which want her standing and unturned)
       rig.apply(turnsFor('stand', standOut)); model.updateMatrixWorld(true);
       readFootShapes(sk);
       const hip = sk.skeleton.bones[j.hipL].getWorldPosition(new THREE.Vector3()), ankle = sk.skeleton.bones[j.ankleL].getWorldPosition(new THREE.Vector3());
-      standSoles = { key, low: Math.min(...lowestSoles(sk)), leg: hip.distanceTo(ankle) };
+      const low = Math.min(...lowestSoles(sk));
+      // and how high and low her legs carry her through a whole stride, her sway on it (it leans her legs)
+      let lo = Infinity, hi = -Infinity;
+      for (let k = 0; k < STRIDE_SAMPLES; k++) {
+        heldPhase = k / STRIDE_SAMPLES;
+        rig.apply(turnsFor('walk', strideOut)); model.updateMatrixWorld(true);
+        const r = legsRise(sk, heldPhase, low);
+        lo = Math.min(lo, r); hi = Math.max(hi, r);
+      }
+      heldPhase = null;
+      standSoles = { key, low, leg: hip.distanceTo(ankle), lo, hi };
       rig.apply(currentTurns()); model.updateMatrixWorld(true);
     }
-    const left = measure.leftSign < 0 ? -1 : 1, phase = walkPhase(), w = walkWeight(phase, 'walk');
+    const left = measure.leftSign < 0 ? -1 : 1, phase = walkPhase(), w = weightAt(phase);
     walkOffset.set(left * w.sway * standSoles.leg, 0, 0);
     model.position.add(walkOffset); model.updateMatrixWorld(true);
-    // stood on the feet she is standing on, each by how much it carries her: a swinging foot's toes never lift her
-    const [cl, cr] = footContact(phase, 'walk'), [ll, lr] = lowestSoles(sk);
-    const rise = standSoles.low - (cl * ll + cr * lr) / Math.max(1e-6, cl + cr);
-    walkOffset.y = rise;
-    model.position.y += rise; model.updateMatrixWorld(true);
+    // stood on her feet as her legs carry her, less what her WALK bob keeps of it (walkWeight.ts `bobDrop`): her knees
+    // bend to keep her feet where her legs put them
+    const rise = legsRise(sk, phase, standSoles.low), drop = bobDrop(rise, standSoles.lo, body.walkBob / 100);
+    walkOffset.y = rise - drop;
+    model.position.y += rise - drop; model.updateMatrixWorld(true);
+    bendKnees(sk, drop);
+  }
+
+  /**
+   * HER KNEES TAKE UP WHAT HER BOB LEAVES OUT (Joshua, 2026-11-08: "Half the movement... add a slider so I can tweak the
+   * up/down (bob)"). Her body has come down `drop` (world units) from where her legs put her; each foot is raised back
+   * by as much, so it stays exactly where it was -- on the floor, or clearing it in its swing -- and the leg's two bones
+   * reach it: the knee in the plane it already bends in (forward, never back), the thigh turned the shortest way to its
+   * new knee, the shin likewise, the foot left turned as it was. Over her bones as drawn, so her build's lengths count.
+   * What it wrote is kept, so a second placing with no new pose since starts again from her pose (`unbendKnees`).
+   */
+  let kneesBent: { bones: THREE.Object3D[]; pre: THREE.Quaternion[]; post: THREE.Quaternion[] } | null = null;
+  function unbendKnees(): void {
+    const k = kneesBent; kneesBent = null;
+    if (!k || !k.bones.every((b, i) => b.quaternion.angleTo(k.post[i]) < 1e-6)) return;
+    k.bones.forEach((b, i) => b.quaternion.copy(k.pre[i]));
+    model?.updateMatrixWorld(true);
+  }
+  /** The knee's own bend leans forward by this share of the thigh, so a straight leg still bends the way a knee does.
+   * BIOLOGICAL SHAPE (a knee is a forward hinge), the share humanFeet.ts uses (`POLE_FORWARD_FRAC`). */
+  const KNEE_FORWARD = 0.05;
+  function bendKnees(sk: THREE.SkinnedMesh, drop: number): void {
+    if (!model || !measure || !(drop > 1e-6)) return;
+    const bones = sk.skeleton.bones, j = measure.joints, list: THREE.Object3D[] = [], pre: THREE.Quaternion[] = [];
+    const wp = (b: THREE.Object3D) => b.getWorldPosition(new THREE.Vector3()), wq = (b: THREE.Object3D) => b.getWorldQuaternion(new THREE.Quaternion());
+    // a bone turned about its own joint by a turn in the world
+    const turnWorld = (b: THREE.Object3D, q: THREE.Quaternion) => { b.quaternion.copy(wq(b.parent!).invert().multiply(q).multiply(wq(b))); b.updateMatrixWorld(true); };
+    // her forward (both bodies face +Z bound; the room turns her about the vertical only)
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(wq(model));
+    for (const [hi, ki, ai] of [[j.hipL, j.kneeL, j.ankleL], [j.hipR, j.kneeR, j.ankleR]]) {
+      const hb = bones[hi], kb = bones[ki], ab = bones[ai];
+      if (!hb?.parent || kb?.parent !== hb || ab?.parent !== kb) continue;
+      list.push(hb, kb, ab); pre.push(hb.quaternion.clone(), kb.quaternion.clone(), ab.quaternion.clone());
+      const H = wp(hb), K = wp(kb), A = wp(ab), foot = wq(ab), T = A.clone().setY(A.y + drop);
+      const l1 = K.distanceTo(H), l2 = A.distanceTo(K);
+      const D = Math.min(l1 + l2 - 1e-6, Math.max(Math.abs(l1 - l2) + 1e-6, T.distanceTo(H)));
+      const u = T.clone().sub(H).normalize();
+      // the plane her knee bends in: as posed, any backward part taken out, a little forward added
+      const v = K.clone().sub(H); v.addScaledVector(u, -v.dot(u));
+      const f = fwd.clone().addScaledVector(u, -fwd.dot(u)).normalize();
+      if (v.dot(f) < 0) v.addScaledVector(f, -v.dot(f));
+      v.addScaledVector(f, KNEE_FORWARD * l1).normalize();
+      const a = (l1 * l1 - l2 * l2 + D * D) / (2 * D), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+      const K2 = H.clone().addScaledVector(u, a).addScaledVector(v, h);
+      turnWorld(hb, new THREE.Quaternion().setFromUnitVectors(K.clone().sub(H).normalize(), K2.sub(H).normalize()));
+      const K1 = wp(kb), A1 = wp(ab);
+      turnWorld(kb, new THREE.Quaternion().setFromUnitVectors(A1.sub(K1).normalize(), T.clone().sub(K1).normalize()));
+      // her foot turned as it was: its sole where her legs put it
+      ab.quaternion.copy(wq(kb).invert().multiply(foot)); ab.updateMatrixWorld(true);
+    }
+    kneesBent = { bones: list, pre, post: list.map((b) => b.quaternion.clone()) };
   }
 
   /**

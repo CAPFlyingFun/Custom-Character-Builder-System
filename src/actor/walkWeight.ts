@@ -15,7 +15,10 @@
  *   other way (the arms already swing against the legs).
  *
  * The rise and fall -- lowest at double support, highest at midstance -- is not written here: it is what the legs' own
- * angles do once the lowest sole is stood on the floor (the room's `place`).
+ * angles do once the lowest sole is stood on the floor (the room's `place`). How MUCH of it shows is (`bobDrop`): shown
+ * all, her legs' 3 cm was too much (Joshua, 2026-11-08: "Half the movement... or better yet add a slider so I can tweak
+ * the up/down (bob) and left/right (sway) myself"), so her hips are lowered from it, never raised -- a leg cannot grow --
+ * and her knees bend to take it up, as a walker's standing knee does at midstance.
  *
  * Every turn is in the bind pose's world frame, as `humanRig.JointTurn` defines it, and a child's turn is applied in its
  * parent's bind frame (`HumanRig.apply`: local = P⁻¹ · R · B), so a turn on the pelvis carries everything under it. The
@@ -30,10 +33,13 @@ const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 
 /**
- * How much weight a walk shows. `sway` is a share of the leg's length (hip to ankle) each way: 0.03 is 2.5 cm each way on
- * her 0.8 m leg, against a walking adult's lateral centre-of-gravity excursion of about 6 cm (Thompson, OUHSC gait
- * kinematics). BIOLOGICAL SHAPE for `sway`; the list and twist (a few degrees each, as walking hips move) GAME TUNING on
- * renders.
+ * How much weight a walk shows. `sway` is a share of the leg's length (hip to ankle) each way: 0.015 is about 1.2 cm each
+ * way on her 0.8 m leg -- half the 0.03 (2.5 cm) first rendered, which sat inside a walking adult's lateral
+ * centre-of-gravity excursion of about 6 cm (Thompson, OUHSC gait kinematics) and still read as too much (Joshua,
+ * 2026-11-08: "Half the movement"). `bob` is the share of her legs' own rise and fall that shows, halved the same day.
+ * Both are GAME TUNING on renders, and both are the middle (100%) of the room's WALK sliders, `walkSway` and `walkBob`
+ * (actor/bodyShape.ts), which run from none to twice this. The list and twist (a few degrees each, as walking hips move)
+ * GAME TUNING on renders.
  */
 export const WALK_WEIGHT = Object.freeze({
   /** The swinging leg's hip dropped, at most, radians. */
@@ -43,7 +49,9 @@ export const WALK_WEIGHT = Object.freeze({
   /** The chest turned against the pelvis, a share of the pelvis's twist. */
   chestCounter: 0.8,
   /** The body over its standing foot, each way, a share of the leg. */
-  sway: 0.03,
+  sway: 0.015,
+  /** The share of the rise and fall her legs give that shows (`bobDrop`). */
+  bob: 0.5,
 });
 
 /** A run's weight as shares of the walk's: a narrower track (less side shift), a little more list and twist. GAME TUNING. */
@@ -62,9 +70,9 @@ export interface WalkWeight {
 
 /**
  * The weight at `phase` of `stance` (0..1, `humanPose`'s cycle: the left foot lands at 0.25, the right at 0.75). A stance
- * of `stand` carries none.
+ * of `stand` carries none. `sway` scales the side shift (1 is `WALK_WEIGHT.sway`; the room's slider at 100%).
  */
-export function walkWeight(phase: number, stance: HumanStance): WalkWeight {
+export function walkWeight(phase: number, stance: HumanStance, sway = 1): WalkWeight {
   if (stance === 'stand') return { list: 0, twist: 0, sway: 0 };
   const run = stance === 'run';
   // her weight furthest over her left foot at the end of its midstance: the middle of its stance, which starts at 0.25
@@ -74,8 +82,20 @@ export function walkWeight(phase: number, stance: HumanStance): WalkWeight {
   return {
     list: overLeft * WALK_WEIGHT.list * (run ? RUN_WEIGHT.list : 1),
     twist: -leftForward * WALK_WEIGHT.twist * (run ? RUN_WEIGHT.twist : 1),
-    sway: overLeft * WALK_WEIGHT.sway * (run ? RUN_WEIGHT.sway : 1),
+    sway: overLeft * WALK_WEIGHT.sway * (run ? RUN_WEIGHT.sway : 1) * Math.max(0, Number.isFinite(sway) ? sway : 1),
   };
+}
+
+/**
+ * How far to lower her, this moment, so that only part of her legs' rise and fall shows. `rise` is where her legs put her
+ * now and `lowest` the lowest they put her in a whole stride (both measured the same way, any unit); `amount` scales
+ * `WALK_WEIGHT.bob` (1 is the room's slider at 100%), the share capped at all of it. She keeps her lowest -- the moment
+ * both feet are down -- and comes `share` of the way up from it: lowered by what is left, never raised, so a leg is only
+ * ever asked to bend, never to be longer than it is.
+ */
+export function bobDrop(rise: number, lowest: number, amount = 1): number {
+  const share = Math.min(1, Math.max(0, WALK_WEIGHT.bob * (Number.isFinite(amount) ? amount : 1)));
+  return (1 - share) * Math.max(0, rise - lowest);
 }
 
 /** How long a foot takes to come fully onto the ground after it lands, and off it before it leaves, a share of its
