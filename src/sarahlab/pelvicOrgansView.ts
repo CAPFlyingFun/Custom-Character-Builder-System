@@ -5,9 +5,15 @@
  * cervix and the canal hard, the womb's body and the bladder's dome loosely -- so they sway, lag and settle as she moves
  * and come back to rest when she stops. Standing still they are exactly where they were laid: what they feel of gravity
  * is only its change as she leans away from upright (at rest her tissue already carries her organs' weight).
+ *
+ * PREGNANT, her womb is grown for HER WEEKS from what it holds (actor/pregnantWomb.ts) and seen through; her bladder is
+ * pressed by it; its sac is where the room's baby code packs her babies (`sac`), and where they need more room than it
+ * grew its wall gives it (`fitSac`); what its soft body does carries them (`wombMove`).
  */
 import * as THREE from 'three';
-import { BLADDER, CERVIX, layOrgans, organMeshes, uterusHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
+import { BLADDER, layOrgans, organMeshes, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
+import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
+import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
 
@@ -18,6 +24,8 @@ export const ORGAN_TUNE = Object.freeze({
   vagina: { shape: 0.4, keep: 0.05, tieFrom: 0.09, tieTo: 0.05 },
   bladder: { shape: 0.25, keep: 0.1, tieFrom: 0.06, tieTo: 0.01 },
 });
+/** How much of her pregnant womb's wall is drawn (the rest seen through, to what it holds). GAME TUNING. */
+const WOMB_SEEN = 0.45;
 /** Their colours: muscle for the womb, mucosa for the canal, a bladder's wall over what it holds. */
 const COLOURS = Object.freeze({ uterus: 0xb04a52, vagina: 0xd88895, bladder: 0xd8c25a });
 const G = 9.81;
@@ -30,12 +38,12 @@ interface Organ { readonly name: Name; readonly cage: Cage; readonly skin: CageS
 
 /** Cage points for one organ: along a centre line, each station its middle and points round it; tied from `tieFrom` at
  * its start to `tieTo` at its end. */
-function lineCage(path: readonly P3[], half: (t: number) => readonly [number, number], every: number, tieFrom: number, tieTo: number, grams: number) {
+function lineCage(path: readonly P3[], half: (t: number) => readonly [number, number], every: number, tieFrom: number, tieTo: number, grams: number, axis?: (t: number) => P3) {
   const total = lengthOf(path), stations = Math.max(3, Math.round(total / every) + 1);
   const rest: number[] = [], mass: number[] = [], tie: number[] = [], radius: number[] = [];
   for (let s = 0; s < stations; s++) {
     const t = s / (stations - 1), at = along(path, t * total), next = along(path, Math.min(total, t * total + 0.002)), prev = along(path, Math.max(0, t * total - 0.002));
-    const tx = next[0] - prev[0], ty = next[1] - prev[1], tz = next[2] - prev[2], tl = Math.hypot(tx, ty, tz) || 1;
+    const own = axis?.(t), tx = own ? own[0] : next[0] - prev[0], ty = own ? own[1] : next[1] - prev[1], tz = own ? own[2] : next[2] - prev[2], tl = Math.hypot(tx, ty, tz) || 1;
     // across her (+x), and the other way round the line in her midline's plane
     const ny = -tz / tl, nz = ty / tl, [a, b] = half(t), w = a * b, tieAt = tieFrom + (tieTo - tieFrom) * t;
     const put = (x: number, y: number, z: number, r: number, m: number) => { rest.push(x, y, z); mass.push(m); tie.push(tieAt); radius.push(r); };
@@ -61,6 +69,19 @@ function bladderCage(l: OrganLayout['bladder'], tieFrom: number, tieTo: number) 
   return { rest, mass: mass.map((m) => (m / sum) * grams), tie, radius };
 }
 
+/** Her womb's drawn points (rest metres) pushed out, above its cervix, to stand at least its wall's thickness outside `room`. */
+function makeRoom(points: Float32Array, womb: PregnantWomb, room: WombShape): void {
+  const foot = womb.path[womb.path.length - WOMB_SHAPE.stations - 1], lean = (womb.leanDeg * Math.PI) / 180, ay = Math.cos(lean), az = Math.sin(lean);
+  const c = room.centre;
+  for (let i = 0; i < points.length; i += 3) {
+    if ((points[i + 1] - foot[1]) * ay + (points[i + 2] - foot[2]) * az <= 0) continue;
+    const dx = points[i] - c.x, dy = points[i + 1] - c.y, dz = points[i + 2] - c.z, r = Math.hypot(dx, dy, dz);
+    if (r < 1e-6) continue;
+    const need = sacRadius(room, dx / r, dy / r, dz / r) + womb.wallM;
+    if (need > r) { const k = need / r; points[i] = c.x + dx * k; points[i + 1] = c.y + dy * k; points[i + 2] = c.z + dz * k; }
+  }
+}
+
 export class PelvicOrgansView {
   /** Her organs as drawn (world units, at the scene's root: their points are where their soft bodies have them). */
   readonly group = new THREE.Group();
@@ -73,6 +94,15 @@ export class PelvicOrgansView {
   private touching: { a: Cage; b: Cage; gaps: Float32Array }[] = [];
   private layout: OrganLayout | null = null;
   private bladderMl: number = BLADDER.defaultMl;
+  /** Her week (null: not pregnant) and each baby's weight, g; and her womb grown for them. */
+  private week: number | null = null;
+  private babyGrams: readonly number[] = [];
+  private grown: PregnantWomb | null = null;
+  private sacOf: { womb: PregnantWomb; shape: WombShape } | null = null;
+  /** The sac as her babies need it (grown round them where they stand past it), which her womb's wall makes room for. */
+  private room: WombShape | null = null;
+  private readonly toRest = new THREE.Matrix4();
+  private readonly restAt = new THREE.Vector3();
   private readonly restQuat = new THREE.Quaternion();
   private readonly toWorld = new THREE.Matrix4();
   private readonly materials = new Map<Name, THREE.MeshStandardMaterial>();
@@ -82,7 +112,7 @@ export class PelvicOrgansView {
    * @param bone her pelvis bone, and `holderMatrix` her rest frame (metres) as that bone carries it, read at her bind
    * @param units world units per metre
    */
-  constructor(private readonly pelvis: PelvisLandmarks, bone: THREE.Bone, holderMatrix: THREE.Matrix4, private readonly units: number) {
+  constructor(private readonly pelvis: PelvisLandmarks, private readonly torso: TorsoLandmarks, bone: THREE.Bone, holderMatrix: THREE.Matrix4, private readonly units: number) {
     this.holder.matrixAutoUpdate = false; this.holder.matrix.copy(holderMatrix); this.holder.name = 'pelvicOrgans';
     bone.add(this.holder);
     this.holder.updateMatrixWorld(true);
@@ -99,17 +129,66 @@ export class PelvicOrgansView {
     this.bladderMl = v; this.build();
   }
   get bladder(): number { return this.bladderMl; }
+  /**
+   * HER WEEKS (the room's pregnancy, actor/pregnantWomb.ts): her womb grown for `week` (null: not pregnant), each baby
+   * weighing what `babyGrams` says. Laid again only when it changes enough to see (a fiftieth of a week, a gram in a
+   * hundred).
+   */
+  setPregnancy(week: number | null, babyGrams: readonly number[]): void {
+    const same = week === null ? this.week === null
+      : this.week !== null && Math.abs(week - this.week) < 0.02 && babyGrams.length === this.babyGrams.length && babyGrams.every((g, i) => Math.abs(g - this.babyGrams[i]) <= 0.01 * Math.max(1, g));
+    if (same) return;
+    this.week = week === null ? null : Math.max(0, week); this.babyGrams = [...babyGrams];
+    // (the room her babies needed was for the womb she had: they are packed again into this one)
+    this.room = null; this.build();
+  }
+  /**
+   * THE WOMB FORMS TO THE SAC (Joshua, 2026-10-29: "Sac forms to baby > womb forms to sac > belly skin forms to womb"):
+   * where her babies, packed at the chart's size, need the sac to stand further out than her womb grew, its wall gives
+   * them that room. `room` is that sac (rest metres), as the room's baby code grows it; null gives the room back.
+   */
+  fitSac(room: WombShape | null): void {
+    if (room === this.room || !this.grown) return;
+    this.room = room; this.build();
+  }
+  /** Her womb as grown for her week (null: not pregnant). */
+  get womb(): PregnantWomb | null { return this.grown; }
+  /**
+   * The sac inside her grown womb, in her rest frame (metres), as the room's baby code holds one (baby.ts WombShape):
+   * where her babies are packed, float and kick. Null when she is not pregnant. Worked out once a womb.
+   */
+  sac(): WombShape | null {
+    if (!this.grown) return null;
+    if (!this.sacOf || this.sacOf.womb !== this.grown) {
+      const s = wombSac(this.grown, NT, NP);
+      this.sacOf = { womb: this.grown, shape: { centre: new THREE.Vector3(...s.centre), r: s.r, axis: new THREE.Vector3(...s.axis), skin: new Float32Array(NT * NP).fill(Infinity), give: new Float32Array(NT * NP) } };
+    }
+    return this.sacOf.shape;
+  }
+  /** How far her womb's soft body has carried what is in it from where it was laid, in her rest frame (metres), into `out`. */
+  wombMove(out: THREE.Vector3): THREE.Vector3 {
+    const o = this.organs.find((g) => g.name === 'uterus');
+    if (!o || !o.cage.primed) return out.set(0, 0, 0);
+    this.toRest.copy(this.boneToWorld()).invert();
+    return out.set(o.cage.centre[0], o.cage.centre[1], o.cage.centre[2]).applyMatrix4(this.toRest).sub(this.restAt.set(...o.cage.restCentre));
+  }
   /** The layout as laid (rest metres): for probes and the readout. */
   get laid(): OrganLayout | null { return this.layout; }
 
   private build(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
     this.organs = [];
-    const layout = layOrgans(this.pelvis, this.bladderMl), meshes = organMeshes(layout);
+    const laid = layOrgans(this.pelvis, this.bladderMl);
+    this.grown = this.week === null ? null : growWomb(laid, this.torso, this.week, this.babyGrams);
+    const layout = this.grown ? pregnantLayout(laid, this.grown) : laid, meshes = organMeshes(layout);
+    if (this.grown && this.room) makeRoom(meshes.uterus.points, this.grown, this.room);
     this.layout = layout; this.last = null;
+    // (pregnant, her womb is seen through: what it holds is inside)
+    const wm = this.materials.get('uterus')!;
+    wm.transparent = !!this.grown; wm.opacity = this.grown ? WOMB_SEEN : 1; wm.depthWrite = !this.grown; wm.needsUpdate = true;
     const U = ORGAN_TUNE, u = layout.uterus;
     const cages: Record<Name, ReturnType<typeof lineCage>> = {
-      uterus: lineCage(u.path, (t) => uterusHalf(t, CERVIX.length / u.length), 0.011, U.uterus.tieFrom, U.uterus.tieTo, 60),
+      uterus: lineCage(u.path, wombHalf(u), Math.max(0.011, u.length / 30), U.uterus.tieFrom, U.uterus.tieTo, this.grown ? this.grown.contents.totalG : 60, u.axes ? wombAxis(u) : undefined),
       vagina: lineCage(layout.vagina.path, () => [layout.vagina.width / 2, layout.vagina.depth / 2], 0.012, U.vagina.tieFrom, U.vagina.tieTo, 40),
       bladder: bladderCage(layout.bladder, U.bladder.tieFrom, U.bladder.tieTo),
     };

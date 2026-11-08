@@ -331,7 +331,8 @@ export const WOMB_FILL_FROM = 30;
 export const WOMB_FLOOR_Y = 0.87;         // deep in her pelvis, where its bottom (and at term the baby's head) sits: up her 8 cm birth canal, engaged at her cervix at term (Joshua, 2026-11-01: "make it 8cm and curve it so it all works"; it was 0.81, level with her opening; 0.90 left no room for twins and triplets). GAME TUNING
 /** the fundus (top) and the half width by week: [week, top y (m), half width (m)]. BIOLOGICAL SHAPE (fundal height), GAME TUNING (her body) */
 export const FUNDUS: readonly (readonly [number, number, number])[] = [[12, 0.895, 0.045], [16, 0.950, 0.075], [20, 1.010, 0.100], [28, 1.115, 0.125], [36, 1.215, 0.140], [40, 1.230, 0.145], [42, 1.240, 0.150]];
-const NT = 36, NP = 48;
+/** The sac's grid over the sphere: polar rows from +y, columns round from +z toward +x. */
+export const NT = 36, NP = 48;
 
 export interface WombShape {
   /** the sac's middle (rest metres) */

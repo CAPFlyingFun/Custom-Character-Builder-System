@@ -66,7 +66,14 @@ export interface OrganLayout {
   /** The canal, its opening to its top, along its centre line (rest metres). */
   readonly vagina: { readonly path: readonly P3[]; readonly width: number; readonly depth: number };
   /** The womb's centre line, external os to fundus, and how far along it the cervix ends (the internal os), metres. */
-  readonly uterus: { readonly path: readonly P3[]; readonly cervixEnds: number; readonly length: number; readonly anteversionDeg: number };
+  readonly uterus: {
+    readonly path: readonly P3[]; readonly cervixEnds: number; readonly length: number; readonly anteversionDeg: number;
+    /** The way each point of its path faces (unit), when it is grown: its rings square to these, not to the path. */
+    readonly axes?: readonly P3[];
+    /** Its half-sizes [across, front to back] at each point of its path, when it is grown (pregnant: actor/pregnantWomb.ts);
+     * not pregnant they are `uterusHalf`'s. */
+    readonly halves?: readonly (readonly [number, number])[];
+  };
   /** The bladder: its centre, its half-sizes (across, up, front to back) and how much it holds. */
   readonly bladder: { readonly centre: P3; readonly radii: P3; readonly ml: number };
 }
@@ -100,8 +107,8 @@ export function bladderRadii(ml: number): P3 {
 }
 
 /** Her pelvic organs laid out against her pelvis, not pregnant, her bladder holding `bladderMl`. */
-export function layOrgans(p: PelvisLandmarks, bladderMl: number = BLADDER.defaultMl): OrganLayout {
-  const O = ORGAN_PLACE, L = p.landmarks;
+export function layOrgans(p: PelvisLandmarks, bladderMl: number = BLADDER.defaultMl, at: typeof ORGAN_PLACE = ORGAN_PLACE): OrganLayout {
+  const O = at, L = p.landmarks;
   const top = P(L.symphysisTop), bottom = P(L.symphysisBottom), back = P(L.symphysisBack);
   const x = top[0];
   // the canal: from its opening up and back to its top at the midpelvis, bowed a little back (its back wall the longer)
@@ -175,9 +182,11 @@ export interface OrganMesh { readonly points: Float32Array; readonly triangles: 
 
 /**
  * A tube swept along `path` and closed round at both ends: across it an ellipse, `half(t)` = [its half-width across her,
- * its half-depth in her midline's plane] at `t` 0..1 along. `ring` points round, `caps` rings closing each end.
+ * its half-depth in her midline's plane] at `t` 0..1 along. `ring` points round, `caps` rings closing each end. Each
+ * ring stands square to the line there, or to `axis(t)` if given (rings kept parallel down a line that is moved
+ * sideways -- a womb leaning on her spine -- cannot cross one another).
  */
-export function sweep(path: readonly P3[], half: (t: number) => readonly [number, number], ring = 24, caps = 6): OrganMesh {
+export function sweep(path: readonly P3[], half: (t: number) => readonly [number, number], ring = 24, caps = 6, axis?: (t: number) => P3): OrganMesh {
   const total = lengthOf(path), pts: number[] = [], tris: number[] = [];
   // the rings: along the line, then rounding each end to a point
   const stations: { at: P3; tan: P3; a: number; b: number }[] = [];
@@ -185,8 +194,8 @@ export function sweep(path: readonly P3[], half: (t: number) => readonly [number
   const tanAt = (k: number): P3 => { const a = path[Math.max(0, k - 1)], b = path[Math.min(path.length - 1, k + 1)], d = dist(a, b) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d, (b[2] - a[2]) / d]; };
   for (let k = 0; k < path.length; k++) {
     if (k) s += dist(path[k - 1], path[k]);
-    const [a, b] = half(total > 0 ? s / total : 0);
-    stations.push({ at: path[k], tan: tanAt(k), a, b });
+    const t = total > 0 ? s / total : 0, [a, b] = half(t);
+    stations.push({ at: path[k], tan: axis ? axis(t) : tanAt(k), a, b });
   }
   const end = (st: (typeof stations)[number], dir: 1 | -1) => {
     const out: typeof stations = [];
@@ -241,12 +250,43 @@ export function uterusHalf(t: number, cervixShare = CERVIX.length / UTERUS.lengt
 export function organMeshes(layout: OrganLayout): { uterus: OrganMesh; vagina: OrganMesh; bladder: OrganMesh } {
   const v = layout.vagina, u = layout.uterus, b = layout.bladder;
   // (the womb's rounded ends inside its length, so the cervix ends at the external os and the fundus at its top)
-  const share = u.cervixEnds / u.length, half = (t: number) => uterusHalf(t, share);
-  const from = Math.min(...half(0)), to = u.length - Math.min(...half(1)), inner = subPath(u.path, from, to);
+  const half = wombHalf(u);
+  const from = Math.min(...half(0)), to = u.length - Math.min(...half(1)), inner = subPath(u.path, from, to), axis = wombAxis(u);
+  const remap = (t: number) => (from + t * (to - from)) / u.length;
   return {
     vagina: sweep(v.path, () => [v.width / 2, v.depth / 2], 20, 4),
-    uterus: sweep(inner, (t) => half((from + t * (to - from)) / u.length), 28, 7),
+    uterus: sweep(inner, (t) => half(remap(t)), u.halves ? 36 : 28, 7, u.axes ? (t) => axis(remap(t)) : undefined),
     bladder: ellipsoid(b.centre, b.radii),
+  };
+}
+
+/** The womb's half-sizes [across, front to back] by how far along it `t` (0..1) is: as grown, or `uterusHalf`'s. */
+export function wombHalf(u: OrganLayout['uterus']): (t: number) => readonly [number, number] {
+  if (!u.halves) { const share = u.cervixEnds / u.length; return (t) => uterusHalf(t, share); }
+  const halves = u.halves, at: number[] = [0];
+  for (let k = 1; k < u.path.length; k++) at.push(at[k - 1] + dist(u.path[k - 1], u.path[k]));
+  const total = at[at.length - 1] || 1;
+  return (t) => {
+    const s = Math.min(1, Math.max(0, t)) * total;
+    let k = 1; while (k < at.length - 1 && at[k] < s) k++;
+    const a = at[k - 1], b = at[k], f = b > a ? (s - a) / (b - a) : 0;
+    return [halves[k - 1][0] + (halves[k][0] - halves[k - 1][0]) * f, halves[k - 1][1] + (halves[k][1] - halves[k - 1][1]) * f];
+  };
+}
+
+/** The way the womb faces by how far along it `t` (0..1) is: as grown (`axes`), or its path's own way. */
+export function wombAxis(u: OrganLayout['uterus']): (t: number) => P3 {
+  const at: number[] = [0];
+  for (let k = 1; k < u.path.length; k++) at.push(at[k - 1] + dist(u.path[k - 1], u.path[k]));
+  const total = at[at.length - 1] || 1, n = u.path.length;
+  const own = (k: number): P3 => { const a = u.path[Math.max(0, k - 1)], b = u.path[Math.min(n - 1, k + 1)], d = dist(a, b) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d, (b[2] - a[2]) / d]; };
+  const ax = u.axes ?? u.path.map((_, k) => own(k));
+  return (t) => {
+    const s = Math.min(1, Math.max(0, t)) * total;
+    let k = 1; while (k < n - 1 && at[k] < s) k++;
+    const f = at[k] > at[k - 1] ? (s - at[k - 1]) / (at[k] - at[k - 1]) : 0, a = ax[k - 1], b = ax[k];
+    const v: P3 = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f], l = Math.hypot(...v) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
   };
 }
 

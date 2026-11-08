@@ -91,6 +91,7 @@ import { BODY_KG, balanceAt, centreOfMass, extrapolatedCom, supportOutline, womb
 import { LEVEL_NONE, easeLevel, levelBody, type Level } from '../actor/levelBody';
 import { PelvicOrgansView } from './pelvicOrgansView';
 import skeletonPelvis from '../data/pelvis/skeleton.json';
+import skeletonTorso from '../data/torso/skeleton.json';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -104,7 +105,7 @@ import { StepWatch, TileSteps } from './footsteps';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
-import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
+import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PUBIC_PRESS, pubicPressWant, setPush, jiggleOf as jiggleOfMesh, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type SoftBellyWant } from './softBody';
 import { createVulvaPatch, VULVA_OPEN, type VulvaPatch } from './vulvaMesh';
@@ -5307,7 +5308,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     seated = sitMoving ? seatShare() : stepSeated(seated, pose === 'sit' ? 1 : 0, dt);
     applyMotion();
     const b = bodyOf();
-    if (!anchors || !b || !(dt > 0)) return;
+    // (v3, on her skeleton: no belly to hang a mass from, but her womb's own soft body carries her babies)
+    if (!anchors || !b || !(dt > 0)) { if (organs && dt > 0) { feltBelly.set(0, 0, 0); stepBabies(dt); } return; }
     const meshQ = b.mesh.getWorldQuaternion(qMesh).invert();
     let walkUp = 0, walkSide = 0;
     if (pose === 'walk' && measure && rig) {
@@ -5371,6 +5373,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       else { const w = 2 * Math.PI * CONTACT_VALVE.hz, h = Math.min(dt, 0.05); contactValve.v += (w * w * (want - contactValve.x) - 2 * CONTACT_VALVE.damping * w * contactValve.v) * h; contactValve.x += contactValve.v * h; }
       contactValve.at += dt;
       if (Math.abs(contactValve.x - contactValve.applied) > (want ? CONTACT_VALVE.step : 1e-6) && contactValve.at > 0.08) { contactValve.at = 0; contactValve.applied = contactValve.x; applyLook(); } }
+    stepBabies(dt);
+  }
+  /**
+   * Her babies this step: carried by what carries them (her belly's mass; v3, her womb's own soft body), floating in their
+   * fluid, moving, and placed.
+   */
+  function stepBabies(dt: number): void {
+    if (organs) { if (organs.womb) organs.wombMove(jiggle.belly.value); else jiggle.belly.value.set(0, 0, 0); }
     // a contraction: her womb drawn up and forward, and eased back
     if (birthNow && birthNow.contraction > 0) jiggle.belly.value.add(tmp.set(BIRTH_HEAD.lift[0], BIRTH_HEAD.lift[1], BIRTH_HEAD.lift[2]).multiplyScalar(birthNow.contraction));
     // her babies in their fluid: each lags what her body does a little, within the room it has (baby.ts `FLUID`)
@@ -5714,24 +5724,39 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!pregnant()) { notPregnant(); return; }
     if (!babyRoot) { loadBaby(); return; }
     if (!babyCurl || !babyPoints || !babyFrame) return;
-    const key = `${bump.toFixed(2)}|${body.babyWeight.toFixed(2)}|${babyCount}|${babyLie}|${babyLieSeed}`;
+    // (v3: and her womb as grown for her week -- grown on the frame her slider moved, which may be after this one)
+    const key = `${bump.toFixed(2)}|${body.babyWeight.toFixed(2)}|${babyCount}|${babyLie}|${babyLieSeed}|${organs?.womb?.week.toFixed(2) ?? ''}`;
     // (three take longer to lay: they wait until the slider has stopped a moment)
     if (key !== babyKeySeen) { babyKeySeen = key; babyKeyAt = performance.now(); }
     const settled = performance.now() - babyKeyAt > (babyCount < 2 ? 150 : 280);
     if ((babyDirty || key !== babyKey) && settled && performance.now() - babyFitAt > 120) {
       babyKey = key; babyDirty = false;
-      const skin = bellySkin();
-      if (!skin) return;
       const fitStart = performance.now();
-      // her skin as her own shape has it: the AUTO DEPTH already laid taken back off (it is worked out afresh)
-      const unit = depthUnit(), depth = babySkinDepth && babySkinDepth.length === skin.length ? babySkinDepth : null;
-      if (babyAutoDepth && depth) for (let i = 0; i < skin.length; i++) skin[i] -= babyAutoDepth * unit * depth[i];
       babySolidOf ??= babySolid(babyAll ?? babyPoints, babyCurl);
-      const lies = babyLies(), them = babiesInHer(babyPoints, babyAll ?? babyPoints, babySolidOf, onChart(), body.babyWeight, babyCurl, skin, depth, unit, lies), fits = them.fits;
-      babyWomb = them.womb; babyPushField = them.push; babyCurled = them.shrink; babyBalanceDeg = them.balance;
-      // her belly deepened as they need (her shape fields laid again, only when it moved enough to see)
-      if (Math.abs(them.depth - babyAutoDepth) > 0.25) { babyAutoDepth = them.depth; applyLook(); babyDirty = false; }
-      layPush(babyPushField);
+      const lies = babyLies();
+      let fits: BabyFit[];
+      if (organs) {
+        // v3, on her skeleton: her womb grown from what it holds for her week (actor/pregnantWomb.ts) is the room they
+        // have -- packed into its sac as the room packs them; there is no belly skin yet to push
+        const sac = organs.sac();
+        if (!sac) return;
+        fits = packBabies(babyPoints, babySolidOf, onChart(), body.babyWeight, babyCurl, sac, lies).fits;
+        // (the sac grown round them where they stand past it, and her womb's wall round that: they are never shrunk)
+        babyWomb = growSac(sac, babiesPast(babyAll ?? babyPoints, fits, sac)); organs.fitSac(babyWomb);
+        babyPushField = null; babyCurled = 1; babyBalanceDeg = 0;
+      } else {
+        const skin = bellySkin();
+        if (!skin) return;
+        // her skin as her own shape has it: the AUTO DEPTH already laid taken back off (it is worked out afresh)
+        const unit = depthUnit(), depth = babySkinDepth && babySkinDepth.length === skin.length ? babySkinDepth : null;
+        if (babyAutoDepth && depth) for (let i = 0; i < skin.length; i++) skin[i] -= babyAutoDepth * unit * depth[i];
+        const them = babiesInHer(babyPoints, babyAll ?? babyPoints, babySolidOf, onChart(), body.babyWeight, babyCurl, skin, depth, unit, lies);
+        fits = them.fits;
+        babyWomb = them.womb; babyPushField = them.push; babyCurled = them.shrink; babyBalanceDeg = them.balance;
+        // her belly deepened as they need (her shape fields laid again, only when it moved enough to see)
+        if (Math.abs(them.depth - babyAutoDepth) > 0.25) { babyAutoDepth = them.depth; applyLook(); babyDirty = false; }
+        layPush(babyPushField);
+      }
       // as many babies as asked for: copies of the first, made or put away
       // (a copy's own place and drift: a clone's userData is copied as JSON, and a Vector3 there came back a plain object)
       while (babyCopies.length < fits.length - 1) { const c = cloneSkinned(babyRoot); c.userData = {}; babyCopies.push(c); }
@@ -5760,7 +5785,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (babySac && babyWall) {
         layShell(babyWall, babyWomb, WOMB_WALL_M);
         // (drawn once, as the balloon)
-        babyWall.visible = !vulva;
+        babyWall.visible = !vulva && !organs;
         // one baby: its sac lines her womb; several: each its own, round it
         layShell(babySac, babyWomb, 0); babySac.visible = fits.length === 1;
         while (babyOwnSacs.length < fits.length && fits.length > 1) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), (babySac.material as THREE.Material).clone()); m.renderOrder = 1; m.userData.unit = babySac.userData.unit; babyHolder?.add(m); babyOwnSacs.push(m); }
@@ -7055,7 +7080,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // frame as it carries it, read here at her bind
         const pelvisBone = bones[measure.joints.pelvis];
         if (SARAH_LAB_MODELS[modelIndex].id === 'skeleton' && pelvisBone) {
-          organs = new PelvicOrgansView(skeletonPelvis, pelvisBone, new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld), M);
+          // (her babies are laid in her womb, so in the frame it hangs from)
+          if (babyFrame) babyFrame = { ...babyFrame, bone: pelvisBone, matrix: new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld) };
+          organs = new PelvicOrgansView(skeletonPelvis, skeletonTorso, pelvisBone, new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld), M);
           three.add(organs.group);
         }
         babySkinAt = null; babyDepthOf = null;
@@ -7321,8 +7348,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         twinHandShare += Math.max(-dt / BABY_HANDS.seconds, Math.min(dt / BABY_HANDS.seconds, twinTo - twinHandShare)); }
       garmentRoom?.applyPose();
       place();
-      // her pelvic organs follow her pelvis as soft bodies (v3, on her skeleton)
-      organs?.update(dt);
+      // her pelvic organs follow her pelvis as soft bodies (v3, on her skeleton), her womb grown for HER WEEKS
+      if (organs) {
+        const wk = pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
+        organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
+        organs.update(dt);
+      }
       // her steps: each sneaker's heel coming down onto the floor is heard (on the tiles of a lab)
       if (sneakers && sneakers.visible) {
         for (const { foot, strength } of stepWatch.update(sneakers.heels().map((h) => h / M), dt)) { tileSteps.step(strength, foot); stepsHeard++; }
@@ -8462,7 +8493,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         organs: (bladderMl?: number) => {
           if (!organs) return null;
           if (bladderMl !== undefined) organs.setBladder(bladderMl);
-          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway() };
+          const w = organs.womb;
+          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents } };
         },
         // her body kept level (actor/levelBody.ts): the posture she is easing toward and the one laid on her now (radians,
         // metres; lean and hips as world [x, z])
