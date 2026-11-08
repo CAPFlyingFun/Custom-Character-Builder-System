@@ -397,15 +397,25 @@ export class GarmentCloth {
     this.fitSet = this.setVersion;
   }
 
-  /** Her skin under her arm a floor for the body pieces too (`ClothSkin.floorUnderArm`), kept across a rebind. */
+  /**
+   * HER SKIN UNDER HER ARM A FLOOR FOR THE BODY PIECES TOO (`ClothSkin.floorUnderArm`; Joshua, 2026-11-07: "the entire
+   * shirt is a totally soft body mesh and the only thing filling it out is the body... collision is really important for
+   * all points on the shirt. The points and vertices should be allow to stretch and span natural bridges like around the
+   * arms"): her skin behind and under her armpit pushes the bodice out as her skin does everywhere else, and still never
+   * carries it, so her arm swinging does not drag it; with her arm's capsule from right by her shoulder (capsules.ts
+   * ARM_START), it bridges her armpit instead of sinking into it. Without them, the bodice there lay inside her and the
+   * gap between her arm and her side showed through it as a hole. Measured on Joshua's Sarah (his file of 2026-11-07),
+   * the tee's points more than 3 mm inside her: standing 30 to 10, walking 40 to 20 at the stride's worst; the holes
+   * behind her armpits closed standing, walking and seated; her arms out as before. Kept across a rebind.
+   */
   get floorUnderArm(): boolean { return this.underArmFloor; }
   set floorUnderArm(on: boolean) { this.underArmFloor = on; this.skin.floorUnderArm = on; }
-  private underArmFloor = false;
+  private underArmFloor = true;
 
   private skinFor(binding: ClothBinding): ClothSkin {
     const o = this.options;
     const skin = new ClothSkin(o.body, binding, { thickness: this.skin?.thickness ?? o.standOff, armBones: o.armBones, trunkOnly: o.trunkOnly, ...(o.armpitRule === false ? {} : { looseOverArm: LOOSE_OVER_ARM }), rescueOver: RESCUE_OVER * o.unitsPerMetre, neighbours: neighboursOf(this.sewn) });
-    skin.floorUnderArm = this.underArmFloor ?? false;
+    skin.floorUnderArm = this.underArmFloor ?? true;
     return skin;
   }
 

@@ -3,8 +3,10 @@
  * through her arm when her arm comes forward or in, through her thighs when she sits, and through the stool under her.
  * `clothSim.ts` pushes masked particles out of each capsule (a segment and a radius, world units) every substep.
  *
- * - ARMS: upper arm from ARM_START of the way down from shoulder to elbow (clear of her shoulder, where the sleeve's
- *   crown and the bodice meet and must be free to lie on her), to the elbow; forearm, elbow to wrist. Radius: her arm's
+ * - ARMS: upper arm from ARM_START of the way down from shoulder to elbow, to the elbow; forearm, elbow to wrist. It
+ *   started 45% down (clear of her shoulder, where the sleeve's crown and the bodice meet); from right by her shoulder
+ *   it keeps the bodice out of the top of her arm by her armpit too (Joshua, 2026-11-07: "collision is really important
+ *   for all points on the shirt", with `ClothSkin.floorUnderArm`: see garmentCloth.ts `floorUnderArm`). Radius: her arm's
  *   own girth there (measure.ts) as a circle, times RADIUS_SHARE (inside her skin, so the capsule only ever catches
  *   cloth that has already gone into her).
  * - LEGS (seated): thigh from LEG_START of the way down from hip to knee, to the knee; radius her thigh's girth just under
@@ -21,7 +23,7 @@ import type { Capsules } from '../clothSim';
 import type { BodyMeasure } from './types';
 
 /** Upper arm capsules start this share of the way down the bone (clear of her shoulder); thigh capsules this share (by her hip joint). */
-const ARM_START = 0.45, LEG_START = 0.05;
+const ARM_START = 0.1, LEG_START = 0.05;
 /** An arm capsule's radius is this share of her limb's girth as a circle (inside her skin); a thigh's, LEG_RADIUS_SHARE. */
 const RADIUS_SHARE = 0.85, LEG_RADIUS_SHARE = 1.05;
 

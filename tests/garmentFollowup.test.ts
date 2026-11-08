@@ -728,6 +728,28 @@ describe('ClothSkin.looseOverArm', () => {
     expect(Array.from(skin['prevPoint'] as Float32Array)).toEqual(Array.from(r.second.point));
   });
 
+  it('floorUnderArm: under her arm a trunk particle keeps its floor too, and her skin there is not carried under it', () => {
+    // (Joshua, 2026-11-07: "collision is really important for all points on the shirt"; garmentCloth.ts floorUnderArm)
+    const body = sphereBody(), { ts, trunkOnly } = cast(pick(body.g));
+    const skin = new ClothSkin(body.mesh, bindAll(body.g, ts), { armBones: ARM, trunkOnly, looseOverArm: 0.3 });
+    expect(skin.floorUnderArm).toBe(false);
+    skin.floorUnderArm = true;
+    const r = twoUpdates(body, skin, ts);
+    expect(stayed(skin, ts)).toBe(true);
+    // 0, trunk under her arm, and 1, trunk on her shoulder: both floored, neither carried (each holds its last contact)
+    for (const i of [0, 1]) {
+      expect(r.first.standOff[i]).toBeGreaterThan(0);
+      expect(r.second.standOff[i]).toBeGreaterThan(0);
+      expect(r.skinMoved[i].length()).toBeGreaterThan(1);
+      expect(Array.from(r.second.carried.subarray(i * 3, i * 3 + 3))).toEqual(Array.from(r.first.point.subarray(i * 3, i * 3 + 3)));
+    }
+    // 2 and 3, sleeve particles, and 4, trunk on skin her arm barely carries: as before, floored and carried
+    for (const i of [2, 3, 4]) {
+      expect(r.second.standOff[i]).toBeGreaterThan(0);
+      expect(at3(r.second.carried, i).distanceTo(r.carriedSpot[i])).toBeLessThan(0.01);
+    }
+  });
+
   it("a threshold above both arm-heavy triangles' shares leaves every particle floored and carried", () => {
     const body = sphereBody(), p = pick(body.g), { ts, trunkOnly } = cast(p);
     const skin = new ClothSkin(body.mesh, bindAll(body.g, ts), { armBones: ARM, trunkOnly, looseOverArm: Math.max(p.up.share, p.side.share) + 0.02 });

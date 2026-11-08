@@ -78,7 +78,8 @@ describe('bodyCapsules', () => {
     for (let s = 0; s < 2; s++) {
       const sh = world(BONES.shoulder[s]), el = world(BONES.elbow[s]), wr = world(BONES.wrist[s]);
       const top = s === 0 ? 0.30 : 0.32; // girths fall 1 cm a step: the largest of 3..7 is the 3rd, of 12..15 the 12th
-      expectCapsule(c, 2 * s, sh.clone().lerp(el, 0.45), el, radiusOf(top - 0.03, upm));
+      // (from right by her shoulder: 10% of the way down, 2026-11-07)
+      expectCapsule(c, 2 * s, sh.clone().lerp(el, 0.1), el, radiusOf(top - 0.03, upm));
       expectCapsule(c, 2 * s + 1, el, wr, radiusOf(top - 0.12, upm));
     }
     for (let s = 0; s < 2; s++) {
@@ -91,6 +92,15 @@ describe('bodyCapsules', () => {
     // an upper arm is fuller than its forearm, a thigh than either
     expect(c.radius[0]).toBeGreaterThan(c.radius[1]);
     expect(c.radius[4]).toBeGreaterThan(c.radius[0]);
+  });
+
+  it('starts the upper arm where the request says, a share of the way from her shoulder to her elbow', () => {
+    const { mesh } = rig();
+    const c = bodyCapsules(mesh, BONES, MEASURE, { arms: true, legs: false, stool: null, armStart: 0.45 }, 1);
+    for (let s = 0; s < 2; s++) {
+      const sh = world(BONES.shoulder[s]), el = world(BONES.elbow[s]);
+      expect(new THREE.Vector3(c.a[6 * s], c.a[6 * s + 1], c.a[6 * s + 2]).distanceTo(sh.clone().lerp(el, 0.45))).toBeLessThan(1e-6);
+    }
   });
 
   it('scales the radii by unitsPerMetre and only the radii', () => {
