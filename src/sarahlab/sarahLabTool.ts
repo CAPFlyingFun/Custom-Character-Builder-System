@@ -42,6 +42,21 @@ export const SARAH_V2_BODY_MODEL = 'models/sarah-v2-body-slim.glb';
 export const SARAH_V2_BODY_KTX2_MODEL = 'models/sarah-v2-body-slim-ktx2.glb';
 /** Sarah v2's hair (`scripts/sarahV2Recovery/hair-bake.mjs`, Joshua 2026-10-24): one skinned mesh on her own skeleton. */
 export const SARAH_V2_HAIR_MODEL = 'models/sarah-v2-hair.glb';
+/**
+ * HER SKELETON (Joshua, 2026-11-07: "I had MESHY made a female skeleton... can you rig it"; "How about pushing to main as a
+ * new model to test so I can test as like the poses"): his Meshy skeleton rigged with her own 68 bones and a jaw
+ * (`scripts/rigSkeleton.mjs`), bound in a T as v1 is. The first step of rebuilding her from the skeleton outward; bones
+ * only, so nothing on it is flesh.
+ */
+export const SARAH_SKELETON_MODEL = 'models/sarah-skeleton.glb';
+/** A model rigged with its arms level (v1 and the skeleton): T-POSE is its bind, and ARMS has nothing to raise. */
+export function levelArmsModel(modelId: string): boolean {
+  return modelId === 'v1' || modelId === 'skeleton';
+}
+/** A model with no flesh on it (the skeleton): nothing of it jiggles. */
+export function fleshlessModel(modelId: string): boolean {
+  return modelId === 'skeleton';
+}
 /** The model file the room loads for an entry: the KTX2 pilot replaces the slim body when asked for. */
 export function sarahModelPath(entry: { readonly id: string; readonly path: string }, skin: 'ktx2' | null): string {
   return skin === 'ktx2' && entry.path === SARAH_V2_BODY_MODEL ? SARAH_V2_BODY_KTX2_MODEL : entry.path;
@@ -63,6 +78,7 @@ export const SARAH_LAB_MODELS = Object.freeze([
   Object.freeze({ id: 'v2', path: SARAH_V2_MODEL }),
   Object.freeze({ id: 'v2-arms', path: SARAH_V2_ARMS_MODEL }),
   Object.freeze({ id: 'v2-body', path: SARAH_V2_BODY_MODEL }),
+  Object.freeze({ id: 'skeleton', path: SARAH_SKELETON_MODEL }),
 ]);
 
 /**

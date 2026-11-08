@@ -288,7 +288,7 @@ import { createNavelSoft, type NavelSoft } from './navelSoft';
 import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
 import {
-  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
+  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
@@ -552,7 +552,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let curl = 0;
   // v2's ARMS control can override any pose; until used, the pose keeps its natural arms.
   // v1 keeps the original T-POSE-only control and its level-arm default.
-  let armsDeg = SARAH_LAB_MODELS[SARAH_LAB_DEFAULT_MODEL].id === 'v1' ? 90 : 0, armSide = 0;
+  let armsDeg = levelArmsModel(SARAH_LAB_MODELS[SARAH_LAB_DEFAULT_MODEL].id) ? 90 : 0, armSide = 0;
   let armsOverride = false;
   // The bump's spring and the breasts' (lighter, quicker), fed the same motion. The
   // bump's weight is its size's own (`bellyMotionWeights`): the WEIGHT slider that
@@ -1665,7 +1665,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** The raised-arm shapes follow the same override as the bones, on every skinned surface. */
   function armRaiseWeights(): Record<string, number> {
     const out: Record<string, number> = { [ARM_RAISE_TARGETS.plusX]: 0, [ARM_RAISE_TARGETS.minusX]: 0 };
-    if (!rig || !measure || (pose !== 'tpose' && (SARAH_LAB_MODELS[modelIndex].id === 'v1' || !armsOverride))) return out;
+    if (!rig || !measure || (pose !== 'tpose' && (levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) || !armsOverride))) return out;
     const side = ARM_SIDES[armSide], w = armRaiseWeight(armsDeg);
     for (const [arm, on] of [[measure.joints.shoulderL, side !== 'right'], [measure.joints.shoulderR, side !== 'left']] as const) {
       if (!on) continue;
@@ -2471,7 +2471,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         pose = p;
         // a pose switch moves her at once: the cloth starts again from her body rather than being flung
         if (!sitMoving) clothRestart = true;
-        if (p === 'tpose' && SARAH_LAB_MODELS[modelIndex].id !== 'v1') { armsDeg = 90; armsOverride = true; }
+        if (p === 'tpose' && !levelArmsModel(SARAH_LAB_MODELS[modelIndex].id)) { armsDeg = 90; armsOverride = true; }
         applyLook(); refresh();
       });
       buttons[p].style.padding = '9px 2px'; buttons[p].style.minWidth = '0';
@@ -2647,7 +2647,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     buttons.outfit = btn(outfitLine(outfit), SARAH_LAB_ACTION.outfit, () => { wornFrom = null; pendingClothes = null; nextSource = null; dress(nextOutfit(wantedOutfit ?? outfit, garments)); });
     buttons.model = btn(modelLine(modelIndex), SARAH_LAB_ACTION.model, () => {
       modelIndex = (modelIndex + 1) % SARAH_LAB_MODELS.length;
-      armsDeg = SARAH_LAB_MODELS[modelIndex].id === 'v1' || pose === 'tpose' ? 90 : 0;
+      armsDeg = levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) || pose === 'tpose' ? 90 : 0;
       armsOverride = pose === 'tpose';
       loadSarah();
     });
@@ -2820,7 +2820,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const index = SARAH_LAB_MODELS.findIndex((m) => m.id === saved.model);
         if (index >= 0 && index !== modelIndex) {
           modelIndex = index;
-          armsDeg = SARAH_LAB_MODELS[modelIndex].id === 'v1' || pose === 'tpose' ? 90 : 0;
+          armsDeg = levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) || pose === 'tpose' ? 90 : 0;
           armsOverride = pose === 'tpose';
           loadSarah();
         } else { applyLook(); applyMotion(); }
@@ -3335,7 +3335,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const phase = p === 'walk' ? ((walked * rig.bindScale) / humanStride(measure, 'walk', carry)) % 1 : 0;
       base = poseHuman(measure, rig.bind, { stance, phase, seconds, lean: 0, carry }, out);
     }
-    const overrideArms = p === 'tpose' || (SARAH_LAB_MODELS[modelIndex].id !== 'v1' && armsOverride);
+    const overrideArms = p === 'tpose' || (!levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) && armsOverride);
     // T-POSE restores the whole bind pose. Other poses keep their torso and legs,
     // and the unselected arm keeps its normal animation.
     if (p === 'tpose') base = base.map(turn => ({ ...turn, radians: 0 }));
@@ -6413,8 +6413,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // shapes that move nothing on this part are not sent to the GPU (morphPrune.ts)
         dropIdleMorphs(mesh);
         if (mesh.morphTargetDictionary?.[BELLY_TARGET] !== undefined) hasBelly = true;
-        // her belly and breasts move it as the masses swing (softBody.ts)
-        attachJiggle(mesh, jiggle, legBonesOf(loadedModel));
+        // her belly and breasts move it as the masses swing (softBody.ts); bones have no flesh to swing
+        if (!fleshlessModel(SARAH_LAB_MODELS[modelIndex].id)) attachJiggle(mesh, jiggle, legBonesOf(loadedModel));
         const name = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material).name;
         if (([...GARMENTS, ...RECOVERED_SHIRTS] as readonly string[]).includes(name)) found.add(name as Garment);
 

@@ -14,6 +14,7 @@ part of the site's build.
 - `bakeOutfitThumbs.mjs` -- the outfit cards' pictures in `public/sarahlab/outfits/`, shot from the running room
 - `baseTouchup/` -- the base-body touch-up kit (the Meshy male base and Sarah v2, region by region; `docs/reviews/base-touchups/` in TRADDOMIUM's history gives the run in order). Python 3 with numpy, scipy, Pillow and OpenCV, plus Node
 - `probePng.mjs` -- the PNG reader the render probes share
+- `rigSkeleton.mjs` -- her skeleton (`public/models/sarah-skeleton.glb`): Joshua's Meshy skeleton (`assets-archive/models/meshy-female-skeleton.glb`) rigged with her own 68 bones and a jaw, packed as her files are
 - `measureContacts.ts` -- each rig's contact points (finger pads and tips, palms, elbows, knees, heels, balls, toes) measured from its model and saved to `src/data/contacts/<rig>.json`, for the Godot rebuild and the other games: `npx tsx scripts/measureContacts.ts`. `tests/contactData.test.ts` fails when the saved files and a fresh measure differ
 
 Moved here from TRADDOMIUM when it stopped hosting the room (2026-11-04), with their tests (`sarahClothes`, `sarahLightTee`, `sarahV2RecoveredBikini`).

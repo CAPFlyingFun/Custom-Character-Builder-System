@@ -111,7 +111,7 @@ async function main() {
 
     const status = '[data-field="sarahlab-status"]';
     // The Lab opens on the newest v2 (v2-body); the checks below were written on v1, the
-    // only model with clothes, so step MODEL round to it (v2-body, the last, -> v1).
+    // only model with clothes, so step MODEL round to it (v2-body -> the skeleton -> v1).
     await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model v2-body'), status, { timeout: 180_000 })
       .then(() => check(true, 'the Lab opened on v2-body'))
       .catch(async () => check(false, `the Lab opened on v2-body: ${await page.textContent(status)}`));
@@ -153,6 +153,13 @@ async function main() {
       if (failures) throw new Error(`${failures} check(s) failed`);
       log('PASS'); return;
     }
+    // HER SKELETON comes next on MODEL (after v2-body, Joshua 2026-11-07), and v1 after it
+    await page.click('[data-action="sarahlab:model"]');
+    await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model skeleton'), status, { timeout: 180_000 })
+      .then(() => check(true, 'the skeleton loads (MODEL once from v2-body)'))
+      .catch(async () => check(false, `the skeleton loads: ${await page.textContent(status)}`));
+    await page.waitForTimeout(1500);
+    await shot(page, 'sarahlab-0-skeleton.png', 'the skeleton, standing');
     await page.click('[data-action="sarahlab:model"]');
     await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('base model'), status, { timeout: 180_000 })
       .then(() => check(true, 'the base model loaded'))
