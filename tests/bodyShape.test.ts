@@ -64,6 +64,8 @@ describe('a body shape, as numbers', () => {
     // her WALK (Joshua, 2026-11-08): saved with her body, and only when moved
     expect(controlLine('walkBob', 100)).toBe('BOB · 100% (approved)');
     expect(controlLine('walkSway', 40)).toBe('SWAY · 40%');
+    // (her LEAN, step 3c, until Joshua has looked at it)
+    expect(controlLine('walkLean', 100)).toBe('LEAN · 100% (as tuned)');
     expect(serializeShape(defaultBodyShape())).not.toContain('walk');
     expect(parseShape(serializeShape(setControl(defaultBodyShape(), 'walkBob', 60))).walkBob).toBe(60);
     expect(controlLine('milk', 50)).toBe('MILK · 50%');

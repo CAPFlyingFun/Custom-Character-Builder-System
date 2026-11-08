@@ -28,7 +28,7 @@
 export type BodyControl =
   | 'bellyTilt' | 'bellyHeight' | 'bellyWidth' | 'bellyDepth' | 'bellyUpper' | 'bellyLower' | 'navel' | 'navelAfter' | 'babyWeight' | 'bellyFirmness' | 'bellyBounce' | 'babyFloat' | 'babyKicks'
   | 'breastSize' | 'breastWidth' | 'breastHeight' | 'breastDepth' | 'breastSpacing' | 'breastPosition' | 'breastDroop' | 'breastUpper' | 'breastLower' | 'milk' | 'milkBalance' | 'breastFirmness' | 'breastBounce'
-  | 'walkBob' | 'walkSway'
+  | 'walkBob' | 'walkSway' | 'walkLean'
   | 'height' | 'upperLeg' | 'lowerLeg' | 'torso' | 'neck' | 'upperArm' | 'forearm' | 'shoulders' | 'waist' | 'hips' | 'legGap' | 'head' | 'hands' | 'feet';
 
 export interface BodyControlSpec {
@@ -41,6 +41,8 @@ export interface BodyControlSpec {
   readonly step: number;
   /** The approved body's value. */
   readonly fallback: number;
+  /** Set while its default is still as tuned and waits on Joshua's look: the line says so rather than "approved". */
+  readonly awaiting?: true;
   /** How far a seeded variation may wander from the default, either way. GAME TUNING. */
   readonly spread: number;
   readonly help: string;
@@ -99,6 +101,9 @@ export const BODY_CONTROLS: readonly BodyControlSpec[] = Object.freeze([
   // first one rendered: for the bob, all the rise and fall her legs give, which is as far as it can go.
   { key: 'walkBob', group: 'walk', label: 'Bob', unit: '%', min: 0, max: 200, step: 5, fallback: 100, spread: 20, help: 'how much her hips rise and fall with each step: 0 keeps them level (her knees take it), 100 is as tuned (half what her legs give), 200 all of it' },
   { key: 'walkSway', group: 'walk', label: 'Sway', unit: '%', min: 0, max: 200, step: 5, fallback: 100, spread: 20, help: 'how far her body moves over the foot she stands on: 0 not at all, 100 is as tuned (about 1.2 cm each way), 200 twice as much' },
+  // (Joshua, 2026-11-08: "automatic body tilt to keep a level body even if it means like the torso tilts back, hips
+  // forward slightly": actor/levelBody.ts, on the treadmill; 100 is as tuned there)
+  { key: 'walkLean', group: 'walk', label: 'Lean', unit: '%', min: 0, max: 200, step: 5, fallback: 100, spread: 20, awaiting: true, help: 'how much she leans to keep her balance over her feet on the treadmill -- into a slope, back from it, back against her pregnancy\'s weight: 0 bolt upright, 100 is as tuned, 200 twice as much' },
   // Joshua, 2026-10-26: "add a height adjuster so you can raise or shorten the length of the legs, hips, arms, hands and
   // more basic body controls... I would say maybe the max/min per section is +/-30cm from the default positions".
   // What `bodyBuild.ts` turns into lengths and scales. The LENGTH ranges are MEASURED on sarah-v2-body-slim.glb: a
@@ -252,5 +257,5 @@ export function controlLine(key: BodyControl, value: number): string {
   const shown = s.step < 1 || Math.abs(value - Math.round(value)) > 0.05 ? value.toFixed(1) : value.toFixed(0);
   // a plus sign only where the control runs both ways from its middle: an amount (milk, firmness, bounce) has no minus
   const signed = s.unit !== '°' && s.min < 0 && value > 0 ? `+${shown}` : shown;
-  return `${s.label.toUpperCase()} · ${signed}${s.unit === '%' ? '%' : s.unit === 'cm' ? ' cm' : s.unit === '' ? '' : '°'}${value === s.fallback ? ' (approved)' : ''}`;
+  return `${s.label.toUpperCase()} · ${signed}${s.unit === '%' ? '%' : s.unit === 'cm' ? ' cm' : s.unit === '' ? '' : '°'}${value === s.fallback ? (s.awaiting ? ' (as tuned)' : ' (approved)') : ''}`;
 }

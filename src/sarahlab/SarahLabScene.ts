@@ -88,6 +88,7 @@ import { measureHuman } from '../actor/humanSkeleton';
 import { bobDrop, walkWeight, weighWalk, WALK_WEIGHT } from '../actor/walkWeight';
 import { createFeet, groundFeet, type FeetState, type FootConform } from '../actor/humanFeet';
 import { BODY_KG, balanceAt, centreOfMass, extrapolatedCom, supportOutline, wombKg, wombPlace, type BodyPoints, type P2, type P3 } from '../actor/bodyMass';
+import { LEVEL_NONE, easeLevel, levelBody, type Level } from '../actor/levelBody';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -1717,6 +1718,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** What a WALK line adds once she has walked: what the slider gives her, in centimetres. */
   function walkNote(key: BodyControl): string {
+    // her LEAN: as she stands on the treadmill now -- her trunk's lean (forward or back) and her hips
+    if (key === 'walkLean') {
+      const fwd = model ? new THREE.Vector3(0, 0, 1).applyQuaternion(model.quaternion) : new THREE.Vector3(0, 0, 1);
+      const deg = ((levelWant.lean[0] * fwd.x + levelWant.lean[1] * fwd.z) * 180) / Math.PI, hips = (levelWant.hips[0] * fwd.x + levelWant.hips[1] * fwd.z) * 100;
+      if (!onStage() || (Math.abs(deg) < 0.05 && Math.abs(hips) < 0.05)) return '';
+      return ` · trunk ${Math.abs(deg).toFixed(1)}° ${deg >= 0 ? 'forward' : 'back'}, hips ${Math.abs(hips).toFixed(1)} cm ${hips >= 0 ? 'forward' : 'back'}`;
+    }
     const f = walkFeet, range = bobRange();
     if (!f || !range || (key !== 'walkBob' && key !== 'walkSway')) return '';
     const cm = (m: number) => (m * 100).toFixed(1);
@@ -3980,8 +3988,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     three.add(group);
     return { group, fill, outline, plumb, ahead, com, foot, heading };
   })();
-  function measureBalance(sk: THREE.SkinnedMesh, f: WalkFeet): void {
-    if (!measure || !rig) return;
+  /** Her body as her bones are drawn now, as points (metres), her pregnancy's weight and where it is, and the joint her
+   * trunk leans about (her lower back: the rig's `spine`). */
+  function herBody(sk: THREE.SkinnedMesh, f: WalkFeet): { body: BodyPoints; womb: P3; kg: number; pivot: P3 } | null {
+    if (!measure || !rig) return null;
     const bones = sk.skeleton.bones, j = measure.joints, v = new THREE.Vector3();
     const at = (i: number): P3 => { bones[i].getWorldPosition(v); return [v.x / M, v.y / M, v.z / M]; };
     const child = (i: number) => rig!.bind.findIndex((b) => b.parent === i);
@@ -4000,6 +4010,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       headTop: top, neck, hipL, hipR, shoulder: limb(j.shoulderL, j.shoulderR), elbow, wrist, handEnd: [past(elbow[0], wrist[0], 0.09), past(elbow[1], wrist[1], 0.09)],
       knee: limb(j.kneeL, j.kneeR), ankle, heel, toe,
     };
+    return { body, womb, kg, pivot: at(j.spine) };
+  }
+  function measureBalance(sk: THREE.SkinnedMesh, f: WalkFeet): void {
+    const her = herBody(sk, f);
+    if (!her || !measure) return;
+    const { body, womb, kg } = her, v = new THREE.Vector3();
     const com = centreOfMass(body, BODY_KG, kg > 0 ? [{ kg, at: womb }] : []);
     // what holds her up: the points of her soles that bear her weight standing flat, wherever they are back on the floor
     // as they stood on it (over it along its normal, less their own height over it in her bind)
@@ -4181,9 +4197,58 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     model.position.add(walkOffset); model.updateMatrixWorld(true);
     const sk = bodyOf()?.mesh ?? skin;
     bendKnees(sk, extra * M);
+    keepLevel(sk, f);
     flatToes(sk, f);
     keepSoles(sk, f);
     if (balanceOn) measureBalance(sk, f);
+  }
+
+  /**
+   * HER BODY KEPT LEVEL (Trello #273 step 3c; Joshua, 2026-11-08: "automatic body tilt to keep a level body even if it
+   * means like the torso tilts back, hips forward slightly"). On the treadmill, standing or walking: her balance kept
+   * over the same part of her soles on any slope, and taken back from her pregnancy's pull (actor/levelBody.ts) -- her
+   * hips moved over her planted feet, her legs reaching back to them (`bendLegs`), and her trunk leaned about her lower
+   * back, her head and neck turned back level. Worked out each frame from her body as her pose and her feet have it, and
+   * eased into (LEVEL.ease) so a slope or a pregnancy changed under her is leaned into. Her LEAN slider scales it.
+   */
+  let level: Level = LEVEL_NONE, levelWant: Level = LEVEL_NONE, levelAt = -Infinity;
+  function keepLevel(sk: THREE.SkinnedMesh, f: WalkFeet): void {
+    if (!model || !measure) return;
+    const her = herBody(sk, f);
+    if (!her) return;
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(model.quaternion).setY(0).normalize();
+    const g = slopeGrade(slope, measure.leftSign), j = measure.joints;
+    levelWant = levelBody({
+      body: her.body, womb: her.kg > 0 ? { kg: her.kg, at: her.womb } : null, pivot: her.pivot, forward: [fwd.x, fwd.z],
+      slopeDeg: (Math.atan(g.x * fwd.x + g.z * fwd.z) * 180) / Math.PI,
+      ankleHeight: (f.bind[j.ankleL].y + f.bind[j.ankleR].y) / 2 / f.upm, amount: body.walkLean / 100,
+    });
+    // (back on the treadmill after a while off it: from upright)
+    const gap = stageClock - levelAt;
+    level = gap > 0.5 ? LEVEL_NONE : easeLevel(level, levelWant, gap);
+    levelAt = stageClock;
+    layLevel(sk, level);
+    // (its line, live)
+    const line = fields[`${SARAH_LAB_FIELD.body}walkLean`], text = controlLine('walkLean', body.walkLean) + walkNote('walkLean');
+    if (line && line.textContent !== text) line.textContent = text;
+  }
+  function layLevel(sk: THREE.SkinnedMesh, l: Level): void {
+    if (!model || !measure) return;
+    // her hips over her feet, and down: her legs reach back to where her feet were
+    const shift = new THREE.Vector3(l.hips[0] * M, -l.sit * M, l.hips[1] * M);
+    if (shift.lengthSq() > 1e-10) {
+      model.position.add(shift); walkOffset.add(shift); model.updateMatrixWorld(true);
+      bendLegs(sk, [l.sit * M, l.sit * M], [-shift.x, -shift.z]);
+    }
+    // her trunk leaned about her lower back, her neck turned back by as much so her head stays level
+    const angle = Math.hypot(l.lean[0], l.lean[1]), bones = sk.skeleton.bones, spine = bones[measure.joints.spine], neck = bones[measure.joints.neck];
+    if (angle < 1e-6 || !spine?.parent || !neck?.parent) return;
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(l.lean[1] / angle, 0, -l.lean[0] / angle), angle);
+    const wq = (b: THREE.Object3D) => b.getWorldQuaternion(new THREE.Quaternion());
+    const turnWorld = (b: THREE.Object3D, r: THREE.Quaternion) => { b.quaternion.copy(wq(b.parent!).invert().multiply(r).multiply(wq(b))); b.updateMatrixWorld(true); };
+    const pre = [spine.quaternion.clone(), neck.quaternion.clone()];
+    turnWorld(spine, q); turnWorld(neck, q.clone().invert());
+    bent.push({ bones: [spine, neck], pre, post: [spine.quaternion.clone(), neck.quaternion.clone()] });
   }
 
   /**
@@ -4209,9 +4274,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * BIOLOGICAL SHAPE (a knee is a forward hinge), the share humanFeet.ts uses (`POLE_FORWARD_FRAC`). */
   const KNEE_FORWARD = 0.05;
   function bendKnees(sk: THREE.SkinnedMesh, drop: number): void { bendLegs(sk, [drop, drop]); }
-  /** Each foot raised by its own `lift` (world units) where its leg had it, its leg bent to reach it (`bendKnees`). */
-  function bendLegs(sk: THREE.SkinnedMesh, lift: readonly [number, number]): void {
-    if (!model || !measure || !(lift[0] > 1e-6 || lift[1] > 1e-6)) return;
+  /** Each foot raised by its own `lift` and moved by `shift` (x, z) (world units) from where its leg had it, its leg bent
+   * to reach it (`bendKnees`; `layLevel` moves her hips over her feet and takes her feet back with this). */
+  function bendLegs(sk: THREE.SkinnedMesh, lift: readonly [number, number], shift: readonly [number, number] = [0, 0]): void {
+    const moved = Math.hypot(shift[0], shift[1]) > 1e-6;
+    if (!model || !measure || !(lift[0] > 1e-6 || lift[1] > 1e-6 || moved)) return;
     const bones = sk.skeleton.bones, j = measure.joints, list: THREE.Object3D[] = [], pre: THREE.Quaternion[] = [];
     const wp = (b: THREE.Object3D) => b.getWorldPosition(new THREE.Vector3()), wq = (b: THREE.Object3D) => b.getWorldQuaternion(new THREE.Quaternion());
     // a bone turned about its own joint by a turn in the world
@@ -4220,9 +4287,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(wq(model));
     for (const [hi, ki, ai, side] of [[j.hipL, j.kneeL, j.ankleL, 0], [j.hipR, j.kneeR, j.ankleR, 1]]) {
       const hb = bones[hi], kb = bones[ki], ab = bones[ai], drop = lift[side];
-      if (!(drop > 1e-6) || !hb?.parent || kb?.parent !== hb || ab?.parent !== kb) continue;
+      if (!(drop > 1e-6 || moved) || !hb?.parent || kb?.parent !== hb || ab?.parent !== kb) continue;
       list.push(hb, kb, ab); pre.push(hb.quaternion.clone(), kb.quaternion.clone(), ab.quaternion.clone());
-      const H = wp(hb), K = wp(kb), A = wp(ab), foot = wq(ab), T = A.clone().setY(A.y + drop);
+      const H = wp(hb), K = wp(kb), A = wp(ab), foot = wq(ab), T = new THREE.Vector3(A.x + shift[0], A.y + Math.max(0, drop), A.z + shift[1]);
       const l1 = K.distanceTo(H), l2 = A.distanceTo(K);
       const D = Math.min(l1 + l2 - 1e-6, Math.max(Math.abs(l1 - l2) + 1e-6, T.distanceTo(H)));
       const u = T.clone().sub(H).normalize();
@@ -8376,6 +8443,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // `soles` -- each shoe's lowest point (or her foot's, barefoot) over the floor
         // the treadmill's slope (walkStrip.ts): -30..+30, 'ahead' or 'across'
         slope: (deg: number, heading: SlopeHeading = 'ahead') => { setSlope(deg, heading); return slopeLine(slope); },
+        // her body kept level (actor/levelBody.ts): the posture she is easing toward and the one laid on her now (radians,
+        // metres; lean and hips as world [x, z])
+        level: () => ({ want: levelWant, now: level, line: walkNote('walkLean') }),
         // BALANCE TEST: on or off, and what it measured (metres; margin + inside her feet, - past them)
         stageBalance: (on?: boolean) => { if (on !== undefined) setBalance(on); const b = stageBalance; return b ? { com: b.com.map((x) => +x.toFixed(4)), heading: b.heading.map((x) => +x.toFixed(4)), speed: +b.speed.toFixed(3), step: balanceStep ? +balanceStep.margin.toFixed(4) : null, stepAt: balanceStep ? { com: balanceStep.com.map((x) => +x.toFixed(3)), heading: balanceStep.heading.map((x) => +x.toFixed(3)), given: balanceStep.given.map((q) => q.map((x) => +x.toFixed(3))) } : null, down: balanceDown, margin: +b.margin.toFixed(4), kg: +b.kg.toFixed(2), outline: b.outline.map((q) => [+q[0].toFixed(4), +q[1].toFixed(4)]), womb: b.womb.map((x) => +x.toFixed(4)), body: Object.fromEntries(Object.entries(b.body).map(([k, v]) => [k, JSON.parse(JSON.stringify(v, (_, x) => (typeof x === 'number' ? +x.toFixed(4) : x)))])), line: balanceLine() } : { line: balanceLine() }; },
         // each sole's weight-bearing points (BALANCE_BEARING), heel to toe: how far each is off the floor past where it
