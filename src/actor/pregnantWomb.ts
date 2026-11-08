@@ -17,7 +17,8 @@
  *
  * Rest metres (+y up, +z her front, +x across her). Pure: plain arrays.
  */
-import { CERVIX, UTERUS, intoEllipsoid, lengthOf, wombHalf, type OrganLayout } from './pelvicOrgans';
+import { cervixAt, type Cervix } from './birthCanal';
+import { CERVIX, UTERUS, intoEllipsoid, lengthOf, subPath, wombHalf, type OrganLayout } from './pelvicOrgans';
 import type { P3 } from './pelvisMeasure';
 
 /** What the womb is checked against and leans on: her measured torso (src/data/torso/<rig>.json). */
@@ -111,6 +112,8 @@ export interface PregnantWomb {
   readonly path: readonly P3[];
   readonly halves: readonly (readonly [number, number])[];
   readonly axes: readonly P3[];
+  /** its cervix, as BIRTH OPENING has thinned and opened it */
+  readonly cervix: Cervix;
   readonly cervixEnds: number;
   readonly length: number;
   readonly week: number;
@@ -138,12 +141,15 @@ export function spineFrontAt(torso: TorsoLandmarks, y: number): number {
  * Her womb at `week` (a fraction is fine), each of her babies weighing what `babyGrams` says, on her organs as `laid`
  * not pregnant, in front of her spine as `torso` measures it.
  */
-export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number, babyGrams: readonly number[], shape: typeof WOMB_SHAPE = WOMB_SHAPE): PregnantWomb {
+export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number, babyGrams: readonly number[], open = 0, shape: typeof WOMB_SHAPE = WOMB_SHAPE): PregnantWomb {
   const S = shape, w = Math.max(0, Number.isFinite(week) ? week : 0), u = laid.uterus;
   const contents = wombContents(w, babyGrams);
-  // the cervix as laid: the external os up to the internal os, its last point the body's foot
-  const cervix: P3[] = [];
-  for (const p of u.path) { cervix.push(p); if (lengthOf(cervix) >= u.cervixEnds - 1e-9) break; }
+  // the cervix as laid: the external os up to the internal os, its last point the body's foot; thinned and opened by
+  // BIRTH OPENING (actor/birthCanal.ts): drawn up into the womb from below, and as wide as it is open
+  const laidCervix: P3[] = [];
+  for (const p of u.path) { laidCervix.push(p); if (lengthOf(laidCervix) >= u.cervixEnds - 1e-9) break; }
+  const cervixLength = lengthOf(laidCervix), cw = CERVIX.width / 2, neck = cervixAt(open, cervixLength, cw * 0.92);
+  const cervix = subPath(laidCervix, cervixLength - neck.lengthM, cervixLength);
   const os = cervix[cervix.length - 1], fundus = u.path[u.path.length - 1], x = os[0];
   // its body: its proportions and size for the week, from what it holds
   const aw = lerpTable(S.aspect, w, 1), ad = lerpTable(S.aspect, w, 2), c = lerpTable(S.widest, w, 1);
@@ -152,7 +158,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   const laidLean = Math.atan2(fundus[2] - os[2], fundus[1] - os[1]), by = S.lean[0][0];
   const lean = w < by ? laidLean + ((S.lean[0][1] * Math.PI) / 180 - laidLean) * (w / by) : (lerpTable(S.lean, w, 1) * Math.PI) / 180;
   const ay = Math.cos(lean), az = Math.sin(lean), fy = -Math.sin(lean), fz = Math.cos(lean);
-  const cw = CERVIX.width / 2;
+  const foot = Math.max(cw, neck.outerM);
   const profile = (t: number) => { const s = (t - c) / (t < c ? c : 1 - c); return Math.sqrt(Math.max(0, 1 - s * s)); };
   const n = S.stations, step = (L / n) * S.bendSlope;
   /** its body's slices at `k` times the width and depth: their middles, moved off her spine, and their half-sizes */
@@ -160,7 +166,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
     const body: P3[] = [], halves: [number, number][] = [];
     for (let i = 1; i <= n; i++) {
       const t = i / n, p = profile(t), h: [number, number] = [((W * k) / 2) * p, ((D * k) / 2) * p];
-      if (t < c) { h[0] = Math.max(h[0], cw); h[1] = Math.max(h[1], cw); }
+      if (t < c) { h[0] = Math.max(h[0], foot); h[1] = Math.max(h[1], foot); }
       body.push([x, os[1] + ay * L * t, os[2] + az * L * t]); halves.push(h);
     }
     // her spine: each slice moved straight forward until its back is clear of it, then the moves eased into one another
@@ -176,7 +182,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   };
   /** the volume of its body laid so (its slices' areas over how far apart they stand along its axis), m³ */
   const held = (l: { moved: P3[]; halves: [number, number][] }): number => {
-    let v = 0, a0 = Math.PI * cw * cw, y0 = os[1], z0 = os[2];
+    let v = 0, a0 = Math.PI * foot * foot, y0 = os[1], z0 = os[2];
     for (let i = 0; i < n; i++) {
       const [px, py, pz] = l.moved[i], a1 = Math.PI * l.halves[i][0] * l.halves[i][1];
       v += ((a0 + a1) / 2) * Math.abs((py - y0) * ay + (pz - z0) * az); a0 = a1; y0 = py; z0 = pz; void px;
@@ -194,7 +200,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   const unit = (v: P3): P3 => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
   const cd = unit([0, os[1] - cervix[0][1], os[2] - cervix[0][2]]), bd: P3 = [0, ay, az];
   const axes: P3[] = [...cervix.map(() => cd), ...moved.map((_, k) => { const f = Math.min(1, (k + 1) / S.turnRings); return unit([0, cd[1] + (bd[1] - cd[1]) * f, cd[2] + (bd[2] - cd[2]) * f]); })];
-  const cervixHalves = cervix.map((): [number, number] => [cw * 0.92, cw * 0.92]);
+  const cervixHalves = cervix.map((): [number, number] => [neck.outerM, neck.outerM]);
   const all = [...cervixHalves, ...halves];
   // its wall: what it weighs over the area of its body
   const area = moved.reduce((s, b, k) => {
@@ -208,7 +214,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   const front = moved.map((b, k): [number, number] => [b[1] + fy * (halves[k][1] + S.tissue), b[2] + fz * (halves[k][1] + S.tissue)]);
   const top = Math.max(...moved.map((b, k) => b[1] + Math.abs(fy) * halves[k][1]));
   const fundalHeight = tape([torso.landmarks.symphysisTop[1], torso.landmarks.symphysisTop[2] + S.pubisFront], front);
-  return { path, halves: all, axes, cervixEnds: lengthOf(cervix), length: lengthOf(path), week: w, contents, size: [L, W * scale, D * scale], leanDeg: (lean * 180) / Math.PI, wallM, top, fundalHeight };
+  return { path, halves: all, axes, cervix: neck, cervixEnds: lengthOf(cervix), length: lengthOf(path), week: w, contents, size: [L, W * scale, D * scale], leanDeg: (lean * 180) / Math.PI, wallM, top, fundalHeight };
 }
 
 /**
@@ -235,21 +241,32 @@ export function tape(from: readonly [number, number], front: readonly (readonly 
 }
 
 /**
- * Her bladder as her growing womb presses it: lower and flatter, holding the same (wider as it is pressed flatter), its
- * floor where it was -- as little as keeps the two apart. BIOLOGICAL SHAPE ("pressed by the growing womb").
+ * Her bladder as her growing womb presses it: lower and flatter, holding the same (wider and deeper as it is pressed
+ * flatter), its floor where it was -- as little as keeps the two apart, and no flatter than half itself. BIOLOGICAL SHAPE ("pressed by the growing womb"). An opened
+ * birth canal (`canal`) pushes it up and forward out of its way first, as a head coming down does.
  */
-export function pressBladder(bladder: OrganLayout['bladder'], uterus: OrganLayout['uterus']): OrganLayout['bladder'] {
-  const half = wombHalf(uterus), path = uterus.path, floor = bladder.centre[1] - bladder.radii[1];
+export function pressBladder(bladder: OrganLayout['bladder'], uterus: OrganLayout['uterus'], canal?: OrganLayout['vagina']): OrganLayout['bladder'] {
+  const half = wombHalf(uterus), path = uterus.path;
   const radii: [number, number, number] = [...bladder.radii];
   let centre: P3 = [...bladder.centre];
-  for (let k = 0; k < 60 && intoEllipsoid(centre, radii, path, half) < 1; k++) { radii[1] *= 0.95; radii[0] /= 0.95; centre = [centre[0], floor + radii[1], centre[2]]; }
+  if (canal) {
+    const tube = () => [canal.width / 2, canal.depth / 2] as const;
+    for (let k = 0; k < 80 && intoEllipsoid(centre, radii, canal.path, tube) < 1; k++) centre = [centre[0], centre[1] + 0.002, centre[2] + 0.0015];
+  }
+  // flattened under the womb, holding what it holds (wider and deeper as it is pressed flatter), its floor where it was:
+  // to half its height at most, and past that moved forward, in front of the womb's lower segment
+  const floor = centre[1] - radii[1], least = radii[1] / 2, k = Math.sqrt(0.95);
+  for (let i = 0; i < 80 && intoEllipsoid(centre, radii, path, half) < 1; i++) {
+    if (radii[1] * 0.95 >= least) { radii[1] *= 0.95; radii[0] /= k; radii[2] /= k; centre = [centre[0], floor + radii[1], centre[2]]; }
+    else centre = [centre[0], centre[1], centre[2] + 0.003];
+  }
   return { centre, radii, ml: bladder.ml };
 }
 
-/** Her organs as laid, with her womb grown (and her bladder pressed by it). */
-export function pregnantLayout(laid: OrganLayout, womb: PregnantWomb): OrganLayout {
+/** Her organs as laid, with her womb grown (and her bladder pressed by it), and her canal as opened (`canal`). */
+export function pregnantLayout(laid: OrganLayout, womb: PregnantWomb, canal: OrganLayout['vagina'] = laid.vagina): OrganLayout {
   const uterus: OrganLayout['uterus'] = { path: womb.path, halves: womb.halves, axes: womb.axes, cervixEnds: womb.cervixEnds, length: womb.length, anteversionDeg: laid.uterus.anteversionDeg };
-  return { ...laid, uterus, bladder: pressBladder(laid.bladder, uterus) };
+  return { ...laid, vagina: canal, uterus, bladder: pressBladder(laid.bladder, uterus, canal === laid.vagina ? undefined : canal) };
 }
 
 /**

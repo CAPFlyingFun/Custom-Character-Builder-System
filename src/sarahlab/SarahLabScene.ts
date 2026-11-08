@@ -90,6 +90,7 @@ import { createFeet, groundFeet, type FeetState, type FootConform } from '../act
 import { BODY_KG, balanceAt, centreOfMass, extrapolatedCom, supportOutline, wombKg, wombPlace, type BodyPoints, type P2, type P3 } from '../actor/bodyMass';
 import { LEVEL_NONE, easeLevel, levelBody, type Level } from '../actor/levelBody';
 import { PelvicOrgansView } from './pelvicOrgansView';
+import { headPassage } from '../actor/birthCanal';
 import skeletonPelvis from '../data/pelvis/skeleton.json';
 import skeletonTorso from '../data/torso/skeleton.json';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
@@ -2623,7 +2624,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       right.appendChild(row);
       const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.balance; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; fields[SARAH_LAB_FIELD.balance] = line; right.appendChild(line); }
     // her birth opening, closed to the full 10 cm (with the birth poses: LEGS APART, SQUAT, RECLINE)
-    birthOpenInput = slider(SARAH_LAB_FIELD.birthOpen, birthOpenPct, (v) => { birthOpenPct = v; vulva?.setOpen(v / 100); }, 100, 'pose');
+    birthOpenInput = slider(SARAH_LAB_FIELD.birthOpen, birthOpenPct, (v) => { birthOpenPct = v; vulva?.setOpen(v / 100); organs?.setOpening(v / 100); }, 100, 'pose');
     // and how far the area round it is pushed out, on its own (in a birth it opens first, and bulges once her baby's head
     // is low in the canal)
     birthBulgeInput = slider(SARAH_LAB_FIELD.birthBulge, birthBulgePct, (v) => { birthBulgePct = v; vulva?.setBulge(v / 100); }, 100, 'pose');
@@ -7083,6 +7084,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her babies are laid in her womb, so in the frame it hangs from)
           if (babyFrame) babyFrame = { ...babyFrame, bone: pelvisBone, matrix: new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld) };
           organs = new PelvicOrgansView(skeletonPelvis, skeletonTorso, pelvisBone, new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld), M);
+          organs.setOpening(birthOpenPct / 100);
           three.add(organs.group);
         }
         babySkinAt = null; babyDepthOf = null;
@@ -8493,8 +8495,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         organs: (bladderMl?: number) => {
           if (!organs) return null;
           if (bladderMl !== undefined) organs.setBladder(bladderMl);
-          const w = organs.womb;
-          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents } };
+          const w = organs.womb, baby = w ? babySize(w.week, body.babyWeight, babyCount) : null;
+          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
+            // her baby's head through her pelvis, plane by plane (actor/birthCanal.ts), at the size it is drawn
+            passage: baby && headPassage(skeletonPelvis, skeletonTorso.landmarks.coccyx, baby.cm / 100) };
         },
         // her body kept level (actor/levelBody.ts): the posture she is easing toward and the one laid on her now (radians,
         // metres; lean and hips as world [x, z])

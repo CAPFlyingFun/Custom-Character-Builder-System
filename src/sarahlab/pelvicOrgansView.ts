@@ -11,8 +11,10 @@
  * grew its wall gives it (`fitSac`); what its soft body does carries them (`wombMove`).
  */
 import * as THREE from 'three';
-import { BLADDER, layOrgans, organMeshes, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
+import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
+import { BIRTH_OPENING, openCanal, type CanalBones } from '../actor/birthCanal';
+import { DOORS, doorFrame, doorMeshes, outerSkin, swingDoors, swingFor, type DoorFrame } from '../actor/birthDoors';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -28,6 +30,8 @@ export const ORGAN_TUNE = Object.freeze({
 const WOMB_SEEN = 0.45;
 /** Their colours: muscle for the womb, mucosa for the canal, a bladder's wall over what it holds. */
 const COLOURS = Object.freeze({ uterus: 0xb04a52, vagina: 0xd88895, bladder: 0xd8c25a });
+/** Her opening's doors: the canal's lining inside, her outer skin outside (the test piece). */
+const DOOR_COLOURS = Object.freeze({ lining: 0xd88895, skin: 0xe9c3aa });
 const G = 9.81;
 /** Faster than her body changes its motion, m/s²: a pose put on in one frame, not a movement. GAME TUNING (about 5 g;
  * walking's hardest heel strike shakes her pelvis by 1-2 g). */
@@ -94,6 +98,11 @@ export class PelvicOrgansView {
   private touching: { a: Cage; b: Cage; gaps: Float32Array }[] = [];
   private layout: OrganLayout | null = null;
   private bladderMl: number = BLADDER.defaultMl;
+  private open = 0;
+  /** Her opening's doors (actor/birthDoors.ts): hung in her rest frame from her pelvis, how far they stand open now (0..1). */
+  private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial };
+  private swing = 0;
+  private drawnSwing = -1;
   /** Her week (null: not pregnant) and each baby's weight, g; and her womb grown for them. */
   private week: number | null = null;
   private babyGrams: readonly number[] = [];
@@ -112,11 +121,22 @@ export class PelvicOrgansView {
    * @param bone her pelvis bone, and `holderMatrix` her rest frame (metres) as that bone carries it, read at her bind
    * @param units world units per metre
    */
-  constructor(private readonly pelvis: PelvisLandmarks, private readonly torso: TorsoLandmarks, bone: THREE.Bone, holderMatrix: THREE.Matrix4, private readonly units: number) {
+  constructor(private readonly pelvis: PelvisLandmarks & CanalBones, private readonly torso: TorsoLandmarks, bone: THREE.Bone, holderMatrix: THREE.Matrix4, private readonly units: number) {
     this.holder.matrixAutoUpdate = false; this.holder.matrix.copy(holderMatrix); this.holder.name = 'pelvicOrgans';
     bone.add(this.holder);
     this.holder.updateMatrixWorld(true);
     this.holder.getWorldQuaternion(this.restQuat);
+    // her opening's doors and the outer skin round them: rigid, carried by her pelvis bone in her rest frame (metres)
+    { const frame = doorFrame(layOrgans(pelvis).vagina.path);
+      const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0, side: THREE.DoubleSide });
+      const skinMaterial = new THREE.MeshStandardMaterial({ color: DOOR_COLOURS.skin, roughness: 0.65, metalness: 0, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material), s = outerSkin(frame), sg = new THREE.BufferGeometry();
+      sg.setAttribute('position', new THREE.BufferAttribute(s.points, 3)); sg.setIndex(new THREE.BufferAttribute(s.triangles, 1)); sg.computeVertexNormals();
+      const skin = new THREE.Mesh(sg, skinMaterial);
+      mesh.name = 'organ:doors'; skin.name = 'organ:outerSkin'; mesh.frustumCulled = false; skin.frustumCulled = false;
+      this.holder.add(mesh, skin);
+      this.doors = { frame, mesh, skin, material, skinMaterial }; }
+    this.drawDoors();
     this.group.name = 'pelvicOrgans';
     for (const name of ['uterus', 'vagina', 'bladder'] as const) this.materials.set(name, new THREE.MeshStandardMaterial({ color: COLOURS[name], roughness: 0.55, metalness: 0, transparent: name === 'bladder', opacity: name === 'bladder' ? 0.85 : 1 }));
     this.build();
@@ -154,6 +174,17 @@ export class PelvicOrgansView {
   /** Her womb as grown for her week (null: not pregnant). */
   get womb(): PregnantWomb | null { return this.grown; }
   /**
+   * BIRTH OPENING (0 closed .. 1 full, actor/birthCanal.ts): her cervix thinned and opened to 10 cm and her canal opened
+   * round to a head's width. Only while she is pregnant; laid again only when it moves a hundredth.
+   */
+  setOpening(open: number): void {
+    const o = Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0));
+    if (Math.abs(o - this.open) < 0.01 && !(o === 0 && this.open !== 0)) return;
+    this.open = o; this.room = null;
+    if (this.grown) this.build();
+  }
+  get opening(): number { return this.open; }
+  /**
    * The sac inside her grown womb, in her rest frame (metres), as the room's baby code holds one (baby.ts WombShape):
    * where her babies are packed, float and kick. Null when she is not pregnant. Worked out once a womb.
    */
@@ -179,8 +210,10 @@ export class PelvicOrgansView {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
     this.organs = [];
     const laid = layOrgans(this.pelvis, this.bladderMl);
-    this.grown = this.week === null ? null : growWomb(laid, this.torso, this.week, this.babyGrams);
-    const layout = this.grown ? pregnantLayout(laid, this.grown) : laid, meshes = organMeshes(layout);
+    this.grown = this.week === null ? null : growWomb(laid, this.torso, this.week, this.babyGrams, this.open);
+    const layout = this.grown ? pregnantLayout(laid, this.grown, this.open > 0 ? openCanal(laid.vagina, this.pelvis, this.open, DOORS.hingeUp) : laid.vagina) : laid;
+    // (the canal drawn from where its doors hang up: below them the doors are its opening)
+    const canal = layout.vagina, drawn: OrganLayout = { ...layout, vagina: { ...canal, path: subPath(canal.path, DOORS.hingeUp, lengthOf(canal.path)) } }, meshes = organMeshes(drawn);
     if (this.grown && this.room) makeRoom(meshes.uterus.points, this.grown, this.room);
     this.layout = layout; this.last = null;
     // (pregnant, her womb is seen through: what it holds is inside)
@@ -189,7 +222,7 @@ export class PelvicOrgansView {
     const U = ORGAN_TUNE, u = layout.uterus;
     const cages: Record<Name, ReturnType<typeof lineCage>> = {
       uterus: lineCage(u.path, wombHalf(u), Math.max(0.011, u.length / 30), U.uterus.tieFrom, U.uterus.tieTo, this.grown ? this.grown.contents.totalG : 60, u.axes ? wombAxis(u) : undefined),
-      vagina: lineCage(layout.vagina.path, () => [layout.vagina.width / 2, layout.vagina.depth / 2], 0.012, U.vagina.tieFrom, U.vagina.tieTo, 40),
+      vagina: lineCage(drawn.vagina.path, () => [drawn.vagina.width / 2, drawn.vagina.depth / 2], 0.012, U.vagina.tieFrom, U.vagina.tieTo, 40),
       bladder: bladderCage(layout.bladder, U.bladder.tieFrom, U.bladder.tieTo),
     };
     for (const name of ['uterus', 'vagina', 'bladder'] as const) {
@@ -249,6 +282,22 @@ export class PelvicOrgansView {
     // (the bladder pushes on the womb and the canal; the womb's cervix sits in the canal, so those two do not push)
     for (const t of this.touching) separate(t.a, t.b, t.gaps);
     this.draw();
+    // her opening's doors: toward where BIRTH OPENING holds them, closing as a pneumatic door does
+    this.swing = swingDoors(this.swing, this.grown ? swingFor(this.open * BIRTH_OPENING.dilationM) : 0, dt);
+    this.drawDoors();
+  }
+
+  /** How far her opening's doors stand open now (0 closed .. 1 standing open), and how wide that opens it (metres). */
+  get doorSwing(): number { return this.swing; }
+
+  private drawDoors(): void {
+    if (Math.abs(this.swing - this.drawnSwing) < 1e-4) return;
+    this.drawnSwing = this.swing;
+    const d = doorMeshes(this.doors.frame, this.swing), g = this.doors.mesh.geometry;
+    const colour = new Float32Array(d.lining.length * 3), lining = new THREE.Color(DOOR_COLOURS.lining), skin = new THREE.Color(DOOR_COLOURS.skin);
+    d.lining.forEach((l, i) => (l ? lining : skin).toArray(colour, i * 3));
+    g.setAttribute('position', new THREE.BufferAttribute(d.points, 3)); g.setAttribute('color', new THREE.BufferAttribute(colour, 3));
+    g.setIndex(new THREE.BufferAttribute(d.triangles, 1)); g.computeVertexNormals();
   }
 
   private draw(): void {
@@ -279,12 +328,14 @@ export class PelvicOrgansView {
     return out;
   }
 
-  set visible(on: boolean) { this.group.visible = on; }
+  set visible(on: boolean) { this.group.visible = on; this.doors.mesh.visible = on; this.doors.skin.visible = on; }
 
   dispose(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
     this.organs = []; this.touching = [];
     for (const m of this.materials.values()) m.dispose();
+    for (const m of [this.doors.mesh, this.doors.skin]) { m.removeFromParent(); m.geometry.dispose(); }
+    this.doors.material.dispose(); this.doors.skinMaterial.dispose();
     this.holder.removeFromParent(); this.group.removeFromParent();
   }
 }

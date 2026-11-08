@@ -9,7 +9,9 @@
  *  - THE DISCS: each such gap, counted up from the promontory -- L5/S1, L4/L5, L3/L4, ... -- and HER NAVEL at the third,
  *    L3/L4: in a woman of normal weight the umbilicus lies level with the disc between her third and fourth lumbar
  *    vertebrae (BIOLOGICAL SHAPE: Moore, Clinically Oriented Anatomy). Her skeleton has no skin to find a navel on;
- *  - THE BOTTOM OF HER BREASTBONE (the xiphoid's tip): the lowest point of her sternum on her midline.
+ *  - THE BOTTOM OF HER BREASTBONE (the xiphoid's tip): the lowest point of her sternum on her midline;
+ *  - THE TIP OF HER TAILBONE: the lowest point of her sacrum and coccyx on her midline, behind her pelvis -- the back of
+ *    her pelvic outlet, from the bottom of her symphysis (its front-to-back diameter).
  *
  * Rest metres (+y up, +z her front, +x across her). Pure: plain arrays.
  */
@@ -29,6 +31,8 @@ export const TORSO_MEASURE = Object.freeze({
   reach: 0.32,
   /** the spine: anything this far in front of the promontory or more is not spine (her breastbone is far in front) */
   spineAhead: 0.04,
+  /** the tailbone: on her midline, this far behind the promontory at least, and below it */
+  coccyxBehind: 0.03,
   /** the breastbone: on her midline, this far in front of the promontory and this far above it at least */
   sternumAhead: 0.08,
   sternumAbove: 0.1,
@@ -43,6 +47,8 @@ export interface TorsoMeasure {
   readonly navel: number;
   /** The xiphoid's tip (rest metres). */
   readonly xiphoid: P3;
+  /** The tip of her tailbone (rest metres). */
+  readonly coccyx: P3;
 }
 
 export class TorsoMeasureError extends Error {}
@@ -89,5 +95,12 @@ export function measureTorso(points: ArrayLike<number>, triangles: ArrayLike<num
     if (!xiphoid || sy < xiphoid[1]) xiphoid = [centreX, sy, sz];
   }
   if (!xiphoid) throw new TorsoMeasureError('no breastbone on her midline');
-  return { spineFront, discs, navel: discs[2], xiphoid };
+  // the tailbone's tip: the lowest point of her midline behind her promontory
+  let coccyx: P3 | null = null;
+  for (const [sz, sy] of samples) {
+    if (sz > promontory[2] - T.coccyxBehind || sy > promontory[1]) continue;
+    if (!coccyx || sy < coccyx[1]) coccyx = [centreX, sy, sz];
+  }
+  if (!coccyx) throw new TorsoMeasureError('no tailbone on her midline');
+  return { spineFront, discs, navel: discs[2], xiphoid, coccyx };
 }
