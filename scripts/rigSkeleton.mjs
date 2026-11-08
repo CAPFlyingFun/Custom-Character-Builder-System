@@ -340,11 +340,12 @@ nodes.forEach((nd) => skin.addJoint(nd));
 const meshNode = doc.createNode('sarahSkeleton').setMesh(mesh).setSkin(skin);
 doc.createScene('Scene').addChild(armature).addChild(meshNode);
 // LIGHTER (Joshua, 2026-11-07: "The walking was lagging and it's probably because it's not optimized yet and still max
-// size"): Meshy's 380,000 vertices brought to a fifth of its triangles -- under her own body's 115,710 vertices -- the
-// fingers, ribs and the cut along the bite kept. Its texture seams and hard normals only stop the simplifier (a
-// skeleton wears no texture), so it is welded by position, simplified, and its normals made again, smooth. KEEP and
-// MOST_ERROR are GAME TUNING, chosen on renders against the full mesh (3.4x quicker to pose and draw, headless).
-const KEEP = 0.2, MOST_ERROR = 0.002;
+// size"; then, shown the full mesh, a fifth and 15% side by side, "go with the 15%"): Meshy's 380,000 vertices brought
+// to 15% of its triangles -- well under her own body's 115,710 vertices -- the fingers, ribs and the cut along the bite
+// kept. Its texture seams and hard normals only stop the simplifier (a skeleton wears no texture), so it is welded by
+// position, simplified, and its normals made again, smooth. KEEP and MOST_ERROR are GAME TUNING, his choice on renders
+// against the full mesh (4x quicker to pose and draw, headless).
+const KEEP = 0.15, MOST_ERROR = 0.002;
 for (const m of doc.getRoot().listMeshes()) for (const pr of m.listPrimitives()) for (const sem of ['TEXCOORD_0', 'NORMAL']) { const a = pr.getAttribute(sem); if (a) { pr.setAttribute(sem, null); a.dispose(); } }
 await doc.transform(weldDocument(), simplify({ simplifier: MeshoptSimplifier, ratio: KEEP, error: MOST_ERROR, lockBorder: true }), prune());
 for (const m of doc.getRoot().listMeshes()) for (const pr of m.listPrimitives()) {
