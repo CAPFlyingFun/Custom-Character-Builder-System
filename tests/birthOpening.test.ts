@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BIRTH_OPENING, CANAL_OPENING, canalMouth, cervixAt, headPassage, openCanal, tightest } from '../src/actor/birthCanal';
-import { DOORS, doorFrame, doorMeshes, doorOpening, swingDoors, swingFor } from '../src/actor/birthDoors';
+import { BIRTH_STAGES, DOORS, birthAngles, doorFrame, doorMeshes, doorOpening, foldAngles, fullSwing, swingDoors } from '../src/actor/birthDoors';
 import { CERVIX, layOrgans, lengthOf } from '../src/actor/pelvicOrgans';
 import { growWomb } from '../src/actor/pregnantWomb';
 
@@ -73,7 +73,7 @@ describe('her canal opening', () => {
 describe('her opening\'s doors', () => {
   const frame = doorFrame(laid.vagina.path);
 
-  it('closed, the lips meet; standing open, the opening is as wide as the open tube', () => {
+  it('closed, the lips meet; pushed open, the opening is as wide as the open tube', () => {
     expect(doorOpening(0)).toBeLessThan(0.005);
     expect(doorOpening(1)).toBeGreaterThanOrEqual(CANAL_OPENING.diameterM);
     expect(doorMeshes(frame, 0).openM).toBeCloseTo(doorOpening(0), 9);
@@ -82,9 +82,10 @@ describe('her opening\'s doors', () => {
     expect(Math.max(...m.triangles)).toBeLessThan(m.points.length / 3);
   });
 
-  it('BIRTH OPENING sets how far they swing: the opening as wide as the slider says', () => {
-    for (const cm of [2, 4, 7, 10]) expect(doorOpening(swingFor(cm / 100))).toBeCloseTo(cm / 100, 4);
-    expect(swingFor(0)).toBe(0);
+  it('a birth only ever opens them wider, from closed to the final push', () => {
+    let last = 0;
+    for (let b = 0; b <= 1.0001; b += 0.025) { const w = doorOpening(b); expect(w).toBeGreaterThanOrEqual(last - 1e-9); last = w; }
+    expect(doorOpening(1)).toBeGreaterThan(CANAL_OPENING.diameterM);
   });
 
   it('let go, they close as a pneumatic door does: fast at first, slowing as they come to, never past shut', () => {
@@ -98,5 +99,36 @@ describe('her opening\'s doors', () => {
     expect(swingDoors(0, 1, 0.2)).toBeGreaterThan(0.9);
     // (slow frames do not throw them)
     expect(swingDoors(0.5, 0, Number.NaN)).toBe(0.5);
+  });
+
+  it('folded back by hand: the lip\'s third first, then the middle, then the inner, then the main hinge, 30° each', () => {
+    expect(foldAngles(0)).toEqual({ outer: 0, mid: 0, inner: 0, hinge: 0 });
+    expect(foldAngles(0.25)).toEqual({ outer: DOORS.foldDeg, mid: 0, inner: 0, hinge: 0 });
+    expect(foldAngles(0.5)).toEqual({ outer: DOORS.foldDeg, mid: DOORS.foldDeg, inner: 0, hinge: 0 });
+    expect(foldAngles(1)).toEqual({ outer: DOORS.foldDeg, mid: DOORS.foldDeg, inner: DOORS.foldDeg, hinge: DOORS.foldDeg });
+    let last = doorMeshes(frame, 0, 0).openM;
+    for (const f of [0.25, 0.5, 0.75, 1]) { const m = doorMeshes(frame, 0, f); expect(m.openM).toBeGreaterThan(last); last = m.openM; }
+    // (every station of every door as many points as the next: the mesh holds together however it folds)
+    for (const [sw, f] of [[0, 1], [1, 1], [0.5, 0.6]]) {
+      const m = doorMeshes(frame, sw, f);
+      expect(m.points.every(Number.isFinite)).toBe(true);
+      expect(Math.max(...m.triangles)).toBeLessThan(m.points.length / 3);
+      expect(m.angles.hinge).toBeLessThanOrEqual(Math.max(birthAngles(sw).hinge, DOORS.foldDeg) + 1e-9);
+    }
+  });
+
+  it('a birth walks Joshua\'s stages: the inner piece and the hinge first, then the middle, the outer, then the final push', () => {
+    const at = (k: number) => birthAngles(k / (BIRTH_STAGES.length - 1));
+    expect(at(0)).toEqual({ hinge: 0, inner: 0, mid: 0, outer: 0 });
+    expect(at(1)).toEqual({ hinge: 15, inner: 30, mid: 0, outer: 0 });
+    expect(at(2)).toEqual({ hinge: 30, inner: 30, mid: 30, outer: 0 });
+    expect(at(3)).toEqual({ hinge: 30, inner: 30, mid: 30, outer: 30 });
+    // (the final push: its hinges as far as they go)
+    expect(at(4).hinge).toBeCloseTo((fullSwing() * 180) / Math.PI, 9);
+    expect(at(4).outer).toBe(30);
+    // (by hand the lip goes first)
+    expect(foldAngles(0.2).outer).toBeGreaterThan(0);
+    expect(foldAngles(0.2).inner).toBe(0);
+    expect(doorMeshes(frame, 0, 1).angles.hinge).toBeCloseTo(DOORS.foldDeg, 6);
   });
 });

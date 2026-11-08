@@ -13,8 +13,8 @@
 import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
-import { BIRTH_OPENING, openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, doorFrame, doorMeshes, outerSkin, swingDoors, swingFor, type DoorFrame } from '../actor/birthDoors';
+import { openCanal, type CanalBones } from '../actor/birthCanal';
+import { DOORS, doorFrame, doorMeshes, outerSkin, swingDoors, type DoorFrame } from '../actor/birthDoors';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -103,6 +103,11 @@ export class PelvicOrgansView {
   private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial };
   private swing = 0;
   private drawnSwing = -1;
+  /** FOLD BACK (by hand, actor/birthDoors.ts): where it is held (0..1), how far the doors are folded now, and the angles laid */
+  private foldWant = 0;
+  private fold = 0;
+  private drawnFold = -1;
+  private laidAngles = { outer: 0, mid: 0, inner: 0, hinge: 0 };
   /** Her week (null: not pregnant) and each baby's weight, g; and her womb grown for them. */
   private week: number | null = null;
   private babyGrams: readonly number[] = [];
@@ -283,17 +288,26 @@ export class PelvicOrgansView {
     for (const t of this.touching) separate(t.a, t.b, t.gaps);
     this.draw();
     // her opening's doors: toward where BIRTH OPENING holds them, closing as a pneumatic door does
-    this.swing = swingDoors(this.swing, this.grown ? swingFor(this.open * BIRTH_OPENING.dilationM) : 0, dt);
+    // (BIRTH OPENING walks them through Joshua's stages, closed to the final push: actor/birthDoors.ts BIRTH_STAGES)
+    this.swing = swingDoors(this.swing, this.grown ? this.open : 0, dt);
+    this.fold = swingDoors(this.fold, this.foldWant, dt);
     this.drawDoors();
   }
 
-  /** How far her opening's doors stand open now (0 closed .. 1 standing open), and how wide that opens it (metres). */
+  /** How far a birth has pushed her opening's doors now (0 closed .. 1 the final push: actor/birthDoors.ts BIRTH_STAGES). */
   get doorSwing(): number { return this.swing; }
+  /** FOLD BACK (0..1): her opening's doors folded back by hand -- their three pieces in turn, the lip's end first, then
+   * their main hinges (actor/birthDoors.ts) -- going back as a pneumatic door does when let go. */
+  setFold(fold: number): void { this.foldWant = Math.min(1, Math.max(0, Number.isFinite(fold) ? fold : 0)); }
+  /** How far they are folded now (0..1) and the angles laid on them (degrees). */
+  get doorFold(): number { return this.fold; }
+  get doorAngles(): { outer: number; mid: number; inner: number; hinge: number } { return { ...this.laidAngles }; }
 
   private drawDoors(): void {
-    if (Math.abs(this.swing - this.drawnSwing) < 1e-4) return;
-    this.drawnSwing = this.swing;
-    const d = doorMeshes(this.doors.frame, this.swing), g = this.doors.mesh.geometry;
+    if (Math.abs(this.swing - this.drawnSwing) < 1e-4 && Math.abs(this.fold - this.drawnFold) < 1e-4) return;
+    this.drawnSwing = this.swing; this.drawnFold = this.fold;
+    const d = doorMeshes(this.doors.frame, this.swing, this.fold), g = this.doors.mesh.geometry;
+    this.laidAngles = d.angles;
     const colour = new Float32Array(d.lining.length * 3), lining = new THREE.Color(DOOR_COLOURS.lining), skin = new THREE.Color(DOOR_COLOURS.skin);
     d.lining.forEach((l, i) => (l ? lining : skin).toArray(colour, i * 3));
     g.setAttribute('position', new THREE.BufferAttribute(d.points, 3)); g.setAttribute('color', new THREE.BufferAttribute(colour, 3));

@@ -297,7 +297,7 @@ import { createNavelSoft, type NavelSoft } from './navelSoft';
 import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
 import {
-  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
+  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
@@ -1001,6 +1001,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let bumpInput: HTMLInputElement | null = null;
   /** the BIRTH OPENING slider (percent, 0 closed .. 100 the full 10 cm) */
   let birthOpenInput: HTMLInputElement | null = null, birthOpenPct = 0, birthBulgeInput: HTMLInputElement | null = null, birthBulgePct = 0;
+  let foldBackInput: HTMLInputElement | null = null, foldBackPct = 0;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
   let birthSeatOn = true;
   /** in SQUAT the same skin rounded OUT instead (negative: out; Joshua, 2026-10-31: there it "pinches right in the
@@ -1559,6 +1560,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (vulva) birthOpenPct = Math.round(vulva.open * 100);
       if (f2) f2.textContent = birthOpenLine(birthOpenPct, vulva?.heldTo ?? null);
       if (birthOpenInput && Number(birthOpenInput.value) !== birthOpenPct) birthOpenInput.value = String(birthOpenPct); }
+    { const f4 = fields[SARAH_LAB_FIELD.foldBack];
+      // (only her skeleton has the doors yet: on another body it is not shown)
+      if (f4) { f4.textContent = foldBackLine(foldBackPct, organs ? organs.doorAngles : null); f4.style.display = organs ? '' : 'none'; }
+      if (foldBackInput) foldBackInput.style.display = organs ? '' : 'none'; }
     { const f3 = fields[SARAH_LAB_FIELD.birthBulge];
       if (vulva) birthBulgePct = Math.round(vulva.bulge * 100);
       if (f3) f3.textContent = birthBulgeLine(birthBulgePct, VULVA_OPEN.bulge * 100);
@@ -2628,6 +2633,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // and how far the area round it is pushed out, on its own (in a birth it opens first, and bulges once her baby's head
     // is low in the canal)
     birthBulgeInput = slider(SARAH_LAB_FIELD.birthBulge, birthBulgePct, (v) => { birthBulgePct = v; vulva?.setBulge(v / 100); }, 100, 'pose');
+    // FOLD BACK (v3, on her skeleton): her opening's doors folded back by hand, piece by piece, then on their hinges
+    foldBackInput = slider(SARAH_LAB_FIELD.foldBack, foldBackPct, (v) => { foldBackPct = v; organs?.setFold(v / 100); }, 100, 'pose');
     // HER BABY'S BIRTH: begin, pause, FAST or REALISTIC, and back to the start (birthSequence.ts)
     { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.birthLine; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; line.textContent = birthLine(null); fields[SARAH_LAB_FIELD.birthLine] = line; right.appendChild(line);
       const row = document.createElement('div'); row.dataset.tab = 'pose'; row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
@@ -7084,7 +7091,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her babies are laid in her womb, so in the frame it hangs from)
           if (babyFrame) babyFrame = { ...babyFrame, bone: pelvisBone, matrix: new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld) };
           organs = new PelvicOrgansView(skeletonPelvis, skeletonTorso, pelvisBone, new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld), M);
-          organs.setOpening(birthOpenPct / 100);
+          organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100);
           three.add(organs.group);
         }
         babySkinAt = null; babyDepthOf = null;
@@ -7355,6 +7362,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const wk = pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
         organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         organs.update(dt);
+        // (FOLD BACK's line follows the doors as they go, not only the slider)
+        const fl = fields[SARAH_LAB_FIELD.foldBack], line = foldBackLine(foldBackPct, organs.doorAngles);
+        if (fl && fl.textContent !== line) fl.textContent = line;
       }
       // her steps: each sneaker's heel coming down onto the floor is heard (on the tiles of a lab)
       if (sneakers && sneakers.visible) {
@@ -8496,7 +8506,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (!organs) return null;
           if (bladderMl !== undefined) organs.setBladder(bladderMl);
           const w = organs.womb, baby = w ? babySize(w.week, body.babyWeight, babyCount) : null;
-          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
+          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, doorFold: organs.doorFold, doorAngles: organs.doorAngles, womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
             // her baby's head through her pelvis, plane by plane (actor/birthCanal.ts), at the size it is drawn
             passage: baby && headPassage(skeletonPelvis, skeletonTorso.landmarks.coccyx, baby.cm / 100) };
         },

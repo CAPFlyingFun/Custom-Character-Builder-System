@@ -232,6 +232,8 @@ export const SARAH_LAB_FIELD = Object.freeze({
   /** her birth opening (vulvaMesh.ts): closed to the full 10 cm, for looking at it in the room */
   birthOpen: 'sarahlab-birth-open',
   birthBulge: 'sarahlab-birth-bulge',
+  /** FOLD BACK (v3, on her skeleton): her opening's doors folded back by hand (actor/birthDoors.ts) */
+  foldBack: 'sarahlab-fold-back',
   /** the BIRTH line: where her baby's birth is (birthSequence.ts) */
   birthLine: 'sarahlab-birth-line',
   /** the BIRTH timeline: where in it she is, to jump to any moment */
@@ -879,6 +881,15 @@ export function navelState(bumpPercent: number, navelPercent: number): string {
 
 /** The BIRTH OPENING slider's line (Joshua, 2026-10-31: "add a slider... where you can see how it looks with the
  * different sizes in the room"): how far open, and how wide that is across (the full opening is 10 cm). */
+/** The FOLD BACK slider's line (Joshua, 2026-11-08: "Manually: The skin folds plus the main joints... 1st outer 30°, 2nd
+ * mid 30°, 3rd inner {closest to body} 30°, 4th default joints"): how far, and each fold's angle as laid. */
+export function foldBackLine(percent: number, angles: { outer: number; mid: number; inner: number; hinge: number } | null): string {
+  const p = Math.round(Math.min(100, Math.max(0, percent)));
+  if (!angles) return `FOLD BACK ${p}%`;
+  const d = (a: number) => `${Math.round(a)}°`;
+  return p === 0 && angles.outer < 0.5 ? 'FOLD BACK · closed' : `FOLD BACK ${p}% · lip ${d(angles.outer)} · middle ${d(angles.mid)} · inner ${d(angles.inner)} · hinge ${d(angles.hinge)}`;
+}
+
 export function birthOpenLine(percent: number, heldTo: number | null = null): string {
   const p = Math.round(Math.min(100, Math.max(0, percent)));
   if (p === 0) return 'BIRTH OPENING · closed';
