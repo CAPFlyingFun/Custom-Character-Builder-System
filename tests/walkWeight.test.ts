@@ -92,16 +92,3 @@ describe('her bob: how much of her legs\' rise and fall shows', () => {
     expect(bobDrop(-1.0001, -1, 1)).toBe(0);
   });
 });
-
-describe('the feet that carry her', () => {
-  it('only a foot on the ground carries her: the left from its landing (0.25) to its lifting, never in its swing', async () => {
-    const { footContact } = await import('../src/actor/walkWeight');
-    expect(footContact(0.55, 'walk')).toEqual([1, 0]);
-    expect(footContact(0.05, 'walk')).toEqual([0, 1]);
-    // both on the ground as the weight moves across (double support), eased, never both nothing
-    for (let p = 0; p < 1; p += 0.01) { const [l, r] = footContact(p, 'walk'); expect(l + r).toBeGreaterThan(0); }
-    expect(footContact(0.3, 'walk')[0]).toBeGreaterThan(0);
-    expect(footContact(0.3, 'walk')[1]).toBeGreaterThan(0);
-    expect(footContact(0.4, 'stand')).toEqual([1, 1]);
-  });
-});

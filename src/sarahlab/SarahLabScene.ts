@@ -85,7 +85,8 @@ import { createSoftBaby, restorePose, stepSoftBaby, type SoftBaby } from './soft
 import { createSqueezeUniforms, patchSqueeze, setSqueeze } from './babySqueeze';
 import { createSkinUniforms, patchSkin, stepSkin } from './babySkin';
 import { measureHuman } from '../actor/humanSkeleton';
-import { bobDrop, footContact, walkWeight, weighWalk, WALK_WEIGHT } from '../actor/walkWeight';
+import { bobDrop, walkWeight, weighWalk, WALK_WEIGHT } from '../actor/walkWeight';
+import { createFeet, groundFeet, type FeetState } from '../actor/humanFeet';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -94,6 +95,7 @@ import { applyShapeFields, baseShapeFields, liftShapeFields, type ShapeFields, t
 import { BUILD_PROFILES, buildAmounts, buildKey, heightLine, heldSegments, profileOf, withProfile, type BuildAmounts, type BuildSegment } from '../actor/bodyBuild';
 import { applyBuildToBones, applyBuildToMesh, buildBoneOffsets, buildMeshFields, prepareBuildRig, standingLift, type BuildMeshFields, type BuildRig } from '../view/bodyBuild';
 import { Sneakers } from './sneakers';
+import { WalkStrip } from './walkStrip';
 import { StepWatch, TileSteps } from './footsteps';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
@@ -478,6 +480,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.2;
   three.add(floor, ring);
+  // the strip she walks (walkStrip.ts), in place of the floor while she walks
+  const strip = new WalkStrip(M);
+  three.add(strip.mesh);
   // a plain stool for SIT, sized when she sits on it
   const stool = new THREE.Mesh(
     new THREE.CylinderGeometry(0.2 * M, 0.22 * M, 1, 28),
@@ -917,12 +922,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let buildRig: BuildRig | null = null;
   const buildFields = new WeakMap<THREE.SkinnedMesh, BuildMeshFields>();
   let bonesBuilt = '';
+  /** Her feet while she walks (`feetFor`, `stepFeet`). */
+  let walkFeet: WalkFeet | null = null;
   let standLift = 0;
   /** What the walk's weight moved her by this frame, room units (`weighOnFloor`); her soft parts feel her motion without it. */
   const walkOffset = new THREE.Vector3();
-  /** Her lowest sole standing, her leg's length, and how low and high her legs carry her through a stride (`legsRise`),
-   * world units, once a body, build and sway (`weighOnFloor`). */
-  let standSoles: { key: string; low: number; leg: number; lo: number; hi: number } | null = null;
   /**
    * HER SNEAKERS (sneakers.ts; Joshua, 2026-11-07): built round her own foot the first time they are put on, carried by
    * her skeleton like her skin; standing, she is lifted onto their soles. Only on her approved v2 body (her build's rig).
@@ -1694,11 +1698,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** What a WALK line adds once she has walked: what the slider gives her, in centimetres. */
   function walkNote(key: BodyControl): string {
-    const s = standSoles;
-    if (!s || (key !== 'walkBob' && key !== 'walkSway')) return '';
-    const cm = (u: number) => ((u / M) * 100).toFixed(1);
-    if (key === 'walkBob') return ` · up and down ${cm(Math.min(1, (WALK_WEIGHT.bob * body.walkBob) / 100) * (s.hi - s.lo))} cm`;
-    return ` · ${cm(((WALK_WEIGHT.sway * body.walkSway) / 100) * s.leg)} cm each way`;
+    const f = walkFeet, range = bobRange();
+    if (!f || !range || (key !== 'walkBob' && key !== 'walkSway')) return '';
+    const cm = (m: number) => (m * 100).toFixed(1);
+    if (key === 'walkBob') return ` · up and down ${cm(Math.min(1, (WALK_WEIGHT.bob * body.walkBob) / 100) * (range.most - range.least))} cm`;
+    return ` · ${cm(((WALK_WEIGHT.sway * body.walkSway) / 100) * f.leg)} cm each way`;
   }
 
   /** Her build as the controls ask for it, on the body measured (approved while there is none). */
@@ -3185,6 +3189,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     (three.background as THREE.Color).setHex(look.background);
     (floor.material as THREE.MeshStandardMaterial).color.setHex(look.floor);
     (ring.material as THREE.MeshBasicMaterial).color.setHex(look.rim);
+    strip.setColours(look.floor, look.rim);
     storeTheme(localStore(), next);
   }
   /** Resolves after `n` more frames of the room (the bake below waits on the paint and the fabric to settle). */
@@ -3329,11 +3334,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Where in her stride she is (0..1): the stride in bind units, `bindScale` of them to the metre. */
   function walkPhase(): number {
     if (!rig || !measure) return 0;
-    if (heldPhase !== null) return heldPhase;
     return ((walked * rig.bindScale) / humanStride(measure, 'walk', bump / 100)) % 1;
   }
-  /** A phase held while her stride is read through (`weighOnFloor`); otherwise null, and her phase is how far she walked. */
-  let heldPhase: number | null = null;
   /** Her walk's weight at `phase`, her WALK sway on it (bodyShape.ts `walkSway`). */
   const weightAt = (phase: number) => walkWeight(phase, 'walk', body.walkSway / 100);
   const weightOut: MutableJointTurn[] = [];
@@ -3782,6 +3784,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** Her turns this frame: her pose, or on the way between standing and seated, the two blended (`poseBlend.ts`). */
   function currentTurns(): readonly JointTurn[] {
+    // walking, her feet's turns (`stepFeet`)
+    if (pose === 'walk' && walkFeet?.fresh) return walkFeet.turns;
     if (!sitMoving || sitAmount <= 0 || sitAmount >= 1) return turnsFor();
     return blendJointTurns(turnsFor('stand', standOut), turnsFor('sit', poseOut), sitEase(sitAmount), blendOut);
   }
@@ -3794,6 +3798,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * seated before (`orbit.target.z`). Leaves her bones in this frame's pose.
    */
   function place(): void {
+    // walking, she walks the strip, and it is the floor (walkStrip.ts)
+    const onStrip = pose === 'walk';
+    strip.mesh.visible = onStrip; floor.visible = !onStrip; ring.visible = !onStrip;
+    if (onStrip) strip.setWalked(walked);
     if (!model || !rig || !measure) return;
     walkOffset.set(0, 0, 0);
     const skin = findSkinnedMesh(model);
@@ -3837,72 +3845,117 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
 
   /**
-   * WALKING WITH WEIGHT (Joshua, 2026-11-08: "the body has no natural weight and bounce while walking"; "Yes, add to the
-   * room"). Her lowest sole is stood on the floor as it is standing, so she rises over each straight leg and sinks between
-   * steps -- the walk's own rise and fall, lowest at double support, from her legs' angles rather than a curve laid on
-   * her -- and she is moved over the foot she stands on (`walkWeight`'s side shift; her legs lean back under her by it in
-   * her turns, so her feet stay put). What it moved her by is kept in `walkOffset`: her soft parts feel her motion without
-   * it, as they did before, the walk's bounce already fed to them (`walkBounceAccel`, tuned by Joshua 2026-10-08).
+   * WALKING WITH WEIGHT, ON HER OWN FEET (Joshua, 2026-11-08: "the body has no natural weight and bounce while walking";
+   * then "let the model actually walk and move from her legs vs just animation... could create a 5x10 meter walking
+   * strip"; Trello #273, step 2). She walks the strip (walkStrip.ts) for real, `walked` metres along it: her pose is the
+   * walk with its weight on it (`walkWeight`: her hips list and twist, her body over the foot she stands on), and then her
+   * FEET drive her (actor/humanFeet.ts, #233) -- each planted foot holds the strip where it landed and turns flat, a
+   * trailing heel rises onto its ball, and her body comes down only as far as her legs need it to, which is the walk's
+   * rise and fall. Her WALK bob keeps a share of that (`bobDrop`) and her knees take up the rest (`bendKnees`).
+   *
+   * The feet work in the strip's own frame, on a bind read off her bones as they are drawn (her build's lengths, her
+   * feet's size, her sneakers' soles on the floor); she is drawn where she stands and the strip moves under her. What
+   * the walk moved her by is kept in `walkOffset`: her soft parts feel her motion without it, as they did before, the
+   * walk's bounce already fed to them (`walkBounceAccel`, tuned by Joshua 2026-10-08).
    */
-  /** Each foot's lowest point, [left, right], world height. */
-  function lowestSoles(sk: THREE.SkinnedMesh): [number, number] {
-    if (!measure) return [0, 0];
-    const bones = sk.skeleton.bones, q = new THREE.Quaternion(), p = new THREE.Vector3(), at = new THREE.Vector3();
-    const low = (ankle: number): number => {
-      const bone = bones[ankle], shape = footShape(sk, ankle);
-      bone.getWorldPosition(at);
-      if (!shape) return at.y;
-      bone.getWorldQuaternion(q);
-      const P = shape.pts;
-      let least = Infinity;
-      for (let k = 0; k < P.length; k += 3) least = Math.min(least, at.y + p.set(P[k], P[k + 1], P[k + 2]).applyQuaternion(q).y);
-      return least;
-    };
-    return [low(measure.joints.ankleL), low(measure.joints.ankleR)];
+  interface WalkFeet {
+    readonly key: string;
+    /** Her bind as her bones are drawn, bind units, the floor at y 0 (her sneakers' soles on it when she wears them). */
+    readonly bind: readonly BindJoint[];
+    /** Bind units to the metre (`HumanRig.bindScale`). */
+    readonly upm: number;
+    /** Her leg, hip to ankle standing, metres. */
+    readonly leg: number;
+    state: FeetState;
+    readonly out: MutableJointTurn[];
+    /** This frame's pose with her feet on it: what `currentTurns` hands out while she walks. */
+    readonly turns: MutableJointTurn[];
+    /** Whether `turns` is this walk's (it is not once she has stood, sat or lain since). */
+    fresh: boolean;
+    /** Her body over the foot she stands on (world x, metres) and how far her feet brought her down (metres). */
+    x: number;
+    drop: number;
+    /** How far her feet brought her down, by where in her stride (BOB_BINS of it): her rise and fall, for her bob. */
+    readonly bins: Float64Array;
+    /** Each foot's sole as drawn -- her shoe's, or her foot's barefoot -- as its lowest points along it (`SOLE_POINTS`),
+     * and the height the lowest of them stands at in her bind (room units): a sole is on the floor there. */
+    readonly soles: readonly { readonly mesh: THREE.SkinnedMesh; readonly verts: Uint32Array; readonly floor: number }[];
   }
-  /** How far her legs lift her at `phase`, as she is posed now: her standing soles' height less that of the feet carrying
-   * her, each by how much it carries her -- a swinging foot's toes never lift her. */
-  function legsRise(sk: THREE.SkinnedMesh, phase: number, standLow: number): number {
-    const [cl, cr] = footContact(phase, 'walk'), [ll, lr] = lowestSoles(sk);
-    return standLow - (cl * ll + cr * lr) / Math.max(1e-6, cl + cr);
+  /** Her stride's rise and fall is remembered a 24th of a stride at a time. GAME TUNING. */
+  const BOB_BINS = 24;
+  /** The strip under her feet: flat and full grip. */
+  const STRIP_FLOOR = Object.freeze({ y: 0, grip: 1 });
+  /** Her feet, for this body, build and lift; worked out again when any of them changes. Leaves her bones in her bind. */
+  function feetFor(sk: THREE.SkinnedMesh): WalkFeet | null {
+    if (!model || !rig || !measure) return null;
+    const shod = sneakersShown() && sneakers ? sneakers : null;
+    const key = `${model.uuid}|${bonesBuilt}|${standLift.toFixed(5)}|${shod ? shod.meshes.map((m) => m.uuid).join() : 'bare'}`;
+    if (walkFeet?.key === key) return walkFeet;
+    // her bones as drawn in her bind pose, stood on the floor as she stands: room units, bind units, metres
+    const bones = sk.skeleton.bones, upm = rig.bindScale, perUnit = M / upm, p = new THREE.Vector3(), j = measure.joints;
+    model.position.set(0, standLift * M, 0); model.quaternion.identity();
+    rig.apply([]); model.updateMatrixWorld(true);
+    const bind = rig.bind.map((b, i) => { bones[i].getWorldPosition(p); return { ...b, x: p.x / perUnit, y: p.y / perUnit, z: p.z / perUnit }; });
+    const leg = Math.hypot(bind[j.hipL].x - bind[j.ankleL].x, bind[j.hipL].y - bind[j.ankleL].y, bind[j.hipL].z - bind[j.ankleL].z) / upm;
+    // each sole's lowest points along its length, read in her bind as she stands on the floor
+    const soles = [j.ankleL, j.ankleR].map((ankle, k) => {
+      const mesh = shod?.meshes[k] ?? sk, all = shod ? null : footVerts(sk, ankle), n = all ? all.length : mesh.geometry.getAttribute('position').count;
+      const pts: { i: number; y: number; z: number }[] = [];
+      for (let m = 0; m < n; m++) { const i = all ? all[m] : m; mesh.getVertexPosition(i, p); mesh.localToWorld(p); pts.push({ i, y: p.y, z: p.z }); }
+      const low = Math.min(...pts.map((q) => q.y)), bottom = pts.filter((q) => q.y < low + SOLE_DEPTH * M);
+      const z0 = Math.min(...bottom.map((q) => q.z)), z1 = Math.max(...bottom.map((q) => q.z)), best: ({ i: number; y: number } | null)[] = Array(SOLE_POINTS).fill(null);
+      for (const q of bottom) { const b = Math.min(SOLE_POINTS - 1, Math.floor(((q.z - z0) / Math.max(1e-6, z1 - z0)) * SOLE_POINTS)); if (!best[b] || q.y < best[b]!.y) best[b] = q; }
+      return { mesh, verts: Uint32Array.from(best.filter((q) => q !== null).map((q) => q!.i)), floor: low };
+    });
+    walkFeet = { key, bind, upm, leg, state: createFeet(measure, bind, 0), out: [], turns: [], fresh: false, x: 0, drop: 0, bins: new Float64Array(BOB_BINS).fill(NaN), soles };
+    return walkFeet;
   }
-  /** Phases her stride is read at for its lowest (`weighOnFloor`). GAME TUNING: fine enough that the lowest is within a
-   * millimetre, few enough to read in a blink when a slider moves. */
-  const STRIDE_SAMPLES = 24;
-  const strideOut: MutableJointTurn[] = [];
+  /** Each sole is read as its lowest point in this many lengths of it, heel to toe, from the part of it within SOLE_DEPTH
+   * (metres) of its bottom. GAME TUNING: a point every 2 cm of a shoe, cheap to follow every frame. */
+  const SOLE_POINTS = 12;
+  const SOLE_DEPTH = 0.03;
+  /** A step of her walk on her feet (`advance`, before her pose is laid on her bones). */
+  function stepFeet(dt: number): void {
+    const sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
+    if (!sk || !rig || !measure) return;
+    const f = feetFor(sk);
+    if (!f) return;
+    // a new walk sets her feet down afresh, wherever she is along the strip
+    if (!f.fresh) { f.state = createFeet(measure, f.bind, 0); f.bins.fill(NaN); }
+    const phase = walkPhase(), left = measure.leftSign < 0 ? -1 : 1;
+    f.x = left * weightAt(phase).sway * f.leg;
+    const fed = groundFeet(f.state, measure, f.bind, turnsFor('walk', poseOut), {
+      dt, released: false, rootX: f.x, rootY: 0, rootZ: walked, rootYaw: 0, unitsPerMetre: f.upm, groundAt: () => STRIP_FLOOR,
+    }, f.out);
+    while (f.turns.length < fed.turns.length) f.turns.push(newJointTurn());
+    f.turns.length = fed.turns.length;
+    fed.turns.forEach((t, i) => { const o = f.turns[i]; o.joint = t.joint; o.ax = t.ax; o.ay = t.ay; o.az = t.az; o.radians = t.radians; });
+    f.drop = fed.rootDrop;
+    f.bins[Math.min(BOB_BINS - 1, Math.floor(phase * BOB_BINS))] = f.drop;
+    f.fresh = true;
+  }
+  /** The most and least her feet have brought her down through her stride (metres), or null before she has walked. */
+  function bobRange(): { most: number; least: number } | null {
+    const f = walkFeet;
+    if (!f?.fresh) return null;
+    let most = -Infinity, least = Infinity;
+    for (const d of f.bins) if (Number.isFinite(d)) { most = Math.max(most, d); least = Math.min(least, d); }
+    return Number.isFinite(most) ? { most, least } : null;
+  }
   function weighOnFloor(skin: THREE.SkinnedMesh): void {
-    if (!model || !rig || !measure) return;
+    if (!model || !measure) return;
     // (placed again with no new pose since: her knees as her pose had them, not as they were bent)
     unbendKnees();
-    const sk = bodyOf()?.mesh ?? skin, j = measure.joints;
-    const key = `${model.uuid}|${bonesBuilt}|${standLift.toFixed(5)}|${bump.toFixed(1)}|${body.walkSway}`;
-    if (standSoles?.key !== key) {
-      // her soles standing, read once a body and build (her feet's shapes too, which want her standing and unturned)
-      rig.apply(turnsFor('stand', standOut)); model.updateMatrixWorld(true);
-      readFootShapes(sk);
-      const hip = sk.skeleton.bones[j.hipL].getWorldPosition(new THREE.Vector3()), ankle = sk.skeleton.bones[j.ankleL].getWorldPosition(new THREE.Vector3());
-      const low = Math.min(...lowestSoles(sk));
-      // and how high and low her legs carry her through a whole stride, her sway on it (it leans her legs)
-      let lo = Infinity, hi = -Infinity;
-      for (let k = 0; k < STRIDE_SAMPLES; k++) {
-        heldPhase = k / STRIDE_SAMPLES;
-        rig.apply(turnsFor('walk', strideOut)); model.updateMatrixWorld(true);
-        const r = legsRise(sk, heldPhase, low);
-        lo = Math.min(lo, r); hi = Math.max(hi, r);
-      }
-      heldPhase = null;
-      standSoles = { key, low, leg: hip.distanceTo(ankle), lo, hi };
-      rig.apply(currentTurns()); model.updateMatrixWorld(true);
-    }
-    const left = measure.leftSign < 0 ? -1 : 1, phase = walkPhase(), w = weightAt(phase);
-    walkOffset.set(left * w.sway * standSoles.leg, 0, 0);
+    const f = walkFeet;
+    if (!f?.fresh) return;
+    // her WALK bob's share of her rise and fall: she keeps her lowest, and comes that share of the way up from it
+    const range = bobRange(), extra = range ? bobDrop(-f.drop, -range.most, body.walkBob / 100) : 0;
+    walkOffset.set(f.x * M, -(f.drop + extra) * M, 0);
     model.position.add(walkOffset); model.updateMatrixWorld(true);
-    // stood on her feet as her legs carry her, less what her WALK bob keeps of it (walkWeight.ts `bobDrop`): her knees
-    // bend to keep her feet where her legs put them
-    const rise = legsRise(sk, phase, standSoles.low), drop = bobDrop(rise, standSoles.lo, body.walkBob / 100);
-    walkOffset.y = rise - drop;
-    model.position.y += rise - drop; model.updateMatrixWorld(true);
-    bendKnees(sk, drop);
+    const sk = bodyOf()?.mesh ?? skin;
+    bendKnees(sk, extra * M);
+    flatToes(sk, f);
+    keepSoles(sk, f);
   }
 
   /**
@@ -3913,27 +3966,33 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * new knee, the shin likewise, the foot left turned as it was. Over her bones as drawn, so her build's lengths count.
    * What it wrote is kept, so a second placing with no new pose since starts again from her pose (`unbendKnees`).
    */
-  let kneesBent: { bones: THREE.Object3D[]; pre: THREE.Quaternion[]; post: THREE.Quaternion[] } | null = null;
+  const bent: { bones: THREE.Object3D[]; pre: THREE.Quaternion[]; post: THREE.Quaternion[] }[] = [];
   function unbendKnees(): void {
-    const k = kneesBent; kneesBent = null;
-    if (!k || !k.bones.every((b, i) => b.quaternion.angleTo(k.post[i]) < 1e-6)) return;
-    k.bones.forEach((b, i) => b.quaternion.copy(k.pre[i]));
-    model?.updateMatrixWorld(true);
+    let undone = false;
+    for (let n = bent.length - 1; n >= 0; n--) {
+      const k = bent[n];
+      if (!k.bones.every((b, i) => b.quaternion.angleTo(k.post[i]) < 1e-6)) continue;
+      k.bones.forEach((b, i) => b.quaternion.copy(k.pre[i])); undone = true;
+    }
+    bent.length = 0;
+    if (undone) model?.updateMatrixWorld(true);
   }
   /** The knee's own bend leans forward by this share of the thigh, so a straight leg still bends the way a knee does.
    * BIOLOGICAL SHAPE (a knee is a forward hinge), the share humanFeet.ts uses (`POLE_FORWARD_FRAC`). */
   const KNEE_FORWARD = 0.05;
-  function bendKnees(sk: THREE.SkinnedMesh, drop: number): void {
-    if (!model || !measure || !(drop > 1e-6)) return;
+  function bendKnees(sk: THREE.SkinnedMesh, drop: number): void { bendLegs(sk, [drop, drop]); }
+  /** Each foot raised by its own `lift` (world units) where its leg had it, its leg bent to reach it (`bendKnees`). */
+  function bendLegs(sk: THREE.SkinnedMesh, lift: readonly [number, number]): void {
+    if (!model || !measure || !(lift[0] > 1e-6 || lift[1] > 1e-6)) return;
     const bones = sk.skeleton.bones, j = measure.joints, list: THREE.Object3D[] = [], pre: THREE.Quaternion[] = [];
     const wp = (b: THREE.Object3D) => b.getWorldPosition(new THREE.Vector3()), wq = (b: THREE.Object3D) => b.getWorldQuaternion(new THREE.Quaternion());
     // a bone turned about its own joint by a turn in the world
     const turnWorld = (b: THREE.Object3D, q: THREE.Quaternion) => { b.quaternion.copy(wq(b.parent!).invert().multiply(q).multiply(wq(b))); b.updateMatrixWorld(true); };
     // her forward (both bodies face +Z bound; the room turns her about the vertical only)
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(wq(model));
-    for (const [hi, ki, ai] of [[j.hipL, j.kneeL, j.ankleL], [j.hipR, j.kneeR, j.ankleR]]) {
-      const hb = bones[hi], kb = bones[ki], ab = bones[ai];
-      if (!hb?.parent || kb?.parent !== hb || ab?.parent !== kb) continue;
+    for (const [hi, ki, ai, side] of [[j.hipL, j.kneeL, j.ankleL, 0], [j.hipR, j.kneeR, j.ankleR, 1]]) {
+      const hb = bones[hi], kb = bones[ki], ab = bones[ai], drop = lift[side];
+      if (!(drop > 1e-6) || !hb?.parent || kb?.parent !== hb || ab?.parent !== kb) continue;
       list.push(hb, kb, ab); pre.push(hb.quaternion.clone(), kb.quaternion.clone(), ab.quaternion.clone());
       const H = wp(hb), K = wp(kb), A = wp(ab), foot = wq(ab), T = A.clone().setY(A.y + drop);
       const l1 = K.distanceTo(H), l2 = A.distanceTo(K);
@@ -3952,7 +4011,57 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // her foot turned as it was: its sole where her legs put it
       ab.quaternion.copy(wq(kb).invert().multiply(foot)); ab.updateMatrixWorld(true);
     }
-    kneesBent = { bones: list, pre, post: list.map((b) => b.quaternion.clone()) };
+    if (list.length) bent.push({ bones: list, pre, post: list.map((b) => b.quaternion.clone()) });
+  }
+
+  /**
+   * HER SOLES NEVER GO INTO THE FLOOR. Her feet stand her on two points of each foot (actor/humanFeet.ts: the ball and
+   * the heel), and the shoe round them is bigger than those points: rocked on its ball as it leaves the floor, its toe
+   * box went under (measured on the strip, 2026-11-08). So each sole's lowest points (`WalkFeet.soles`) are read as drawn
+   * and a foot any of them is below the floor is raised by that much, its leg bent to reach it (`bendLegs`): the shoe
+   * stands on the floor where it touches it.
+   */
+  function keepSoles(sk: THREE.SkinnedMesh, f: WalkFeet): void {
+    const p = new THREE.Vector3(), under: [number, number] = [0, 0];
+    f.soles.forEach((sole, k) => {
+      let least = Infinity;
+      for (const i of sole.verts) { sole.mesh.getVertexPosition(i, p); sole.mesh.localToWorld(p); least = Math.min(least, p.y); }
+      under[k] = Math.max(0, sole.floor - least);
+    });
+    bendLegs(sk, under);
+  }
+
+  /**
+   * HER TOES STAY ON THE FLOOR AS HER HEEL LEAVES IT. As a foot leaves the floor it rests on its ball with its heel
+   * high, and her toes, held straight on her foot, went into the floor under it: 1.2 cm of shoe, once a step (measured
+   * on the strip, 2026-11-08). A walker's toes bend up at the ball of the foot instead and stay flat. So, over her bones
+   * as drawn, each foot whose toes' end has come lower than it stands over the floor in her bind (`WalkFeet.bind`) has
+   * its toes turned up about the ball of the foot, keeping their heading, until they are back at that height -- never
+   * past TOE_BEND_MOST.
+   */
+  /** The most her toes bend up at the ball of the foot. BIOLOGICAL SHAPE: a walker's toes bend up 40-55 degrees as the heel
+   * leaves the floor, inside the joint's 60-90 degrees. */
+  const TOE_BEND_MOST = (60 * Math.PI) / 180;
+  function flatToes(sk: THREE.SkinnedMesh, f: WalkFeet): void {
+    if (!rig) return;
+    const bones = sk.skeleton.bones, perUnit = M / f.upm, list: THREE.Object3D[] = [], pre: THREE.Quaternion[] = [];
+    const wp = (b: THREE.Object3D) => b.getWorldPosition(new THREE.Vector3()), wq = (b: THREE.Object3D) => b.getWorldQuaternion(new THREE.Quaternion());
+    for (const leg of f.state.legs) {
+      const ball = leg.ball, end = ball >= 0 ? rig.bind.findIndex((b) => b.parent === ball) : -1;
+      const b = bones[ball], e = bones[end];
+      if (end < 0 || !b?.parent || e?.parent !== b) continue;
+      const B = wp(b), d = wp(e).sub(B), floorEnd = f.bind[end].y * perUnit;
+      if (d.y + B.y >= floorEnd) continue;
+      const L = d.length(), across = Math.hypot(d.x, d.z);
+      if (L < 1e-6 || across < 1e-6) continue;
+      const y = Math.max(-L, Math.min(L, floorEnd - B.y)), r = Math.sqrt(L * L - y * y) / across;
+      let q = new THREE.Quaternion().setFromUnitVectors(d.clone().normalize(), new THREE.Vector3(d.x * r, y, d.z * r).normalize());
+      const angle = 2 * Math.acos(Math.min(1, Math.abs(q.w)));
+      if (angle > TOE_BEND_MOST) q = new THREE.Quaternion().slerp(q, TOE_BEND_MOST / angle);
+      list.push(b); pre.push(b.quaternion.clone());
+      b.quaternion.copy(wq(b.parent).invert().multiply(q).multiply(wq(b))); b.updateMatrixWorld(true);
+    }
+    if (list.length) bent.push({ bones: list, pre, post: list.map((b) => b.quaternion.clone()) });
   }
 
   /**
@@ -6872,6 +6981,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (pose === 'walk') walked += WALK_SPEED * dt;
       if (sitMoving) { sitAmount = stepSit(sitAmount, pose === 'sit' ? 1 : 0, dt); if (sitAmount === (pose === 'sit' ? 1 : 0)) { sitMoving = false; applyLook(); } }
       else sitAmount = pose === 'sit' ? 1 : 0;
+      // walking, her feet take her pose first (stepFeet); out of the walk, the next walk sets them down afresh
+      if (pose === 'walk') stepFeet(dt);
+      else if (walkFeet) walkFeet.fresh = false;
       if (rig) rig.apply(currentTurns());
       // (her sneakers off in a birth position, on again out of it -- and her lift onto their soles with them; put on
       // before she had loaded, made now she has)
@@ -8030,6 +8142,22 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { points: lone, edges: edgeCount.size, openRuns: runs.length, runs: runs.slice(0, 12), stretched: stretched.slice(0, k), over2x: stretched.filter((e) => e.times > 2).length, over1_5x: stretched.filter((e) => e.times > 1.5).length };
         },
         steps: () => ({ heels: sneakers?.heels().map((h) => +(h / M).toFixed(4)) ?? null, heard: stepsHeard, sound: tileSteps.on, walkedM: +walked.toFixed(3), strideM: measure && rig ? +(humanStride(measure, 'walk', bump / 100) / rig.bindScale).toFixed(3) : null }),
+        // her walk on the strip (stepFeet), as drawn: each foot's ankle and ball in the STRIP's frame (metres; z is how far
+        // along it, so a planted foot's stays put), whether her feet hold it, how far they brought her down, and -- with
+        // `soles` -- each shoe's lowest point (or her foot's, barefoot) over the floor
+        walkFeet: (soles = false) => {
+          const f = walkFeet, sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
+          if (!f?.fresh || !sk || !model) return null;
+          model.updateMatrixWorld(true);
+          const p = new THREE.Vector3(), at = (i: number) => { sk.skeleton.bones[i].getWorldPosition(p); return [+(p.x / M).toFixed(4), +(p.y / M).toFixed(4), +(p.z / M + walked).toFixed(4)]; };
+          const lowest = (m: THREE.SkinnedMesh) => { let y = Infinity, x = 0, z = 0; const n = m.geometry.getAttribute('position').count; for (let i = 0; i < n; i++) { m.getVertexPosition(i, p); m.localToWorld(p); if (p.y < y) { y = p.y; x = p.x; z = p.z; } } return [+(x / M).toFixed(4), +(y / M).toFixed(4), +(z / M + walked).toFixed(4)]; };
+          const shoes = soles ? (sneakersShown() && sneakers ? sneakers.meshes.map(lowest) : [lowest(sk)]) : null;
+          return {
+            walkedM: +walked.toFixed(4), x: +f.x.toFixed(4), drop: +f.drop.toFixed(4), bob: bobRange(), leg: +f.leg.toFixed(4), posedLeg: measure ? +(measure.legLength / f.upm).toFixed(4) : null, modelY: +(model.position.y / M).toFixed(4),
+            feet: f.state.feet.map((s, k) => ({ toe: (() => { const e = rig ? rig.bind.findIndex((b) => b.parent === f.state.legs[k].ball) : -1; return e >= 0 ? at(e) : null; })(), locked: s.locked, onBall: s.onBall, stance: +s.stance.toFixed(3), speed: +s.speed.toFixed(3), clear: +s.clear.toFixed(4), weight: +s.weight.toFixed(3), heel: +s.heelRise.toFixed(4), flat: +s.flat.toFixed(3), ankle: at(f.state.legs[k].ankle), ball: f.state.legs[k].ball >= 0 ? at(f.state.legs[k].ball) : null, locks: s.locks, maxLockReleases: s.maxLockReleases })),
+            soles: shoes,
+          };
+        },
         drapeInside: (o2?: { hide?: boolean; units?: number; factor?: number; noDepth?: boolean; opaque?: boolean; hang?: boolean; body?: boolean; list?: boolean }) => {
           if (o2?.body !== undefined) { const bm = bodyOf()?.mesh; if (bm) (bm.material as THREE.Material).colorWrite = o2.body; }
           if (o2?.list) { const seen: string[] = []; three.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh && mm.visible) { let v = true; for (let p: THREE.Object3D | null = mm; p; p = p.parent) if (!p.visible) v = false; if (v) seen.push(`${mm.name || mm.type}:${(Array.isArray(mm.material) ? mm.material[0] : mm.material)?.name ?? ''}`); } }); return seen; }
@@ -8355,6 +8483,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       (floor.material as THREE.Material).dispose();
       ring.geometry.dispose();
       (ring.material as THREE.Material).dispose();
+      strip.dispose();
       stool.geometry.dispose();
       (stool.material as THREE.Material).dispose();
       three.background = null;

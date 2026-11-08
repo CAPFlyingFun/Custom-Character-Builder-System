@@ -14,8 +14,9 @@
  * - THE TWIST: the pelvis turns to bring the swinging leg's hip forward, most at its heel strike, and the chest turns the
  *   other way (the arms already swing against the legs).
  *
- * The rise and fall -- lowest at double support, highest at midstance -- is not written here: it is what the legs' own
- * angles do once the lowest sole is stood on the floor (the room's `place`). How MUCH of it shows is (`bobDrop`): shown
+ * The rise and fall -- lowest at double support, highest at midstance -- is not written here: it is what her legs do
+ * once her feet stand her on the floor (actor/humanFeet.ts: her body comes down as far as her legs need to reach; in the
+ * room, `stepFeet`). How MUCH of it shows is (`bobDrop`): shown
  * all, her legs' 3 cm was too much (Joshua, 2026-11-08: "Half the movement... or better yet add a slider so I can tweak
  * the up/down (bob) and left/right (sway) myself"), so her hips are lowered from it, never raised -- a leg cannot grow --
  * and her knees bend to take it up, as a walker's standing knee does at midstance.
@@ -96,24 +97,6 @@ export function walkWeight(phase: number, stance: HumanStance, sway = 1): WalkWe
 export function bobDrop(rise: number, lowest: number, amount = 1): number {
   const share = Math.min(1, Math.max(0, WALK_WEIGHT.bob * (Number.isFinite(amount) ? amount : 1)));
   return (1 - share) * Math.max(0, rise - lowest);
-}
-
-/** How long a foot takes to come fully onto the ground after it lands, and off it before it leaves, a share of its
- * cycle. GAME TUNING: long enough that the body never jumps as the weight moves from one foot to the other. */
-export const CONTACT_EASE = 0.08;
-
-/**
- * How much each foot is carrying her at `phase` of `stance`, [left, right], 0 to 1: a foot in its swing carries nothing
- * (its toes may point down past the other's sole and must not lift her), a foot on the ground all of it, eased in as it
- * lands and out as it leaves. Standing, both.
- */
-export function footContact(phase: number, stance: HumanStance): [number, number] {
-  if (stance === 'stand') return [1, 1];
-  const share = STANCE_SHARE[stance];
-  const carry = (legPhase: number) => (legPhase >= share ? 0 : Math.max(0, Math.min(1, legPhase / CONTACT_EASE, (share - legPhase) / CONTACT_EASE)));
-  const fract = (x: number) => x - Math.floor(x);
-  // (`humanPose`: the left leg's cycle starts as it lands at 0.25, the right's half a cycle later)
-  return [carry(fract(phase - 0.25)), carry(fract(phase + 0.25))];
 }
 
 type Q = [number, number, number, number];
