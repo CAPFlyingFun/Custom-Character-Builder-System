@@ -261,6 +261,9 @@ const ON_HER_DRAPE: readonly (readonly [string, number, string, readonly string[
   ['Bone_005', 12, 'Bone_004', ['Bone_005', 'Bone_004', 'Bone_003', 'Bone_002']], ['Bone_004', 12, 'Bone_003', ['Bone_004', 'Bone_003', 'Bone_002']],
   [BABY_BONES.neck, 50, BABY_BONES.head, [BABY_BONES.neck, BABY_BONES.head, BABY_BONES.crown, 'Bone_019'], 60],
 ];
+/** v3: how far down her canal her baby's head is (the birth's `down`) before her opening's doors are told what passes them
+ * (its body's points are read each frame from there). GAME TUNING (the head reaches the doors near 0.7). */
+const BIRTH_DOORS_FROM = 0.4;
 const BIRTH_HEAD = Object.freeze({ radius: 0.0475, atLength: 0.51, lift: [0, 0.008, 0.007] as const, tangentSpan: 0.0125, bodyBehind: 0.1, pastMouth: 0.6, centreEase: 0.35 });
 /**
  * THE AFTERBIRTH, drawn (GAME TUNING; its timing is birthSequence.ts AFTERBIRTH): the placenta folded soft as it comes down
@@ -6220,14 +6223,28 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const headRadiusOf = (scale: number): number => BIRTH_HEAD.radius * (scale * BABY_MODEL_LENGTH) / BIRTH_HEAD.atLength;
   /** How far down her canal her baby's head's middle is (metres from the top of her cervix; past `length`, out of her). */
   const headDownOf = (m: BirthMoment, length: number, scale: number): number => (m.down <= 1 ? m.down * length : length + (m.down - 1) * scale * BABY_MODEL_LENGTH);
+  /** v3: the moment on the birth's clock its first baby is born (all of it out of her), at this pace and count. */
+  let bornAtOf: { key: string; at: number } | null = null;
+  function bornAt(): number {
+    const key = `${birthPace}|${babyCount}`;
+    if (bornAtOf?.key !== key) {
+      let lo = 0, hi = birthLength(birthPace, babyCount);
+      for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (birthAt(m, birthPace, birthEvents, babyCount).babies.some((b) => b.born)) hi = m; else lo = m; }
+      bornAtOf = { key, at: hi };
+    }
+    return bornAtOf.at;
+  }
   /**
    * The birth stepped: its clock on, her cervix, her canal round her baby's head, her opening and the skin round it, as
    * it has them now (her baby itself is laid by `birthPlace`, as her babies are placed).
    */
   function stepBirth(dt: number): void {
-    if (birthClock === null || !vulva) { birthNow = null; birthPath = null; return; }
+    if (birthClock === null || (!vulva && !organs)) { birthNow = null; birthPath = null; organs?.setPassing(null); return; }
     // (out of a birth pose it waits where it is)
     if (birthRunning && BIRTH_POSES_OK.includes(pose)) birthClock += dt;
+    // (v3, on her skeleton: held as her baby is born -- Joshua, 2026-11-08: "Stop at the born since we don't have any skin
+    // yet... we will come back to on her after we have skin for the model")
+    if (!vulva) { const held = bornAt(); if (birthClock > held) { birthClock = held; birthRunning = false; } }
     birthNow = birthAt(birthClock, birthPace, birthEvents, babyCount);
     // her baby drawn through it even without SEE BABY: hidden inside her by her own body until it comes out of her (only
     // the baby: its sac, her womb's wall, its placenta and cord stay as SEE BABY has them)
@@ -6238,6 +6255,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (babyHolder && !babyShown) { babyHolder.visible = true; for (const m of [babySac, babyWall, ...babyOwnSacs, ...placentaMeshes, ...cordMeshes]) if (m) m.visible = false; birthNow.placentas.forEach((p, k) => { if (placentaMeshes[k] && p.separate > 0) placentaMeshes[k].visible = true; }); }
     // (her opening and canal follow the baby whose turn it is)
     const r = babyRoots()[birthNow.active] ?? babyRoots()[0], scale = r?.scale.x ?? 0.33, R = headRadiusOf(scale);
+    if (!vulva) {
+      // v3, ON HER SKELETON (the skeleton-outward plan, Phase 1): her cervix and canal opened as her labour has them; her
+      // baby's way down her own canal (organs: actor/birthCanal.ts); and her opening's doors pushed by her baby -- all of
+      // it, head, shoulders, body and legs -- where it passes them (actor/birthDoors.ts `pressDoor`)
+      organs!.setCervix(Math.max(birthOpenPct / 100, birthNow.cervix));
+      birthPath = organs!.canalPath();
+      if (birthPath) { birthLen ??= birthPath.length; birthPath.length = birthLen; }
+      organs!.setPassing(birthNow.down > BIRTH_DOORS_FROM && r ? babyPassing(r) : null);
+    } else {
     // what of her baby is passing through her opening: her rim hugs its outline (the head, then its shoulders and body)
     birthPath = vulva.canalPath();
     // (and the way it travels there: her canal's own way out at her opening)
@@ -6270,6 +6296,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       open = Math.max(open, AFTERBIRTH.open * sm(0.85, 1.2, pd) * (1 - sm(1.75, 2, pd))); }
     const bulge = 0.6 * (d > L - 0.07 ? Math.min(1, (d - (L - 0.07)) / (0.07 - 0.5 * R)) : 0) * (d > L ? Math.max(0, 1 - (d - L) / R) : 1);
     vulva.setBirthDrive({ open, bulge: Math.max(0, bulge), cervix: birthNow.cervix });
+    }
     // her belly settling smaller once her baby is born (a step at a time: her shape is laid again each step)
     // (with twins and triplets, by each one out: `delivered`)
     { const want = 1 - BIRTH_SHRINK * birthNow.delivered - AFTERBIRTH.shrink * birthNow.afterbirth;
@@ -6280,7 +6307,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         applyLook();
       } }
     birthLineAt += dt;
-    if (birthLineAt > 0.25) { birthLineAt = 0; const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(birthNow, (vulva?.drawnOpen ?? 0) * 10) + (birthRunning ? '' : ' · paused');
+    if (birthLineAt > 0.25) { birthLineAt = 0; const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(birthNow, vulva ? vulva.drawnOpen * 10 : (organs?.doorOpenM ?? 0) * 100) + (!vulva && birthClock >= bornAt() ? ' · held at born (on her: once her skin is built)' : birthRunning ? '' : ' · paused');
       const len = birthLength(birthPace, babyCount), tl = fields[SARAH_LAB_FIELD.birthTime];
       if (tl) tl.textContent = `TIMELINE · ${Math.floor(birthClock / 60)}:${String(Math.floor(birthClock % 60)).padStart(2, '0')} of ${Math.floor(len / 60)}:${String(Math.round(len % 60)).padStart(2, '0')}`;
       if (birthTimeInput && document.activeElement !== birthTimeInput) birthTimeInput.value = String(Math.round((birthClock / len) * 1000)); }
@@ -6536,7 +6563,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** BIRTH: begun (from the start) or paused and on again; reset takes it back to before it began. */
   function birthControl(cmd: 'run' | 'reset' | 'pace'): void {
-    if (cmd === 'reset') { birthRest = null; birthOutLines.length = 0; birthRests.length = 0; birthCentreOffs.length = 0; placeBassinet(false); twinHandShare = 0; for (const c of cordOuts) if (c) { c.cut = false; c.outerLaid = false; c.stumpLaid = false; c.remnantLaid = false; for (const t of [c.outerMesh, c.stumpMesh, c.remnantMesh]) if (t) t.visible = false; } cordCut = false; birthEvents.cutAt = null; birthEvents.cuts = []; birthEvents.placentaAt = null; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); applyLook(); const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(null); return; }
+    if (cmd === 'reset') { birthRest = null; birthOutLines.length = 0; birthRests.length = 0; birthCentreOffs.length = 0; placeBassinet(false); twinHandShare = 0; for (const c of cordOuts) if (c) { c.cut = false; c.outerLaid = false; c.stumpLaid = false; c.remnantLaid = false; for (const t of [c.outerMesh, c.stumpMesh, c.remnantMesh]) if (t) t.visible = false; } cordCut = false; birthEvents.cutAt = null; birthEvents.cuts = []; birthEvents.placentaAt = null; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); organs?.setPassing(null); organs?.setCervix(birthOpenPct / 100); applyLook(); const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(null); return; }
     if (cmd === 'pace') { const was = birthPace; birthPace = was === 'fast' ? 'realistic' : 'fast'; if (birthClock !== null) birthClock *= was === 'fast' ? 5 : 1 / 5; return; }
     // (a birth from RECLINE or SQUAT only -- Joshua, 2026-11-02: LEGS APART is her pre-labour stance)
     if (birthClock === null && !pregnant()) { const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = 'BIRTH · not pregnant (PREGNANT · ON)'; return; }

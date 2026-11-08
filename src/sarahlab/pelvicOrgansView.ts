@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, doorFrame, doorMeshes, outerSkin, swingDoors, type DoorFrame } from '../actor/birthDoors';
+import { DOORS, birthAngles, doorFrame, doorMeshes, followDoor, outerSkin, passingOutlines, pressDoor, swingDoors, type Angles, type DoorFrame } from '../actor/birthDoors';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -99,6 +99,8 @@ export class PelvicOrgansView {
   private layout: OrganLayout | null = null;
   private bladderMl: number = BLADDER.defaultMl;
   private open = 0;
+  /** how far BIRTH OPENING pushes her doors open (Joshua's 10 cm circle: actor/birthDoors.ts BIRTH_HEAD) */
+  private doorPush = 0;
   /** Her opening's doors (actor/birthDoors.ts): hung in her rest frame from her pelvis, how far they stand open now (0..1). */
   private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial };
   private swing = 0;
@@ -108,6 +110,13 @@ export class PelvicOrgansView {
   private fold = 0;
   private drawnFold = -1;
   private laidAngles = { outer: 0, mid: 0, inner: 0, hinge: 0 };
+  /** WHAT PASSES THROUGH HER (a birth: her baby, all of it), in her rest frame (metres), and each of the doors' sections
+   * as it pushes them, front to back: where it holds each (`want`) and where each stands now (`now`) -- null once they
+   * are all back where BIRTH OPENING has them (actor/birthDoors.ts `pressDoor`). */
+  private passing: Float32Array | null = null;
+  private pressed: { want: { right: Angles[]; left: Angles[] }; now: { right: Angles[]; left: Angles[] } } | null = null;
+  private pressTick = 0;
+  private openNow = 0;
   /** Her week (null: not pregnant) and each baby's weight, g; and her womb grown for them. */
   private week: number | null = null;
   private babyGrams: readonly number[] = [];
@@ -183,6 +192,11 @@ export class PelvicOrgansView {
    * round to a head's width. Only while she is pregnant; laid again only when it moves a hundredth.
    */
   setOpening(open: number): void {
+    this.doorPush = Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0));
+    this.setCervix(open);
+  }
+  /** Her cervix and canal opened `open` (0..1) by her labour, her doors left to what passes through them (a birth). */
+  setCervix(open: number): void {
     const o = Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0));
     if (Math.abs(o - this.open) < 0.01 && !(o === 0 && this.open !== 0)) return;
     this.open = o; this.room = null;
@@ -289,8 +303,9 @@ export class PelvicOrgansView {
     this.draw();
     // her opening's doors: toward where BIRTH OPENING holds them, closing as a pneumatic door does
     // (BIRTH OPENING lays them round Joshua's 10 cm circle coming down, closed to its widest: actor/birthDoors.ts BIRTH_HEAD)
-    this.swing = swingDoors(this.swing, this.grown ? this.open : 0, dt);
+    this.swing = swingDoors(this.swing, this.grown ? this.doorPush : 0, dt);
     this.fold = swingDoors(this.fold, this.foldWant, dt);
+    this.pressDoors(dt);
     this.drawDoors();
   }
 
@@ -303,12 +318,69 @@ export class PelvicOrgansView {
   /** How far they are folded now (0..1) and the angles laid on them (degrees). */
   get doorFold(): number { return this.fold; }
   get doorAngles(): { outer: number; mid: number; inner: number; hinge: number } { return { ...this.laidAngles }; }
+  /** How wide her opening stands now between its doors' lips, at its middle (metres). */
+  get doorOpenM(): number { return this.openNow; }
+
+  /**
+   * WHAT PASSES THROUGH HER OPENING NOW (a birth, Joshua 2026-11-08: "based on the whole baby's model, not just the head
+   * so it doesn't close up while the baby is still halfway out"): `world` its points (x, y, z after one another, world
+   * units), or null when nothing is passing. Each of her doors' sections is pushed by its own slice of it.
+   */
+  setPassing(world: ArrayLike<number> | null): void {
+    if (!world || world.length < 9) { this.passing = null; return; }
+    this.holder.updateMatrixWorld(true);
+    const e = this.toRest.copy(this.holder.matrixWorld).invert().elements, out = this.passing && this.passing.length === world.length ? this.passing : new Float32Array(world.length);
+    for (let i = 0; i + 2 < world.length; i += 3) {
+      const x = world[i], y = world[i + 1], z = world[i + 2];
+      out[i] = e[0] * x + e[4] * y + e[8] * z + e[12]; out[i + 1] = e[1] * x + e[5] * y + e[9] * z + e[13]; out[i + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+    }
+    this.passing = out;
+  }
+  /**
+   * HER BABY'S WAY DOWN (a birth on her skeleton): her canal as it is laid now, from its top (the top of her cervix) down
+   * to her opening, in the world (the birth places her baby along it as it places one down the canal of her skin: points,
+   * how far down each is, its length; metres down, world points). Null when she is not pregnant.
+   */
+  canalPath(): { points: THREE.Vector3[]; down: number[]; length: number } | null {
+    const l = this.layout;
+    if (!l || !this.grown) return null;
+    this.holder.updateMatrixWorld(true);
+    const rest = [...l.vagina.path].reverse(), down = [0];
+    for (let k = 1; k < rest.length; k++) down.push(down[k - 1] + Math.hypot(rest[k][0] - rest[k - 1][0], rest[k][1] - rest[k - 1][1], rest[k][2] - rest[k - 1][2]));
+    return { points: rest.map((p) => this.holder.localToWorld(new THREE.Vector3(p[0], p[1], p[2]))), down, length: down[down.length - 1] };
+  }
+
+  /** Her doors' sections pushed by what passes (each solved every other frame, the two halves in turn: a frame's time),
+   * each following where it is held -- as fast as it is pushed, as the closer brings it back once let go -- and handed
+   * back to BIRTH OPENING once nothing holds them. */
+  private pressDoors(dt: number): void {
+    if (!this.passing && !this.pressed) return;
+    const J = DOORS.stations, uniform = birthAngles(this.grown ? this.swing : 0), row = (): Angles[] => Array.from({ length: J }, () => uniform);
+    this.pressed ??= { want: { right: row(), left: row() }, now: { right: row(), left: row() } };
+    const P = this.pressed, tick = this.pressTick++;
+    if (this.passing) {
+      const o = passingOutlines(this.doors.frame, this.passing);
+      for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) {
+        const touch = o[side][j];
+        // (nothing of it at this section: closed; something: worked out every other frame)
+        if (!touch) P.want[side][j] = uniform;
+        else if ((j + tick) % 2 === 0) P.want[side][j] = pressDoor(touch, P.want[side][j], j);
+      }
+    } else for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) P.want[side][j] = uniform;
+    let settled = !this.passing;
+    for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) {
+      const a = (P.now[side][j] = followDoor(P.now[side][j], P.want[side][j], dt)), w = P.want[side][j];
+      if (a.hinge !== w.hinge || a.inner !== w.inner || a.mid !== w.mid || a.outer !== w.outer) settled = false;
+    }
+    this.drawnSwing = -1;
+    if (settled) this.pressed = null;
+  }
 
   private drawDoors(): void {
     if (Math.abs(this.swing - this.drawnSwing) < 1e-4 && Math.abs(this.fold - this.drawnFold) < 1e-4) return;
     this.drawnSwing = this.swing; this.drawnFold = this.fold;
-    const d = doorMeshes(this.doors.frame, this.swing, this.fold), g = this.doors.mesh.geometry;
-    this.laidAngles = d.angles;
+    const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now), g = this.doors.mesh.geometry;
+    this.laidAngles = d.angles; this.openNow = d.openM;
     const colour = new Float32Array(d.lining.length * 3), lining = new THREE.Color(DOOR_COLOURS.lining), skin = new THREE.Color(DOOR_COLOURS.skin);
     d.lining.forEach((l, i) => (l ? lining : skin).toArray(colour, i * 3));
     g.setAttribute('position', new THREE.BufferAttribute(d.points, 3)); g.setAttribute('color', new THREE.BufferAttribute(colour, 3));
