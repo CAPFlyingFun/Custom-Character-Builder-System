@@ -15,6 +15,7 @@
  * included): the random-pose test's numbers.
  */
 import * as THREE from 'three';
+import { depthsInSkin, skinGrid } from '../actor/insideSkin';
 
 /** What counts as close to her skin: a bone this near it (or through it) is reported. GAME TUNING (Joshua, 2026-11-09:
  * "it's okay if it's close"). Metres. */
@@ -37,7 +38,7 @@ export interface LimbFit {
   readonly v2Joint: (name: string) => THREE.Vector3 | null;
 }
 
-export interface BoneDepth { readonly bone: string; readonly points: number; readonly leastMm: number; readonly closeCount: number; readonly throughCount: number }
+export interface BoneDepth { readonly bone: string; readonly points: number; readonly leastMm: number; readonly at: readonly number[]; readonly closeCount: number; readonly throughCount: number }
 
 export class SkeletonInV2 {
   readonly mesh: THREE.SkinnedMesh;
@@ -123,54 +124,41 @@ export class SkeletonInV2 {
   }
 
   set visible(on: boolean) { this.mesh.visible = on; }
+  /** the points `depths` last found within SKELETON_CLOSE_M of her skin or through it (world), to mark them */
+  flagged: { x: number; y: number; z: number; through: boolean }[] = [];
 
   /**
-   * How deep each piece of bone sits under her skin now, by the bone that carries it: its least depth (mm; negative =
-   * through her skin), and how many of its points are within SKELETON_CLOSE_M of her skin or through it. Every `stride`th
-   * point of the skeleton is checked against every point of her body as drawn (morphs, shapes and pose; not the jiggle).
-   * `units`: world units per metre.
+   * How deep each piece of bone sits under her skin now, by the bone that carries it (actor/insideSkin.ts: inside by six
+   * rays, depth to the nearest triangle of her skin): its least depth (mm; negative = through her skin), how many of its
+   * points are within SKELETON_CLOSE_M of her skin or through it, and where its worst point is (her rest frame as she is
+   * placed: metres in the world over `units`). Every `stride`th point of the skeleton is checked against her body as drawn
+   * now (morphs, shapes and pose; not the jiggle). Bones in `skip` are left out (her fingers: v2 draws its own over them).
    */
-  depths(units: number, stride = 3): BoneDepth[] {
+  depths(units: number, stride = 3, skip: ReadonlySet<string> = new Set()): BoneDepth[] {
     const body = this.body, bp = body.geometry.getAttribute('position');
     body.updateMatrixWorld(true); this.mesh.updateMatrixWorld(true);
-    // her skin as drawn now (world), and its normals from its triangles
     const m = bp.count, S = new Float32Array(m * 3), v = new THREE.Vector3();
     for (let i = 0; i < m; i++) { body.getVertexPosition(i, v); v.applyMatrix4(body.matrixWorld).toArray(S, i * 3); }
-    const SN = new Float32Array(m * 3), ix = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array;
+    const ix = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array;
     if (!ix) return [];
-    for (let t = 0; t + 2 < ix.length; t += 3) {
-      const a = ix[t] * 3, b = ix[t + 1] * 3, c = ix[t + 2] * 3;
-      const ux = S[b] - S[a], uy = S[b + 1] - S[a + 1], uz = S[b + 2] - S[a + 2], wx = S[c] - S[a], wy = S[c + 1] - S[a + 1], wz = S[c + 2] - S[a + 2];
-      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
-      for (const k of [a, b, c]) { SN[k] += nx; SN[k + 1] += ny; SN[k + 2] += nz; }
-    }
-    // (a grid of her skin's points, 3 cm cells)
-    const cell = 0.03 * units, key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
-    const grid = new Map<string, number[]>();
-    for (let i = 0; i < m; i++) { const k = key(S[i * 3], S[i * 3 + 1], S[i * 3 + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
-    const out = new Map<string, { points: number; least: number; close: number; through: number }>();
-    const sp = this.mesh.geometry.getAttribute('position'), p = new THREE.Vector3();
-    for (let i = 0; i < sp.count; i += stride) {
-      this.mesh.getVertexPosition(i, p); p.applyMatrix4(this.mesh.matrixWorld);
-      const cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell), cz = Math.floor(p.z / cell);
-      let best = -1, bd = Infinity;
-      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
-        const l = grid.get(`${cx + dx},${cy + dy},${cz + dz}`);
-        if (l) for (const j of l) { const d = (S[j * 3] - p.x) ** 2 + (S[j * 3 + 1] - p.y) ** 2 + (S[j * 3 + 2] - p.z) ** 2; if (d < bd) { bd = d; best = j; } }
-      }
-      const o = out.get(this.owner[i]) ?? { points: 0, least: Infinity, close: 0, through: 0 };
+    const grid = skinGrid(S, ix, 0.02 * units);
+    const sp = this.mesh.geometry.getAttribute('position'), which: number[] = [];
+    for (let i = 0; i < sp.count; i += stride) if (!skip.has(this.owner[i])) which.push(i);
+    const pts = new Float32Array(which.length * 3);
+    which.forEach((i, k) => { this.mesh.getVertexPosition(i, v); v.applyMatrix4(this.mesh.matrixWorld).toArray(pts, k * 3); });
+    const depth = depthsInSkin(grid, pts, 0.06 * units);
+    const out = new Map<string, { points: number; least: number; at: number[]; close: number; through: number }>();
+    this.flagged = [];
+    which.forEach((i, k) => {
+      if (depth[k] / units < SKELETON_CLOSE_M) this.flagged.push({ x: pts[k * 3], y: pts[k * 3 + 1], z: pts[k * 3 + 2], through: depth[k] < 0 });
+      const o = out.get(this.owner[i]) ?? { points: 0, least: Infinity, at: [], close: 0, through: 0 }, d = depth[k] / units;
       o.points++;
-      if (best >= 0) {
-        // depth under her skin along its outward normal there (metres; < 0 through it)
-        const nl = Math.hypot(SN[best * 3], SN[best * 3 + 1], SN[best * 3 + 2]) || 1;
-        const depth = ((S[best * 3] - p.x) * SN[best * 3] + (S[best * 3 + 1] - p.y) * SN[best * 3 + 1] + (S[best * 3 + 2] - p.z) * SN[best * 3 + 2]) / nl / units;
-        o.least = Math.min(o.least, depth);
-        if (depth < SKELETON_CLOSE_M) o.close++;
-        if (depth < 0) o.through++;
-      }
+      if (d < o.least) { o.least = d; o.at = [pts[k * 3] / units, pts[k * 3 + 1] / units, pts[k * 3 + 2] / units].map((x) => +x.toFixed(3)); }
+      if (d < SKELETON_CLOSE_M) o.close++;
+      if (d < 0) o.through++;
       out.set(this.owner[i], o);
-    }
-    return [...out.entries()].map(([bone, o]) => ({ bone, points: o.points, leastMm: Number.isFinite(o.least) ? +(o.least * 1000).toFixed(1) : 999, closeCount: o.close, throughCount: o.through })).sort((a, b) => a.leastMm - b.leastMm);
+    });
+    return [...out.entries()].map(([bone, o]) => ({ bone, points: o.points, leastMm: +(o.least * 1000).toFixed(1), at: o.at, closeCount: o.close, throughCount: o.through })).sort((a, b) => a.leastMm - b.leastMm);
   }
 
   dispose(): void { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); (this.mesh.material as THREE.Material).dispose(); }

@@ -8678,7 +8678,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (each bone named by the joint it is, where the room's measure knows it)
           const jt = measure?.joints as unknown as Record<string, number> | undefined, bones = bodyOf()?.mesh.skeleton.bones ?? [], label = new Map<string, string>();
           if (jt) for (const [k, i] of Object.entries(jt)) if (bones[i]) label.set(bones[i].name, k);
-          return { stretch: skeletonV2.stretch, bones: skeletonV2.depths(M, stride).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
+          // (her fingers left out: v2 draws its own fingers over them; every bone under her wrists but the hands' own)
+          const skip = new Set<string>(), sk = bodyOf()?.mesh.skeleton;
+          if (jt && sk) for (const w of [jt.wristL, jt.wristR]) sk.bones[w]?.traverse((o) => { if (o !== sk.bones[w]) skip.add(o.name); });
+          return { stretch: skeletonV2.stretch, bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
+        },
+        // the points the last `skeletonDepths` found close (orange) or through her skin (red), marked in the room
+        skeletonMarks: (on: boolean) => {
+          three.getObjectByName('skeletonMarks')?.removeFromParent();
+          if (!on || !skeletonV2) return 0;
+          const pts = skeletonV2.flagged, g = new THREE.SphereGeometry(0.004 * M, 6, 4), mesh = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ depthTest: false, transparent: true }), Math.max(1, pts.length));
+          const m4 = new THREE.Matrix4(), c = new THREE.Color();
+          pts.forEach((p, k) => { mesh.setMatrixAt(k, m4.makeTranslation(p.x, p.y, p.z)); mesh.setColorAt(k, c.set(p.through ? 0xff2020 : 0xff9a00)); });
+          mesh.count = pts.length; mesh.name = 'skeletonMarks'; mesh.renderOrder = 999; mesh.frustumCulled = false;
+          three.add(mesh);
+          return pts.length;
         },
         // a random pose from `seed` over her own (null: none), held to her ranges (the skeleton-in-v2 test)
         randomPose: (seed: number | null) => { randomTurns = seed === null ? null : randomPoseTurns(seed); applyMotion(); return randomTurns?.length ?? 0; },

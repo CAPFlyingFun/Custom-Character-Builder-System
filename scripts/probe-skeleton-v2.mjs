@@ -43,7 +43,8 @@ try {
     if (!report.stretch) { report.stretch = res?.stretch; log('limbs stretched', JSON.stringify(res?.stretch)); }
     const worst = (d ?? []).slice(0, 8), through = (d ?? []).reduce((s, b) => s + b.throughCount, 0), close = (d ?? []).reduce((s, b) => s + b.closeCount, 0);
     report[key] = { through, close, worst, all: d };
-    log(key, `through ${through}, within 5 mm ${close};`, worst.map((b) => `${b.joint || b.bone} ${b.leastMm}`).join(', '));
+    report[key].marked = await hook('skeletonMarks', true);
+    log(key, `through ${through}, within 5 mm ${close};`, worst.map((b) => `${b.joint || b.bone} ${b.leastMm} @${b.at}`).join(', '));
   };
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('[data-role="sarah-lab-hud"]', { timeout: 240_000 });
