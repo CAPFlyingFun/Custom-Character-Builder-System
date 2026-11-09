@@ -72,7 +72,9 @@ export const BELLY_SKIN = Object.freeze({
   /** the skin at least this far outside whatever fills her */
   wall: 0.012,
   /** draped over it as a ball this big would be (smaller: it follows every bump; bigger: rounder) */
-  drape: 0.07,
+  drape: 0.11,
+  /** passes of smoothing over the push, so it reads as one belly and not each thing under it */
+  smooth: 4,
   /** how softly the pushed shape blends into her rest shape */
   blend: 0.004,
   /** her first and last rows stay where her bone holds them; the next few follow more and more */
@@ -126,7 +128,7 @@ export function layBand(saved: SavedBelly, navelY: number, xiphoid: readonly num
     const ha = Number.isNaN(half[a]) ? half[b] : half[a], hb = Number.isNaN(half[b]) ? ha : half[b], u = b > a ? (k - a) / (b - a) : 0.5;
     half[k] = ha + (hb - ha) * u - T.waistPinch * Math.sin(Math.PI * u);
   }
-  const W = smoothRow(half, 3);
+  const W = smoothRow(smoothRow(half, 3), 3);
   // BEHIND: the tips of her spine's processes plus the tissue there
   const back = smoothRow(Float32Array.from(R.map((r) => r.boneBack - T.back)), 3);
   // IN FRONT: her belly's wall -- the mons over her pubic bone, out to her navel, up to her xiphoid; over her ribs no less
@@ -213,7 +215,7 @@ export function shapeBand(band: Band, rows: Float32Array, sources: readonly Arra
   // NEED: how far out each point must stand (rest metres from its row's middle), from every source point
   const need = state.need; need.fill(-Infinity);
   const inv = state.inv, wall = S.wall, ball = S.drape, step = R > 1 ? (band.y[R - 1] - band.y[0]) / (R - 1) : 1;
-  const reach = Math.sqrt(2 * ball * 0.06), rowSpan = Math.ceil(reach / step);
+  const reach = Math.sqrt(2 * ball * 0.05), rowSpan = Math.ceil(reach / step);
   const hs = new Float32Array(R), lx = new Float32Array(R), lz = new Float32Array(R);
   for (const src of sources) for (let p = 0; p + 2 < src.length; p += 3) {
     const X = src[p], Y = src[p + 1], Z = src[p + 2];
@@ -253,6 +255,20 @@ export function shapeBand(band: Band, rows: Float32Array, sources: readonly Arra
     for (let c = 0; c < C; c++) {
       const i = k * C + c, x = need[i] - band.rest[i];
       push[i] = Number.isFinite(x) ? pin * b * Math.log1p(Math.exp(Math.min(40, x / b))) : 0;
+    }
+  }
+  // (smoothed round and up and down, never below what any point needs by more than a few millimetres)
+  if (S.smooth > 0) {
+    const tmp = new Float32Array(R * C);
+    for (let pass = 0; pass < S.smooth; pass++) {
+      for (let k = 0; k < R; k++) for (let c = 0; c < C; c++) {
+        const i = k * C + c, l = k * C + ((c + C - 1) % C), r = k * C + ((c + 1) % C), d = k > 0 ? i - C : i, u2 = k < R - 1 ? i + C : i;
+        tmp[i] = (2 * push[i] + push[l] + push[r] + push[d] + push[u2]) / 6;
+      }
+      for (let i = 0; i < R * C; i++) {
+        const k = Math.floor(i / C), pin = Math.min(1, Math.min(k, R - 1 - k) / Math.max(1, S.pinRows + 1)), floor = Number.isFinite(need[i]) ? need[i] - band.rest[i] - 0.003 : 0;
+        push[i] = pin * Math.max(tmp[i], floor, 0);
+      }
     }
   }
   // HOLD: out at once; back in slowly (after a birth: soft, then firming)
