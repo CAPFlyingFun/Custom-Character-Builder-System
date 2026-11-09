@@ -195,8 +195,11 @@ describe('her opening\'s doors', () => {
       for (let i = 0; i < m.points.length; i += 3) {
         const d = [0, 1, 2].map((k) => m.points[i + k] - frame.mouth[k]), dot = (v: readonly number[]) => d[0] * v[0] + d[1] * v[1] + d[2] * v[2];
         expect(into(dot(frame.x), dot(frame.t), dot(frame.n), c)).toBeLessThan(0.002);
-        // (the right door on its side of her middle, the left on its own)
-        expect(dot(frame.x) * (i < m.points.length / 2 ? 1 : -1)).toBeGreaterThan(DOORS.gap - 0.0005);
+        // (the right door on its side of her middle, the left on its own -- the bands round her opening's ends, which join
+        // them, aside: round the loop the right door's sections come first, then the front band, the left door, the back band)
+        const C = 2 * J + 2 * (DOORS.bandSteps - 1), per = m.points.length / 3 / C, sec = Math.floor(i / 3 / per);
+        if (sec < J) expect(dot(frame.x)).toBeGreaterThan(DOORS.gap - 0.0005);
+        else if (sec >= J + DOORS.bandSteps - 1 && sec < 2 * J + DOORS.bandSteps - 1) expect(-dot(frame.x)).toBeGreaterThan(DOORS.gap - 0.0005);
       }
       mostOpen = Math.max(mostOpen, m.openM); mostLong = Math.max(mostLong, want.ends.front + want.ends.back);
       // (its body -- shoulders to hips -- in her opening)
