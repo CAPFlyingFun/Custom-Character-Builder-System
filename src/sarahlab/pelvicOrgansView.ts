@@ -59,6 +59,13 @@ export const JUMP_ACCEL = 50;
  * TUNING (within what a pregnant womb does as she moves; back the least, her spine is right behind it).
  */
 export const WOMB_SWING = Object.freeze({ forward: 0.35, back: 0.15, side: 0.35, mostForwardDeg: 25, mostBackDeg: 6, mostSideDeg: 18 });
+/**
+ * HER WOMB GROWS AND SHRINKS, NOT SNAPS (Joshua, 2026-11-09: "the belly/womb kept snapping to a odd shape... It was not
+ * acting dynamic and like a full sim"). Each time it is laid again -- a new size, its sac grown round her babies, her
+ * cervix opening -- it eases from where it was drawn to its new shape over this long, s, smoothly (so a slider dragged
+ * keeps it flowing, each new shape taken up from wherever it then is). GAME TUNING.
+ */
+export const WOMB_EASE_SECONDS = 0.6;
 /** What the room tells her womb's swing each frame: her womb against a full-term one, her FIRMNESS, how fed she is,
  * and whether she stands (her upright is learnt then). */
 export interface WombSwingTune { readonly fullness: number; readonly firmness: number; readonly fed: number; readonly standing: boolean }
@@ -166,6 +173,8 @@ export class PelvicOrgansView {
   private readonly pivotM = new THREE.Matrix4();
   private readonly wombToWorld = new THREE.Matrix4();
   swingTune: WombSwingTune = { fullness: 1, firmness: 50, fed: 0, standing: true };
+  /** WOMB_EASE_SECONDS: her womb as drawn before it was last laid again (world units), and how far it has eased since (s) */
+  private ease: { from: Float32Array; t: number } | null = null;
 
   /**
    * @param pelvis her measured pelvis (rest metres)
@@ -271,6 +280,8 @@ export class PelvicOrgansView {
   }
 
   private build(): void {
+    // (her womb as drawn now, to ease from: only while it stays her pregnant womb, the same points)
+    const before = this.organs.find((o) => o.name === 'uterus'), was = before && this.grown ? ((before.mesh.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array).slice() : null;
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
     this.organs = [];
     const laid = layOrgans(this.pelvis, this.bladderMl);
@@ -303,6 +314,8 @@ export class PelvicOrgansView {
     }
     const by = (n: Name) => this.organs.find((o) => o.name === n)!.cage;
     this.touching = (['uterus', 'vagina'] as const).map((n) => ({ a: by('bladder'), b: by(n), gaps: restGaps(by('bladder'), by(n)) }));
+    const now = this.organs.find((o) => o.name === 'uterus')!;
+    this.ease = was && this.grown && was.length === now.out.length ? { from: was, t: 0 } : null;
     this.draw();
   }
 
@@ -332,7 +345,7 @@ export class PelvicOrgansView {
       let off = 0;
       for (let i = 0; i < now.length; i++) off = Math.max(off, Math.abs(now[i] - (this.last[i] + this.speed[i] * dt)));
       if (off > JUMP_ACCEL * dt * dt) {
-        this.stepSwing(0);
+        this.stepSwing(0); this.ease = null;
         for (const o of this.organs) placeCage(o.cage, o.name === 'uterus' ? this.wombFrame(toWorld) : toWorld);
         this.last = now; // (and its speed is what it was: a pose put on mid-walk keeps her walking)
         this.draw();
@@ -345,6 +358,7 @@ export class PelvicOrgansView {
     const held = new THREE.Vector3(0, -G, 0).applyQuaternion(this.restQuat.clone().invert()).applyQuaternion(q);
     const felt: [number, number, number] = [0 - held.x, -G - held.y, 0 - held.z];
     this.stepSwing(dt);
+    if (this.ease) this.ease.t += dt;
     for (const o of this.organs) stepCage(o.cage, dt, o.name === 'uterus' ? this.wombFrame(toWorld) : toWorld, felt, o.tune);
     // (the bladder pushes on the womb and the canal; the womb's cervix sits in the canal, so those two do not push)
     for (const t of this.touching) separate(t.a, t.b, t.gaps);
@@ -549,6 +563,12 @@ export class PelvicOrgansView {
       followCage(o.cage, o.skin, o.out);
       const pos = o.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, arr = pos.array as Float32Array;
       for (let i = 0; i < arr.length; i++) arr[i] = o.out[i] * this.units;
+      // (her womb easing from its last shape to this one: smoothstep over WOMB_EASE_SECONDS)
+      if (o.name === 'uterus' && this.ease) {
+        const u = Math.min(1, this.ease.t / WOMB_EASE_SECONDS), k = u * u * (3 - 2 * u), f = this.ease.from;
+        for (let i = 0; i < arr.length; i++) arr[i] = f[i] + (arr[i] - f[i]) * k;
+        if (u >= 1) this.ease = null;
+      }
       pos.needsUpdate = true;
       o.mesh.geometry.computeVertexNormals();
     }

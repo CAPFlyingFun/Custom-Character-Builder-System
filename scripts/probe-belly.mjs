@@ -153,6 +153,19 @@ try {
     }
     await click('[data-action="sarahlab:stand"]'); await run(1.5);
   }
+  if (sets.includes('sweep')) {
+    // BUMP 0 -> 200 -> 0 by 10s as she would drag it, her side profile read at each (Joshua, 2026-11-09: "kept snapping
+    // to a odd shape after get to like 150%... not acting dynamic"), and right after each step (what snaps) and settled
+    const sweep = [];
+    const steps = [...Array.from({ length: 21 }, (_, i) => i * 10), ...Array.from({ length: 20 }, (_, i) => 190 - i * 10)];
+    for (const [i, b] of steps.entries()) {
+      await slide('sarahlab-bump', b); await run(0.05); const now = await hook('profile');
+      await run(1.0); const settled = await hook('profile');
+      sweep.push({ i, bump: b, way: i <= 20 ? 'up' : 'down', now, settled }); log('sweep', i, b, settled.week, settled.wombMl);
+      if (b % 50 === 0) { await look('side', 1.5); await shot(`sweep-${String(i).padStart(2, '0')}-${b}-side.png`); }
+    }
+    writeFileSync(path.join(SHOTS, 'sweep.json'), JSON.stringify(sweep));
+  }
   if (sets.includes('options')) {
     // Joshua, 2026-11-09: each option -- 1 real womb + v2's skin (WOMB FILL 0), 2 the womb grown to v2's belly (100), the
     // hybrid (50) -- for one, two and three babies at several belly %s

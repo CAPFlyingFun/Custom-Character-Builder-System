@@ -8681,6 +8681,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           three.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; const p = m.geometry?.getAttribute('position'); if (p && nan(p.array as ArrayLike<number>) > 0) bad[`mesh:${m.name || m.type}`] = nan(p.array as ArrayLike<number>); });
           return { gut: { ...gut }, needs: gutNeeds(gut), urineMlH: urineMlH(gut.waterMl), layout: abdomen?.laid ?? null, sway: abdomen?.sway() ?? null, skin: skinBand?.report() ?? null, nan: bad };
         },
+        // her belly's side profile at her midline now (world metres): the skin band's front and back by row, and her womb's
+        // front and back by centimetre of height (Joshua, 2026-11-09: the side profile 0-200% as the room shows it)
+        profile: () => {
+          const out: { band: number[][]; womb: number[][]; week: number | null; wombMl: number | null } = { band: [], womb: [], week: organs?.womb?.week ?? null, wombMl: organs?.womb ? +organs.womb.contents.volumeMl.toFixed(0) : null };
+          if (skinBand) { const d = skinBand.drawn(), b = skinBand.band, back = b.cols / 2; for (let k = 0; k < b.rows; k++) { const f = 3 * k * b.cols, r = 3 * (k * b.cols + back); out.band.push([d[f + 1] / M, d[f + 2] / M, d[r + 2] / M, d[f] / M]); } }
+          const w = organs?.womb ? organs.wombPoints() : null;
+          if (w) { let cx = 0; for (let i = 0; i < w.length; i += 3) cx += w[i]; cx /= w.length / 3; const bins = new Map<number, [number, number]>();
+            for (let i = 0; i < w.length; i += 3) { if (Math.abs(w[i] - cx) > 0.015 * M) continue; const y = Math.round(w[i + 1] / M * 100), z = w[i + 2] / M, e = bins.get(y); bins.set(y, e ? [Math.max(e[0], z), Math.min(e[1], z)] : [z, z]); }
+            out.womb = [...bins.entries()].sort((a, b) => a[0] - b[0]).map(([y, [f, bk]]) => [y / 100, f, bk]); }
+          return out;
+        },
         // her pelvic organs (v3, on her skeleton): their layout (rest metres), how much her bladder holds, and how far each
         // soft body is from where its bone holds it now (metres); `bladder` sets how much it holds
         organs: (bladderMl?: number) => {
