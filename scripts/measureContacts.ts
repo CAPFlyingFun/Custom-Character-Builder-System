@@ -31,7 +31,7 @@ export const CONTACT_RIGS = Object.freeze([
 ]);
 
 /** A GLB with its images, textures and samplers removed: the rig and the mesh, nothing that needs a browser to decode. */
-function withoutTextures(file: string): ArrayBuffer {
+export function withoutTextures(file: string): ArrayBuffer {
   const buf = readFileSync(join(ROOT, 'public', file)), length = buf.readUInt32LE(8);
   let off = 12, json: Record<string, unknown> | null = null, bin: Buffer | null = null;
   while (off < length) {
