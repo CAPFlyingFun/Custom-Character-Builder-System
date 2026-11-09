@@ -289,6 +289,24 @@ export class SkeletonInV2 {
     return [...out.entries()].map(([bone, o]) => ({ bone, points: o.points, leastMm: +(o.least * 1000).toFixed(1), at: o.at, closeCount: o.close, throughCount: o.through })).sort((a, b) => a.leastMm - b.leastMm);
   }
 
+  /**
+   * For probes: how much room the pieces named have under her skin now, toward their front and their back (mm): the least
+   * depth of their points in the front third and the back third along `forward` (world), and the whole span front to back.
+   */
+  roomOf(names: ReadonlySet<string>, units: number, forward: THREE.Vector3): { frontMm: number; backMm: number; lengthMm: number } {
+    const body = this.body, bp = body.geometry.getAttribute('position'), m = bp.count, S = new Float32Array(m * 3), v = new THREE.Vector3();
+    body.updateMatrixWorld(true); this.mesh.updateMatrixWorld(true);
+    for (let i = 0; i < m; i++) { body.getVertexPosition(i, v); v.applyMatrix4(body.matrixWorld).toArray(S, i * 3); }
+    const ix = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index!.array, g = skinGrid(S, ix, 0.02 * units);
+    const pts: number[] = [], along: number[] = [];
+    for (let i = 0; i < this.owner.length; i++) if (names.has(this.owner[i])) { this.mesh.getVertexPosition(i, v); v.applyMatrix4(this.mesh.matrixWorld); pts.push(v.x, v.y, v.z); along.push(v.dot(forward)); }
+    if (!pts.length) return { frontMm: NaN, backMm: NaN, lengthMm: 0 };
+    const d = depthsInSkin(g, Float32Array.from(pts), 0.06 * units), lo = Math.min(...along), hi = Math.max(...along), span = hi - lo;
+    let front = Infinity, back = Infinity;
+    along.forEach((a, k) => { if (a > hi - span / 3) front = Math.min(front, d[k]); if (a < lo + span / 3) back = Math.min(back, d[k]); });
+    return { frontMm: +((front / units) * 1000).toFixed(1), backMm: +((back / units) * 1000).toFixed(1), lengthMm: +((span / units) * 1000).toFixed(0) };
+  }
+
   /** For probes: her skin's grid as drawn now, and each ray's crossings from a world point. */
   raysAt(units: number, x: number, y: number, z: number): { rays: number[]; tris: number; verts: number; lo: readonly number[]; dim: readonly number[] } {
     const body = this.body, bp = body.geometry.getAttribute('position'), m = bp.count, S = new Float32Array(m * 3), v = new THREE.Vector3();

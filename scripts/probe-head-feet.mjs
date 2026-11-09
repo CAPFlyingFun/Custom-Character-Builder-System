@@ -41,6 +41,10 @@ try {
   // BAREFOOT
   for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2]]) { await aimAt('ankleL', yaw, 45); await shot(`feet-${v}.png`); }
   await slide('sarahlab-xray', 0); await run(0.2); await aimAt('ankleL', Math.PI / 4, 45); await shot('feet-skin-q34.png'); await slide('sarahlab-xray', 50); await run(0.2);
+  // (how much room her foot bones have toward her toes and her heel; and her whole foot from the side and above)
+  report.footRoom = await hook('footRoom'); log('room', JSON.stringify(report.footRoom));
+  await aimAt('ankleL', Math.PI / 2, 60); await page.evaluate(() => 0); await hook('aim', Math.PI / 2, 0.05, 60, 0.1, -0.85, 0.06); await run(0.1); await shot('feet-whole-side.png');
+  await hook('aim', 0.0001, 1.3, 60, 0.1, -0.85, 0.06); await run(0.1); await shot('feet-top.png');
   // (her bare feet's skin alone, front and side)
   report.footCoverMm = await hook('skeletonDepths', 2).then((r) => r?.footCoverMm ?? null);
   await slide('sarahlab-xray', 0); await run(0.2);

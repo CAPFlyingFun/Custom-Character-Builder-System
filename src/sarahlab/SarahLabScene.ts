@@ -8739,6 +8739,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (jt && sk) for (const a of [jt.ankleL, jt.ankleR]) sk.bones[a]?.traverse((o) => skip.add(o.name));
           return { footCoverMm, stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, wholeFits: skeletonV2.wholeFits, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
         },
+        // how much room each foot's bones have under her skin, toward her toes and her heel (mm), as she stands now
+        footRoom: () => {
+          const sk = bodyOf()?.mesh.skeleton, jt = measure?.joints;
+          if (!skeletonV2 || !sk || !jt) return null;
+          const out: Record<string, unknown> = {};
+          for (const [side, a] of [['left', jt.ankleL], ['right', jt.ankleR]] as const) {
+            const names = new Set<string>(); sk.bones[a]?.traverse((o) => names.add(o.name));
+            const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(model!.getWorldQuaternion(new THREE.Quaternion()));
+            out[side] = skeletonV2.roomOf(names, M, fwd);
+          }
+          return out;
+        },
         // the skeleton laid again with each whole group at a set size (her skull first; null: fitted), for a probe
         skeletonRelay: (scales: (number | null)[] | null) => { relaySkeletonV2?.(scales); applyXray(); return skeletonV2?.wholeFits ?? null; },
         // (debug) each of the six rays' crossings of her skin from a point in her rest frame as she stands (metres)
