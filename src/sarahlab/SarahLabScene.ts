@@ -75,6 +75,7 @@ import { IRIS_CHOICES, browsLine, eyesLine, lipsLine, mouthLine, nextEyeMode } f
  * Lab's bodies are.
  */
 import * as THREE from 'three';
+import { SkeletonInV2 } from './skeletonInV2';
 import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
 import { newJointTurn, type BindJoint, type HumanMeasure, type JointTurn, type MutableJointTurn } from '../actor/humanRig';
 import { measureContacts, type ContactPoint, type ContactSet, type FingerName } from '../actor/contactPoints';
@@ -300,7 +301,7 @@ import { createNavelSoft, type NavelSoft } from './navelSoft';
 import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
 import {
-  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
+  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
@@ -1006,6 +1007,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let birthOpenInput: HTMLInputElement | null = null, birthOpenPct = 0, birthBulgeInput: HTMLInputElement | null = null, birthBulgePct = 0;
   let foldBackInput: HTMLInputElement | null = null, foldBackPct = 0;
   let xrayInput: HTMLInputElement | null = null, xrayPct = 0;
+  /** v2: her skeleton inside her (skeletonInV2.ts; the plan's new direction, step 1), and the load it waits on */
+  let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
   let birthSeatOn = true;
   /** in SQUAT the same skin rounded OUT instead (negative: out; Joshua, 2026-10-31: there it "pinches right in the
@@ -1570,8 +1573,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (foldBackInput) foldBackInput.style.display = organs ? '' : 'none'; }
     { const f5 = fields[SARAH_LAB_FIELD.xray];
       // (her skeleton's: on another body it is not shown)
-      if (f5) { f5.textContent = xrayLine(xrayPct); f5.style.display = organs ? '' : 'none'; }
-      if (xrayInput) xrayInput.style.display = organs ? '' : 'none'; }
+      if (f5) { f5.textContent = xrayLine(xrayPct); f5.style.display = organs || skeletonV2 ? '' : 'none'; }
+      if (xrayInput) xrayInput.style.display = organs || skeletonV2 ? '' : 'none'; }
     { const f3 = fields[SARAH_LAB_FIELD.birthBulge];
       if (vulva) birthBulgePct = Math.round(vulva.bulge * 100);
       if (f3) f3.textContent = birthBulgeLine(birthBulgePct, VULVA_OPEN.bulge * 100);
@@ -3442,6 +3445,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // EVERY JOINT INSIDE ITS RANGE (Joshua, 2026-11-04, "two levels": data/jointRange.ts, actor/jointLimits.ts) -- her back,
     // neck, hips, knees and ankles held to what she moves them to herself, or, in a birth position (placed: the bed holds
     // her, her thighs let fall open, her weight on her feet), to how far they give placed
+    // (a probe's random pose over this one: the skeleton-in-v2 test, held to her ranges as any pose is)
+    if (randomTurns && p === pose) { const mine = new Set(randomTurns.map((t) => t.joint)); base = [...base.filter((t) => !mine.has(t.joint)), ...randomTurns]; }
     base = limitedTurns(base, isBirthPose(p) ? 'passive' : 'active', out);
     // (a birth position's knees and ankles as the table reads them: her feet are set on the mat from there, plantFeet)
     if (isBirthPose(p) && p === pose && jointLimits) birthAngles = jointLimits.passive.read(base);
@@ -3455,6 +3460,38 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Her joint ranges, read once a skeleton, at each level (a woman's: Sarah's, as her arms' are); and each pose's own
    * place to write its held turns, so a pose blended with another keeps its own. */
   let jointLimits: { measure: HumanMeasure; active: JointLimits; passive: JointLimits } | null = null, birthAngles: JointAngles | null = null;
+  /** A probe's random pose (`randomPose`): turns laid over the pose's own, then held to her ranges like any pose. */
+  let randomTurns: JointTurn[] | null = null;
+  /**
+   * A random pose for the skeleton-in-v2 test (Joshua, 2026-11-09: "doing random poses to make sure the skeleton doesn't
+   * come through the skin"): her back, neck, hips, knees, ankles, shoulders and elbows each turned by a random share of a
+   * span about her body's own axes (x across to her left, y up, z forward), from `seed`; her back, neck, hips, knees and
+   * ankles then held to the joint table. The spans are GAME TUNING (wide, so the table's walls are reached).
+   */
+  function randomPoseTurns(seed: number): JointTurn[] {
+    if (!measure) return [];
+    let x = (seed * 2654435761) >>> 0 || 1;
+    const rnd = () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+    const span = (lo: number, hi: number) => ((lo + (hi - lo) * rnd()) * Math.PI) / 180;
+    const j = measure.joints, L = measure.leftSign > 0 ? 1 : -1, q = new THREE.Quaternion(), e = new THREE.Euler(), out: JointTurn[] = [];
+    // (flex is about x: negative swings a limb hanging down forward; side about z, roll about y)
+    const turn = (joint: number, flex: number, side: number, roll: number) => {
+      q.setFromEuler(e.set(flex, roll, side, 'XZY'));
+      const a = 2 * Math.acos(Math.min(1, Math.abs(q.w))), s2 = Math.sqrt(Math.max(1e-12, 1 - q.w * q.w)), g = q.w < 0 ? -1 : 1;
+      if (a > 1e-6) out.push({ joint, ax: (g * q.x) / s2, ay: (g * q.y) / s2, az: (g * q.z) / s2, radians: a });
+    };
+    turn(j.spine, span(-25, 45), span(-15, 15), span(-20, 20));
+    turn(j.chest, span(-15, 30), span(-12, 12), span(-20, 20));
+    turn(j.neck, span(-30, 40), span(-25, 25), span(-45, 45));
+    for (const [hip, knee, ankle, sh, el, sgn] of [[j.hipL, j.kneeL, j.ankleL, j.shoulderL, j.elbowL, L], [j.hipR, j.kneeR, j.ankleR, j.shoulderR, j.elbowR, -L]] as const) {
+      turn(hip, -span(-15, 110), sgn * span(-10, 40), span(-35, 35));
+      turn(knee, span(0, 130), 0, 0);
+      turn(ankle, span(-30, 40), 0, 0);
+      turn(sh, -span(-40, 160), sgn * span(-10, 150), span(-60, 60));
+      turn(el, -span(0, 140), 0, 0);
+    }
+    return out;
+  }
   const limitedOut = new WeakMap<MutableJointTurn[], MutableJointTurn[]>();
   function limitedTurns(turns: readonly JointTurn[], level: RangeLevel, owner: MutableJointTurn[]): readonly JointTurn[] {
     if (!rig || !measure) return turns;
@@ -6242,10 +6279,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   function applyXray(): void {
     if (!model) return;
-    const share = organs ? Math.min(1, Math.max(0, xrayPct / 100)) : 0, opacity = Math.max(0.06, 1 - 0.94 * share);
+    const share = organs || skeletonV2 ? Math.min(1, Math.max(0, xrayPct / 100)) : 0, opacity = Math.max(0.06, 1 - 0.94 * share);
+    // (v2: her skeleton inside her drawn solid, and only while she is seen through)
+    if (skeletonV2) skeletonV2.visible = share > 0;
     model.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
+      if (!m.isMesh || m.name === 'skeletonInV2') return;
       for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === babyHolder || q.name === 'pelvicOrgans') return;
       const u = m.userData as { xraySolid?: THREE.Material | THREE.Material[]; xrayGhost?: THREE.Material[] };
       if (share > 0) {
@@ -7017,6 +7056,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     hairMeshes = []; hairRequest++;
     if (model) { three.remove(model); rig?.dispose(); release(model); model = null; }
     organs?.dispose(); organs = null;
+    skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
     vulva?.dispose(); vulva = null;
     dropBabyHolder();
@@ -7181,6 +7221,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100);
           three.add(organs.group);
           applyXray();
+        }
+        // v2: her skeleton laid inside her and bound to her own bones (skeletonInV2.ts), seen under X-RAY
+        if (recovered && babyFrame) {
+          const request = ++skeletonV2Request, body = skinMesh as THREE.SkinnedMesh, toRest = babyFrame.meshToRest.clone();
+          void assets.loadModel(SARAH_SKELETON_MODEL, () => new THREE.Object3D(), {}).then((skel) => {
+            if (disposed || request !== skeletonV2Request || !model) { release(skel); return; }
+            try {
+              skel.scale.setScalar(M); skel.updateMatrixWorld(true);
+              const sm = findSkinnedMesh(skel);
+              if (!sm) throw new Error('no skinned mesh in the skeleton file');
+              skeletonV2 = new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest);
+              applyXray(); refresh();
+              // (its file stays loaded: the laid copy shares its material's maps)
+            } catch (error) { console.error('[sarahlab] her skeleton could not be laid inside v2', error); skeletonV2 = null; release(skel); }
+          });
         }
         babySkinAt = null; babyDepthOf = null;
         // her birth area shaped (birthArea.ts): a field on her body's shape, the same at every size
@@ -8608,6 +8663,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // `soles` -- each shoe's lowest point (or her foot's, barefoot) over the floor
         // the treadmill's slope (walkStrip.ts): -30..+30, 'ahead' or 'across'
         slope: (deg: number, heading: SlopeHeading = 'ahead') => { setSlope(deg, heading); return slopeLine(slope); },
+        // v2: how deep each piece of her skeleton sits under her skin now, by bone (mm; the random-pose test)
+        skeletonDepths: (stride?: number) => skeletonV2 ? skeletonV2.depths(M, stride) : null,
+        // a random pose from `seed` over her own (null: none), held to her ranges (the skeleton-in-v2 test)
+        randomPose: (seed: number | null) => { randomTurns = seed === null ? null : randomPoseTurns(seed); applyMotion(); return randomTurns?.length ?? 0; },
         // her pelvic organs (v3, on her skeleton): their layout (rest metres), how much her bladder holds, and how far each
         // soft body is from where its bone holds it now (metres); `bladder` sets how much it holds
         organs: (bladderMl?: number) => {
