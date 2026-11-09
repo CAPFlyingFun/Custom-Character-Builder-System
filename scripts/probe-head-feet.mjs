@@ -31,7 +31,7 @@ try {
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
   const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 250, y: 150, width: 500, height: 600 }, timeout: 300_000 }); log('shot', name); };
   const aimAt = async (joint, yaw, dist = 55) => { const j = await hook('jointHeights'), mid = [0, 1, 2].map((a) => (j.hipL[a] + j.hipR[a]) / 2), at = j[joint]; await hook('aim', yaw, 0.05, dist, (at[0] - mid[0]) / 100, (at[1] - mid[1]) / 100, (at[2] - mid[2]) / 100); await run(0.1); };
-  const depth = async (key, bones) => { const r = await hook('skeletonDepths', 2); const b = (r?.bones ?? []).filter((x) => bones.includes(x.joint)); report[key] = b.map((x) => ({ joint: x.joint, leastMm: x.leastMm, through: x.throughCount, points: x.points })); log(key, JSON.stringify(report[key])); };
+  const depth = async (key, bones) => { const r = await hook('skeletonDepths', 2); const b = (r?.bones ?? []).filter((x) => bones.includes(x.joint) || bones.includes(x.bone)); report[key] = b.map((x) => ({ joint: x.joint, leastMm: x.leastMm, through: x.throughCount, points: x.points })); log(key, JSON.stringify(report[key])); };
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
   await page.waitForFunction(() => globalThis.__sarahLabCloth?.skeletonDepths?.(50) != null, null, { timeout: 300_000, polling: 2000 });
   for (let k = 0; k < 3; k++) await press('sarahlab:outfit');
@@ -45,7 +45,7 @@ try {
   for (const [key, head, skull] of [['h0-fitted', 0, null], ['h0-real', 0, 1], ['h10-real', 10, 1], ['h20-real', 20, 1]]) {
     await bodySlide('head', head); await run(0.5);
     report[`${key}-fit`] = await hook('skeletonRelay', [skull]); await run(0.3);
-    await depth(key, ['head', '']);
+    await depth(key, ['head', 'Bone_016', 'Jaw']);
     for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2]]) { await aimAt('head', yaw, 50); await shot(`${key}-${v}.png`); }
   }
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));
