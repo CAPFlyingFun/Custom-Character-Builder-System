@@ -63,7 +63,7 @@ export class SkeletonInV2 {
   fitLeft = 0;
   fitMostMm = 0;
 
-  constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null) {
+  constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null, trunkWeights = true) {
     const src = skeletonMesh.geometry, pos = src.getAttribute('position'), nrm = src.getAttribute('normal');
     const toBody = new THREE.Matrix4().copy(bodyToRest).invert(), toBodyN = new THREE.Matrix3().getNormalMatrix(toBody);
     const restN = new THREE.Matrix3().getNormalMatrix(skeletonToRest);
@@ -128,6 +128,33 @@ export class SkeletonInV2 {
         this.fitLeft = pullInside(skinGrid(S, ix, 0.02), R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
         for (let i = 0; i < n; i++) this.fitMostMm = Math.max(this.fitMostMm, Math.hypot(R[i * 3] - before[i * 3], R[i * 3 + 1] - before[i * 3 + 1], R[i * 3 + 2] - before[i * 3 + 2]) * 1000);
         this.fitMostMm = +this.fitMostMm.toFixed(1);
+      }
+    }
+    // HER TRUNK MOVES AS HER FLESH DOES (the port's rule 3, anchored not rigid): v2's rig bends her chest, shoulders and hips
+    // as an auto-rig's blend of bones, not her spine's, so a rib carried by one bone alone comes out through her side as she
+    // bends. Every piece of her trunk -- ribs, spine, breastbone, collarbones, shoulder blades, pelvis, skull -- takes the
+    // weights of the skin nearest it (her four nearest points within 10 cm, by inverse distance); her limbs' long bones
+    // stay carried by their own bones, rigid.
+    if (fit && trunkWeights) {
+      const bp = body.geometry.getAttribute('position'), bi = body.geometry.getAttribute('skinIndex'), bw = body.geometry.getAttribute('skinWeight'), m = bp.count, S = new Float32Array(m * 3), w = new THREE.Vector3();
+      for (let i = 0; i < m; i++) { THREE.Mesh.prototype.getVertexPosition.call(body, i, w); w.applyMatrix4(bodyToRest).toArray(S, i * 3); }
+      const cell = 0.05, key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`, grid = new Map<string, number[]>();
+      for (let i = 0; i < m; i++) { const k = key(S[i * 3], S[i * 3 + 1], S[i * 3 + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
+      const near: [number, number][] = [], acc = new Map<number, number>();
+      for (let i = 0; i < n; i++) {
+        if (partOf.has(this.owner[i])) continue;
+        const x = R[i * 3], y = R[i * 3 + 1], z = R[i * 3 + 2], cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
+        near.length = 0;
+        for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) for (let c = -2; c <= 2; c++) {
+          const l = grid.get(`${cx + a},${cy + b},${cz + c}`);
+          if (l) for (const j of l) { const d = Math.hypot(S[j * 3] - x, S[j * 3 + 1] - y, S[j * 3 + 2] - z); if (d < 0.1) near.push([d, j]); }
+        }
+        if (!near.length) continue;
+        near.sort((p, q) => p[0] - q[0]);
+        acc.clear();
+        for (const [d, j] of near.slice(0, 4)) { const f = 1 / Math.max(1e-4, d); for (let c = 0; c < 4; c++) { const wt = bw.getComponent(j, c); if (wt > 0) { const b = bi.getComponent(j, c); acc.set(b, (acc.get(b) ?? 0) + wt * f); } } }
+        const top = [...acc.entries()].sort((p, q) => q[1] - p[1]).slice(0, 4), sum = top.reduce((t, e) => t + e[1], 0) || 1;
+        for (let c = 0; c < 4; c++) { I[i * 4 + c] = top[c]?.[0] ?? 0; W[i * 4 + c] = top[c] ? top[c][1] / sum : 0; }
       }
     }
     for (let i = 0; i < n; i++) v.fromArray(R, i * 3).applyMatrix4(toBody).toArray(P, i * 3);
