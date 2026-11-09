@@ -141,9 +141,12 @@ export function spineFrontAt(torso: TorsoLandmarks, y: number): number {
  * Her womb at `week` (a fraction is fine), each of her babies weighing what `babyGrams` says, on her organs as `laid`
  * not pregnant, in front of her spine as `torso` measures it.
  */
-export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number, babyGrams: readonly number[], open = 0, shape: typeof WOMB_SHAPE = WOMB_SHAPE): PregnantWomb {
+export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number, babyGrams: readonly number[], open = 0, shape: typeof WOMB_SHAPE = WOMB_SHAPE, drawnMl = 0): PregnantWomb {
   const S = shape, w = Math.max(0, Number.isFinite(week) ? week : 0), u = laid.uterus;
   const contents = wombContents(w, babyGrams);
+  // (WOMB FILL: drawn as big as `drawnMl` where that is more than it holds -- the hybrid with v2's belly; what it holds and
+  // weighs, `contents`, stay the real numbers)
+  const volumeMl = Math.max(contents.volumeMl, Number.isFinite(drawnMl) ? drawnMl : 0);
   // the cervix as laid: the external os up to the internal os, its last point the body's foot; thinned and opened by
   // BIRTH OPENING (actor/birthCanal.ts): drawn up into the womb from below, and as wide as it is open
   const laidCervix: P3[] = [];
@@ -153,7 +156,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   const os = cervix[cervix.length - 1], fundus = u.path[u.path.length - 1], x = os[0];
   // its body: its proportions and size for the week, from what it holds
   const aw = lerpTable(S.aspect, w, 1), ad = lerpTable(S.aspect, w, 2), c = lerpTable(S.widest, w, 1);
-  const L = Math.cbrt((contents.volumeMl * 1e-6 * 6) / (Math.PI * aw * ad)), W = aw * L, D = ad * L;
+  const L = Math.cbrt((volumeMl * 1e-6 * 6) / (Math.PI * aw * ad)), W = aw * L, D = ad * L;
   // leaning from as it was laid to WOMB_SHAPE.leanDeg
   const laidLean = Math.atan2(fundus[2] - os[2], fundus[1] - os[1]), by = S.lean[0][0];
   const lean = w < by ? laidLean + ((S.lean[0][1] * Math.PI) / 180 - laidLean) * (w / by) : (lerpTable(S.lean, w, 1) * Math.PI) / 180;
@@ -192,7 +195,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   // (moved forward its slices stand closer along its axis where her spine pushes it less above: it is made that much
   // wider and deeper to hold what it holds)
   let scale = 1, laidOut = lay(1);
-  for (let pass = 0; pass < 4; pass++) { scale *= Math.sqrt((contents.volumeMl * 1e-6) / Math.max(1e-12, held(laidOut))); laidOut = lay(scale); }
+  for (let pass = 0; pass < 4; pass++) { scale *= Math.sqrt((volumeMl * 1e-6) / Math.max(1e-12, held(laidOut))); laidOut = lay(scale); }
   const { moved, halves } = laidOut;
   const path = [...cervix, ...moved];
   // which way each ring faces: the cervix its own way, the body its long axis (turning to it over its first few rings),

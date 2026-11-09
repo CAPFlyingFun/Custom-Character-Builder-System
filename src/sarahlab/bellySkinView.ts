@@ -6,7 +6,7 @@
  * half (`setSeen`).
  */
 import * as THREE from 'three';
-import { BELLY_SKIN, bandFolds, bandState, layBand, rowMatrices, shapeBand, type Band, type BandState, type SavedBelly } from '../actor/bellySkin';
+import { BELLY_SKIN, bandFolds, bandState, layBand, rowMatrices, shapeBand, v2Push, type Band, type BandState, type SavedBelly, type V2Shapes } from '../actor/bellySkin';
 import { bellyTune, feltAcceleration, restingMass, restingSoftBelly, softBellyWant, stepMass, stepSoftBelly, type Mass } from './softBody';
 import { JUMP_ACCEL } from './pelvicOrgansView';
 
@@ -18,6 +18,8 @@ export interface BellySkinTune {
   /** v2's soft settle (softBody.ts `softBellyWant`): her womb against a full-term one, whether she stands (her upright is
    * learnt then), and how fed she is (0..1: her stomach against a full one -- it firms her belly a little) */
   readonly fullness?: number; readonly standing?: boolean; readonly fed?: number;
+  /** v2's BUMP slider's target weights now (`bellyWeights(bump, curve)`): her belly in v2's approved shape; null not pregnant */
+  readonly v2Weights?: Readonly<Record<string, number>> | null;
 }
 
 export class BellySkinView {
@@ -43,7 +45,8 @@ export class BellySkinView {
    * @param bones her bones by name (her skeleton's), and `modelAtBind` her model's world matrix read at her bind (her rest
    * frame, metres, to the world)
    */
-  constructor(saved: SavedBelly, landmarks: { navel: number; xiphoid: readonly number[]; symphysisTop: readonly number[] }, bones: (name: string) => THREE.Bone | undefined, modelAtBind: THREE.Matrix4, private readonly units: number) {
+  private v2Field: Float32Array | null = null;
+  constructor(saved: SavedBelly, private readonly v2: V2Shapes | null, landmarks: { navel: number; xiphoid: readonly number[]; symphysisTop: readonly number[] }, bones: (name: string) => THREE.Bone | undefined, modelAtBind: THREE.Matrix4, private readonly units: number) {
     this.band = layBand(saved, landmarks.navel, landmarks.xiphoid, landmarks.symphysisTop);
     this.state = bandState(this.band);
     this.bones = this.band.spine.map((name) => {
@@ -104,7 +107,8 @@ export class BellySkinView {
       else stepSoftBelly(this.soft, dt, { side: 0, sag: 0, depth: 0 }, 1);
     }
     const pos = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-    this.mostM = shapeBand(this.band, this.rows, sources, this.state, pos.array as Float32Array, this.units, dt, this.sway, [this.soft.side, this.soft.sag, this.soft.depth]);
+    const shape = this.v2 && tune.v2Weights ? (this.v2Field = v2Push(this.band, this.v2, tune.v2Weights, this.v2Field ?? undefined)) : null;
+    this.mostM = shapeBand(this.band, this.rows, sources, this.state, pos.array as Float32Array, this.units, dt, this.sway, [this.soft.side, this.soft.sag, this.soft.depth], shape);
     pos.needsUpdate = true;
     this.mesh.geometry.computeVertexNormals();
   }

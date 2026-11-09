@@ -107,6 +107,22 @@ try {
     }
     for (const sec of [3, 10, 30, 60]) { await run(sec === 3 ? 3 : sec - [3, 10, 30, 60][[3, 10, 30, 60].indexOf(sec) - 1]); await note(`after-${sec}s`); await look('side', 2.3); await shot(`after-${sec}s-side.png`); await look('three-quarter', 2.3); await shot(`after-${sec}s-q34.png`); }
   }
+  if (sets.includes('compare')) {
+    // v3 and v2 at the same BUMP %s, the same views (Joshua, 2026-11-09: v2's approved belly on v3)
+    const bumps = [25, 50, 75, 100, 150];
+    for (const b of bumps) {
+      await at(b); await note(`v3-${b}`);
+      for (const [v, yaw] of [['side', 'side'], ['q34', 'three-quarter']]) { await look(yaw, 1.5); await shot(`cmp-v3-${b}-${v}.png`); }
+      await slide('sarahlab-xray', 30); await run(0.2); await look('side', 1.5); await shot(`cmp-v3-${b}-xray.png`); await slide('sarahlab-xray', 0);
+    }
+    // (MODEL from her skeleton round to v2-body: v1 next, then v2-body)
+    await click('[data-action="sarahlab:model"]');
+    await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('base model'), status, { timeout: 240_000 });
+    await click('[data-action="sarahlab:model"]');
+    await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model v2-body'), status, { timeout: 240_000 });
+    await run(2);
+    for (const b of bumps) { await at(b); for (const [v, yaw] of [['side', 'side'], ['q34', 'three-quarter']]) { await look(yaw, 1.5); await shot(`cmp-v2-${b}-${v}.png`); } }
+  }
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));
   log('errors', errors.length ? errors.join('\n') : 'none');

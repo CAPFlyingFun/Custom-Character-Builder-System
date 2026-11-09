@@ -242,6 +242,8 @@ export const SARAH_LAB_FIELD = Object.freeze({
   bowel: 'sarahlab-bowel',
   bladder: 'sarahlab-bladder',
   gutLine: 'sarahlab-gut-line',
+  /** WOMB FILL (v3): how big her womb is drawn, from what it really holds to all of v2's belly (actor/bellySkin.ts) */
+  wombFill: 'sarahlab-womb-fill',
   /** the BIRTH line: where her baby's birth is (birthSequence.ts) */
   birthLine: 'sarahlab-birth-line',
   /** the BIRTH timeline: where in it she is, to jump to any moment */

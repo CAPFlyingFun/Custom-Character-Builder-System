@@ -131,6 +131,8 @@ export class PelvicOrgansView {
   /** Her week (null: not pregnant) and each baby's weight, g; and her womb grown for them. */
   private week: number | null = null;
   private babyGrams: readonly number[] = [];
+  /** WOMB FILL: how big her womb is drawn (mL; 0 as big as what it holds) */
+  private drawnMl = 0;
   private grown: PregnantWomb | null = null;
   private sacOf: { womb: PregnantWomb; shape: WombShape } | null = null;
   /** The sac as her babies need it (grown round them where they stand past it), which her womb's wall makes room for. */
@@ -179,11 +181,11 @@ export class PelvicOrgansView {
    * weighing what `babyGrams` says. Laid again only when it changes enough to see (a fiftieth of a week, a gram in a
    * hundred).
    */
-  setPregnancy(week: number | null, babyGrams: readonly number[]): void {
+  setPregnancy(week: number | null, babyGrams: readonly number[], drawnMl = 0): void {
     const same = week === null ? this.week === null
-      : this.week !== null && Math.abs(week - this.week) < 0.02 && babyGrams.length === this.babyGrams.length && babyGrams.every((g, i) => Math.abs(g - this.babyGrams[i]) <= 0.01 * Math.max(1, g));
+      : this.week !== null && Math.abs(week - this.week) < 0.02 && babyGrams.length === this.babyGrams.length && babyGrams.every((g, i) => Math.abs(g - this.babyGrams[i]) <= 0.01 * Math.max(1, g)) && Math.abs(drawnMl - this.drawnMl) <= 0.01 * Math.max(100, drawnMl);
     if (same) return;
-    this.week = week === null ? null : Math.max(0, week); this.babyGrams = [...babyGrams];
+    this.week = week === null ? null : Math.max(0, week); this.babyGrams = [...babyGrams]; this.drawnMl = drawnMl;
     // (the room her babies needed was for the womb she had: they are packed again into this one)
     this.room = null; this.build();
   }
@@ -248,7 +250,7 @@ export class PelvicOrgansView {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
     this.organs = [];
     const laid = layOrgans(this.pelvis, this.bladderMl);
-    this.grown = this.week === null ? null : growWomb(laid, this.torso, this.week, this.babyGrams, this.open);
+    this.grown = this.week === null ? null : growWomb(laid, this.torso, this.week, this.babyGrams, this.open, undefined, this.drawnMl);
     const layout = this.grown ? pregnantLayout(laid, this.grown, this.open > 0 ? openCanal(laid.vagina, this.pelvis, this.open, DOORS.hingeUp) : laid.vagina) : laid;
     // (the canal drawn from where its doors hang up: below them the doors are its opening)
     const canal = layout.vagina, drawn: OrganLayout = { ...layout, vagina: { ...canal, path: subPath(canal.path, DOORS.hingeUp, lengthOf(canal.path)) } }, meshes = organMeshes(drawn);

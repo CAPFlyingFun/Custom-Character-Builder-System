@@ -4,7 +4,6 @@
  * `npx tsx scripts/measureV2Belly.ts [models/sarah-v2-body-slim.glb]`.
  */
 import * as THREE from 'three';
-import { readFileSync } from 'node:fs';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { withoutTextures } from './measureContacts';

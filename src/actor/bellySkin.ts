@@ -189,6 +189,49 @@ export function invertAffine(m: ArrayLike<number>, mo: number, out: Float32Array
   out[o + 12] = -(r00 * tx + r01 * ty + r02 * tz); out[o + 13] = -(r10 * tx + r11 * ty + r12 * tz); out[o + 14] = -(r20 * tx + r21 * ty + r22 * tz); out[o + 15] = 1;
 }
 
+/** v2's approved belly shapes on the band's grid (src/data/belly/v2-shapes.json, `scripts/measureV2Shapes.ts`): each key
+ * target's push straight out (metres, against v2's 100% base), a row for each of the band's rows. */
+export interface V2Shapes { readonly rows: number; readonly cols: number; readonly shapes: Readonly<Record<string, readonly number[]>> }
+/** The 0% target's name (sarahLabTool.ts BELLY_TARGET). */
+const V2_ZERO = 'belly';
+
+/**
+ * v2'S APPROVED BELLY ON v3 (Joshua, 2026-11-09: "I do approve the v2 belly look and shapes... apply it all to v3"):
+ * how far her skin stands out past her 0% at each of the band's points (metres), for v2's BUMP slider's target weights
+ * now (`bellyWeights(bump, curve)`): the weighted key targets less the 0% one, as v2's mesh blends them.
+ */
+export function v2Push(band: Band, v2: V2Shapes, weights: Readonly<Record<string, number>>, out: Float32Array = new Float32Array(band.rows * band.cols)): Float32Array {
+  const zero = v2.shapes[V2_ZERO], R = band.rows, C = band.cols;
+  for (let k = 0; k < R; k++) for (let c = 0; c < C; c++) {
+    // (the band's row and angle on v2's grid: both run pubic bone to breastbone and round from her front)
+    const gk = Math.min(v2.rows - 1, Math.round((k / Math.max(1, R - 1)) * (v2.rows - 1))), gc = Math.round((c / C) * v2.cols) % v2.cols, g = gk * v2.cols + gc;
+    let x = -(zero?.[g] ?? 0);
+    for (const name in weights) { const w = weights[name]; if (w && v2.shapes[name]) x += w * v2.shapes[name][g]; }
+    out[k * C + c] = Math.max(0, x);
+  }
+  return out;
+}
+
+/** How much v2's approved belly holds past her 0%, by her BUMP %, litres: MEASURED on v2's own shapes
+ * (`scripts/measureV2Belly.ts`, 2026-11-09), straight lines between them. */
+export const V2_BELLY_LITRES: readonly (readonly [number, number])[] = Object.freeze([[0, 0], [25, 0.18], [30, 0.43], [50, 1.52], [60, 2.73], [75, 4.74], [100, 10.09], [150, 13.91], [200, 17.89]]);
+export function v2BellyLitres(bumpPercent: number): number {
+  const t = V2_BELLY_LITRES, b = Math.min(200, Math.max(0, Number.isFinite(bumpPercent) ? bumpPercent : 0));
+  for (let i = 1; i < t.length; i++) if (b <= t[i][0]) { const [b0, l0] = t[i - 1], [b1, l1] = t[i]; return l0 + ((l1 - l0) * (b - b0)) / (b1 - b0); }
+  return t[t.length - 1][1];
+}
+/**
+ * WOMB FILL (Joshua, 2026-11-09, choosing the hybrid: "How about a hybrid version of 1 and 2"): how big her womb is drawn,
+ * mL -- `fill` (0..1) of the way from what it really holds (`realMl`) to all of v2's belly at her BUMP % (never less than
+ * it holds). What it holds and weighs stay the real numbers; her belly's soft wall fills the rest out to v2's shape.
+ * GAME TUNING (WOMB_FILL_DEFAULT: halfway).
+ */
+export const WOMB_FILL_DEFAULT = 50;
+export function wombDrawnMl(realMl: number, bumpPercent: number, fill: number): number {
+  const f = Math.min(1, Math.max(0, Number.isFinite(fill) ? fill : 0.5));
+  return realMl + f * Math.max(0, v2BellyLitres(bumpPercent) * 1000 - realMl);
+}
+
 /** What the band keeps frame to frame. */
 export interface BandState {
   /** how far each point stands out past its rest now (rest metres), and the most it was pushed this frame */
@@ -207,10 +250,12 @@ export const bandState = (b: Band): BandState => ({ hold: new Float32Array(b.row
  * THE BAND THIS FRAME, into `out` (the world's units): carried by `rows` (`rowMatrices`), pushed out by `sources` (points,
  * the world's units: what fills her as drawn now), held out after what pushed it is gone, and moved by `sway` (rest
  * metres, her belly spring's mass) where it is pushed out, and settled by `soft` (v2's soft settle, softBody.ts
- * `softBellyWant`: to her side, sagging, deeper (+) or flatter, each per metre a point stands out past its rest). `units` the world's units per metre; `dt` seconds.
+ * `softBellyWant`: to her side, sagging, deeper (+) or flatter, each per metre a point stands out past its rest), its
+ * shape at least `shape` (metres past its rest a point: v2's approved belly, `v2Push`) -- the soft wall of her belly
+ * filling what lies between what fills her and that. `units` the world's units per metre; `dt` seconds.
  * Returns the most any point stands out past its rest (metres).
  */
-export function shapeBand(band: Band, rows: Float32Array, sources: readonly ArrayLike<number>[], state: BandState, out: Float32Array, units: number, dt: number, sway: readonly [number, number, number] = [0, 0, 0], soft: readonly [number, number, number] = [0, 0, 0]): number {
+export function shapeBand(band: Band, rows: Float32Array, sources: readonly ArrayLike<number>[], state: BandState, out: Float32Array, units: number, dt: number, sway: readonly [number, number, number] = [0, 0, 0], soft: readonly [number, number, number] = [0, 0, 0], shape: ArrayLike<number> | null = null): number {
   const S = BELLY_SKIN, R = band.rows, C = band.cols, u = units;
   for (let k = 0; k < R; k++) invertAffine(rows, 16 * k, state.inv, 16 * k);
   // NEED: how far out each point must stand (rest metres from its row's middle), from every source point
@@ -254,7 +299,7 @@ export function shapeBand(band: Band, rows: Float32Array, sources: readonly Arra
   for (let k = 0; k < R; k++) {
     const pin = Math.min(1, Math.min(k, R - 1 - k) / Math.max(1, S.pinRows + 1));
     for (let c = 0; c < C; c++) {
-      const i = k * C + c, x = need[i] - band.rest[i];
+      const i = k * C + c, x = Math.max(need[i] - band.rest[i], shape ? shape[i] : -Infinity);
       push[i] = Number.isFinite(x) ? pin * b * Math.log1p(Math.exp(Math.min(40, x / b))) : 0;
     }
   }
@@ -267,7 +312,7 @@ export function shapeBand(band: Band, rows: Float32Array, sources: readonly Arra
         tmp[i] = (2 * push[i] + push[l] + push[r] + push[d] + push[u2]) / 6;
       }
       for (let i = 0; i < R * C; i++) {
-        const k = Math.floor(i / C), pin = Math.min(1, Math.min(k, R - 1 - k) / Math.max(1, S.pinRows + 1)), floor = Number.isFinite(need[i]) ? need[i] - band.rest[i] - 0.003 : 0;
+        const k = Math.floor(i / C), pin = Math.min(1, Math.min(k, R - 1 - k) / Math.max(1, S.pinRows + 1)), floor = Math.max(Number.isFinite(need[i]) ? need[i] - band.rest[i] - 0.003 : 0, shape ? shape[i] - 0.003 : 0);
         push[i] = pin * Math.max(tmp[i], floor, 0);
       }
     }
