@@ -35,10 +35,10 @@ try {
   for (const p of ['stand', 'walk', 'sit']) {
     if (p !== 'stand') { await press(`sarahlab:${p}`); await run(p === 'walk' ? 1.3 : 2.5); }
     report[p] = await hook('jointHeights');
-    // (her knees: about 43 cm under her hips; seated, forward of them)
-    const dy = p === 'sit' ? -0.05 : -0.43, dz = p === 'sit' ? 0.4 : 0;
+    // (her left knee, from where the hook measures it: centimetres in the world, offsets from the middle of her hips)
+    const j = report[p], mid = [0, 1, 2].map((a) => (j.hipL[a] + j.hipR[a]) / 2), dx = (j.kneeL[0] - mid[0]) / 100, dy = (j.kneeL[1] - mid[1]) / 100, dz = (j.kneeL[2] - mid[2]) / 100;
     for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2], ['q34', Math.PI / 4]]) {
-      await hook('aim', yaw, 0.05, 0.75 * M, 0, dy, dz); await run(0.1); await shot(`${p}-${v}.png`);
+      await hook('aim', yaw, 0.05, 0.6 * M, dx, dy, dz); await run(0.1); await shot(`${p}-${v}.png`);
     }
   }
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));
