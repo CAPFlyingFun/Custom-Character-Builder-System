@@ -66,6 +66,14 @@ export class SkeletonInV2 {
   /** the fit under her skin: how many points it could not get deep enough, and the most any point moved (mm) */
   fitLeft = 0;
   fitMostMm = 0;
+  /** its points in her rest frame as laid (metres) */
+  private rest: Float32Array = new Float32Array(0);
+  /** The points of the pieces named, in her rest frame (metres): for her skin to be fitted over them (her bare feet). */
+  restPointsOf(names: ReadonlySet<string>): Float32Array {
+    const out: number[] = [];
+    for (let i = 0; i < this.owner.length; i++) if (names.has(this.owner[i])) out.push(this.rest[i * 3], this.rest[i * 3 + 1], this.rest[i * 3 + 2]);
+    return Float32Array.from(out);
+  }
   /** how far the fit moved each point (metres) */
   private moved: Float32Array = new Float32Array(0);
   /** each whole group's fit: how much smaller, how far slid (mm), how many points still too near */
@@ -203,6 +211,7 @@ export class SkeletonInV2 {
         for (let c = 0; c < 4; c++) { I[i * 4 + c] = mix[c]?.[0] ?? 0; W[i * 4 + c] = mix[c] ? mix[c][1] / msum : 0; }
       }
     }
+    this.rest = R;
     for (let i = 0; i < n; i++) v.fromArray(R, i * 3).applyMatrix4(toBody).toArray(P, i * 3);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(P, 3));

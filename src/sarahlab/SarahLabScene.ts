@@ -76,6 +76,7 @@ import { IRIS_CHOICES, browsLine, eyesLine, lipsLine, mouthLine, nextEyeMode } f
  */
 import * as THREE from 'three';
 import { SkeletonInV2 } from './skeletonInV2';
+import { footCover } from './footCover';
 import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
 import { newJointTurn, type BindJoint, type HumanMeasure, type JointTurn, type MutableJointTurn } from '../actor/humanRig';
 import { measureContacts, type ContactPoint, type ContactSet, type FingerName } from '../actor/contactPoints';
@@ -1008,6 +1009,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let foldBackInput: HTMLInputElement | null = null, foldBackPct = 0;
   let xrayInput: HTMLInputElement | null = null, xrayPct = 0;
   /** v2: her skeleton inside her (skeletonInV2.ts; the plan's new direction, step 1), and the load it waits on */
+  /** v2: her bare feet's field over her foot bones (footCover.ts), and how far it moved her skin most (mm) */
+  const FOOT_COVER_FIELD = 'shape:foot:cover', FOOT_COVER_BELOW = 0.16;
+  let footCoverMm = 0;
   let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0, relaySkeletonV2: ((wholeScale: (number | null)[] | null) => void) | null = null;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
   let birthSeatOn = true;
@@ -1855,6 +1859,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     out[OWN_SEAM_FIELD] = own ? 1 : 0;
     // and more room between her legs there (birthGap.ts)
     out[BIRTH_GAP_FIELD] = isBirthPose(pose) && birthGapOn ? 1 : 0;
+    // her bare feet over her foot bones (footCover.ts): barefoot only, her sneakers are fitted to her foot as it was
+    out[FOOT_COVER_FIELD] = sneakersShown() ? 0 : 1;
     // (only with her hips bent up: standing with her legs apart her buttocks hang as they are)
     out[BIRTH_SEAT_FIELD] = !birthSeatOn ? 0 : pose === 'recline' ? 1 : pose === 'squat' ? birthSeatSquat : 0;
     out[BIRTH_ROOM_FIELD] = isBirthPose(pose) && birthRoomOn ? 1 : 0;
@@ -7261,6 +7267,28 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (her skull at its real size, only slid in: it fits her head so, back and up a little -- the head-size renders,
               // Joshua 2026-11-09; the Head slider grows and shrinks it with her head, it rides her head bone)
               skeletonV2 = make([1]);
+              // HER BARE FEET OVER HER FOOT BONES (footCover.ts; Joshua 2026-11-09): a field on her shape, drawn barefoot
+              try {
+                const sb = shaped.find((x) => x.mesh === body), feet = new Set<string>();
+                if (jt) for (const a of [jt.ankleL, jt.ankleR]) for (const b of under(a)) feet.add(b);
+                if (sb?.fields.baseNrm && feet.size) {
+                  const base = sb.fields.basePos, bn = sb.fields.baseNrm, nm = new THREE.Matrix3().getNormalMatrix(toRest), w = new THREE.Vector3();
+                  const rest = new Float32Array(base.length), restN = new Float32Array(bn.length), region: number[] = [];
+                  for (let i = 0; i < base.length / 3; i++) {
+                    w.fromArray(base, i * 3).applyMatrix4(toRest).toArray(rest, i * 3);
+                    w.fromArray(bn, i * 3).applyMatrix3(nm).normalize().toArray(restN, i * 3);
+                    if (rest[i * 3 + 1] < FOOT_COVER_BELOW) region.push(i);
+                  }
+                  const c = footCover(rest, restN, region, skeletonV2.restPointsOf(feet));
+                  footCoverMm = +(c.most * 1000).toFixed(1);
+                  if (c.index.length) {
+                    const toGeom = new THREE.Matrix3().setFromMatrix4(toRest).invert(), pos = new Float32Array(c.delta.length);
+                    for (let k = 0; k < c.index.length; k++) w.fromArray(c.delta, k * 3).applyMatrix3(toGeom).toArray(pos, k * 3);
+                    sb.fields = { ...sb.fields, fields: new Map(sb.fields.fields).set(FOOT_COVER_FIELD, { index: c.index, pos, nrm: new Float32Array(pos.length) }), last: '' };
+                    applyLook();
+                  }
+                }
+              } catch (error) { console.error('[sarahlab] her bare feet could not be fitted over her foot bones', error); }
               // (a probe lays it again with set sizes: its skull at real size against a bigger head)
               relaySkeletonV2 = (scales) => { const was = skeletonV2?.mesh.visible ?? false; skeletonV2?.dispose(); skeletonV2 = make(scales ?? undefined); skeletonV2.visible = was; };
               applyXray(); refresh();
@@ -8705,7 +8733,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (jt && sk) for (const w of [jt.wristL, jt.wristR]) sk.bones[w]?.traverse((o) => { if (o !== sk.bones[w]) skip.add(o.name); });
           // (and her feet: in her sneakers here)
           if (jt && sk) for (const a of [jt.ankleL, jt.ankleR]) sk.bones[a]?.traverse((o) => skip.add(o.name));
-          return { stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, wholeFits: skeletonV2.wholeFits, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
+          return { footCoverMm, stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, wholeFits: skeletonV2.wholeFits, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
         },
         // the skeleton laid again with each whole group at a set size (her skull first; null: fitted), for a probe
         skeletonRelay: (scales: (number | null)[] | null) => { relaySkeletonV2?.(scales); applyXray(); return skeletonV2?.wholeFits ?? null; },
