@@ -53,7 +53,7 @@ try {
     for (const b of [25, 50, 75, 100, 150]) {
       await slide0('sarahlab-bump', b); await page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), 1.2);
       for (const [v, view] of [['side', 'side'], ['q34', 'three-quarter']]) {
-        await page.click(`[data-action="sarahlab:view:${view}"]`);
+        await page.evaluate((v) => document.querySelector(`[data-action="sarahlab:view:${v}"]`)?.click(), view);
         if (Math.abs(dist0 - 1.5) > 1e-3) { await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(1.5 / dist0) / 0.001); dist0 = 1.5; }
         await page.waitForTimeout(400);
         await page.screenshot({ path: path.join(SHOTS, `cmp-v2-${b}-${v}.png`), clip: { x: 150, y: 40, width: 540, height: 780 } }); log('shot', `cmp-v2-${b}-${v}.png`);
@@ -72,7 +72,7 @@ try {
   // (the camera through the room's own controls: its FRONT / SIDE / 3/4 / BACK buttons and the wheel's zoom)
   let dist = dist0;
   const zoomTo = async (d) => { if (Math.abs(d - dist) < 1e-3) return; await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(d / dist) / 0.001); dist = d; await page.waitForTimeout(200); };
-  const look = async (view, d = 1.4) => { await page.click(`[data-action="sarahlab:view:${view}"]`); await zoomTo(d); await page.waitForTimeout(300); };
+  const look = async (view, d = 1.4) => { await page.evaluate((v) => document.querySelector(`[data-action="sarahlab:view:${v}"]`)?.click(), view); await zoomTo(d); await page.waitForTimeout(300); };
   const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 150, y: 40, width: 540, height: 780 } }); log('shot', name); };
   const views = [['front', 'front'], ['side', 'side'], ['q34', 'three-quarter']];
   const at = async (bump) => { await slide('sarahlab-bump', bump); await run(1.2); };
