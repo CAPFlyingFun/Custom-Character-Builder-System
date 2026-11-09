@@ -7258,7 +7258,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
                 v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });
-              skeletonV2 = make(undefined);
+              // (her skull at its real size, only slid in: it fits her head so, back and up a little -- the head-size renders,
+              // Joshua 2026-11-09; the Head slider grows and shrinks it with her head, it rides her head bone)
+              skeletonV2 = make([1]);
               // (a probe lays it again with set sizes: its skull at real size against a bigger head)
               relaySkeletonV2 = (scales) => { const was = skeletonV2?.mesh.visible ?? false; skeletonV2?.dispose(); skeletonV2 = make(scales ?? undefined); skeletonV2.visible = was; };
               applyXray(); refresh();
