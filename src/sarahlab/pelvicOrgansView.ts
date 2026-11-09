@@ -14,7 +14,9 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, sliderDoors, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DoorCloth } from '../actor/doorCloth';
+import { clothCompliance, clothDamping, clothFriction, clothGravityScale, clothMaxStretch, clothRestScale, clothStandOffMm, clothSubsteps } from './sarahLabTool';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -38,6 +40,9 @@ const DOOR_COLOURS = Object.freeze({ lining: 0xd88895, skin: 0xe9c3aa });
  * moulding)"). GAME TUNING. */
 const SQUEEZE_SLAB = 0.1;
 const SQUEEZE_OUT = 0.02;
+/** Her doors as cloth (`pressMode` 'cloth'): the tee's dials as Joshua set his Sarah's (2026-11-08, her saved
+ * character: WEIGHT 25, CALM 100, FIT 100, CLOSE 100, STRETCH 50, GRIP 100, STEPS 43). GAME TUNING. */
+const DOOR_CLOTH_DIALS = Object.freeze({ weight: 25, calm: 100, fit: 100, close: 100, stretch: 50, grip: 100, steps: 43 });
 const G = 9.81;
 /** Faster than her body changes its motion, m/s²: a pose put on in one frame, not a movement. GAME TUNING (about 5 g;
  * walking's hardest heel strike shakes her pelvis by 1-2 g). */
@@ -385,7 +390,12 @@ export class PelvicOrgansView {
   /** How what passes moves her doors (Joshua, 2026-11-08): as the BIRTH OPENING slider has them, set by it (`slider`);
    * that with each section's lip pushed by its own slice (`soft`, the hybrid); or every section pushed on its own
    * (`sections`). GAME TUNING; probes switch it. */
-  pressMode: 'slider' | 'soft' | 'sections' = 'slider';
+  pressMode: 'slider' | 'soft' | 'sections' | 'cloth' = 'sections';
+  /** The tee's dials her doors' cloth runs on (DOOR_CLOTH_DIALS; probes try others). */
+  clothDials: { weight: number; calm: number; fit: number; close: number; stretch: number; grip: number; steps: number } = { ...DOOR_CLOTH_DIALS };
+  private cloth: DoorCloth | null = null;
+  private clothPoints: Float32Array | null = null;
+  private clothOutlines: PassingOutlines | null = null;
 
   private pressDoors(dt: number): void {
     if (!this.passing && !this.pressed) return;
@@ -401,6 +411,12 @@ export class PelvicOrgansView {
         // (each door as one piece front to back: half its sections worked out a frame, in turn, each drawn toward the ones
         // beside it, then smoothed -- actor/birthDoors.ts `pressDoorLine`)
         for (const side of ['right', 'left'] as const) P.want[side] = pressDoorLine(o[side], P.want[side], uniform, (tick % 2) as 0 | 1);
+      } else if (this.pressMode === 'cloth') {
+        // (the full sim, and over it her doors as cloth on the tee's settings: actor/doorCloth.ts)
+        const o = passingOutlines(this.doors.frame, this.passing, P.now.ends, rim);
+        P.want.ends = o.ends;
+        for (const side of ['right', 'left'] as const) P.want[side] = pressDoorLine(o[side], P.want[side], uniform, (tick % 2) as 0 | 1);
+        this.clothOutlines = o;
       } else {
         // (as the BIRTH OPENING slider has them, set by what passes; the hybrid's lips its own -- `sliderDoors`)
         const d = sliderDoors(this.doors.frame, this.passing, P.now.ends, rim, this.pressMode === 'soft', P.want);
@@ -414,13 +430,34 @@ export class PelvicOrgansView {
       if (a.hinge !== w.hinge || a.inner !== w.inner || a.mid !== w.mid || a.outer !== w.outer) settled = false;
     }
     this.drawnSwing = -1;
-    if (settled) this.pressed = null;
+    if (this.pressMode === 'cloth' && this.passing) this.stepCloth(dt, rimOf(P.now.right).t);
+    else { this.cloth = null; this.clothPoints = null; }
+    if (settled) { this.pressed = null; this.cloth = null; this.clothPoints = null; }
+  }
+
+  /** Her doors as cloth this frame (`pressMode` 'cloth'): drawn toward the full sim's, holding to the slider's lengths. */
+  private stepCloth(dt: number, rim: number): void {
+    const P = this.pressed, o = this.clothOutlines;
+    if (!P || !this.passing) return;
+    const f = this.doors.frame, pushed = doorMeshes(f, 0, this.fold, P.now);
+    const s = sliderDoors(f, this.passing, P.now.ends, rim, false), laid = doorMeshes(f, 0, this.fold, { right: s.right, left: s.left, ends: P.now.ends });
+    this.cloth ??= new DoorCloth(pushed.points.length / 3, pushed.triangles, pushed.points.length / 3 / (2 * DOORS.stations + 2 * (DOORS.bandSteps - 1)));
+    // (down, in her opening's frame, as heavy as WEIGHT makes it)
+    this.holder.updateMatrixWorld(true);
+    const down = new THREE.Vector3(0, -1, 0).transformDirection(this.holder.matrixWorld.clone().invert()), g = 981 * clothGravityScale(this.clothDials.weight);
+    const gravity = [f.x, f.t, f.n].map((a) => g * (down.x * a[0] + down.y * a[1] + down.z * a[2]));
+    const D = this.clothDials;
+    this.clothPoints = this.cloth.step(dt, f, laid.points, pushed.points, o, P.now.ends, gravity, {
+      substeps: clothSubsteps(D.steps), stretchCompliance: clothCompliance(D.stretch), bendCompliance: 1e-4, restScale: clothRestScale(D.fit),
+      maxStretch: clothMaxStretch(D.stretch), damping: clothDamping(D.calm), friction: clothFriction(D.grip), standOff: clothStandOffMm(D.close) / 10,
+    });
   }
 
   private drawDoors(): void {
     if (Math.abs(this.swing - this.drawnSwing) < 1e-4 && Math.abs(this.fold - this.drawnFold) < 1e-4) return;
     this.drawnSwing = this.swing; this.drawnFold = this.fold;
     const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now), g = this.doors.mesh.geometry;
+    if (this.clothPoints && this.clothPoints.length === d.points.length) d.points.set(this.clothPoints);
     this.laidAngles = d.angles; this.openNow = d.openM;
     const colour = new Float32Array(d.lining.length * 3), lining = new THREE.Color(DOOR_COLOURS.lining), skin = new THREE.Color(DOOR_COLOURS.skin);
     d.lining.forEach((l, i) => (l ? lining : skin).toArray(colour, i * 3));

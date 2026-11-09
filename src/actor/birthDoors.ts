@@ -180,7 +180,7 @@ export const BIRTH_HEAD = Object.freeze({
 const RAD = Math.PI / 180;
 
 /** How far a point [x, t] is inside what pushes a door (metres; 0 or less: outside it). */
-type Inside = (x: number, t: number) => number;
+export type Inside = (x: number, t: number) => number;
 
 /** The circle centred `c` up the canal, and the baby's body behind it as wide (what has come through stays through). */
 const circleAt = (c: number): Inside => { const r = BIRTH_HEAD.diameterM / 2; return (x, t) => (t >= c ? r - Math.abs(x) : r - Math.hypot(x, t - c)); };
@@ -593,7 +593,7 @@ function outlineOf(points: [number, number][]): Outline | null {
 
 /** How far a point is inside an outline (metres; 0 or less, outside): across, to the nearer side of its band (read
  * between bands), and no deeper than it is from the outline's top or bottom. */
-const insideOf = (o: Outline): Inside => (x, t) => {
+export const insideOf = (o: Outline): Inside => (x, t) => {
   if (x < o.box[0] || x > o.box[1] || t < o.box[2] || t > o.box[3]) return -1;
   const u = Math.min(o.hi.length - 1, Math.max(0, (t - o.t0) / o.dt - 0.5)), i = Math.floor(u), k = Math.min(o.hi.length - 1, i + 1), w = u - i;
   const hi = o.hi[i] + (o.hi[k] - o.hi[i]) * w, lo = o.lo[i] + (o.lo[k] - o.lo[i]) * w;

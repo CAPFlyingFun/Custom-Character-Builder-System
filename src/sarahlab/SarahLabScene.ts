@@ -8129,7 +8129,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         },
         // (a probe: her opening's frame in the world, metres -- its middle, the way through out of her, along it toward her
         // front, and across it -- to stand a camera square to it)
-        doorMode: (m: 'slider' | 'soft' | 'sections') => { if (!organs) return null; organs.pressMode = m; return m; },
+        doorMode: (m: 'slider' | 'soft' | 'sections' | 'cloth', dials?: Partial<Record<'weight' | 'calm' | 'fit' | 'close' | 'stretch' | 'grip' | 'steps', number>>) => { if (!organs) return null; organs.pressMode = m; if (dials) Object.assign(organs.clothDials, dials); return { mode: m, dials: organs.clothDials }; },
         openingFrame: () => {
           if (!organs) return null;
           const f = organs.passFrame(null, 0), r = (v: THREE.Vector3, k = 1) => v.toArray().map((x) => +((x * k)).toFixed(4));
