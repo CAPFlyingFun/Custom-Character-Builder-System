@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BIRTH_OPENING, CANAL_OPENING, canalMouth, cervixAt, headPassage, openCanal, tightest } from '../src/actor/birthCanal';
-import { BIRTH_HEAD, DOORS, ENDS_SHUT, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoor, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
+import { BIRTH_HEAD, DOORS, ENDS_SHUT, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoorLine, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
 import { CERVIX, layOrgans, lengthOf } from '../src/actor/pelvicOrgans';
 import { growWomb } from '../src/actor/pregnantWomb';
 
@@ -150,6 +150,20 @@ describe('her opening\'s doors', () => {
     expect(doorMeshes(frame, 0, 1).angles.hinge).toBeCloseTo(DOORS.foldDeg, 6);
   });
 
+  it('her skin round them is one piece, its inner edge where the doors meet it however they stand', () => {
+    for (const [b, f] of [[0, 0], [0.5, 0], [1, 0], [0, 1]]) {
+      const m = doorMeshes(frame, b, f), rows = 9, C = m.skin.points.length / 3 / rows;
+      expect(Number.isInteger(C)).toBe(true);
+      // (round and closed: its last point joined to its first)
+      expect(Math.max(...m.skin.triangles)).toBe(m.skin.points.length / 3 - 1);
+      for (let c = 0; c < C; c++) {
+        let best = Infinity;
+        for (let i = 0; i < m.points.length; i += 3) best = Math.min(best, Math.hypot(m.points[i] - m.skin.points[3 * c], m.points[i + 1] - m.skin.points[3 * c + 1], m.points[i + 2] - m.skin.points[3 * c + 2]));
+        expect(best).toBeLessThan(1e-6);
+      }
+    }
+  });
+
   it('pushed by the whole baby as it comes through (a stand-in): never inside it, the lips never past each other, at most 12.5 by 10 cm, open round its body until its feet are through, then closed', () => {
     // (head first: its head 9.5 cm across her and 10.5 front to back, born facing down; its shoulders turned front to back,
     // 12 cm, 8.5 across; on up 42 cm to its feet)
@@ -175,7 +189,7 @@ describe('her opening\'s doors', () => {
     let mostOpen = 0, mostLong = 0, bodyOpen = Infinity;
     for (let c = 0.12; c > -0.6; c -= 0.008) {
       const o = passingOutlines(frame, standIn(c), now.ends);
-      want = { right: want.right.map((w, j) => pressDoor(o.right[j], w, j)), left: want.left.map((w, j) => pressDoor(o.left[j], w, j)), ends: o.ends };
+      want = { right: pressDoorLine(o.right, want.right), left: pressDoorLine(o.left, want.left), ends: o.ends };
       // (where they are held, at the places they were cut: what is drawn there is checked against the baby)
       const m = doorMeshes(frame, 0, 0, { ...want, ends: now.ends });
       for (let i = 0; i < m.points.length; i += 3) {

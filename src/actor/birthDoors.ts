@@ -40,6 +40,12 @@ export const DOORS = Object.freeze({
   lengthMost: 0.125,
   acrossMost: 0.1,
   endClear: 0.003,
+  /** HER OPENING AN OVAL (Joshua, 2026-11-08: "make it an oval patch to match the general shape… the top and bottom
+   * sides should be smooth and not look so square"): each hinge curves round it rather than running straight, the doors
+   * narrowing to meet at its ends -- each station's door as wide, hinge to middle, as `(1 - |u|^ovalPower)^(1/ovalPower)`
+   * of its middle's (u -1 at her back end .. 1 at her front), and no narrower than `endWidth` of it. GAME TUNING. */
+  ovalPower: 2.4,
+  endWidth: 0.18,
   /** her outer skin's test piece: how far out from each hinge it runs, and how far it rises as it goes */
   skin: 0.035,
   skinRise: 0.015,
@@ -76,10 +82,10 @@ export function doorFrame(canal: readonly P3[]): DoorFrame {
  */
 interface Section { points: [number, number][]; along: number[]; hinge: [number, number]; lining: number; edge: number }
 
-function section(f = 1): Section {
-  const D = DOORS, R = CANAL_OPENING.diameterM / 2, h = D.hingeUp, g = D.gap, k = D.thick * f, lip = -0.1 * h - (D.lip - 0.1 * h) * f;
-  const corners = (lipT: number): [number, number][] => [[R, h], [0.55 * R, 0.8 * h], [0.2 * R, 0.4 * h], [g, 0.1 * h], [g, lipT]];
-  const ctrl = corners(lip), full = corners(-D.lip);
+function section(f = 1, w = 1): Section {
+  const D = DOORS, R0 = CANAL_OPENING.diameterM / 2, R = R0 * w, h = D.hingeUp, g = D.gap, k = D.thick * f, lip = -0.1 * h - (D.lip - 0.1 * h) * f;
+  const corners = (r: number, lipT: number): [number, number][] => [[r, h], [0.55 * r, 0.8 * h], [0.2 * r, 0.4 * h], [g, 0.1 * h], [g, lipT]];
+  const ctrl = corners(R, lip), full = corners(R0, -D.lip);
   // (each stretch between them cut finer -- as finely at every thickness, so every section has as many points -- the
   // corners kept: the opening's edge is one of them)
   const lining: [number, number][] = [ctrl[0]];
@@ -338,7 +344,7 @@ export function doorOpening(birth: number, fold = 0): number {
  */
 export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: PressedDoors): { points: Float32Array; triangles: Uint32Array; lining: Uint8Array; openM: number; angles: Angles; skin: { points: Float32Array; triangles: Uint32Array } } {
   const D = DOORS, n = section().points.length, J = D.stations, hand = foldAngles(fold), uniform = pressed ? null : birthAngles(birth), ends = pressed?.ends ?? ENDS_SHUT;
-  const pts: number[] = [], tris: number[] = [], lining: number[] = [], mid = (J - 1) / 2, posedMid: [number, number][][] = [], endPosed: [number, number][][][] = [[], []];
+  const pts: number[] = [], tris: number[] = [], lining: number[] = [], mid = (J - 1) / 2, posedMid: [number, number][][] = [], posedAll: [number, number][][][] = [[], []];
   let angles: Angles = CLOSED;
   const at = (x: number, t: number, along: number) => [0, 1, 2].map((c) => f.mouth[c] + f.x[c] * x + f.t[c] * t + f.n[c] * along);
   for (const side of [1, -1]) {
@@ -348,7 +354,7 @@ export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: Pres
       const st = stationOf(j, ends), s = stationSection(j);
       const a = laidOn(s, pressed ? (side > 0 ? pressed.right : pressed.left)[j] : uniform!, hand), here = pose(s, (a.hinge * Math.PI) / 180, a);
       if (j === mid) { posedMid.push(here); if (side > 0) angles = a; }
-      if (j === 0) endPosed[0].push(here); else if (j === J - 1) endPosed[1].push(here);
+      posedAll[side > 0 ? 0 : 1].push(here);
       for (let i = 0; i < n; i++) { pts.push(...at(side * here[i][0], here[i][1], st.along)); lining.push(i < s.lining ? 1 : 0); }
     }
     for (let j = 0; j + 1 < J; j++) for (let i = 0; i < n; i++) {
@@ -357,7 +363,7 @@ export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: Pres
     }
   }
   const openM = narrowest(posedMid[0]) / 2 + narrowest(posedMid[1]) / 2;
-  return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris), lining: Uint8Array.from(lining), openM, angles, skin: skinRing(f, ends, endPosed[0], endPosed[1]) };
+  return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris), lining: Uint8Array.from(lining), openM, angles, skin: skinRing(f, ends, posedAll[0], posedAll[1]) };
 }
 
 const CLOSED: Angles = Object.freeze({ hinge: 0, inner: 0, mid: 0, outer: 0 });
@@ -369,14 +375,14 @@ export interface Ends { readonly front: number; readonly back: number }
 export const ENDS_SHUT: Ends = Object.freeze({ front: DOORS.length / 2, back: DOORS.length / 2 });
 
 /** Station `j` of a door, front to back (0 .. DOORS.stations - 1), with her opening's ends at `ends`: its share of the
- * way (-1 .. 1), its place along the opening (metres) and how thick it is there, as a share of its middle's (a door
- * thins to its ends, as lips do). */
-function stationOf(j: number, ends: Ends = ENDS_SHUT): { u: number; along: number; f: number } {
-  const u = -1 + (2 * j) / (DOORS.stations - 1);
-  return { u, along: u * (u >= 0 ? ends.front : ends.back), f: Math.max(0.08, Math.sqrt(1 - u * u)) };
+ * way (-1 .. 1), its place along the opening (metres), and how thick and how wide it is there, as shares of its middle's
+ * (a door thins to its ends, as lips do, and narrows round her oval opening to meet the other at each end). */
+function stationOf(j: number, ends: Ends = ENDS_SHUT): { u: number; along: number; f: number; w: number } {
+  const u = -1 + (2 * j) / (DOORS.stations - 1), p = DOORS.ovalPower;
+  return { u, along: u * (u >= 0 ? ends.front : ends.back), f: Math.max(0.08, Math.sqrt(1 - u * u)), w: Math.max(DOORS.endWidth, (1 - Math.abs(u) ** p) ** (1 / p)) };
 }
 const sections: Section[] = [];
-const stationSection = (j: number): Section => (sections[j] ??= section(stationOf(j).f));
+const stationSection = (j: number): Section => { const st = stationOf(j); return (sections[j] ??= section(st.f, st.w)); };
 
 /**
  * THE DOORS PUSHED BY WHAT PASSES THROUGH HER (Joshua, 2026-11-08: "make a simple collision between the head vertices and
@@ -442,17 +448,67 @@ export function passingOutlines(f: DoorFrame, points: ArrayLike<number>, ends: E
  * onto it): as near closed as it lets it, every joint as stiff as the next (as the circle pushes them: `strain`) --
  * found from `from` (degrees: where it lay last), as a door is pushed on from where it stood. Nothing in the way of its
  * closing: closed.
+ *
+ * THE DOOR AS ONE PIECE FRONT TO BACK (Joshua, 2026-11-08, choosing it: "Link each section to the ones beside it, so a
+ * door bends as one piece from front to back. Let the main hinge do the work whenever it and the inner fold would do the
+ * same job"): each section is drawn toward the sections beside it (`near`, as they stand: `PRESS.link`), and its inner
+ * fold -- which turns about nearly the same place as its main hinge -- is dearer than the hinge (`PRESS.inner`), so of
+ * two ways that look alike a section takes the one its neighbours take, its hinge doing the turning.
  */
-/** How long a pushed section is worked at each time (the simplex's rounds, coarse then fine). GAME TUNING (a frame's time). */
-const PRESS_ROUNDS = [40, 25];
-
-export function pressDoor(outline: Outline | null, from: Angles, j: number): Angles {
+export function pressDoor(outline: Outline | null, from: Angles, j: number, near: readonly Angles[] = []): Angles {
   if (!outline) return CLOSED;
   const s = stationSection(j), inside = insideOf(outline);
   if (!pose(s, 0, CLOSED).some(([x, t]) => inside(x, t) > 0)) return CLOSED;
-  const f = (v: number[]) => strain(s, v, inside);
-  const a = leastNear(f, leastNear(f, [from.hinge, from.inner, from.mid, from.outer].map((d) => d * RAD), 0.03, PRESS_ROUNDS[0]), 0.008, PRESS_ROUNDS[1]);
+  const by = near.map((a) => [a.hinge, a.inner, a.mid, a.outer].map((d) => d * RAD));
+  const f = (v: number[]) => {
+    let e = strain(s, v, inside) + (PRESS.inner - 1) * v[1] * v[1];
+    for (const b of by) e += PRESS.link * ((v[0] - b[0]) ** 2 + (v[1] - b[1]) ** 2 + (v[2] - b[2]) ** 2 + (v[3] - b[3]) ** 2);
+    return e;
+  };
+  const a = leastNear(f, leastNear(f, [from.hinge, from.inner, from.mid, from.outer].map((d) => d * RAD), 0.03, PRESS.rounds[0]), 0.008, PRESS.rounds[1]);
   return { hinge: a[0] / RAD, inner: a[1] / RAD, mid: a[2] / RAD, outer: a[3] / RAD };
+}
+
+/** How much deeper than its own bend a section's inner fold costs (its hinge does that turning), how hard each section
+ * is drawn toward each beside it (against its own bend: radians squared), how long each is worked at (the simplex's
+ * rounds, coarse then fine: a frame's time), and how many passes of smoothing front to back. GAME TUNING. */
+const PRESS = Object.freeze({ inner: 4, link: 3, rounds: [40, 25] as const, smooth: 2 });
+
+/** How far a section at station `j`, at `a` (degrees), goes into `outline` (metres; 0 or less: clear of it). */
+function pressedInto(outline: Outline | null, a: Angles, j: number): number {
+  if (!outline) return 0;
+  const s = stationSection(j), inside = insideOf(outline), F = fastOf(s);
+  poseFast(s, [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD], F);
+  let most = 0;
+  for (let i = 0; i < F.ox.length; i++) most = Math.max(most, inside(F.ox[i], F.ot[i]));
+  return most;
+}
+
+/**
+ * A door pushed by what passes through her, all its sections in a step (`was` where each lay; `rest` what one with
+ * nothing at it holds): each section worked out from where it lay, drawn toward the sections beside it as they now stand
+ * (`pressDoor`) -- every one, or half of them (`half`: 0 the even stations, 1 the odd; the others keep where they lay:
+ * a frame's time) -- then the door smoothed front to back (`PRESS.smooth` passes), a section kept where it was worked
+ * out wherever smoothing would take it into the baby.
+ */
+export function pressDoorLine(outlines: readonly (Outline | null)[], was: readonly Angles[], rest: Angles = CLOSED, half?: 0 | 1): Angles[] {
+  const J = DOORS.stations, out = was.slice();
+  for (let j = 0; j < J; j++) {
+    if (!outlines[j]) { out[j] = rest; continue; }
+    if (half !== undefined && j % 2 !== half) continue;
+    out[j] = pressDoor(outlines[j], out[j], j, [out[j - 1], out[j + 1]].filter((a): a is Angles => !!a));
+  }
+  const keys = ['hinge', 'inner', 'mid', 'outer'] as const;
+  for (let pass = 0; pass < PRESS.smooth; pass++) {
+    const was2 = out.slice();
+    for (let j = 0; j < J; j++) {
+      if (!outlines[j]) continue;
+      const a = was2[j - 1] ?? was2[j], b = was2[j + 1] ?? was2[j], c = was2[j];
+      const m = Object.fromEntries(keys.map((k) => [k, (a[k] + 2 * c[k] + b[k]) / 4])) as unknown as Angles;
+      if (pressedInto(outlines[j], m, j) <= Math.max(0.0005, pressedInto(outlines[j], c, j))) out[j] = m;
+    }
+  }
+  return out;
 }
 
 /** One step of a pushed section toward where it is pushed (`want`): as fast as it is pushed (`DOORS.openS`), and as the
@@ -471,41 +527,47 @@ export function followEnds(now: Ends, want: Ends, dt: number): Ends {
 }
 
 /**
- * Her outer skin's test piece, all the way round her opening (Joshua, 2026-11-08: "can you extend the up and down and
- * keep the skin, but have an outward curve around it?"): a strip each side from the hinge out toward her thigh, rising
- * as it goes; and at each end, from her opening's end (`ends`) out to where her skin lies flat, a piece meeting the
- * doors' end sections as they stand (`back`, `front`: the right and left doors' sections there, posed) -- so as her
- * opening's ends are pushed apart and its doors bulge, the skin at each end goes with them and curves out round what
- * passes (lying close to its edge, rising to her skin further out: a dome's shoulder). Rest frame; a test piece until
- * her real skin is built.
+ * Her outer skin's test piece, all the way round her opening, as ONE piece (Joshua, 2026-11-08: "can you extend the up
+ * and down and keep the skin, but have an outward curve around it?", and then "The skin on top and bottom of the opening
+ * needs to be blended so it's all smooth and not disconnected"): a ring whose inner edge is where her doors meet her skin
+ * as they stand now -- along each side the foot of each door section's skin by its hinge, at each end the end sections'
+ * skin from hinge round to hinge -- and whose outer edge is her skin lying flat (a rounded frame out toward her thighs and
+ * front and back). Every row between is blended from one to the other: across and along it straight, and in its height as
+ * a dome's shoulder (close to the doors' edge near them, rising to her flat skin further out), so as the doors bulge and
+ * her opening's ends are pushed apart (`ends`) the whole ring goes with them, smoothly, with no seam. `right`, `left`: each
+ * door's sections as posed, front to back (the right door's own [x, t]; the left's mirrored). Rest frame; a test piece
+ * until her real skin is built.
  */
-export function skinRing(f: DoorFrame, ends: Ends = ENDS_SHUT, back?: readonly (readonly [number, number][])[], front?: readonly (readonly [number, number][])[]): { points: Float32Array; triangles: Uint32Array } {
-  const D = DOORS, R = CANAL_OPENING.diameterM / 2, pts: number[] = [], tris: number[] = [], J = D.stations, K = 6, S = 7, N = D.lengthMost / 2 + 0.025, flatT = D.hingeUp - D.thick;
-  const at = (x: number, t: number, along: number) => [0, 1, 2].map((c) => f.mouth[c] + f.x[c] * x + f.t[c] * t + f.n[c] * along);
-  for (const side of [1, -1]) {
-    const base = pts.length / 3;
-    for (let j = 0; j < J; j++) {
-      const along = (-1 + (2 * j) / (J - 1)) * N;
-      for (let k = 0; k < K; k++) { const r = k / (K - 1); pts.push(...at(side * (R + D.hingeOut + D.skin * r), flatT + D.skinRise * r * r, along)); }
-    }
-    for (let j = 0; j + 1 < J; j++) for (let k = 0; k + 1 < K; k++) { const a = base + j * K + k, b = a + 1, c = a + K, d = c + 1; tris.push(a, c, b, b, c, d); }
-  }
-  // each end: the doors' end sections' skin, the right door's from its hinge to its lip and on round the left's back to
-  // its hinge, out to her skin lying flat
-  const s0 = stationSection(0), L = s0.lining, restOf = pose(s0, 0, CLOSED), skinSide = (q: readonly (readonly [number, number])[]) => q.slice(L + 3).reverse();
-  const edgeOf = (posed?: readonly (readonly [number, number][])[]) => {
-    const [r, l] = posed && posed.length === 2 ? posed : [restOf, restOf];
-    return [...skinSide(r).map(([x, t]) => [x, t]), ...skinSide(l).reverse().map(([x, t]) => [-x, t])];
+export function skinRing(f: DoorFrame, ends: Ends = ENDS_SHUT, right?: readonly (readonly [number, number][])[], left?: readonly (readonly [number, number][])[]): { points: Float32Array; triangles: Uint32Array } {
+  const D = DOORS, R = CANAL_OPENING.diameterM / 2, J = D.stations, K = 8, N = D.lengthMost / 2 + 0.025, flatT = D.hingeUp - D.thick, X = R + D.hingeOut + D.skin;
+  const rest = Array.from({ length: J }, (_, j) => pose(stationSection(j), 0, CLOSED));
+  const Rp = right && right.length === J ? right : rest, Lp = left && left.length === J ? left : rest;
+  const L = stationSection(0).lining, skinSide = (q: readonly (readonly [number, number])[]) => q.slice(L + 3).reverse(), root = (q: readonly (readonly [number, number])[]) => q[q.length - 1];
+  // its inner edge round her opening ([x, t, along]): the right door's feet back to front, the front end's sections across,
+  // the left door's feet front to back, the back end's across
+  const edge = (Rq: typeof Rp, Lq: typeof Lp, e: Ends): number[][] => {
+    const along = (j: number) => stationOf(j, e).along, out: number[][] = [];
+    const across = (j: number, sign: 1 | -1) => {
+      // (each door's from beside its foot to its lip; at her front end right to left, at her back end left to right)
+      const r = skinSide(Rq[j]).slice(1).map(([x, t]) => [x, t]), l = skinSide(Lq[j]).slice(1).map(([x, t]) => [-x, t]);
+      for (const [x, t] of sign > 0 ? [...r, ...l.reverse()] : [...l, ...r.reverse()]) out.push([x, t, along(j)]);
+    };
+    for (let j = 0; j < J; j++) { const [x, t] = root(Rq[j]); out.push([x, t, along(j)]); }
+    across(J - 1, 1);
+    for (let j = J - 1; j >= 0; j--) { const [x, t] = root(Lq[j]); out.push([-x, t, along(j)]); }
+    across(0, -1);
+    return out;
   };
-  const rest = edgeOf();
-  for (const [sign, half, posed] of [[-1, ends.back, back], [1, ends.front, front]] as const) {
-    const base = pts.length / 3, edge = edgeOf(posed), C = edge.length;
-    for (let k = 0; k <= S; k++) {
-      const s = k / S;
-      for (let c = 0; c < C; c++) pts.push(...at(edge[c][0] + (rest[c][0] - edge[c][0]) * s, edge[c][1] + (flatT - edge[c][1]) * s * s, sign * (half + (N - half) * s)));
-    }
-    for (let k = 0; k < S; k++) for (let c = 0; c + 1 < C; c++) { const a = base + k * C + c, b = a + 1, cc = a + C, d = cc + 1; tris.push(a, cc, b, b, cc, d); }
+  const inner = edge(Rp, Lp, ends);
+  // its outer edge a round frame -- an oval on her flat skin -- each point of the inner edge going straight out to it as laid
+  const outer = edge(rest, rest, ENDS_SHUT).map(([x, , a]) => { const g = Math.atan2(a / N, x / X); return [X * Math.cos(g), flatT + D.skinRise, N * Math.sin(g)]; });
+  const C = inner.length, pts: number[] = [], tris: number[] = [];
+  const at = (x: number, t: number, a: number) => [0, 1, 2].map((c) => f.mouth[c] + f.x[c] * x + f.t[c] * t + f.n[c] * a);
+  for (let k = 0; k <= K; k++) {
+    const sK = k / K;
+    for (let c = 0; c < C; c++) { const i = inner[c], o = outer[c]; pts.push(...at(i[0] + (o[0] - i[0]) * sK, i[1] + (o[1] - i[1]) * sK * sK, i[2] + (o[2] - i[2]) * sK)); }
   }
+  for (let k = 0; k < K; k++) for (let c = 0; c < C; c++) { const a = k * C + c, b = k * C + ((c + 1) % C), cc = a + C, d = b + C; tris.push(a, cc, b, b, cc, d); }
   return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris) };
 }
 

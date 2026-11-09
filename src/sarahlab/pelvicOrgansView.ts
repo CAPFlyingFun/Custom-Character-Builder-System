@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoor, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -321,6 +321,11 @@ export class PelvicOrgansView {
   /** How far they are folded now (0..1) and the angles laid on them (degrees). */
   get doorFold(): number { return this.fold; }
   get doorAngles(): { outer: number; mid: number; inner: number; hinge: number } { return { ...this.laidAngles }; }
+  /** For a probe: what passes through her now and her doors as drawn, in her rest frame (metres). */
+  doorsSeen(): { passing: number[]; doors: { p: number[]; t: number[]; l: number[] }; skin: { p: number[]; t: number[] } } {
+    const g = this.doors.mesh.geometry, sg = this.doors.skin.geometry, arr = (a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined) => (a ? Array.from(a.array as ArrayLike<number>) : []);
+    return { passing: this.passing ? Array.from(this.passing) : [], doors: { p: arr(g.getAttribute('position')), t: arr(g.getIndex() ?? undefined), l: [] }, skin: { p: arr(sg.getAttribute('position')), t: arr(sg.getIndex() ?? undefined) } };
+  }
   /** How far her opening's ends stand from its middle now (metres: front, back). */
   get doorEnds(): { front: number; back: number } { return { ...(this.pressed?.now.ends ?? ENDS_SHUT) }; }
   /** How wide her opening stands now between its doors' lips, at its middle (metres). */
@@ -383,12 +388,9 @@ export class PelvicOrgansView {
       // (sliced where her opening's ends stand now; its ends pushed apart as far as what crosses it reaches, to 12.5 cm)
       const o = passingOutlines(this.doors.frame, this.passing, P.now.ends);
       P.want.ends = o.ends;
-      for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) {
-        const touch = o[side][j];
-        // (nothing of it at this section: closed; something: worked out every other frame)
-        if (!touch) P.want[side][j] = uniform;
-        else if ((j + tick) % 2 === 0) P.want[side][j] = pressDoor(touch, P.want[side][j], j);
-      }
+      // (each door as one piece front to back: half its sections worked out a frame, in turn, each drawn toward the ones
+      // beside it, then smoothed -- actor/birthDoors.ts `pressDoorLine`)
+      for (const side of ['right', 'left'] as const) P.want[side] = pressDoorLine(o[side], P.want[side], uniform, (tick % 2) as 0 | 1);
     } else { for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) P.want[side][j] = uniform; P.want.ends = ENDS_SHUT; }
     P.now.ends = followEnds(P.now.ends, P.want.ends, dt);
     let settled = !this.passing && P.now.ends.front === ENDS_SHUT.front && P.now.ends.back === ENDS_SHUT.back;

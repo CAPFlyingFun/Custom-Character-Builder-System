@@ -8559,7 +8559,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (!organs) return null;
           if (bladderMl !== undefined) organs.setBladder(bladderMl);
           const w = organs.womb, baby = w ? babySize(w.week, body.babyWeight, babyCount) : null;
-          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, doorFold: organs.doorFold, doorAngles: organs.doorAngles, doorOpenCm: +(organs.doorOpenM * 100).toFixed(1), mouth: organs.passFrame(null, 0).centre.toArray().map((x) => +(x / M).toFixed(4)), ends: organs.doorEnds, womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
+          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, doorFold: organs.doorFold, doorAngles: organs.doorAngles, doorOpenCm: +(organs.doorOpenM * 100).toFixed(1), mouth: organs.passFrame(null, 0).centre.toArray().map((x) => +(x / M).toFixed(4)), ends: organs.doorEnds, seen: () => organs!.doorsSeen(), womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
             // her baby's head through her pelvis, plane by plane (actor/birthCanal.ts), at the size it is drawn
             passage: baby && headPassage(skeletonPelvis, skeletonTorso.landmarks.coccyx, baby.cm / 100) };
         },
