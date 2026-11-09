@@ -66,6 +66,8 @@ export class SkeletonInV2 {
   /** the fit under her skin: how many points it could not get deep enough, and the most any point moved (mm) */
   fitLeft = 0;
   fitMostMm = 0;
+  /** how far the fit moved each point (metres) */
+  private moved: Float32Array = new Float32Array(0);
   /** each whole group's fit: how much smaller, how far slid (mm), how many points still too near */
   readonly wholeFits: { bones: string; scale: number; slideMm: number[]; left: number }[] = [];
   /** the most any point of each piece moved in the fit, mm */
@@ -146,9 +148,13 @@ export class SkeletonInV2 {
           }
           if (which.length) { const r = set0 !== null ? fitWhole(grid, R, which, SKELETON_FIT.margin, 24, 1, 1) : fitWhole(grid, R, which, SKELETON_FIT.margin); if (set0 !== null) r.scale = set0; this.wholeFits.push({ bones: names.join(' '), scale: +r.scale.toFixed(3), slideMm: r.slide.map((x) => Math.round(x * 1000)), left: r.left }); }
         }
+        const afterWhole = R.slice();
         this.fitLeft = pullInside(grid, R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
+        this.moved = new Float32Array(n);
         for (let i = 0; i < n; i++) {
           const mm = Math.hypot(R[i * 3] - before[i * 3], R[i * 3 + 1] - before[i * 3 + 1], R[i * 3 + 2] - before[i * 3 + 2]) * 1000;
+          // (relit only where the smooth pull reshaped it: a whole piece moved in keeps its shape, and its light)
+          this.moved[i] = Math.hypot(R[i * 3] - afterWhole[i * 3], R[i * 3 + 1] - afterWhole[i * 3 + 1], R[i * 3 + 2] - afterWhole[i * 3 + 2]);
           this.fitMostMm = Math.max(this.fitMostMm, mm); this.fitMoves[this.owner[i]] = Math.max(this.fitMoves[this.owner[i]] ?? 0, Math.round(mm));
         }
         this.fitMostMm = +this.fitMostMm.toFixed(1);
@@ -184,8 +190,25 @@ export class SkeletonInV2 {
     for (let i = 0; i < n; i++) v.fromArray(R, i * 3).applyMatrix4(toBody).toArray(P, i * 3);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(P, 3));
-    // (its normals laid again where the fit under her skin reshaped it: kept, a flattened shin is lit as if still round)
-    if (nrm && !this.fitMostMm) g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); else g.computeVertexNormals();
+    // (its normals laid again where the fit under her skin reshaped it -- kept, a flattened shin is lit as if still round
+    // -- but only there, and blended into the file's own: laid afresh everywhere, its seams and fine detail shaded blotchy)
+    if (nrm && this.fitMostMm && src.index) {
+      const F = new Float32Array(n * 3), ix = src.index.array;
+      for (let t = 0; t + 2 < ix.length; t += 3) {
+        const a = ix[t] * 3, b = ix[t + 1] * 3, c = ix[t + 2] * 3;
+        const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], wx = P[c] - P[a], wy = P[c + 1] - P[a + 1], wz = P[c + 2] - P[a + 2];
+        const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+        for (const k of [a, b, c]) { F[k] += nx; F[k + 1] += ny; F[k + 2] += nz; }
+      }
+      for (let i = 0; i < n; i++) {
+        const moved = Math.min(1, (this.moved[i] ?? 0) / 0.004);
+        if (moved <= 0) continue;
+        const l = Math.hypot(F[i * 3], F[i * 3 + 1], F[i * 3 + 2]) || 1;
+        let x = N[i * 3] + (F[i * 3] / l - N[i * 3]) * moved, y = N[i * 3 + 1] + (F[i * 3 + 1] / l - N[i * 3 + 1]) * moved, z = N[i * 3 + 2] + (F[i * 3 + 2] / l - N[i * 3 + 2]) * moved;
+        const m = Math.hypot(x, y, z) || 1; N[i * 3] = x / m; N[i * 3 + 1] = y / m; N[i * 3 + 2] = z / m;
+      }
+    }
+    if (nrm) g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); else g.computeVertexNormals();
     g.setAttribute('skinIndex', new THREE.BufferAttribute(I, 4));
     g.setAttribute('skinWeight', new THREE.BufferAttribute(W, 4));
     if (src.index) g.setIndex(src.index.clone());
