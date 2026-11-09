@@ -58,6 +58,13 @@ export const DOORS = Object.freeze({
    * TUNING. */
   bandReach: 0.3,
   bandJoints: [0.25, 0.47, 0.53, 0.75] as readonly number[],
+  /** ONE RING ROUND ITS ENDS (Joshua, 2026-11-08: "That top and bottom skin flap looks too boxy still and not part of the
+   * same mesh… is it possible to merge?"): open, the doors' sections nearer an end than this station, and the bands
+   * between them, take on the wall of the section here (`wallOf`) -- as thick, bending the same way -- so the skin round
+   * her opening's ends is the doors' own; eased in from nothing at the root over `ringRoot` of the way to the lip. GAME
+   * TUNING. */
+  ringWall: 3,
+  ringRoot: 0.06,
   /** her outer skin's test piece: how far out from each hinge it runs, and how far it rises as it goes */
   skin: 0.035,
   skinRise: 0.015,
@@ -366,7 +373,7 @@ export function doorOpening(birth: number, fold = 0): number {
 export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: PressedDoors): { points: Float32Array; triangles: Uint32Array; lining: Uint8Array; openM: number; angles: Angles; skin: { points: Float32Array; triangles: Uint32Array } } {
   const J = DOORS.stations, hand = foldAngles(fold), uniform = pressed ? null : birthAngles(birth), ends = pressed?.ends ?? ENDS_SHUT, mid = (J - 1) / 2;
   const laid = (side: 0 | 1) => Array.from({ length: J }, (_, j) => laidOn(stationSection(j), pressed ? (side === 0 ? pressed.right : pressed.left)[j] : uniform!, hand));
-  const R = laid(0), L = laid(1), loop = doorLoop(R, L, ends);
+  const R = laid(0), L = laid(1), loop = doorLoop(R, L, ends, !!pressed);
   // (round the loop, each section joined to the next: one mesh, both doors and the bands at their ends)
   const n = section().points.length, lin = stationSection(0).lining, pts: number[] = [], tris: number[] = [], lining: number[] = [], C = loop.length;
   const at = (x: number, t: number, a: number) => [0, 1, 2].map((c) => f.mouth[c] + f.x[c] * x + f.t[c] * t + f.n[c] * a);
@@ -392,13 +399,22 @@ export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: Pres
  * edge becomes one ring. The loop: the right door back to front, the band round her front end, the left door front to
  * back, the band round her back end; each section [x, t, along] in her opening's frame (metres), posed.
  */
-function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends): { points: [number, number, number][]; root: [number, number, number] }[] {
+function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring = false): { points: [number, number, number][]; root: [number, number, number] }[] {
   const J = DOORS.stations, M = DOORS.bandSteps, out: { points: [number, number, number][]; root: [number, number, number] }[] = [];
   const posed = (j: number, a: Angles) => pose(stationSection(j), (a.hinge * Math.PI) / 180, a);
   const add = (q: [number, number][], map: (x: number, t: number) => [number, number, number]) => { const p = q.map(([x, t]) => map(x, t)); out.push({ points: p, root: p[p.length - 1] }); };
+  const PR = R.map((a, j) => posed(j, a)), PL = L.map((a, j) => posed(j, a));
+  // (open, the doors' narrow ends and the bands between them take the shape of the door's own wall a little way in from
+  // each end -- `ringWall` -- so her opening's edge round its ends is the same skin as along its sides)
+  const lin = stationSection(0).lining, open = Math.max(...[...PR, ...PL].map((q) => q[lin - 1][0]));
+  const g0 = ring ? Math.min(1, Math.max(0, (open - PRESS.ringFrom) / (PRESS.ringBy - PRESS.ringFrom))) : 0, g = g0 * g0 * (3 - 2 * g0);
+  const js = DOORS.ringWall, back = (D: readonly [number, number][][]) => wallOf(D[js]), front = (D: readonly [number, number][][]) => wallOf(D[J - 1 - js]);
+  const walls = g > 0 ? { backR: back(PR), backL: back(PL), frontR: front(PR), frontL: front(PL) } : null;
+  const endness = (j: number) => { const e = Math.min(1, Math.max(0, Math.max(js - j, j - (J - 1 - js)) / js)); return e * e * (3 - 2 * e); };
+  const asWall = (q: [number, number][], wall: Wall | null, e: number) => (wall && e * g > 0 ? onWall(q, wall, e * g) : q);
   // (a band's sections between the doors' end sections: turned about her opening's end, half a turn from one door to the
   // other; how far along is shaped by the four joints -- most of the change across the slit and half way out to each side)
-  const band = (j: number, from: Angles, to: Angles, sign: 1 | -1) => {
+  const band = (j: number, from: Angles, to: Angles, sign: 1 | -1, wFrom: Wall | null, wTo: Wall | null) => {
     const a0 = stationOf(j, ends).along;
     for (let k = 1; k < M; k++) {
       const v = k / M, g = bandShare(v), mix = (x: number, y: number) => x + (y - x) * g, phi = Math.PI * v;
@@ -406,14 +422,44 @@ function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends): { poi
       // (round her opening's end in a flat curve -- out past it only `bandReach` as far as across -- so its edge carries the
       // doors' on round the end rather than bulging past it)
       const ux = Math.cos(phi) * sign, un = Math.sin(phi) * sign * DOORS.bandReach;
-      add(posed(j, a), (x, t) => [x * ux, t, a0 + x * un]);
+      add(asWall(posed(j, a), wFrom && wTo ? mixWall(wFrom, wTo, v) : null, 1), (x, t) => [x * ux, t, a0 + x * un]);
     }
   };
-  for (let j = 0; j < J; j++) add(posed(j, R[j]), (x, t) => [x, t, stationOf(j, ends).along]);
-  band(J - 1, R[J - 1], L[J - 1], 1);
-  for (let j = J - 1; j >= 0; j--) add(posed(j, L[j]), (x, t) => [-x, t, stationOf(j, ends).along]);
-  band(0, L[0], R[0], -1);
+  for (let j = 0; j < J; j++) add(asWall(PR[j], walls && (j < J / 2 ? walls.backR : walls.frontR), endness(j)), (x, t) => [x, t, stationOf(j, ends).along]);
+  band(J - 1, R[J - 1], L[J - 1], 1, walls?.frontR ?? null, walls?.frontL ?? null);
+  for (let j = J - 1; j >= 0; j--) add(asWall(PL[j], walls && (j < J / 2 ? walls.backL : walls.frontL), endness(j)), (x, t) => [-x, t, stationOf(j, ends).along]);
+  band(0, L[0], R[0], -1, walls?.backL ?? null, walls?.backR ?? null);
   return out;
+}
+
+/**
+ * A DOOR'S WALL, AS A SHAPE ANY SECTION CAN TAKE ON (Joshua, 2026-11-08: "That top and bottom skin flap looks too boxy
+ * still and not part of the same mesh… is it possible to merge?"): each point of a posed section as how far it is from
+ * its root toward its lip's end (0 .. 1) and how far it stands off that line (metres) -- so laid on another section's own
+ * root and lip, that section has the same wall: as thick, bending the same way, only as long as it is.
+ */
+interface Wall { readonly s: Float64Array; readonly d: Float64Array }
+function lineOf(q: readonly [number, number][]): { ax: number; at: number; bx: number; bt: number; len: number; ux: number; ut: number } {
+  const lin = stationSection(0).lining, n = q.length, ax = (q[0][0] + q[n - 1][0]) / 2, at = (q[0][1] + q[n - 1][1]) / 2, [bx, bt] = q[lin + 1];
+  const len = Math.hypot(bx - ax, bt - at) || 1e-9;
+  return { ax, at, bx, bt, len, ux: (bx - ax) / len, ut: (bt - at) / len };
+}
+function wallOf(q: readonly [number, number][]): Wall {
+  const l = lineOf(q), s = new Float64Array(q.length), d = new Float64Array(q.length);
+  q.forEach(([x, t], i) => { const px = x - l.ax, pt = t - l.at; s[i] = (px * l.ux + pt * l.ut) / l.len; d[i] = -px * l.ut + pt * l.ux; });
+  return { s, d };
+}
+const mixWall = (a: Wall, b: Wall, v: number): Wall => ({ s: a.s.map((x, i) => x + (b.s[i] - x) * v), d: a.d.map((x, i) => x + (b.d[i] - x) * v) });
+/** Section `q` given `wall`'s shape by `w` (0 .. 1) -- its root kept where it is (the shape eased in over the first
+ * `DOORS.ringRoot` of the way out, so where it meets her skin and her canal does not move) and its lip's end too. */
+function onWall(q: readonly [number, number][], wall: Wall, w: number): [number, number][] {
+  const l = lineOf(q);
+  return q.map(([x, t], i) => {
+    const s = wall.s[i], d = wall.d[i], tx = l.ax + s * (l.bx - l.ax) - d * l.ut, tt = l.at + s * (l.bt - l.at) + d * l.ux;
+    const r = Math.min(1, Math.max(0, s / DOORS.ringRoot)), k = w * r * r * (3 - 2 * r);
+    // (and on its own side of her middle, as it was)
+    return [Math.max(x + (tx - x) * k, Math.min(x, DOORS.gap)), t + (tt - t) * k];
+  });
 }
 
 /** How far across a band (0 at the door it leaves .. 1 at the door it meets) its sections have gone from the one door's
@@ -547,7 +593,7 @@ export function pressDoor(outline: Outline | null, from: Angles, j: number, near
  * one rim stretched the doors out of shape; the bands round her opening's ends carry its edge round instead), from how
  * far open at its middle and at its full by how far, and how near the widest-open a section must be to set the rim
  * (`rimOf`). GAME TUNING. */
-const PRESS = Object.freeze({ inner: 4, link: 3, rounds: [40, 25] as const, smooth: 2, ring: 0, ringFrom: 0.01, ringBy: 0.045, ringLead: 0.85, lengthen: 3, longest: 2.2 });
+const PRESS = Object.freeze({ inner: 4, link: 3, rounds: [40, 25] as const, smooth: 2, ring: 0, ringFrom: 0.01, ringBy: 0.03, ringLead: 0.85, lengthen: 3, longest: 2.2 });
 
 /** How far a section at station `j`, at `a` (degrees), reaches past her middle toward the other door (metres; 0 or less:
  * on its own side). */
