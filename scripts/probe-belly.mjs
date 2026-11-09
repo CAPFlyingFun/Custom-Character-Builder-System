@@ -159,7 +159,8 @@ try {
     const sweep = [];
     const steps = [...Array.from({ length: 21 }, (_, i) => i * 10), ...Array.from({ length: 20 }, (_, i) => 190 - i * 10)];
     for (const [i, b] of steps.entries()) {
-      await slide('sarahlab-bump', b); await run(0.05); const now = await hook('profile');
+      // (the step and its first 0.05 s in one go, so the page's own frames cannot run between them)
+      const now = await page.locator('[data-field="sarahlab-bump"] + input').evaluate((input, x) => { input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); const h = globalThis.__sarahLabCloth; h.animate(0.05); return JSON.parse(JSON.stringify(h.profile())); }, b);
       await run(1.0); const settled = await hook('profile');
       sweep.push({ i, bump: b, way: i <= 20 ? 'up' : 'down', now, settled }); log('sweep', i, b, settled.week, settled.wombMl);
       if (b % 50 === 0) { await look('side', 1.5); await shot(`sweep-${String(i).padStart(2, '0')}-${b}-side.png`); }

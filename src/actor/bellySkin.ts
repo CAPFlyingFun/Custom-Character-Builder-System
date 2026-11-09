@@ -81,7 +81,7 @@ export const BELLY_SKIN = Object.freeze({
   pinRows: 1,
   /** after a birth: how long the skin takes to come back in (a time constant), and how much looser it moves meanwhile;
    * otherwise (a slider moved, a pose changed) it follows within a moment */
-  soften: { seconds: 25, looser: 0.7, followSeconds: 0.15 },
+  soften: { seconds: 25, looser: 0.7, followSeconds: 0.15, growSeconds: 0.25 },
   /** the most the spring moves the bump, metres */
   swayMost: 0.02,
 });
@@ -318,11 +318,14 @@ export function shapeBand(band: Band, rows: Float32Array, sources: readonly Arra
     }
   }
   // HOLD: out at once; back in slowly (after a birth: soft, then firming)
+  // (and out over `soften.growSeconds`, not at once -- Joshua, 2026-11-09: "not acting dynamic and like a full sim" --
+  // though never inside what fills her: that is held below, as drawn)
   const back = Math.exp(-Math.max(0, dt) / (state.afterBirth ? S.soften.seconds : S.soften.followSeconds));
+  const out1 = dt > 0 ? Math.exp(-dt / S.soften.growSeconds) : 0;
   let slack = 0, peak = 0;
   for (let i = 0; i < R * C; i++) {
     const h = state.hold[i], want = push[i];
-    state.hold[i] = want >= h ? want : want + (h - want) * back;
+    state.hold[i] = want >= h ? want + (h - want) * out1 : want + (h - want) * back;
     slack = Math.max(slack, state.hold[i] - want); peak = Math.max(peak, state.hold[i]); most = Math.max(most, state.hold[i]);
   }
   state.loose = state.afterBirth && peak > 0.005 ? Math.min(1, slack / Math.max(0.02, peak)) : 0;
