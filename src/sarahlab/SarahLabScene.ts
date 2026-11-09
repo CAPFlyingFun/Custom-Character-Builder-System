@@ -1008,7 +1008,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let foldBackInput: HTMLInputElement | null = null, foldBackPct = 0;
   let xrayInput: HTMLInputElement | null = null, xrayPct = 0;
   /** v2: her skeleton inside her (skeletonInV2.ts; the plan's new direction, step 1), and the load it waits on */
-  let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0;
+  let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0, relaySkeletonV2: ((wholeScale: (number | null)[] | null) => void) | null = null;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
   let birthSeatOn = true;
   /** in SQUAT the same skin rounded OUT instead (negative: out; Joshua, 2026-10-31: there it "pinches right in the
@@ -7056,7 +7056,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     hairMeshes = []; hairRequest++;
     if (model) { three.remove(model); rig?.dispose(); release(model); model = null; }
     organs?.dispose(); organs = null;
-    skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++;
+    skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
     vulva?.dispose(); vulva = null;
     dropBabyHolder();
@@ -7253,11 +7253,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (her feet are left as they are: in this room she wears her sneakers, and her body's feet are shaped to them)
               if (jt) for (const a of [jt.ankleL, jt.ankleR]) for (const b of under(a)) noFit.add(b);
               const whole = [skull].filter((g) => g.length);
-              skeletonV2 = new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
-                chains, noFit, whole,
+              const make = (wholeScale: (number | null)[] | undefined) => new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
+                chains, noFit, whole, wholeScale,
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
                 v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });
+              skeletonV2 = make(undefined);
+              // (a probe lays it again with set sizes: its skull at real size against a bigger head)
+              relaySkeletonV2 = (scales) => { const was = skeletonV2?.mesh.visible ?? false; skeletonV2?.dispose(); skeletonV2 = make(scales ?? undefined); skeletonV2.visible = was; };
               applyXray(); refresh();
               // (its file stays loaded: the laid copy shares its material's maps)
             } catch (error) { console.error('[sarahlab] her skeleton could not be laid inside v2', error); skeletonV2 = null; release(skel); }
@@ -8702,6 +8705,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (jt && sk) for (const a of [jt.ankleL, jt.ankleR]) sk.bones[a]?.traverse((o) => skip.add(o.name));
           return { stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, wholeFits: skeletonV2.wholeFits, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
         },
+        // the skeleton laid again with each whole group at a set size (her skull first; null: fitted), for a probe
+        skeletonRelay: (scales: (number | null)[] | null) => { relaySkeletonV2?.(scales); applyXray(); return skeletonV2?.wholeFits ?? null; },
         // (debug) each of the six rays' crossings of her skin from a point in her rest frame as she stands (metres)
         skeletonRays: (x: number, y: number, z: number) => skeletonV2 ? skeletonV2.raysAt(M, x * M, y * M, z * M) : null,
         // the points the last `skeletonDepths` found close (orange) or through her skin (red), marked in the room
