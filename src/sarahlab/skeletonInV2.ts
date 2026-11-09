@@ -62,6 +62,8 @@ export class SkeletonInV2 {
   /** the fit under her skin: how many points it could not get deep enough, and the most any point moved (mm) */
   fitLeft = 0;
   fitMostMm = 0;
+  /** the most any point of each piece moved in the fit, mm */
+  readonly fitMoves: Record<string, number> = {};
 
   constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null, trunkWeights = true) {
     const src = skeletonMesh.geometry, pos = src.getAttribute('position'), nrm = src.getAttribute('normal');
@@ -126,7 +128,10 @@ export class SkeletonInV2 {
         const ids = new Map<string, number>(), own = Int32Array.from(this.owner, (o) => { let k = ids.get(o); if (k === undefined) ids.set(o, (k = ids.size)); return k; });
         const skip = new Set([...(fit.noFit ?? [])].map((o) => ids.get(o) ?? -1)), before = R.slice();
         this.fitLeft = pullInside(skinGrid(S, ix, 0.02), R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
-        for (let i = 0; i < n; i++) this.fitMostMm = Math.max(this.fitMostMm, Math.hypot(R[i * 3] - before[i * 3], R[i * 3 + 1] - before[i * 3 + 1], R[i * 3 + 2] - before[i * 3 + 2]) * 1000);
+        for (let i = 0; i < n; i++) {
+          const mm = Math.hypot(R[i * 3] - before[i * 3], R[i * 3 + 1] - before[i * 3 + 1], R[i * 3 + 2] - before[i * 3 + 2]) * 1000;
+          this.fitMostMm = Math.max(this.fitMostMm, mm); this.fitMoves[this.owner[i]] = Math.max(this.fitMoves[this.owner[i]] ?? 0, Math.round(mm));
+        }
         this.fitMostMm = +this.fitMostMm.toFixed(1);
       }
     }

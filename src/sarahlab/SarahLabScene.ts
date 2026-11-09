@@ -8687,7 +8687,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her fingers left out: v2 draws its own fingers over them; every bone under her wrists but the hands' own)
           const skip = new Set<string>(), sk = bodyOf()?.mesh.skeleton;
           if (jt && sk) for (const w of [jt.wristL, jt.wristR]) sk.bones[w]?.traverse((o) => { if (o !== sk.bones[w]) skip.add(o.name); });
-          return { stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
+          return { stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
         },
         // (debug) each of the six rays' crossings of her skin from a point in her rest frame as she stands (metres)
         skeletonRays: (x: number, y: number, z: number) => skeletonV2 ? skeletonV2.raysAt(M, x * M, y * M, z * M) : null,
