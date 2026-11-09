@@ -165,7 +165,8 @@ export class SkeletonInV2 {
     for (let i = 0; i < n; i++) v.fromArray(R, i * 3).applyMatrix4(toBody).toArray(P, i * 3);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(P, 3));
-    if (nrm) g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); else g.computeVertexNormals();
+    // (its normals laid again where the fit under her skin reshaped it: kept, a flattened shin is lit as if still round)
+    if (nrm && !this.fitMostMm) g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); else g.computeVertexNormals();
     g.setAttribute('skinIndex', new THREE.BufferAttribute(I, 4));
     g.setAttribute('skinWeight', new THREE.BufferAttribute(W, 4));
     if (src.index) g.setIndex(src.index.clone());
