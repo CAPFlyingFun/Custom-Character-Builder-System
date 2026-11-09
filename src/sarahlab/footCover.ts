@@ -16,7 +16,7 @@ export interface FootCover { readonly index: Uint32Array; readonly delta: Float3
  * @param region which of her points may move (her feet)
  * @param bone her foot bones' points (rest metres)
  */
-export function footCover(skin: Float32Array, normal: Float32Array, region: readonly number[], bone: Float32Array, margin = 0.004, blend = 0.04, reach = 0.018, round = 0.02, rounds = 6): FootCover {
+export function footCover(skin: Float32Array, normal: Float32Array, region: readonly number[], bone: Float32Array, margin = 0.004, blend = 0.04, reach = 0.018, round = 0.025, rounds = 10): FootCover {
   // (her foot bones' points in a grid, 2 cm cells)
   const cell = 0.02, key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`, grid = new Map<string, number[]>();
   for (let i = 0; i < bone.length / 3; i++) { const k = key(bone[i * 3], bone[i * 3 + 1], bone[i * 3 + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }

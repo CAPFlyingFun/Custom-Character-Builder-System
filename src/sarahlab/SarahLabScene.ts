@@ -1011,6 +1011,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** v2: her skeleton inside her (skeletonInV2.ts; the plan's new direction, step 1), and the load it waits on */
   /** v2: her bare feet's field over her foot bones (footCover.ts), and how far it moved her skin most (mm) */
   const FOOT_COVER_FIELD = 'shape:foot:cover', FOOT_COVER_BELOW = 0.16;
+  /** how far her foot bones may be slid into her bare foot before her skin covers the rest, metres. GAME TUNING. */
+  const FOOT_SLIDE_MOST = 0.01;
   let footCoverMm = 0;
   let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0, relaySkeletonV2: ((wholeScale: (number | null)[] | null) => void) | null = null;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
@@ -7258,15 +7260,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               headParent?.traverse((o) => skull.push(o.name));
               // (her feet are left as they are: in this room she wears her sneakers, and her body's feet are shaped to them)
               if (jt) for (const a of [jt.ankleL, jt.ankleR]) for (const b of under(a)) noFit.add(b);
-              const whole = [skull].filter((g) => g.length);
+              // (and each foot, the hybrid -- Joshua 2026-11-09, "Do a hybrid of both": its bones slid in up to a centimetre at
+              // their real size, her bare foot's skin covering the rest, footCover.ts)
+              const whole = [skull, ...(jt ? [under(jt.ankleL), under(jt.ankleR)] : [])].filter((g) => g.length);
               const make = (wholeScale: (number | null)[] | undefined) => new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
-                chains, noFit, whole, wholeScale,
+                chains, noFit, whole, wholeScale, wholeSlideMost: [Infinity, FOOT_SLIDE_MOST, FOOT_SLIDE_MOST],
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
                 v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });
               // (her skull at its real size, only slid in: it fits her head so, back and up a little -- the head-size renders,
               // Joshua 2026-11-09; the Head slider grows and shrinks it with her head, it rides her head bone)
-              skeletonV2 = make([1]);
+              skeletonV2 = make([1, 1, 1]);
               // HER BARE FEET OVER HER FOOT BONES (footCover.ts; Joshua 2026-11-09): a field on her shape, drawn barefoot
               try {
                 const sb = shaped.find((x) => x.mesh === body), feet = new Set<string>();

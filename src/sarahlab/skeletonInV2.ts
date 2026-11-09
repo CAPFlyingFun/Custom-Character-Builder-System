@@ -42,6 +42,8 @@ export interface LimbFit {
   readonly whole?: readonly (readonly string[])[];
   /** a set size for each whole group (1 its own), slid in but never made smaller than that; null: as small as it must be */
   readonly wholeScale?: readonly (number | null)[];
+  /** how far each whole group may be slid in all, metres (none given: as far as it must) */
+  readonly wholeSlideMost?: readonly number[];
 }
 
 /**
@@ -154,7 +156,8 @@ export class SkeletonInV2 {
             let cx = 0, cy = 0, cz = 0; for (const i of which) { cx += R[i * 3]; cy += R[i * 3 + 1]; cz += R[i * 3 + 2]; } cx /= which.length; cy /= which.length; cz /= which.length;
             for (const i of which) { R[i * 3] = cx + (R[i * 3] - cx) * set0; R[i * 3 + 1] = cy + (R[i * 3 + 1] - cy) * set0; R[i * 3 + 2] = cz + (R[i * 3 + 2] - cz) * set0; }
           }
-          if (which.length) { const r = set0 !== null ? fitWhole(grid, R, which, SKELETON_FIT.margin, 24, 1, 1) : fitWhole(grid, R, which, SKELETON_FIT.margin); if (set0 !== null) r.scale = set0; this.wholeFits.push({ bones: names.join(' '), scale: +r.scale.toFixed(3), slideMm: r.slide.map((x) => Math.round(x * 1000)), left: r.left }); }
+          const most = fit.wholeSlideMost?.[this.wholeFits.length] ?? Infinity;
+          if (which.length) { const r = set0 !== null ? fitWhole(grid, R, which, SKELETON_FIT.margin, 24, 1, 1, most) : fitWhole(grid, R, which, SKELETON_FIT.margin, 24, 0.985, 0.82, most); if (set0 !== null) r.scale = set0; this.wholeFits.push({ bones: names.join(' '), scale: +r.scale.toFixed(3), slideMm: r.slide.map((x) => Math.round(x * 1000)), left: r.left }); }
         }
         const afterWhole = R.slice();
         this.fitLeft = pullInside(grid, R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
