@@ -756,9 +756,24 @@ function levelRim(stations: Angles[], outlines: readonly (Outline | null)[]): An
     const bad = (x: number) => pressedInto(outlines[j], to(x), j) > 0.0005 || pressedPast(to(x), j) > 0.0002;
     let x = lx;
     if (bad(x)) { let lo = lx, hi = lx + 0.04; for (let k = 0; k < 16; k++) { const m = (lo + hi) / 2; if (bad(m)) lo = m; else hi = m; } x = hi; }
-    // (never so far round on its hinge that it would lie back over her skin: then it stays as it was)
-    const s = stationSection(j), b = to(x);
-    return bad(x) || (b.hinge > PRESS.hingeMost && j > 0 && j < DOORS.stations - 1) || intoSkin(pose(s, (b.hinge * Math.PI) / 180, b), s.along, s.hinge) ? a : b;
+    // (never so far round on its hinge that it would lie back over her skin, nor flipped over: then as far toward level
+    // as it can go -- not left where it was, or it and the section beside it, levelled, would stand a step apart and
+    // tear the mesh between them)
+    const s = stationSection(j), toward = (k: number): Angles => {
+      const w = lt + (want - lt) * k, x2 = x;
+      return { ...a, hinge: a.hinge + ((Math.atan2(w - ht, x2 - hx) - from) * 180) / Math.PI, long: (a.long ?? 1) * (Math.hypot(x2 - hx, w - ht) / len) };
+    };
+    const fits = (b: Angles) => !(b.hinge > PRESS.hingeMost && j > 0 && j < DOORS.stations - 1) && !intoSkin(pose(s, (b.hinge * Math.PI) / 180, b), s.along, s.hinge);
+    if (bad(x)) return a;
+    if (fits(toward(1))) return toward(1);
+    let lo = 0, hi = 1;
+    for (let k = 0; k < 12; k++) { const m = (lo + hi) / 2; if (fits(toward(m))) lo = m; else hi = m; }
+    // (and the rest of the way to level by drawing it out longer as it now points, not turning it further)
+    const b = lo > 0 ? toward(lo) : a, F = fastOf(s);
+    poseFast(s, [b.hinge * RAD, b.inner * RAD, b.mid * RAD, b.outer * RAD, (b.long ?? 1) - 1], F);
+    const bt = F.ot[s.lining - 1], more = (want - ht) / (bt - ht);
+    const c = more > 1 && Number.isFinite(more) ? { ...b, long: (b.long ?? 1) * Math.min(more, 2) } : b;
+    return pressedPast(c, j) > 0.0002 ? b : c;
   });
 }
 
@@ -791,7 +806,11 @@ export function sharedDoors(f: DoorFrame, points: ArrayLike<number>, ends: Ends,
   const a0 = was?.right[mid] ?? CLOSED, start = [a0.hinge * RAD, a0.inner * RAD, a0.mid * RAD, a0.outer * RAD];
   const v = leastNear(cost, leastNear(cost, start, 0.03, PRESS.rounds[0]), 0.008, PRESS.rounds[1]);
   const a: Angles = { hinge: v[0] / RAD, inner: v[1] / RAD, mid: v[2] / RAD, outer: v[3] / RAD }, row = () => Array.from({ length: J }, () => a);
-  return { right: levelRim(row(), o.right), left: levelRim(row(), o.left), ends: o.ends };
+  // (its rim levelled as the slider's is -- every section alike: checked section by section against the baby, some were
+  // levelled and the ones beside them not, and the step between them tore the mesh -- Joshua, 2026-11-08: "why the Plan
+  // B even if it looks better, the mesh is warp/ripped/missing?")
+  const none = row().map(() => null);
+  return { right: levelRim(row(), none), left: levelRim(row(), none), ends: o.ends };
 }
 
 /**
