@@ -402,7 +402,13 @@ export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: Pres
 function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring = false): { points: [number, number, number][]; root: [number, number, number] }[] {
   const J = DOORS.stations, M = DOORS.bandSteps, out: { points: [number, number, number][]; root: [number, number, number] }[] = [];
   const posed = (j: number, a: Angles) => pose(stationSection(j), (a.hinge * Math.PI) / 180, a);
-  const add = (q: [number, number][], map: (x: number, t: number) => [number, number, number]) => { const p = q.map(([x, t]) => map(x, t)); out.push({ points: p, root: p[p.length - 1] }); };
+  // (each section's points' share of the way from its root to its lip, for `roundRing`)
+  const shares: Float64Array[] = [];
+  const add = (q: [number, number][], map: (x: number, t: number) => [number, number, number]) => {
+    const p = q.map(([x, t]) => map(x, t)), l = lineOf(q);
+    out.push({ points: p, root: p[p.length - 1] });
+    shares.push(Float64Array.from(q, ([x, t]) => Math.min(1, Math.max(0, ((x - l.ax) * l.ux + (t - l.at) * l.ut) / l.len))));
+  };
   const PR = R.map((a, j) => posed(j, a)), PL = L.map((a, j) => posed(j, a));
   // (open, the doors' narrow ends and the bands between them take the shape of the door's own wall a little way in from
   // each end -- `ringWall` -- so her opening's edge round its ends is the same skin as along its sides)
@@ -429,7 +435,38 @@ function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring =
   band(J - 1, R[J - 1], L[J - 1], 1, walls?.frontR ?? null, walls?.frontL ?? null);
   for (let j = J - 1; j >= 0; j--) add(asWall(PL[j], walls && (j < J / 2 ? walls.backL : walls.frontL), endness(j)), (x, t) => [-x, t, stationOf(j, ends).along]);
   band(0, L[0], R[0], -1, walls?.backL ?? null, walls?.backR ?? null);
+  if (g > 0) roundRing(out, shares, g);
   return out;
+}
+
+/**
+ * HER OPENING ONE ROUND OVAL, NOT A STRAIGHT-SIDED ONE CAPPED AT EACH END (Joshua, 2026-11-08: "can you smooth the left
+ * and right sides with a more rounded curve -- At the top and bottom sides? Those slightly rounded half circles at the top
+ * and bottom also looks off"): open (`g`), seen looking into her, every section's lip is carried out onto one smooth oval
+ * round them all -- as wide as the widest, as long as the longest each way -- and its root onto another round the roots;
+ * each point between as far as its share of the way from root to lip. Only ever outward, so off whatever passes; the
+ * skin round them follows their roots.
+ */
+function roundRing(loop: { points: [number, number, number][]; root: [number, number, number] }[], shares: readonly Float64Array[], g: number): void {
+  const n = loop[0].points.length, tip = stationSection(0).lining + 1;
+  // (an oval round the points given, a quarter at a time -- across each way and along each way -- grown to take them all
+  // in, and where each would go on it, straight out from its middle)
+  const oval = (at: (c: number) => [number, number, number]) => {
+    const P = loop.map((_, c) => at(c)), most = (f: (p: readonly number[]) => number) => Math.max(1e-6, ...P.map(f));
+    const ax = [most((p) => p[0]), most((p) => -p[0])], an = [most((p) => p[2]), most((p) => -p[2])];
+    const norm = (p: readonly number[]) => [p[0] / ax[p[0] >= 0 ? 0 : 1], p[2] / an[p[2] >= 0 ? 0 : 1]];
+    const k = Math.max(1, ...P.map((p) => Math.hypot(...norm(p))));
+    return P.map((p) => { const [u, v] = norm(p), r = Math.hypot(u, v) || 1, s = k / r; return [p[0] * s - p[0], p[2] * s - p[2]]; });
+  };
+  const lip = oval((c) => loop[c].points[tip]), root = oval((c) => loop[c].points[n - 1]);
+  loop.forEach((sec, c) => {
+    const pts = sec.points.map((p, i): [number, number, number] => {
+      const s = shares[c][i], w = s * s * (3 - 2 * s);
+      return [p[0] + (root[c][0] + (lip[c][0] - root[c][0]) * w) * g, p[1], p[2] + (root[c][1] + (lip[c][1] - root[c][1]) * w) * g];
+    });
+    sec.points = pts;
+    sec.root = pts[n - 1];
+  });
 }
 
 /**
