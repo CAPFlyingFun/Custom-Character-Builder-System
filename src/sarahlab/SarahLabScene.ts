@@ -300,7 +300,7 @@ import { createNavelSoft, type NavelSoft } from './navelSoft';
 import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
 import {
-  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
+  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
@@ -1005,6 +1005,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** the BIRTH OPENING slider (percent, 0 closed .. 100 the full 10 cm) */
   let birthOpenInput: HTMLInputElement | null = null, birthOpenPct = 0, birthBulgeInput: HTMLInputElement | null = null, birthBulgePct = 0;
   let foldBackInput: HTMLInputElement | null = null, foldBackPct = 0;
+  let xrayInput: HTMLInputElement | null = null, xrayPct = 0;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
   let birthSeatOn = true;
   /** in SQUAT the same skin rounded OUT instead (negative: out; Joshua, 2026-10-31: there it "pinches right in the
@@ -1567,6 +1568,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (only her skeleton has the doors yet: on another body it is not shown)
       if (f4) { f4.textContent = foldBackLine(foldBackPct, organs ? organs.doorAngles : null); f4.style.display = organs ? '' : 'none'; }
       if (foldBackInput) foldBackInput.style.display = organs ? '' : 'none'; }
+    { const f5 = fields[SARAH_LAB_FIELD.xray];
+      // (her skeleton's: on another body it is not shown)
+      if (f5) { f5.textContent = xrayLine(xrayPct); f5.style.display = organs ? '' : 'none'; }
+      if (xrayInput) xrayInput.style.display = organs ? '' : 'none'; }
     { const f3 = fields[SARAH_LAB_FIELD.birthBulge];
       if (vulva) birthBulgePct = Math.round(vulva.bulge * 100);
       if (f3) f3.textContent = birthBulgeLine(birthBulgePct, VULVA_OPEN.bulge * 100);
@@ -2638,6 +2643,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     birthBulgeInput = slider(SARAH_LAB_FIELD.birthBulge, birthBulgePct, (v) => { birthBulgePct = v; vulva?.setBulge(v / 100); }, 100, 'pose');
     // FOLD BACK (v3, on her skeleton): her opening's doors folded back by hand, piece by piece, then on their hinges
     foldBackInput = slider(SARAH_LAB_FIELD.foldBack, foldBackPct, (v) => { foldBackPct = v; organs?.setFold(v / 100); }, 100, 'pose');
+    // X-RAY (v3, on her skeleton): her bones see-through, her organs and baby solid inside them
+    xrayInput = slider(SARAH_LAB_FIELD.xray, xrayPct, (v) => { xrayPct = v; applyXray(); }, 100, 'pose');
     // HER BABY'S BIRTH: begin, pause, FAST or REALISTIC, and back to the start (birthSequence.ts)
     { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.birthLine; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; line.textContent = birthLine(null); fields[SARAH_LAB_FIELD.birthLine] = line; right.appendChild(line);
       const row = document.createElement('div'); row.dataset.tab = 'pose'; row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
@@ -6226,6 +6233,31 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** How its head and shoulders turn (birthSequence.ts `BirthTurn`): on her skeleton as most births go (Joshua,
    * 2026-11-08: "Accurate on v3"); on v2 all of it inside her (2026-11-03). */
   const birthTurn = (): BirthTurn => (!vulva && organs ? 'accurate' : 'inside');
+  /**
+   * X-RAY (Joshua, 2026-11-08, Phase 1 step 5, agreeing "Good to build it that way": "an X-RAY switch to the v3 room now.
+   * Her bones turn see-through, with a slider for how much. The womb, baby, canal, opening and bladder stay solid"): every
+   * mesh of her model but her organs (their holder, 'pelvicOrgans') and her baby drawn see-through by `xrayPct` -- each
+   * with its own see-through copy of its material, made once and kept, its solid one put back at 0. Her belly skin, when
+   * it comes, is one of her meshes and goes see-through with them.
+   */
+  function applyXray(): void {
+    if (!model) return;
+    const share = organs ? Math.min(1, Math.max(0, xrayPct / 100)) : 0, opacity = Math.max(0.06, 1 - 0.94 * share);
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === babyHolder || q.name === 'pelvicOrgans') return;
+      const u = m.userData as { xraySolid?: THREE.Material | THREE.Material[]; xrayGhost?: THREE.Material[] };
+      if (share > 0) {
+        u.xraySolid ??= m.material;
+        u.xrayGhost ??= (Array.isArray(u.xraySolid) ? u.xraySolid : [u.xraySolid]).map((b) => { const c = b.clone(); c.transparent = true; c.depthWrite = false; return c; });
+        for (const g of u.xrayGhost) g.opacity = opacity;
+        m.material = Array.isArray(u.xraySolid) ? u.xrayGhost : u.xrayGhost[0];
+      } else if (u.xraySolid) {
+        m.material = u.xraySolid; for (const g of u.xrayGhost ?? []) g.dispose(); delete u.xraySolid; delete u.xrayGhost;
+      }
+    });
+  }
   /** v3: where her baby may give a little crossing her opening: her opening at its most (12.5 by 10 cm) -- its head as
    * well, all the way through her doors (Joshua, 2026-11-08, choosing it: head and shoulders "squeeze up to 22% while
    * inside the doors (like moulding)"; on v2 its head never gives). */
@@ -7148,6 +7180,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           organs = new PelvicOrgansView(skeletonPelvis, skeletonTorso, pelvisBone, new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld), M);
           organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100);
           three.add(organs.group);
+          applyXray();
         }
         babySkinAt = null; babyDepthOf = null;
         // her birth area shaped (birthArea.ts): a field on her body's shape, the same at every size
