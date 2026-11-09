@@ -7238,12 +7238,20 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               const skelInv = new THREE.Matrix4().copy(skel.matrixWorld).invert(), skelBones = new Map(sm.skeleton.bones.map((b) => [b.name, b]));
               const bodyBind = new THREE.Matrix4().copy(body.bindMatrix).invert(), bodyBones = new Map(body.skeleton.bones.map((b, k) => [b.name, k]));
               const jt = measure?.joints, nameOf = (k: number | undefined) => (k === undefined ? '' : body.skeleton.bones[k]?.name ?? '');
-              const chains = jt ? ([[jt.hipL, jt.kneeL, jt.ankleL], [jt.hipR, jt.kneeR, jt.ankleR], [jt.shoulderL, jt.elbowL, jt.wristL], [jt.shoulderR, jt.elbowR, jt.wristR]] as const).map((c) => c.map(nameOf) as [string, string, string]) : [];
+              // (each leg on to the ball of its foot -- its ankle bone's first child -- so the foot is laid along v2's foot)
+              const ballOf = (k: number) => { const c = body.skeleton.bones[k]?.children.find((o) => (o as THREE.Bone).isBone); return c?.name ?? ''; };
+              const chains = jt ? [[jt.hipL, jt.kneeL, jt.ankleL].map(nameOf).concat(ballOf(jt.ankleL)), [jt.hipR, jt.kneeR, jt.ankleR].map(nameOf).concat(ballOf(jt.ankleR)), [jt.shoulderL, jt.elbowL, jt.wristL].map(nameOf), [jt.shoulderR, jt.elbowR, jt.wristR].map(nameOf)].map((c) => c.filter(Boolean)) : [];
               // (her fingers left as they are: v2 draws its own over them)
               const noFit = new Set<string>();
               if (jt) for (const w of [jt.wristL, jt.wristR]) { const b = sm.skeleton.bones.find((x) => x.name === nameOf(w)); b?.traverse((o) => { if (o !== b) noFit.add(o.name); }); }
+              // (her skull and jaw, and each foot's bones, moved in whole first: everything from her head and each ankle down)
+              const under = (k: number | undefined) => { const out: string[] = [], b = k === undefined ? undefined : sm.skeleton.bones.find((x) => x.name === nameOf(k)); b?.traverse((o) => out.push(o.name)); return out; };
+              // (her head joint is the skull's tip, carrying nothing: the skull is its parent bone, with her jaw)
+              const headParent = jt ? sm.skeleton.bones.find((x) => x.name === nameOf(jt.head))?.parent : undefined, skull: string[] = [];
+              headParent?.traverse((o) => skull.push(o.name));
+              const whole = jt ? [skull, under(jt.ankleL), under(jt.ankleR)].filter((g) => g.length) : [];
               skeletonV2 = new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
-                chains, noFit,
+                chains, noFit, whole,
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
                 v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });
@@ -8127,7 +8135,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           }
           out.planted = feetPlanted; return out; },
         jointHeights: (reapply?: boolean) => { const sk = bodyOf()?.mesh; if (!sk || !measure) return null; if (reapply && rig) rig.apply(currentTurns()); model?.updateMatrixWorld(true); const j = measure.joints as unknown as Record<string, number>, out: Record<string, number[]> = {};
-          for (const k of ['pelvis', 'hipL', 'kneeL', 'ankleL', 'hipR', 'kneeR', 'ankleR', 'chest', 'head']) { const b = sk.skeleton.bones[j[k]]; if (b) out[k] = b.getWorldPosition(new THREE.Vector3()).divideScalar(M / 100).toArray().map((x) => Math.round(x)); }
+          for (const k of ['pelvis', 'hipL', 'kneeL', 'ankleL', 'hipR', 'kneeR', 'ankleR', 'chest', 'neck', 'head']) { const b = sk.skeleton.bones[j[k]]; if (b) out[k] = b.getWorldPosition(new THREE.Vector3()).divideScalar(M / 100).toArray().map((x) => Math.round(x)); }
           return { ...out, modelPos: model ? model.position.clone().divideScalar(M / 100).toArray().map((x) => Math.round(x)) : null, modelQ: model ? model.quaternion.toArray().map((x) => +x.toFixed(3)) : null, placedQ: birthPlaced?.quaternion.toArray().map((x) => +x.toFixed(3)) ?? null, parent: model?.parent?.type ?? null }; },
         birth: (cmd?: { t?: number; pace?: BirthPace; run?: boolean; reset?: boolean }) => {
           if (cmd?.reset) birthControl('reset');
@@ -8687,7 +8695,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her fingers left out: v2 draws its own fingers over them; every bone under her wrists but the hands' own)
           const skip = new Set<string>(), sk = bodyOf()?.mesh.skeleton;
           if (jt && sk) for (const w of [jt.wristL, jt.wristR]) sk.bones[w]?.traverse((o) => { if (o !== sk.bones[w]) skip.add(o.name); });
-          return { stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
+          return { stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, wholeFits: skeletonV2.wholeFits, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
         },
         // (debug) each of the six rays' crossings of her skin from a point in her rest frame as she stands (metres)
         skeletonRays: (x: number, y: number, z: number) => skeletonV2 ? skeletonV2.raysAt(M, x * M, y * M, z * M) : null,

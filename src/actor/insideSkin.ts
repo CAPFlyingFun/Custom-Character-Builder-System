@@ -187,3 +187,41 @@ export function pullInside(g: SkinGrid, points: Float32Array, owner: ArrayLike<n
   }
   return left;
 }
+
+/**
+ * A WHOLE PIECE MOVED IN, NOT RESHAPED (her skull and jaw in her head, each foot's bones in her foot): the points `which`
+ * of `points` moved together -- slid by the mean of how far each point too near or through her skin needs to go in (toward
+ * the piece's middle), and where sliding is not enough, made a little smaller about its middle (by `shrinkStep` a time,
+ * never below `leastScale`) -- until none is nearer her skin than `margin`, or `steps` are spent. Returns the scale and the
+ * slide (the grid's units) it took.
+ */
+export function fitWhole(g: SkinGrid, points: Float32Array, which: readonly number[], margin: number, steps = 24, shrinkStep = 0.985, leastScale = 0.82): { scale: number; slide: [number, number, number]; left: number } {
+  const sub = new Float32Array(which.length * 3);
+  which.forEach((i, k) => { sub[k * 3] = points[i * 3]; sub[k * 3 + 1] = points[i * 3 + 1]; sub[k * 3 + 2] = points[i * 3 + 2]; });
+  let scale = 1, left = 0;
+  const slide: [number, number, number] = [0, 0, 0];
+  for (let step = 0; step < steps; step++) {
+    const d = depthsInSkin(g, sub, margin * 6);
+    let cx = 0, cy = 0, cz = 0;
+    for (let k = 0; k < which.length; k++) { cx += sub[k * 3]; cy += sub[k * 3 + 1]; cz += sub[k * 3 + 2]; }
+    cx /= which.length; cy /= which.length; cz /= which.length;
+    let mx = 0, my = 0, mz = 0; left = 0;
+    for (let k = 0; k < which.length; k++) {
+      if (d[k] >= margin) continue;
+      left++;
+      const dx = cx - sub[k * 3], dy = cy - sub[k * 3 + 1], dz = cz - sub[k * 3 + 2], l = Math.hypot(dx, dy, dz) || 1, need = margin - d[k];
+      mx += (dx / l) * need; my += (dy / l) * need; mz += (dz / l) * need;
+    }
+    if (!left) break;
+    // (slid by the mean need of the points too near; a push from both sides at once cancels, and then it shrinks)
+    mx /= left; my /= left; mz /= left;
+    const shrink = Math.hypot(mx, my, mz) < margin * 0.5 && scale * shrinkStep >= leastScale ? shrinkStep : 1;
+    for (let k = 0; k < which.length; k++) {
+      sub[k * 3] = cx + (sub[k * 3] - cx) * shrink + mx; sub[k * 3 + 1] = cy + (sub[k * 3 + 1] - cy) * shrink + my; sub[k * 3 + 2] = cz + (sub[k * 3 + 2] - cz) * shrink + mz;
+    }
+    scale *= shrink; slide[0] += mx; slide[1] += my; slide[2] += mz;
+    if (shrink === 1 && Math.hypot(mx, my, mz) < margin * 0.05) break;
+  }
+  which.forEach((i, k) => { points[i * 3] = sub[k * 3]; points[i * 3 + 1] = sub[k * 3 + 1]; points[i * 3 + 2] = sub[k * 3 + 2]; });
+  return { scale, slide, left };
+}

@@ -15,7 +15,7 @@
  * included): the random-pose test's numbers.
  */
 import * as THREE from 'three';
-import { depthsInSkin, pullInside, raysAt, raysAtBrute, skinGrid } from '../actor/insideSkin';
+import { depthsInSkin, fitWhole, pullInside, raysAt, raysAtBrute, skinGrid } from '../actor/insideSkin';
 
 /** What counts as close to her skin: a bone this near it (or through it) is reported. GAME TUNING (Joshua, 2026-11-09:
  * "it's okay if it's close"). Metres. */
@@ -31,13 +31,15 @@ export const SKELETON_CLOSE_M = 0.005;
  * file has them (v2's spine joints are an auto-rig's, not her spine's).
  */
 export interface LimbFit {
-  /** each limb's three joints, by bone name: [hip, knee, ankle] or [shoulder, elbow, wrist] */
-  readonly chains: readonly (readonly [string, string, string])[];
+  /** each limb's joints in order, by bone name: [hip, knee, ankle, ball of the foot] or [shoulder, elbow, wrist] */
+  readonly chains: readonly (readonly string[])[];
   /** a bone's joint at bind in her rest frame (metres): the skeleton file's, and v2's */
   readonly skeletonJoint: (name: string) => THREE.Vector3 | null;
   readonly v2Joint: (name: string) => THREE.Vector3 | null;
   /** pieces left as they are by the fit under her skin (her fingers: v2 draws its own) */
   readonly noFit?: ReadonlySet<string>;
+  /** groups of pieces moved in whole first, keeping their shape (her skull and jaw; each foot's bones), by bone name */
+  readonly whole?: readonly (readonly string[])[];
 }
 
 /**
@@ -62,6 +64,8 @@ export class SkeletonInV2 {
   /** the fit under her skin: how many points it could not get deep enough, and the most any point moved (mm) */
   fitLeft = 0;
   fitMostMm = 0;
+  /** each whole group's fit: how much smaller, how far slid (mm), how many points still too near */
+  readonly wholeFits: { bones: string; scale: number; slideMm: number[]; left: number }[] = [];
   /** the most any point of each piece moved in the fit, mm */
   readonly fitMoves: Record<string, number> = {};
 
@@ -87,22 +91,22 @@ export class SkeletonInV2 {
     // each limb's bones onto v2's joints (rest metres): which part of a limb each bone of the skeleton is
     type Seg = { from: THREE.Vector3; to: THREE.Vector3; q: THREE.Quaternion; axis: THREE.Vector3; s: number; end?: undefined } | { end: true; from: THREE.Vector3; to: THREE.Vector3; q: THREE.Quaternion };
     const partOf = new Map<string, Seg>();
-    if (fit) for (const [a, b, c] of fit.chains) {
-      const J = [a, b, c].map(fit.skeletonJoint), V = [a, b, c].map(fit.v2Joint);
+    if (fit) for (const chain of fit.chains) {
+      const J = chain.map(fit.skeletonJoint), V = chain.map(fit.v2Joint);
       if (J.some((x) => !x) || V.some((x) => !x)) continue;
       const seg = (k: number): Seg & { s: number } => {
         const dj = J[k + 1]!.clone().sub(J[k]!), dv = V[k + 1]!.clone().sub(V[k]!);
         const s = dv.length() / Math.max(1e-6, dj.length()), axis = dj.clone().normalize();
-        this.stretch[[a, b][k]] = +s.toFixed(3);
+        this.stretch[chain[k]] = +s.toFixed(3);
         return { from: J[k]!, to: V[k]!, q: new THREE.Quaternion().setFromUnitVectors(axis, dv.clone().normalize()), axis, s };
       };
-      const upper = seg(0), lower = seg(1), end: Seg = { end: true, from: J[2]!, to: V[2]!, q: lower.q };
-      // (every bone under the third joint goes with the hand or foot; the first and second carry their own parts)
+      // each bone between two joints of the chain on its segment; every bone under the last joint carried on as the last
+      // segment turned (a hand under its wrist, toes under the ball of the foot)
+      const segs = chain.slice(0, -1).map((_, k) => seg(k)), last = chain.length - 1;
+      const end: Seg = { end: true, from: J[last]!, to: V[last]!, q: segs[segs.length - 1].q };
       const under = (bone: THREE.Object3D, top: string): boolean => { for (let o: THREE.Object3D | null = bone; o; o = o.parent) if (o.name === top) return true; return false; };
       for (const bone of theirs) {
-        if (under(bone, c)) partOf.set(bone.name, end);
-        else if (under(bone, b)) partOf.set(bone.name, lower);
-        else if (under(bone, a)) partOf.set(bone.name, upper);
+        for (let k = last; k >= 0; k--) if (under(bone, chain[k])) { partOf.set(bone.name, k === last ? end : segs[k]); break; }
       }
     }
     const R = new Float32Array(n * 3), P = new Float32Array(n * 3), N = new Float32Array(n * 3), v = new THREE.Vector3(), d = new THREE.Vector3();
@@ -126,8 +130,15 @@ export class SkeletonInV2 {
       const ix = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array;
       if (ix) {
         const ids = new Map<string, number>(), own = Int32Array.from(this.owner, (o) => { let k = ids.get(o); if (k === undefined) ids.set(o, (k = ids.size)); return k; });
-        const skip = new Set([...(fit.noFit ?? [])].map((o) => ids.get(o) ?? -1)), before = R.slice();
-        this.fitLeft = pullInside(skinGrid(S, ix, 0.02), R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
+        const skip = new Set([...(fit.noFit ?? [])].map((o) => ids.get(o) ?? -1)), before = R.slice(), grid = skinGrid(S, ix, 0.02);
+        // (whole pieces first: her skull in her head and her foot bones in her feet keep their shapes)
+        for (const names of fit.whole ?? []) {
+          const set = new Set(names), which: number[] = [];
+          for (let i = 0; i < n; i++) if (set.has(this.owner[i])) which.push(i);
+          if (!which.length) this.wholeFits.push({ bones: names.join(' ') + ' (no points)', scale: 1, slideMm: [], left: 0 });
+          if (which.length) { const r = fitWhole(grid, R, which, SKELETON_FIT.margin); this.wholeFits.push({ bones: names.join(' '), scale: +r.scale.toFixed(3), slideMm: r.slide.map((x) => Math.round(x * 1000)), left: r.left }); }
+        }
+        this.fitLeft = pullInside(grid, R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
         for (let i = 0; i < n; i++) {
           const mm = Math.hypot(R[i * 3] - before[i * 3], R[i * 3 + 1] - before[i * 3 + 1], R[i * 3 + 2] - before[i * 3 + 2]) * 1000;
           this.fitMostMm = Math.max(this.fitMostMm, mm); this.fitMoves[this.owner[i]] = Math.max(this.fitMoves[this.owner[i]] ?? 0, Math.round(mm));

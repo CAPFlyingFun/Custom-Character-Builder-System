@@ -12,7 +12,8 @@ import { chromium } from 'playwright';
 import { build, preview } from 'vite';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SHOTS = path.join(ROOT, 'shots', 'skeleton-knee');
+const PART = process.env.PART ?? 'knee', JOINT = { knee: 'kneeL', ankle: 'ankleL', head: 'head', hip: 'hipL', shoulder: 'chest' }[PART];
+const SHOTS = path.join(ROOT, 'shots', `skeleton-${PART}`);
 const M = 100;
 const log = (...a) => console.log('[knee]', ...a);
 mkdirSync(SHOTS, { recursive: true });
@@ -32,11 +33,11 @@ try {
   await page.waitForFunction(() => globalThis.__sarahLabCloth?.skeletonDepths?.(50) != null, null, { timeout: 300_000, polling: 2000 });
   for (let k = 0; k < 3; k++) { await press('sarahlab:outfit'); await page.waitForTimeout(8000); }
   await slide('sarahlab-xray', 50); await run(1);
-  for (const p of ['stand', 'walk', 'sit']) {
+  for (const p of (process.env.POSES ?? 'stand,walk,sit').split(',')) {
     if (p !== 'stand') { await press(`sarahlab:${p}`); await run(p === 'walk' ? 1.3 : 2.5); }
     report[p] = await hook('jointHeights');
     // (her left knee, from where the hook measures it: centimetres in the world, offsets from the middle of her hips)
-    const j = report[p], mid = [0, 1, 2].map((a) => (j.hipL[a] + j.hipR[a]) / 2), dx = (j.kneeL[0] - mid[0]) / 100, dy = (j.kneeL[1] - mid[1]) / 100, dz = (j.kneeL[2] - mid[2]) / 100;
+    const j = report[p], mid = [0, 1, 2].map((a) => (j.hipL[a] + j.hipR[a]) / 2), dx = (j[JOINT][0] - mid[0]) / 100, dy = (j[JOINT][1] - mid[1]) / 100, dz = (j[JOINT][2] - mid[2]) / 100;
     for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2], ['q34', Math.PI / 4]]) {
       await hook('aim', yaw, 0.05, 0.6 * M, dx, dy, dz); await run(0.1); await shot(`${p}-${v}.png`);
     }
