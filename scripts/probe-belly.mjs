@@ -43,6 +43,23 @@ try {
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('[data-role="sarah-lab-hud"]', { timeout: 240_000 });
   await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model v2-body'), status, { timeout: 240_000 });
+  // (v2 first, as the room opens on it: the same BUMP %s and views as v3's in 'compare')
+  let dist0 = 2.9;
+  if (sets.includes('compare')) {
+    const slide0 = async (field, v) => { await page.locator(`[data-field="${field}"] + input`).evaluate((input, x) => { input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, v); };
+    await page.waitForTimeout(3000);
+    // (her clothes off, as v3 has none: OUTFIT three times is none)
+    for (let k = 0; k < 3; k++) { await click('[data-action="sarahlab:outfit"]'); await page.waitForTimeout(1500); }
+    for (const b of [25, 50, 75, 100, 150]) {
+      await slide0('sarahlab-bump', b); await page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), 1.2);
+      for (const [v, view] of [['side', 'side'], ['q34', 'three-quarter']]) {
+        await page.click(`[data-action="sarahlab:view:${view}"]`);
+        if (Math.abs(dist0 - 1.5) > 1e-3) { await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(1.5 / dist0) / 0.001); dist0 = 1.5; }
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: path.join(SHOTS, `cmp-v2-${b}-${v}.png`), clip: { x: 150, y: 40, width: 540, height: 780 } }); log('shot', `cmp-v2-${b}-${v}.png`);
+      }
+    }
+  }
   await click('[data-action="sarahlab:model"]');
   await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model skeleton'), status, { timeout: 240_000 });
   await page.waitForTimeout(1500);
@@ -53,7 +70,7 @@ try {
   if (!organs?.womb) { await click('[data-action="sarahlab:pregnant"]'); await page.waitForTimeout(500); }
   const M = 1 / 0.89974678;
   // (the camera through the room's own controls: its FRONT / SIDE / 3/4 / BACK buttons and the wheel's zoom)
-  let dist = 2.9;
+  let dist = dist0;
   const zoomTo = async (d) => { if (Math.abs(d - dist) < 1e-3) return; await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(d / dist) / 0.001); dist = d; await page.waitForTimeout(200); };
   const look = async (view, d = 1.4) => { await page.click(`[data-action="sarahlab:view:${view}"]`); await zoomTo(d); await page.waitForTimeout(300); };
   const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 150, y: 40, width: 540, height: 780 } }); log('shot', name); };
@@ -115,13 +132,6 @@ try {
       for (const [v, yaw] of [['side', 'side'], ['q34', 'three-quarter']]) { await look(yaw, 1.5); await shot(`cmp-v3-${b}-${v}.png`); }
       await slide('sarahlab-xray', 30); await run(0.2); await look('side', 1.5); await shot(`cmp-v3-${b}-xray.png`); await slide('sarahlab-xray', 0);
     }
-    // (MODEL from her skeleton round to v2-body: v1 next, then v2-body)
-    await click('[data-action="sarahlab:model"]');
-    await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('base model'), status, { timeout: 240_000 });
-    await click('[data-action="sarahlab:model"]');
-    await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model v2-body'), status, { timeout: 240_000 });
-    await run(2);
-    for (const b of bumps) { await at(b); for (const [v, yaw] of [['side', 'side'], ['q34', 'three-quarter']]) { await look(yaw, 1.5); await shot(`cmp-v2-${b}-${v}.png`); } }
   }
   if (sets.includes('options')) {
     // Joshua, 2026-11-09: each option -- 1 real womb + v2's skin (WOMB FILL 0), 2 the womb grown to v2's belly (100), the
