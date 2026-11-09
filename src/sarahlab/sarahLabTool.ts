@@ -236,6 +236,12 @@ export const SARAH_LAB_FIELD = Object.freeze({
   foldBack: 'sarahlab-fold-back',
   /** X-RAY (v3, on her skeleton): her bones see-through, her organs and her baby solid inside them */
   xray: 'sarahlab-xray',
+  /** her belly's organs (v3, on her skeleton): how much her stomach, her rectum and her bladder hold, and what that means
+   * to her (actor/gut.ts) */
+  stomach: 'sarahlab-stomach',
+  bowel: 'sarahlab-bowel',
+  bladder: 'sarahlab-bladder',
+  gutLine: 'sarahlab-gut-line',
   /** the BIRTH line: where her baby's birth is (birthSequence.ts) */
   birthLine: 'sarahlab-birth-line',
   /** the BIRTH timeline: where in it she is, to jump to any moment */
@@ -886,10 +892,17 @@ export function navelState(bumpPercent: number, navelPercent: number): string {
 /** The FOLD BACK slider's line (Joshua, 2026-11-08: "Manually: The skin folds plus the main joints... 1st outer 30°, 2nd
  * mid 30°, 3rd inner {closest to body} 30°, 4th default joints"): how far, and each fold's angle as laid. */
 /** The X-RAY slider's line (Joshua, 2026-11-08, Phase 1 step 5: "Add an x-ray view to the room: the skeleton and organs
- * seen through her body" -- her bones see-through by this much; her belly skin, when it comes, under the same switch). */
+ * seen through her body"; the belly skin proof, choosing "Skin first, then bones": 0-50% her skin goes see-through, 50-100%
+ * her bones; her organs and baby solid throughout). */
 export function xrayLine(percent: number): string {
   const p = Math.round(Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0)));
-  return p === 0 ? 'X-RAY · off' : `X-RAY ${p}% · her bones see-through, her organs and baby solid`;
+  if (p === 0) return 'X-RAY · off';
+  return p <= 50 ? `X-RAY ${p}% · her skin see-through, her organs and baby solid` : `X-RAY ${p}% · her skin gone, her bones see-through, her organs and baby solid`;
+}
+/** X-RAY's two halves (0..1 each): how much of her skin still shows, and how far her bones have gone see-through. */
+export function xrayShares(percent: number): { skin: number; bones: number } {
+  const p = Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0));
+  return { skin: 1 - Math.min(1, p / 50), bones: Math.max(0, (p - 50) / 50) };
 }
 
 export function foldBackLine(percent: number, angles: { outer: number; mid: number; inner: number; hinge: number } | null): string {

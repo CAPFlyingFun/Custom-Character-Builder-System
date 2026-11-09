@@ -235,6 +235,14 @@ export class PelvicOrgansView {
   }
   /** The layout as laid (rest metres): for probes and the readout. */
   get laid(): OrganLayout | null { return this.layout; }
+  /** One organ's soft body (world metres), for the organs that lie against it (sarahlab/abdomenView.ts); a new one each
+   * time they are laid again. */
+  cage(name: Name): Cage | null { return this.organs.find((o) => o.name === name)?.cage ?? null; }
+  /** Her womb's drawn points now (world units), for her belly's skin to lie over (sarahlab/bellySkinView.ts). */
+  wombPoints(): Float32Array | null {
+    const o = this.organs.find((g) => g.name === 'uterus');
+    return o ? ((o.mesh.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array) : null;
+  }
 
   private build(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }

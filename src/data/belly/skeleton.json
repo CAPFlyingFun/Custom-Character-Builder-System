@@ -1,0 +1,293 @@
+{
+ "rig": "skeleton",
+ "model": "models/sarah-skeleton.glb",
+ "frame": "her rest frame: +y up, +z her front, +x her left, metres (the file's scene at her bind pose)",
+ "midlineX": 0.00332,
+ "spine": [
+  "Bone_001",
+  "Bone_004",
+  "Bone_003",
+  "Bone_002"
+ ],
+ "rows": [
+  {
+   "y": 0.8332,
+   "halfWidth": 0.15932,
+   "boneFront": 0.00158,
+   "boneBack": -0.15589,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.84582,
+   "halfWidth": 0.15688,
+   "boneFront": -0.02294,
+   "boneBack": -0.16926,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.85843,
+   "halfWidth": 0.15072,
+   "boneFront": -0.03196,
+   "boneBack": -0.17362,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.87105,
+   "halfWidth": 0.11785,
+   "boneFront": -0.03344,
+   "boneBack": -0.17691,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.88366,
+   "halfWidth": 0.12144,
+   "boneFront": -0.04013,
+   "boneBack": -0.17436,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.89628,
+   "halfWidth": 0.12388,
+   "boneFront": -0.03365,
+   "boneBack": -0.17224,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.90889,
+   "halfWidth": 0.12908,
+   "boneFront": -0.01806,
+   "boneBack": -0.17001,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.92151,
+   "halfWidth": 0.13822,
+   "boneFront": 0.002,
+   "boneBack": -0.16661,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.93412,
+   "halfWidth": 0.14319,
+   "boneFront": 0.00296,
+   "boneBack": -0.16131,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.94674,
+   "halfWidth": 0.14701,
+   "boneFront": 0.00179,
+   "boneBack": -0.15314,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.95935,
+   "halfWidth": 0.14988,
+   "boneFront": -0.0014,
+   "boneBack": -0.14762,
+   "weights": {
+    "Bone_001": 1
+   }
+  },
+  {
+   "y": 0.97197,
+   "halfWidth": 0.14839,
+   "boneFront": -0.00914,
+   "boneBack": -0.13446,
+   "weights": {
+    "Bone_001": 0.975,
+    "Bone_004": 0.025
+   }
+  },
+  {
+   "y": 0.98458,
+   "halfWidth": 0.14499,
+   "boneFront": -0.01933,
+   "boneBack": -0.12406,
+   "weights": {
+    "Bone_001": 0.86,
+    "Bone_004": 0.14
+   }
+  },
+  {
+   "y": 0.9972,
+   "halfWidth": 0.13746,
+   "boneFront": -0.03376,
+   "boneBack": -0.11769,
+   "weights": {
+    "Bone_001": 0.634,
+    "Bone_004": 0.366
+   }
+  },
+  {
+   "y": 1.00981,
+   "halfWidth": 0.11454,
+   "boneFront": -0.04798,
+   "boneBack": -0.12226,
+   "weights": {
+    "Bone_001": 0.346,
+    "Bone_004": 0.654
+   }
+  },
+  {
+   "y": 1.02243,
+   "halfWidth": 0.0531,
+   "boneFront": -0.03991,
+   "boneBack": -0.11844,
+   "weights": {
+    "Bone_001": 0.128,
+    "Bone_004": 0.872
+   }
+  },
+  {
+   "y": 1.03504,
+   "halfWidth": 0.04928,
+   "boneFront": -0.04108,
+   "boneBack": -0.11536,
+   "weights": {
+    "Bone_001": 0.021,
+    "Bone_004": 0.879,
+    "Bone_003": 0.048,
+    "Bone_002": 0.053
+   }
+  },
+  {
+   "y": 1.04766,
+   "halfWidth": 0.04981,
+   "boneFront": -0.04511,
+   "boneBack": -0.11833,
+   "weights": {
+    "Bone_004": 0.688,
+    "Bone_003": 0.156,
+    "Bone_002": 0.156
+   }
+  },
+  {
+   "y": 1.06027,
+   "halfWidth": 0.12006,
+   "boneFront": 0.01643,
+   "boneBack": -0.1144,
+   "weights": {
+    "Bone_004": 0.366,
+    "Bone_003": 0.293,
+    "Bone_002": 0.341
+   }
+  },
+  {
+   "y": 1.07289,
+   "halfWidth": 0.13099,
+   "boneFront": 0.02959,
+   "boneBack": -0.10602,
+   "weights": {
+    "Bone_004": 0.133,
+    "Bone_003": 0.339,
+    "Bone_002": 0.529
+   }
+  },
+  {
+   "y": 1.0855,
+   "halfWidth": 0.13449,
+   "boneFront": 0.04211,
+   "boneBack": -0.12098,
+   "weights": {
+    "Bone_004": 0.011,
+    "Bone_003": 0.263,
+    "Bone_002": 0.727
+   }
+  },
+  {
+   "y": 1.09812,
+   "halfWidth": 0.13544,
+   "boneFront": 0.05134,
+   "boneBack": -0.12035,
+   "weights": {
+    "Bone_003": 0.129,
+    "Bone_002": 0.871
+   }
+  },
+  {
+   "y": 1.11073,
+   "halfWidth": 0.1398,
+   "boneFront": 0.05675,
+   "boneBack": -0.1282,
+   "weights": {
+    "Bone_003": 0.036,
+    "Bone_002": 0.964
+   }
+  },
+  {
+   "y": 1.12335,
+   "halfWidth": 0.14383,
+   "boneFront": 0.06068,
+   "boneBack": -0.12799,
+   "weights": {
+    "Bone_002": 0.997
+   }
+  },
+  {
+   "y": 1.13596,
+   "halfWidth": 0.14489,
+   "boneFront": 0.06397,
+   "boneBack": -0.13435,
+   "weights": {
+    "Bone_002": 1
+   }
+  },
+  {
+   "y": 1.14858,
+   "halfWidth": 0.14489,
+   "boneFront": 0.06503,
+   "boneBack": -0.13796,
+   "weights": {
+    "Bone_002": 1
+   }
+  },
+  {
+   "y": 1.16119,
+   "halfWidth": 0.14765,
+   "boneFront": 0.06492,
+   "boneBack": -0.13361,
+   "weights": {
+    "Bone_002": 1
+   }
+  },
+  {
+   "y": 1.17381,
+   "halfWidth": 0.14744,
+   "boneFront": 0.06418,
+   "boneBack": -0.14688,
+   "weights": {
+    "Bone_002": 1
+   }
+  },
+  {
+   "y": 1.18642,
+   "halfWidth": 0.14881,
+   "boneFront": 0.06355,
+   "boneBack": -0.14879,
+   "weights": {
+    "Bone_002": 1
+   }
+  }
+ ]
+}
