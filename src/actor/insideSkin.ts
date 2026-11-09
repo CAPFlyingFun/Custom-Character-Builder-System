@@ -66,8 +66,8 @@ function triDistance(g: SkinGrid, t: number, px: number, py: number, pz: number)
   return at(vb * den, vc * den);
 }
 
-/** Crossings of the skin by a ray from p along d. */
-function crossings(g: SkinGrid, px: number, py: number, pz: number, d: readonly number[], stamp: Uint32Array, id: number): number {
+/** Crossings of the skin by a ray from p along d (and the nearest crossing's distance, in `nearest[0]` when given). */
+function crossings(g: SkinGrid, px: number, py: number, pz: number, d: readonly number[], stamp: Uint32Array, id: number, nearest?: number[]): number {
   const P = g.pos, [nx, ny, nz] = g.dim;
   let x = Math.floor((px - g.lo[0]) / g.cell), y = Math.floor((py - g.lo[1]) / g.cell), z = Math.floor((pz - g.lo[2]) / g.cell);
   const step = d.map((v) => (v > 0 ? 1 : -1)), o = [px, py, pz], cellOf = [x, y, z];
@@ -88,7 +88,8 @@ function crossings(g: SkinGrid, px: number, py: number, pz: number, d: readonly 
       if (u < 0 || u > 1) continue;
       const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x, v = f * (d[0] * qx + d[1] * qy + d[2] * qz);
       if (v < 0 || u + v > 1) continue;
-      if (f * (e2x * qx + e2y * qy + e2z * qz) > 0) hits++;
+      const tt = f * (e2x * qx + e2y * qy + e2z * qz);
+      if (tt > 0) { hits++; if (nearest && tt < nearest[0]) nearest[0] = tt; }
     }
     if (tMax[0] < tMax[1] && tMax[0] < tMax[2]) { x += step[0]; tMax[0] += tDelta[0]; }
     else if (tMax[1] < tMax[2]) { y += step[1]; tMax[1] += tDelta[1]; }
@@ -227,4 +228,11 @@ export function fitWhole(g: SkinGrid, points: Float32Array, which: readonly numb
   }
   which.forEach((i, k) => { points[i * 3] = sub[k * 3]; points[i * 3 + 1] = sub[k * 3 + 1]; points[i * 3 + 2] = sub[k * 3 + 2]; });
   return { scale, slide, left };
+}
+
+/** How far a ray from p along the unit direction d runs before it meets the skin (Infinity: never). */
+export function rayToSkin(g: SkinGrid, px: number, py: number, pz: number, d: readonly number[]): number {
+  const nearest = [Infinity];
+  crossings(g, px, py, pz, d, new Uint32Array(g.tri.length / 3), 1, nearest);
+  return nearest[0];
 }

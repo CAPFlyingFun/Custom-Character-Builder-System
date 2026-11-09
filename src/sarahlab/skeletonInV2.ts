@@ -15,7 +15,7 @@
  * included): the random-pose test's numbers.
  */
 import * as THREE from 'three';
-import { depthsInSkin, fitWhole, pullInside, raysAt, raysAtBrute, skinGrid } from '../actor/insideSkin';
+import { depthsInSkin, fitWhole, pullInside, rayToSkin, raysAt, raysAtBrute, skinGrid } from '../actor/insideSkin';
 
 /** What counts as close to her skin: a bone this near it (or through it) is reported. GAME TUNING (Joshua, 2026-11-09:
  * "it's okay if it's close"). Metres. */
@@ -293,7 +293,7 @@ export class SkeletonInV2 {
    * For probes: how much room the pieces named have under her skin now, toward their front and their back (mm): the least
    * depth of their points in the front third and the back third along `forward` (world), and the whole span front to back.
    */
-  roomOf(names: ReadonlySet<string>, units: number, forward: THREE.Vector3): { frontMm: number; backMm: number; lengthMm: number } {
+  roomOf(names: ReadonlySet<string>, units: number, forward: THREE.Vector3): { frontMm: number; backMm: number; lengthMm: number; aheadMm?: number } {
     const body = this.body, bp = body.geometry.getAttribute('position'), m = bp.count, S = new Float32Array(m * 3), v = new THREE.Vector3();
     body.updateMatrixWorld(true); this.mesh.updateMatrixWorld(true);
     for (let i = 0; i < m; i++) { body.getVertexPosition(i, v); v.applyMatrix4(body.matrixWorld).toArray(S, i * 3); }
@@ -304,7 +304,10 @@ export class SkeletonInV2 {
     const d = depthsInSkin(g, Float32Array.from(pts), 0.06 * units), lo = Math.min(...along), hi = Math.max(...along), span = hi - lo;
     let front = Infinity, back = Infinity;
     along.forEach((a, k) => { if (a > hi - span / 3) front = Math.min(front, d[k]); if (a < lo + span / 3) back = Math.min(back, d[k]); });
-    return { frontMm: +((front / units) * 1000).toFixed(1), backMm: +((back / units) * 1000).toFixed(1), lengthMm: +((span / units) * 1000).toFixed(0) };
+    // (and straight ahead: from its foremost points, how far forward her skin is)
+    let ahead = Infinity;
+    along.forEach((a, k) => { if (a > hi - span * 0.06) ahead = Math.min(ahead, rayToSkin(g, pts[k * 3], pts[k * 3 + 1], pts[k * 3 + 2], [forward.x, forward.y, forward.z])); });
+    return { frontMm: +((front / units) * 1000).toFixed(1), backMm: +((back / units) * 1000).toFixed(1), lengthMm: +((span / units) * 1000).toFixed(0), aheadMm: Number.isFinite(ahead) ? +((ahead / units) * 1000).toFixed(1) : -1 };
   }
 
   /** For probes: her skin's grid as drawn now, and each ray's crossings from a world point. */
