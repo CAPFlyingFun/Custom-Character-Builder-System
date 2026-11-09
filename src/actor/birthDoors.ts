@@ -597,7 +597,39 @@ export function pressDoorLine(outlines: readonly (Outline | null)[], was: readon
       if (pressedInto(outlines[j], m, j) <= Math.max(0.0005, pressedInto(outlines[j], c, j)) && pressedPast(m, j) <= Math.max(0.0002, pressedPast(c, j))) out[j] = m;
     }
   }
-  return out;
+  return levelRim(out, outlines);
+}
+
+/**
+ * HER OPENING'S EDGE LEVEL ALL ROUND (Joshua, 2026-11-08: "as it opens, also rising up so from the side view, it's a even
+ * line as well as looking directly in it", and from the end: the band at the top and bottom stood short of the doors'
+ * lips): once her opening is open (`PRESS.ringFrom`, all of it by `PRESS.ringBy`), every section whose lip stands short
+ * of where the widest-open sections hold theirs is turned on its hinge and drawn out longer until its lip is level with
+ * theirs -- out as far as keeps it off what passes -- so the doors' narrow ends, and the bands between them, come out with
+ * the rest and her opening's edge is one level ring.
+ */
+function levelRim(stations: Angles[], outlines: readonly (Outline | null)[]): Angles[] {
+  const lipOf = (a: Angles, j: number) => { const s = stationSection(j), F = fastOf(s); poseFast(s, [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD, (a.long ?? 1) - 1], F); return [F.ox[s.lining - 1], F.ot[s.lining - 1]]; };
+  const lips = stations.map(lipOf), open = Math.max(...lips.map((l) => l[0]));
+  const g0 = Math.min(1, Math.max(0, (open - PRESS.ringFrom) / (PRESS.ringBy - PRESS.ringFrom))), g = g0 * g0 * (3 - 2 * g0);
+  if (!(g > 0)) return stations;
+  // (where the widest-open hold their lips)
+  let sw = 0, st = 0;
+  lips.forEach(([x, t]) => { if (x >= PRESS.ringLead * open) { sw += x; st += x * t; } });
+  const rimT = st / sw;
+  return stations.map((a, j) => {
+    const [lx, lt] = lips[j], want = lt + (rimT - lt) * g;
+    if (!(want < lt - 0.001)) return a;
+    const [hx, ht] = stationSection(j).hinge, from = Math.atan2(lt - ht, lx - hx), len = Math.hypot(lx - hx, lt - ht) || 1e-6;
+    const to = (x: number): Angles => ({ ...a, hinge: a.hinge + ((Math.atan2(want - ht, x - hx) - from) * 180) / Math.PI, long: (a.long ?? 1) * (Math.hypot(x - hx, want - ht) / len) });
+    // (as far out from her middle as keeps it off what passes, and on its own side of her middle)
+    const bad = (x: number) => pressedInto(outlines[j], to(x), j) > 0.0005 || pressedPast(to(x), j) > 0.0002;
+    let x = lx;
+    if (bad(x)) { let lo = lx, hi = lx + 0.04; for (let k = 0; k < 16; k++) { const m = (lo + hi) / 2; if (bad(m)) lo = m; else hi = m; } x = hi; }
+    // (never so far round on its hinge that it would lie back over her skin: then it stays as it was)
+    const s = stationSection(j), b = to(x);
+    return bad(x) || intoSkin(pose(s, (b.hinge * Math.PI) / 180, b), s.along, s.hinge) ? a : b;
+  });
 }
 
 /**
