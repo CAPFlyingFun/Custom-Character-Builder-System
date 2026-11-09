@@ -24,7 +24,7 @@ const report = {};
 try {
   const page = await browser.newPage({ viewport: { width: 1100, height: 900 }, deviceScaleFactor: 1 });
   const press = (a) => page.evaluate((x) => document.querySelector(`[data-action="${x}"]`)?.click(), a);
-  const slide = (f, v) => page.locator(`[data-field="${f}"] + input`).evaluate((i, x) => { i.value = String(x); i.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  const slide = (f, v) => page.evaluate(([k, x]) => { const i = document.querySelector(`[data-field="${k}"] + input`); if (!i) return false; i.value = String(x); i.dispatchEvent(new Event('input', { bubbles: true })); return true; }, [f, v]);
   const hook = (n, ...a) => page.evaluate(([k, b]) => JSON.parse(JSON.stringify(globalThis.__sarahLabCloth[k](...b) ?? null)), [n, a]);
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
   const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 200, y: 150, width: 600, height: 600 }, timeout: 300_000 }); log('shot', name); };
