@@ -32,9 +32,12 @@ const WOMB_SEEN = 0.45;
 const COLOURS = Object.freeze({ uterus: 0xb04a52, vagina: 0xd88895, bladder: 0xd8c25a });
 /** Her opening's doors: the canal's lining inside, her outer skin outside (the test piece). */
 const DOOR_COLOURS = Object.freeze({ lining: 0xd88895, skin: 0xe9c3aa });
-/** How near her opening her baby gives as it crosses it (babySqueeze.ts), metres either side: through her doors, from
- * their hinges inside her to their lips pushed open outside. GAME TUNING. */
-const SQUEEZE_SLAB = 0.06;
+/** How near her opening her baby gives as it crosses it (babySqueeze.ts), metres either side of a plane `SQUEEZE_OUT`
+ * outside her opening: through the whole of her doors, from their hinges inside her to their lips pushed open outside
+ * round its head (Joshua, 2026-11-08, choosing it: head and shoulders "squeeze up to 22% while inside the doors (like
+ * moulding)"). GAME TUNING. */
+const SQUEEZE_SLAB = 0.1;
+const SQUEEZE_OUT = 0.02;
 const G = 9.81;
 /** Faster than her body changes its motion, m/s²: a pose put on in one frame, not a movement. GAME TUNING (about 5 g;
  * walking's hardest heel strike shakes her pelvis by 1-2 g). */
@@ -365,11 +368,11 @@ export class PelvicOrgansView {
    * opening's middle, the way through it, along it and across it, and the most it stretches (Joshua's 12.5 by 10 cm) --
    * what is wider than that is drawn in, never its head (`head`, `headR`: its middle and radius, world). World units.
    */
-  passFrame(head: THREE.Vector3 | null, headR: number): { centre: THREE.Vector3; axis: THREE.Vector3; up: THREE.Vector3; across: THREE.Vector3; ra: number; rb: number; head: THREE.Vector3 | null; headR: number; slab: number } {
+  passFrame(head: THREE.Vector3 | null, headR: number): { centre: THREE.Vector3; axis: THREE.Vector3; up: THREE.Vector3; across: THREE.Vector3; ra: number; rb: number; head: THREE.Vector3 | null; headR: number; slab: number; out: number } {
     this.holder.updateMatrixWorld(true);
     const f = this.doors.frame, m = this.holder.matrixWorld, dir = (v: readonly number[]) => new THREE.Vector3(v[0], v[1], v[2]).transformDirection(m);
     return {
-      centre: this.holder.localToWorld(new THREE.Vector3(f.mouth[0], f.mouth[1], f.mouth[2])), axis: dir(f.t).negate(), up: dir(f.n), across: dir(f.x),
+      centre: this.holder.localToWorld(new THREE.Vector3(f.mouth[0], f.mouth[1], f.mouth[2])), axis: dir(f.t).negate(), up: dir(f.n), across: dir(f.x), out: SQUEEZE_OUT * this.units,
       ra: (DOORS.lengthMost / 2) * this.units, rb: (DOORS.acrossMost / 2) * this.units, head, headR,
       // (from inside her by her doors' hinges to past their lips open: what crosses them gives)
       slab: SQUEEZE_SLAB,

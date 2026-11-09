@@ -164,7 +164,7 @@ describe('her opening\'s doors', () => {
     }
   });
 
-  it('pushed by the whole baby as it comes through (a stand-in): never inside it, the lips never past each other, at most 12.5 by 10 cm, open round its body until its feet are through, then closed', () => {
+  it('pushed by the whole baby as it comes through (a stand-in): never inside it, the lips never past each other, at most 12.5 by 10 cm, held round its neck and body until its feet are through, then closed', () => {
     // (head first: its head 9.5 cm across her and 10.5 front to back, born facing down; its shoulders turned front to back,
     // 12 cm, 8.5 across; on up 42 cm to its feet)
     const head = { x: 0.0475, t: 0.05, n: 0.0525 };
@@ -209,7 +209,10 @@ describe('her opening\'s doors', () => {
     expect(mostOpen).toBeLessThan(DOORS.acrossMost + 0.001);
     expect(mostLong).toBeLessThanOrEqual(DOORS.lengthMost + 1e-9);
     expect(mostLong).toBeGreaterThan(0.12);
-    expect(bodyOpen).toBeGreaterThan(0.08);
+    // (its head born, her opening tightens round what follows -- its neck and the top of its chest, outside her: Joshua,
+    // 2026-11-08, choosing "the ring tightens round the neck after the head" -- but never closes on it)
+    expect(bodyOpen).toBeGreaterThan(0.04);
+    expect(bodyOpen).toBeLessThan(mostOpen - 0.02);
     // (through and let go: closed)
     expect(doorMeshes(frame, 0, 0, want).openM).toBeLessThan(0.005);
     for (let k = 0; k < 180; k++) now = { right: now.right.map((a, j) => followDoor(a, want.right[j], 1 / 60)), left: now.left.map((a, j) => followDoor(a, want.left[j], 1 / 60)), ends: followEnds(now.ends, ENDS_SHUT, 1 / 60) };

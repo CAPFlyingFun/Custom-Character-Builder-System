@@ -39,7 +39,7 @@ export const DOORS = Object.freeze({
    * how far past what pushes them its ends stand (her skin's thickness round it) */
   lengthMost: 0.125,
   acrossMost: 0.1,
-  endClear: 0.003,
+  endClear: 0.01,
   /** HER OPENING AN OVAL (Joshua, 2026-11-08: "make it an oval patch to match the general shape… the top and bottom
    * sides should be smooth and not look so square"): each hinge curves round it rather than running straight, the doors
    * narrowing to meet at its ends -- each station's door as wide, hinge to middle, as `(1 - |u|^ovalPower)^(1/ovalPower)`
@@ -65,6 +65,12 @@ export const DOORS = Object.freeze({
    * TUNING. */
   ringWall: 3,
   ringRoot: 0.06,
+  /** how tall each band of a slice of what passes is, up the canal (`outlineOf`). GAME TUNING (fine enough for its neck,
+   * coarse enough that each has a few of its points). */
+  sliceBand: 0.004,
+  /** the tallest hollow in a slice (up the canal) that is filled across rather than followed in (`outlineOf`). GAME
+   * TUNING (shorter than its neck). */
+  sliceFill: 0.024,
   /** her outer skin's test piece: how far out from each hinge it runs, and how far it rises as it goes */
   skin: 0.035,
   skinRise: 0.015,
@@ -535,34 +541,64 @@ const stationSection = (j: number): Section => { const st = stationOf(j); return
  * slice as the circle pushes them (`pressDoor`): so the doors stand round the baby's own shape, wider where it is wider,
  * a half sphere front to back as well as across, and stay round its body until its feet are through.
  */
-export interface Outline { readonly nx: Float64Array; readonly nt: Float64Array; readonly c: Float64Array; readonly box: readonly number[] }
+export interface Outline {
+  /** the first band's height up the canal (metres) and how tall each band is */
+  readonly t0: number; readonly dt: number;
+  /** each band's furthest point toward the door (`hi`) and furthest from it (`lo`), across her (metres; NaN: none there) */
+  readonly hi: Float64Array; readonly lo: Float64Array;
+  /** across, least and most; up the canal, least and most */
+  readonly box: readonly number[];
+}
 export interface PassingOutlines { readonly right: readonly (Outline | null)[]; readonly left: readonly (Outline | null)[]; /** how far apart it pushes her opening's ends, each within its 12.5 cm */ readonly ends: Ends }
 /** Each section's angles, the right door's and the left's, front to back (degrees). */
 export interface PressedDoors { readonly right: readonly Angles[]; readonly left: readonly Angles[]; readonly ends?: Ends }
 
-/** The convex outline of points [x, t] (anticlockwise; each edge's outward normal and offset), or null for fewer than three. */
+/**
+ * A SLICE'S OWN OUTLINE, NOT A FILLED-IN ONE (Joshua, 2026-11-08, choosing it: the ring "tightens round the neck after the
+ * head"): what passes through her, band by band up the canal, as far as it reaches across each way -- so where it is
+ * narrower, as its neck is behind its head, the slice is narrower too and a door can close in there, as her opening does
+ * round its neck once its head is born. Each band reaches to its neighbours' furthest as well (a band's few points
+ * cannot leave a notch a door would catch in); bands with nothing between bands with something are filled from them.
+ * Null for fewer than three points.
+ */
 function outlineOf(points: [number, number][]): Outline | null {
   if (points.length < 3) return null;
-  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cross = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const lower: [number, number][] = [], upper: [number, number][] = [];
-  for (const q of p) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
-  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
-  const h = [...lower.slice(0, -1), ...upper.slice(0, -1)], m = h.length;
-  if (m < 3) return null;
-  const nx = new Float64Array(m), nt = new Float64Array(m), c = new Float64Array(m);
-  for (let i = 0; i < m; i++) {
-    const a = h[i], b = h[(i + 1) % m], ex = b[0] - a[0], et = b[1] - a[1], l = Math.hypot(ex, et) || 1;
-    nx[i] = et / l; nt[i] = -ex / l; c[i] = nx[i] * a[0] + nt[i] * a[1];
-  }
-  return { nx, nt, c, box: [Math.min(...h.map((q) => q[0])), Math.max(...h.map((q) => q[0])), Math.min(...h.map((q) => q[1])), Math.max(...h.map((q) => q[1]))] };
+  const dt = DOORS.sliceBand;
+  let tMin = Infinity, tMax = -Infinity, xMin = Infinity, xMax = -Infinity;
+  for (const [x, t] of points) { if (t < tMin) tMin = t; if (t > tMax) tMax = t; if (x < xMin) xMin = x; if (x > xMax) xMax = x; }
+  const B = Math.max(1, Math.floor((tMax - tMin) / dt) + 1), hi0 = new Float64Array(B).fill(NaN), lo0 = new Float64Array(B).fill(NaN);
+  for (const [x, t] of points) { const i = Math.min(B - 1, Math.floor((t - tMin) / dt)); if (!(x <= hi0[i])) hi0[i] = x; if (!(x >= lo0[i])) lo0[i] = x; }
+  // (bands with nothing, between bands with something: filled across from them)
+  const fill = (a: Float64Array) => {
+    let last = -1;
+    for (let i = 0; i < B; i++) {
+      if (Number.isNaN(a[i])) continue;
+      if (last >= 0 && i - last > 1) for (let k = last + 1; k < i; k++) a[k] = a[last] + ((a[i] - a[last]) * (k - last)) / (i - last);
+      last = i;
+    }
+  };
+  fill(hi0); fill(lo0);
+  // (each band out to its neighbours' furthest, and then a notch narrower than `DOORS.sliceFill` up the canal filled
+  // across -- between fingers, an arm against its side -- while one as long as its neck stays: a door closes in round its
+  // neck, not into every small hollow)
+  const reach = (a: Float64Array, r: number, more: boolean) => Float64Array.from(a, (_, i) => {
+    let v = a[i];
+    for (let k = Math.max(0, i - r); k <= Math.min(B - 1, i + r); k++) if (Number.isNaN(v) || (more ? a[k] > v : a[k] < v)) v = a[k];
+    return v;
+  });
+  const r = Math.max(1, Math.round(DOORS.sliceFill / 2 / dt));
+  const hi = reach(reach(reach(hi0, 1, true), r, true), r, false), lo = reach(reach(reach(lo0, 1, false), r, false), r, true);
+  return { t0: tMin, dt, hi, lo, box: [xMin, xMax, tMin - dt / 2, tMax + dt / 2] };
 }
 
-/** How far a point is inside an outline (metres; 0 or less, outside). */
+/** How far a point is inside an outline (metres; 0 or less, outside): across, to the nearer side of its band (read
+ * between bands), and no deeper than it is from the outline's top or bottom. */
 const insideOf = (o: Outline): Inside => (x, t) => {
   if (x < o.box[0] || x > o.box[1] || t < o.box[2] || t > o.box[3]) return -1;
-  let d = Infinity;
-  for (let i = 0; i < o.c.length; i++) { const e = o.c[i] - o.nx[i] * x - o.nt[i] * t; if (e < d) { d = e; if (d <= 0) return d; } }
-  return d;
+  const u = Math.min(o.hi.length - 1, Math.max(0, (t - o.t0) / o.dt - 0.5)), i = Math.floor(u), k = Math.min(o.hi.length - 1, i + 1), w = u - i;
+  const hi = o.hi[i] + (o.hi[k] - o.hi[i]) * w, lo = o.lo[i] + (o.lo[k] - o.lo[i]) * w;
+  if (!(hi >= lo)) return -1;
+  return Math.min(hi - x, x - lo, t - o.box[2], o.box[3] - t);
 };
 
 /** What passes through her opening (`points`: x, y, z after one another, her rest frame, metres) cut into each door
@@ -571,7 +607,7 @@ const insideOf = (o: Outline): Inside => (x, t) => {
  * those ends -- past it by her skin, from her opening's own
  * length to the most it stretches (Joshua's 12.5 cm). Only what is near the doors counts. */
 export function passingOutlines(f: DoorFrame, points: ArrayLike<number>, ends: Ends = ENDS_SHUT, rimT = -DOORS.lip): PassingOutlines {
-  const D = DOORS, J = D.stations, step = Math.max(ends.front, ends.back) / ((J - 1) / 2), slab = 0.75 * step;
+  const D = DOORS, J = D.stations, step = Math.max(ends.front, ends.back) / ((J - 1) / 2), slab = 1.25 * step;
   const along = Array.from({ length: J }, (_, j) => stationOf(j, ends).along), slices: [number, number][][] = Array.from({ length: J }, () => []);
   let front = 0, back = 0;
   for (let i = 0; i + 2 < points.length; i += 3) {
@@ -607,12 +643,15 @@ export function pressDoor(outline: Outline | null, from: Angles, j: number, near
   const vec = (a: Angles) => [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD, (a.long ?? 1) - 1], by = near.map(vec);
   const f = (v: number[]) => {
     let e = strain(s, v, inside) + (PRESS.inner - 1) * v[1] * v[1] + PRESS.lengthen * v[4] * v[4] + 1e3 * (Math.min(0, v[4]) ** 2 + Math.max(0, v[4] - (PRESS.longest - 1)) ** 2);
+    // (never turned out so far on its hinge that it flips over, its lining outward -- Joshua, 2026-11-08, choosing it:
+    // "doors can't flip or kink"; pressed harder than that, it gives against what passes instead. The narrow last
+    // section at each end aside: it is the corner of her opening, turned out round what passes as her opening's ends
+    // stretch.)
+    if (j > 0 && j < DOORS.stations - 1) e += 1e6 * Math.max(0, v[0] - PRESS.hingeMost * RAD) ** 2;
     // (its lip drawn to her opening's rim, where the rest of it stands: one ring -- its skin stretching, if it must)
-    if (ring) {
-      e += ring.k * (F.ot[s.lining - 1] - ring.t) ** 2;
-      // (and so, its lips held the harder to their own side of her middle against that pull)
-      for (let i = 0; i < F.ox.length; i++) { const past = DOORS.gap - F.ox[i]; if (past > 0) e += 1e8 * past * past; }
-    }
+    if (ring) e += ring.k * (F.ot[s.lining - 1] - ring.t) ** 2;
+    // (and its lips held hard to their own side of her middle -- harder than anything that pulls or bends them over it)
+    for (let i = 0; i < F.ox.length; i++) { const past = DOORS.gap - F.ox[i]; if (past > 0) e += 1e8 * past * past; }
     for (const b of by) e += PRESS.link * ((v[0] - b[0]) ** 2 + (v[1] - b[1]) ** 2 + (v[2] - b[2]) ** 2 + (v[3] - b[3]) ** 2 + (v[4] - b[4]) ** 2);
     return e;
   };
@@ -630,7 +669,7 @@ export function pressDoor(outline: Outline | null, from: Angles, j: number, near
  * one rim stretched the doors out of shape; the bands round her opening's ends carry its edge round instead), from how
  * far open at its middle and at its full by how far, and how near the widest-open a section must be to set the rim
  * (`rimOf`). GAME TUNING. */
-const PRESS = Object.freeze({ inner: 4, link: 3, rounds: [40, 25] as const, smooth: 2, ring: 0, ringFrom: 0.01, ringBy: 0.03, ringLead: 0.85, lengthen: 3, longest: 2.2 });
+const PRESS = Object.freeze({ inner: 4, link: 6, rounds: [40, 25] as const, smooth: 2, ring: 0, ringFrom: 0.01, ringBy: 0.03, ringLead: 0.85, lengthen: 3, longest: 2.2, hingeMost: 110 });
 
 /** How far a section at station `j`, at `a` (degrees), reaches past her middle toward the other door (metres; 0 or less:
  * on its own side). */
@@ -711,7 +750,7 @@ function levelRim(stations: Angles[], outlines: readonly (Outline | null)[]): An
     if (bad(x)) { let lo = lx, hi = lx + 0.04; for (let k = 0; k < 16; k++) { const m = (lo + hi) / 2; if (bad(m)) lo = m; else hi = m; } x = hi; }
     // (never so far round on its hinge that it would lie back over her skin: then it stays as it was)
     const s = stationSection(j), b = to(x);
-    return bad(x) || intoSkin(pose(s, (b.hinge * Math.PI) / 180, b), s.along, s.hinge) ? a : b;
+    return bad(x) || (b.hinge > PRESS.hingeMost && j > 0 && j < DOORS.stations - 1) || intoSkin(pose(s, (b.hinge * Math.PI) / 180, b), s.along, s.hinge) ? a : b;
   });
 }
 

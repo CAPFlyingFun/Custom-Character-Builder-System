@@ -38,12 +38,16 @@ export function createSqueezeUniforms(): SqueezeUniforms {
 /** Where it gives, from her opening as it is now (vulvaMesh `passFrame`), or not at all (null); `perMetre` world units. */
 /** Her opening as the squeeze reads it (vulvaMesh `passFrame`, or v3's doors': PelvicOrgansView `passFrame`), world
  * units; `slab` (metres) how near its plane her baby gives, when not `BABY_SQUEEZE.slab`. */
-export interface SqueezeFrame { centre: THREE.Vector3; axis: THREE.Vector3; up: THREE.Vector3; across: THREE.Vector3; ra: number; rb: number; head: THREE.Vector3 | null; headR: number; slab?: number }
+export interface SqueezeFrame {
+  centre: THREE.Vector3; axis: THREE.Vector3; up: THREE.Vector3; across: THREE.Vector3; ra: number; rb: number; head: THREE.Vector3 | null; headR: number; slab?: number;
+  /** how far out of her, along `axis`, the middle of the slab stands from `centre` (world units; none: at it) */
+  out?: number;
+}
 
 export function setSqueeze(u: SqueezeUniforms, f: SqueezeFrame | null, perMetre: number): void {
   if (!f || !(f.ra > 0) || !(f.rb > 0)) { u.sqOn.value = 0; return; }
   u.sqOn.value = 1;
-  u.sqC.value.copy(f.centre); u.sqN.value.copy(f.axis).normalize(); u.sqUp.value.copy(f.up).normalize(); u.sqAcross.value.copy(f.across).normalize();
+  u.sqN.value.copy(f.axis).normalize(); u.sqC.value.copy(f.centre).addScaledVector(u.sqN.value, f.out ?? 0); u.sqUp.value.copy(f.up).normalize(); u.sqAcross.value.copy(f.across).normalize();
   u.sqRa.value = f.ra; u.sqRb.value = f.rb; u.sqSlab.value = (f.slab ?? BABY_SQUEEZE.slab) * perMetre;
   if (f.head && f.headR > 0) u.sqHead.value.set(f.head.x, f.head.y, f.head.z, f.headR); else u.sqHead.value.set(0, 0, 0, 0);
 }
@@ -76,7 +80,7 @@ const SQUEEZE_GLSL = /* glsl */ `
 export function squeezePoints(points: Float32Array, f: SqueezeFrame, perMetre: number): void {
   const slab = (f.slab ?? BABY_SQUEEZE.slab) * perMetre, K = BABY_SQUEEZE.knee, R = 1 - K, most = BABY_SQUEEZE.most;
   const ss = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-  const n = f.axis.clone().normalize(), up = f.up.clone().normalize(), ac = f.across.clone().normalize(), c = f.centre;
+  const n = f.axis.clone().normalize(), up = f.up.clone().normalize(), ac = f.across.clone().normalize(), c = f.centre.clone().addScaledVector(n, f.out ?? 0);
   for (let i = 0; i + 2 < points.length; i += 3) {
     const dx = points[i] - c.x, dy = points[i + 1] - c.y, dz = points[i + 2] - c.z, h = dx * n.x + dy * n.y + dz * n.z;
     const px = dx - h * n.x, py = dy - h * n.y, pz = dz - h * n.z;

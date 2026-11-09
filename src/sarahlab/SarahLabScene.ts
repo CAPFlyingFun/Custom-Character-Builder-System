@@ -6226,12 +6226,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** How its head and shoulders turn (birthSequence.ts `BirthTurn`): on her skeleton as most births go (Joshua,
    * 2026-11-08: "Accurate on v3"); on v2 all of it inside her (2026-11-03). */
   const birthTurn = (): BirthTurn => (!vulva && organs ? 'accurate' : 'inside');
-  /** v3: where her baby may give a little crossing her opening (its head never): her opening at its most (12.5 by 10 cm). */
+  /** v3: where her baby may give a little crossing her opening: her opening at its most (12.5 by 10 cm) -- its head as
+   * well, all the way through her doors (Joshua, 2026-11-08, choosing it: head and shoulders "squeeze up to 22% while
+   * inside the doors (like moulding)"; on v2 its head never gives). */
   function v3PassFrame(): ReturnType<NonNullable<typeof organs>['passFrame']> | null {
     const r = birthNow ? babyRoots()[birthNow.active] ?? babyRoots()[0] : undefined;
     if (!organs || !r) return null;
     r.updateMatrixWorld(true);
-    return organs.passFrame(birthHeadModel ? birthHeadModel.clone().applyMatrix4(r.matrixWorld) : null, headRadiusOf(r.scale.x) * M);
+    return organs.passFrame(null, 0);
   }
   /** v3: the moment on the birth's clock its first baby is born (all of it out of her), at this pace and count. */
   let bornAtOf: { key: string; at: number } | null = null;
@@ -8114,6 +8116,24 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         babySkin: () => +babySkin.skinShow.value.toFixed(3),
         babySoft: (on?: boolean) => { if (on !== undefined) { babySoftOn = on; if (!on) setSqueeze(babySqueeze, null, M); } const r = babyRoots()[0], sb = r && softBabies.get(r); if (!sb) return { on: babySoftOn };
           return { on: babySoftOn, drive: +sb.drive.toFixed(3), ready: sb.ready, swing: +Math.max(...sb.vel.map((v) => v.length())).toFixed(3) }; },
+        // (a probe: her baby drawn as wireframe over nothing, to see its head's shape against her opening's doors -- Joshua,
+        // 2026-11-08: "Can you confirm it in like wireframe mode?")
+        babyWire: (on: boolean) => {
+          babyHolder?.traverse((o) => {
+            const m = o as THREE.Mesh, u = m.userData as { solid?: THREE.Material | THREE.Material[] };
+            if (!m.isMesh) return;
+            if (on) { u.solid ??= m.material; m.material = new THREE.MeshBasicMaterial({ color: 0x1d5bff, wireframe: true, transparent: true, opacity: 0.55 }); }
+            else if (u.solid) { m.material = u.solid; delete u.solid; }
+          });
+          return true;
+        },
+        // (a probe: her opening's frame in the world, metres -- its middle, the way through out of her, along it toward her
+        // front, and across it -- to stand a camera square to it)
+        openingFrame: () => {
+          if (!organs) return null;
+          const f = organs.passFrame(null, 0), r = (v: THREE.Vector3, k = 1) => v.toArray().map((x) => +((x * k)).toFixed(4));
+          return { centre: r(f.centre, 1 / M), axis: r(f.axis), up: r(f.up), across: r(f.across) };
+        },
         herHidden: (on: boolean) => {
           const inBaby = (o: THREE.Object3D) => { for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === babyHolder) return true; return false; };
           model?.traverse((o) => { if ((o as THREE.Mesh).isMesh && !inBaby(o)) { const u = o.userData as { wasVisible?: boolean }; if (on) { u.wasVisible ??= o.visible; o.visible = false; } else if (u.wasVisible !== undefined) { o.visible = u.wasVisible; delete u.wasVisible; } } });
