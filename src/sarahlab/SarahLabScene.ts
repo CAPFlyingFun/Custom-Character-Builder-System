@@ -5769,6 +5769,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * her skin (and what she wears) pushed out where they need the room. Worked out again when her shape, size or BABY
    * WEIGHT change -- a few times a second at most while a slider is dragged -- seen or not; drawn only while shown.
    */
+  /** How big her womb is by her BUMP % alone, mL (Joshua, 2026-11-09: belly % "separate from the weeks"): what a womb
+   * holds at the week that % reads on the plain chart (BUMP_WEEKS, her baby count, her BABY WEIGHT), and past 100% on by
+   * v2's belly's own growth (V2_BELLY_LITRES: 10.1 L at 100%, 17.9 at 200). MEASURED (v2's litres), BIOLOGICAL SHAPE
+   * (what a womb holds). */
+  function bumpWombMl(shown: number): number {
+    const b = Math.max(0, Math.min(200, shown)), wk = weekForBump(Math.min(b, 100), babyCount);
+    const grams = Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g);
+    return wombContents(wk, grams).volumeMl * (b > 100 ? v2BellyLitres(b) / v2BellyLitres(100) : 1);
+  }
   function placeBaby(): void {
     if (!pregnant()) { notPregnant(); return; }
     if (!babyRoot) { loadBaby(); return; }
@@ -7505,7 +7514,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const wombShare = birthNow ? Math.min(birthBellyShare, 1 - BIRTH_SHRINK * bornShare - AFTERBIRTH.shrink * birthNow.afterbirth) : 1;
         const wk = pregnant() ? herWeek(bump * wombShare, babyCount, pregnancy) : null, grams = wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g);
         // (WOMB FILL: drawn between what it really holds and all of v2's belly; her belly's soft wall the rest)
-        organs.setPregnancy(wk, grams, wk === null ? 0 : wombDrawnMl(wombContents(wk, grams).volumeMl, bump * wombShare, wombFillPct / 100));
+        // (BUMP % alone sets her womb's size, as v2's belly: what a womb holds at the week her BUMP % reads on the plain
+        // chart -- whatever week she is typed at, or a story sets -- and past 100% on as v2's belly grows; WOMB FILL then
+        // draws it toward all of v2's belly. Her week sets her babies' weight and its shape)
+        organs.setPregnancy(wk, grams, wk === null ? 0 : wombDrawnMl(bumpWombMl(bump * wombShare), bump * wombShare, wombFillPct / 100));
         skinBand?.setAfterBirth(allBorn);
         // (her womb swings on its cervix by her lean, read as v2's soft settle reads it)
         organs.swingTune = { fullness: organs.womb ? (bump / 100) * wombShare : 0, firmness: body.bellyFirmness, fed: Math.min(1, (gut.stomachFoodMl + gut.stomachWaterMl) / STOMACH.fullMl), standing: pose === 'stand' };

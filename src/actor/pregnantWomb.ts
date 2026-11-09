@@ -153,7 +153,10 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   const contents = wombContents(w, babyGrams);
   // (WOMB FILL: drawn as big as `drawnMl` where that is more than it holds -- the hybrid with v2's belly; what it holds and
   // weighs, `contents`, stay the real numbers)
-  const volumeMl = Math.max(contents.volumeMl, Number.isFinite(drawnMl) ? drawnMl : 0);
+  // (BUMP %, NOT HER WEEKS, SETS ITS SIZE -- Joshua, 2026-11-09: "the pregnancy belly % is separate from the weeks. They
+  // are not linked together by default", as v2's: given `drawnMl` it is drawn exactly that big, whatever her week; her
+  // week still sets its shape and what it holds and weighs)
+  const volumeMl = Number.isFinite(drawnMl) && drawnMl > 0 ? drawnMl : contents.volumeMl;
   // the cervix as laid: the external os up to the internal os, its last point the body's foot; thinned and opened by
   // BIRTH OPENING (actor/birthCanal.ts): drawn up into the womb from below, and as wide as it is open
   const laidCervix: P3[] = [];
