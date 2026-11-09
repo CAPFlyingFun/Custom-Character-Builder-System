@@ -87,9 +87,9 @@ try {
     for (const [v, yaw] of views) { await look(yaw); await shot(`weeks-not-${v}.png`); }
     await click('[data-action="sarahlab:pregnant"]'); await run(0.5);
   }
-  if (sets.includes('weeks')) for (const bump of [30, 73, 100]) {
+  if (sets.includes('weeks')) for (const bump of [30, 73, 100, 150, 200]) {
     await at(bump); await note(`weeks-${bump}`);
-    for (const [v, yaw] of views) { await look(yaw); await shot(`weeks-${bump}-${v}.png`); }
+    for (const [v, yaw] of views) { await look(yaw, bump >= 150 ? 1.8 : 1.4); await shot(`weeks-${bump}-${v}.png`); }
   }
   if (sets.includes('xray')) { await at(100); for (const x of [0, 30, 50, 75]) { await slide('sarahlab-xray', x); await run(0.2); await look('three-quarter'); await shot(`xray-${x}.png`); } await slide('sarahlab-xray', 0); }
   if (sets.includes('organs')) {

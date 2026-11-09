@@ -35,7 +35,7 @@ import { V2_BELLY_CONTROLS, V2_CONTROL_SIZES, V2_SIZES, v2BellyLook } from '../s
 import { packOutline } from '../src/actor/bellySkin';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const FILE = 'models/sarah-v2-body-slim.glb', COLS = 64, TORSO = 0.19, BUMP_MOVES = 0.005, LEAST = 0.0005;
+const FILE = 'models/sarah-v2-body-slim.glb', COLS = 64, TORSO = 0.19, BUMP_MOVES = 0.005;
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 const bytes = (rel: string) => { const b = readFileSync(join(ROOT, 'public', rel)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
 
