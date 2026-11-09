@@ -15,7 +15,7 @@
  * included): the random-pose test's numbers.
  */
 import * as THREE from 'three';
-import { depthsInSkin, skinGrid } from '../actor/insideSkin';
+import { depthsInSkin, raysAt, skinGrid } from '../actor/insideSkin';
 
 /** What counts as close to her skin: a bone this near it (or through it) is reported. GAME TUNING (Joshua, 2026-11-09:
  * "it's okay if it's close"). Metres. */
@@ -159,6 +159,15 @@ export class SkeletonInV2 {
       out.set(this.owner[i], o);
     });
     return [...out.entries()].map(([bone, o]) => ({ bone, points: o.points, leastMm: +(o.least * 1000).toFixed(1), at: o.at, closeCount: o.close, throughCount: o.through })).sort((a, b) => a.leastMm - b.leastMm);
+  }
+
+  /** For probes: her skin's grid as drawn now, and each ray's crossings from a world point. */
+  raysAt(units: number, x: number, y: number, z: number): { rays: number[]; tris: number; verts: number; lo: readonly number[]; dim: readonly number[] } {
+    const body = this.body, bp = body.geometry.getAttribute('position'), m = bp.count, S = new Float32Array(m * 3), v = new THREE.Vector3();
+    body.updateMatrixWorld(true);
+    for (let i = 0; i < m; i++) { body.getVertexPosition(i, v); v.applyMatrix4(body.matrixWorld).toArray(S, i * 3); }
+    const ix = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index!.array, g = skinGrid(S, ix, 0.02 * units);
+    return { rays: raysAt(g, x, y, z), tris: ix.length / 3, verts: m, lo: g.lo, dim: g.dim };
   }
 
   dispose(): void { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); (this.mesh.material as THREE.Material).dispose(); }

@@ -7224,10 +7224,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         }
         // v2: her skeleton laid inside her and bound to her own bones (skeletonInV2.ts), seen under X-RAY
         if (recovered && babyFrame) {
-          const request = ++skeletonV2Request, body = skinMesh as THREE.SkinnedMesh, toRest = babyFrame.meshToRest.clone();
+          const request = ++skeletonV2Request, toRest = babyFrame.meshToRest.clone();
           void assets.loadModel(SARAH_SKELETON_MODEL, () => new THREE.Object3D(), {}).then((skel) => {
             if (disposed || request !== skeletonV2Request || !model) { release(skel); return; }
             try {
+              // (her body itself: her clothes are copies of it, the same points, so the first skinned mesh may be a garment)
+              const body = bodyOf()?.mesh;
+              if (!body) throw new Error('her body is not found');
               skel.scale.setScalar(M); skel.updateMatrixWorld(true);
               const sm = findSkinnedMesh(skel);
               if (!sm) throw new Error('no skinned mesh in the skeleton file');
@@ -8683,6 +8686,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (jt && sk) for (const w of [jt.wristL, jt.wristR]) sk.bones[w]?.traverse((o) => { if (o !== sk.bones[w]) skip.add(o.name); });
           return { stretch: skeletonV2.stretch, bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
         },
+        // (debug) each of the six rays' crossings of her skin from a point in her rest frame as she stands (metres)
+        skeletonRays: (x: number, y: number, z: number) => skeletonV2 ? skeletonV2.raysAt(M, x * M, y * M, z * M) : null,
         // the points the last `skeletonDepths` found close (orange) or through her skin (red), marked in the room
         skeletonMarks: (on: boolean) => {
           three.getObjectByName('skeletonMarks')?.removeFromParent();

@@ -120,3 +120,9 @@ export function depthsInSkin(g: SkinGrid, points: Float32Array, reach: number): 
   }
   return out;
 }
+
+/** For probes: how many times each of the six rays from p crosses the skin. */
+export function raysAt(g: SkinGrid, px: number, py: number, pz: number): number[] {
+  const stamp = new Uint32Array(g.tri.length / 3);
+  return RAYS.map((d, k) => crossings(g, px, py, pz, d, stamp, k + 1));
+}
