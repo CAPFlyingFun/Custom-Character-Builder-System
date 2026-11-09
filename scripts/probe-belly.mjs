@@ -123,6 +123,24 @@ try {
     await run(2);
     for (const b of bumps) { await at(b); for (const [v, yaw] of [['side', 'side'], ['q34', 'three-quarter']]) { await look(yaw, 1.5); await shot(`cmp-v2-${b}-${v}.png`); } }
   }
+  if (sets.includes('options')) {
+    // Joshua, 2026-11-09: each option -- 1 real womb + v2's skin (WOMB FILL 0), 2 the womb grown to v2's belly (100), the
+    // hybrid (50) -- for one, two and three babies at several belly %s
+    const counts = { 1: [50, 75, 100], 2: [100, 150, 175], 3: [100, 150, 180] };
+    let babies = 1;
+    for (const n of [1, 2, 3]) {
+      while (babies !== n) { await click('[data-action="sarahlab:babies"]'); babies = babies % 3 + 1; await run(0.5); }
+      for (const b of counts[n]) for (const [opt, fill] of [['1', 0], ['3', 50], ['2', 100]]) {
+        await slide('sarahlab-womb-fill', fill); await at(b); await note(`opt${opt}-${n}x-${b}`);
+        const key = `opt${opt}-${n}x-${b}`;
+        report[key].womb = await page.textContent('[data-field="sarahlab-womb-fill"]');
+        await look('side', 1.5); await shot(`${key}-side.png`);
+        await slide('sarahlab-xray', 30); await run(0.2); await shot(`${key}-xray.png`); await slide('sarahlab-xray', 0);
+      }
+    }
+    while (babies !== 1) { await click('[data-action="sarahlab:babies"]'); babies = babies % 3 + 1; }
+    await slide('sarahlab-womb-fill', 50);
+  }
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));
   log('errors', errors.length ? errors.join('\n') : 'none');
