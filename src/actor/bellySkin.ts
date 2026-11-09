@@ -118,11 +118,7 @@ export function rowRadius(angle: number, half: number, front: number, back: numb
 }
 
 /** Her belly's band at rest, over her bone as measured, her navel at `navelY`. */
-/** Her skin over her bone at the least where v2's outline is used: this much over the bone's own reach. GAME TUNING
- * (BIOLOGICAL SHAPE: skin and the thinnest fat over the iliac crests and ribs is about 5-8 mm). */
-export const BONE_LEAST_TISSUE = 0.006;
-
-export function layBand(saved: SavedBelly, navelY: number, xiphoid: readonly number[], symphysisTop: readonly number[], cols: number = BELLY_SKIN.cols, v2: V2Shapes | null = null): Band {
+export function layBand(saved: SavedBelly, navelY: number, xiphoid: readonly number[], symphysisTop: readonly number[], cols: number = BELLY_SKIN.cols): Band {
   const T = BELLY_TISSUE, R = saved.rows, n = R.length, x0 = saved.midlineX;
   // ACROSS: her bone plus its tissue, drawn in at her waist
   const half = new Float32Array(n);
@@ -147,21 +143,11 @@ export function layBand(saved: SavedBelly, navelY: number, xiphoid: readonly num
   const front = smoothRow(Float32Array.from(R.map((r) => Math.max(curve(r.y), r.y > navelY ? r.boneFront + T.ribs : -Infinity))), 1);
   const y = Float32Array.from(R.map((r) => r.y)), cx = new Float32Array(n).fill(x0), cz = new Float32Array(n);
   const angle = new Float32Array(n * cols), rest = new Float32Array(n * cols), points = new Float32Array(n * cols * 3);
-  // (v2's 0% outline, her controls as they come)
-  const zero = v2 ? v2Outline(v2, 0) : null;
   for (let k = 0; k < n; k++) {
     cz[k] = (front[k] + back[k]) / 2;
     const f = front[k] - cz[k], b = cz[k] - back[k];
     for (let c = 0; c < cols; c++) {
-      const a = (2 * Math.PI * c) / cols, i = k * cols + c;
-      let rr = rowRadius(a, W[k], f, b);
-      // v2'S 0% OUTLINE (Joshua, 2026-11-09: her approved look) where it has one, never closer than BONE_LEAST_TISSUE
-      // over her bone
-      if (zero && v2) {
-        const gk = Math.min(v2.rows - 1, Math.round((k / Math.max(1, n - 1)) * (v2.rows - 1))), g = gk * v2.cols + (Math.round((c / cols) * v2.cols) % v2.cols);
-        const bone = rowRadius(a, Math.max(R[k].halfWidth, 0.04) + BONE_LEAST_TISSUE, R[k].boneFront + BONE_LEAST_TISSUE - cz[k], cz[k] - R[k].boneBack + BONE_LEAST_TISSUE);
-        rr = Math.max(zero[g], bone);
-      }
+      const a = (2 * Math.PI * c) / cols, i = k * cols + c, rr = rowRadius(a, W[k], f, b);
       angle[i] = a; rest[i] = rr;
       points[3 * i] = cx[k] + rr * Math.sin(a); points[3 * i + 1] = y[k]; points[3 * i + 2] = cz[k] + rr * Math.cos(a);
     }
@@ -203,103 +189,27 @@ export function invertAffine(m: ArrayLike<number>, mo: number, out: Float32Array
   out[o + 12] = -(r00 * tx + r01 * ty + r02 * tz); out[o + 13] = -(r10 * tx + r11 * ty + r12 * tz); out[o + 14] = -(r20 * tx + r21 * ty + r22 * tz); out[o + 15] = 1;
 }
 
-/**
- * v2'S APPROVED BELLY ON THE BAND'S GRID (src/data/belly/v2-shapes.json, `scripts/measureV2Shapes.ts`): her belly as the
- * room composes it (sarahlab/v2BellyLook.ts -- every layer: size keys, tilt, Body-panel fields, refinements) measured as
- * her outline at every 5% from 0 to 200%, and each of her Body panel's belly controls' change to it at its least and
- * most at a few sizes. Outlines packed (`packOutline`): metres from each row's middle, a row for each of the band's rows.
- */
-export interface V2Shapes {
-  readonly rows: number;
-  readonly cols: number;
-  readonly sizeAt: readonly number[];
-  readonly sizes: readonly string[];
-  readonly controlSizeAt: readonly number[];
-  readonly controls: Readonly<Record<string, { readonly least: number; readonly most: number; readonly fallback: number; readonly down: readonly string[]; readonly up: readonly string[] }>>;
-}
-
-/** An outline packed as text: tenths of a millimetre, little-endian 16-bit, base64. */
-export function packOutline(o: ArrayLike<number>): string {
-  const b = new Uint8Array(o.length * 2), dv = new DataView(b.buffer);
-  for (let i = 0; i < o.length; i++) dv.setInt16(2 * i, Math.max(-32768, Math.min(32767, Math.round((Number.isFinite(o[i]) ? o[i] : 0) * 1e4))), true);
-  let t = ''; for (let i = 0; i < b.length; i++) t += String.fromCharCode(b[i]);
-  return btoa(t);
-}
-export function unpackOutline(text: string): Float32Array {
-  const t = atob(text), out = new Float32Array(t.length / 2);
-  for (let i = 0; i < out.length; i++) { const v = t.charCodeAt(2 * i) | (t.charCodeAt(2 * i + 1) << 8); out[i] = (v > 32767 ? v - 65536 : v) / 1e4; }
-  return out;
-}
-const unpacked = new WeakMap<V2Shapes, { sizes: Float32Array[]; controls: Record<string, { down: Float32Array[]; up: Float32Array[] }> }>();
-function opened(v2: V2Shapes) {
-  let u = unpacked.get(v2);
-  if (!u) {
-    const controls: Record<string, { down: Float32Array[]; up: Float32Array[] }> = {};
-    for (const [k, c] of Object.entries(v2.controls)) controls[k] = { down: c.down.map(unpackOutline), up: c.up.map(unpackOutline) };
-    u = { sizes: v2.sizes.map(unpackOutline), controls }; unpacked.set(v2, u);
-  }
-  return u;
-}
-/** Between the two of `at` that `x` lies between: their indices and how far from the first. */
-function between(at: readonly number[], x: number): [number, number, number] {
-  if (x <= at[0]) return [0, 0, 0];
-  for (let i = 1; i < at.length; i++) if (x <= at[i]) return [i - 1, i, (x - at[i - 1]) / (at[i] - at[i - 1])];
-  return [at.length - 1, at.length - 1, 0];
-}
-
-/**
- * v2'S BELLY NOW, ON HER GRID: her outline at `bump` % (her belly as shown: after a birth, as it settles), with her Body
- * panel's belly controls as `controls` has them (any left out as they come). Metres from each row's middle.
- */
-export function v2Outline(v2: V2Shapes, bump: number, controls: Readonly<Partial<Record<string, number>>> = {}, out: Float32Array = new Float32Array(v2.rows * v2.cols)): Float32Array {
-  const u = opened(v2), [i0, i1, f] = between(v2.sizeAt, Math.min(200, Math.max(0, Number.isFinite(bump) ? bump : 0)));
-  const a = u.sizes[i0], b = u.sizes[i1];
-  for (let i = 0; i < out.length; i++) out[i] = a[i] + (b[i] - a[i]) * f;
-  const [j0, j1, g] = between(v2.controlSizeAt, Math.min(200, Math.max(0, bump)));
-  for (const [key, value] of Object.entries(controls)) {
-    const c = v2.controls[key], d = u.controls[key];
-    if (!c || !d || value === undefined || !Number.isFinite(value) || value === c.fallback) continue;
-    // (each control's change grows straight with how far it is moved toward its least or its most)
-    const up = value > c.fallback, list = up ? d.up : d.down, share = up ? (value - c.fallback) / (c.most - c.fallback) : (c.fallback - value) / (c.fallback - c.least);
-    if (!list.length) continue;
-    const p = list[j0], q = list[j1];
-    for (let i = 0; i < out.length; i++) out[i] += share * (p[i] + (q[i] - p[i]) * g);
-  }
-  return out;
-}
+/** v2's approved belly shapes on the band's grid (src/data/belly/v2-shapes.json, `scripts/measureV2Shapes.ts`): each key
+ * target's push straight out (metres, against v2's 100% base), a row for each of the band's rows. */
+export interface V2Shapes { readonly rows: number; readonly cols: number; readonly shapes: Readonly<Record<string, readonly number[]>> }
+/** The 0% target's name (sarahLabTool.ts BELLY_TARGET). */
+const V2_ZERO = 'belly';
 
 /**
  * v2'S APPROVED BELLY ON v3 (Joshua, 2026-11-09: "I do approve the v2 belly look and shapes... apply it all to v3"):
- * how far her skin stands out past the band's rest at each of its points (metres) -- v2's outline at `bump` with her
- * belly controls (`v2Outline`) less the band's rest (v2's own 0% where her bone allows: `layBand`).
+ * how far her skin stands out past her 0% at each of the band's points (metres), for v2's BUMP slider's target weights
+ * now (`bellyWeights(bump, curve)`): the weighted key targets less the 0% one, as v2's mesh blends them.
  */
-export function v2Push(band: Band, v2: V2Shapes, bump: number, controls: Readonly<Partial<Record<string, number>>> = {}, out: Float32Array = new Float32Array(band.rows * band.cols)): Float32Array {
-  const o = v2Outline(v2, bump, controls);
-  for (let k = 0; k < band.rows; k++) for (let c = 0; c < band.cols; c++) { const i = k * band.cols + c; out[i] = Math.max(0, o[v2Cell(band, v2, k, c)] - band.rest[i]); }
+export function v2Push(band: Band, v2: V2Shapes, weights: Readonly<Record<string, number>>, out: Float32Array = new Float32Array(band.rows * band.cols)): Float32Array {
+  const zero = v2.shapes[V2_ZERO], R = band.rows, C = band.cols;
+  for (let k = 0; k < R; k++) for (let c = 0; c < C; c++) {
+    // (the band's row and angle on v2's grid: both run pubic bone to breastbone and round from her front)
+    const gk = Math.min(v2.rows - 1, Math.round((k / Math.max(1, R - 1)) * (v2.rows - 1))), gc = Math.round((c / C) * v2.cols) % v2.cols, g = gk * v2.cols + gc;
+    let x = -(zero?.[g] ?? 0);
+    for (const name in weights) { const w = weights[name]; if (w && v2.shapes[name]) x += w * v2.shapes[name][g]; }
+    out[k * C + c] = Math.max(0, x);
+  }
   return out;
-}
-/** The band's row and angle on v2's grid: both run pubic bone to breastbone and round from her front. */
-function v2Cell(band: Band, v2: V2Shapes, k: number, c: number): number {
-  const gk = Math.min(v2.rows - 1, Math.round((k / Math.max(1, band.rows - 1)) * (v2.rows - 1))), gc = Math.round((c / band.cols) * v2.cols) % v2.cols;
-  return gk * v2.cols + gc;
-}
-
-/**
- * HER BELLY'S ROOM, for her womb to be drawn inside (WOMB FILL): how far a point (rest metres, her standing rest) lies
- * outside her belly's shape now -- the band at rest pushed out by `push` (`v2Push`), less `wall` -- (+ outside).
- */
-export function bandRoom(band: Band, push: ArrayLike<number>, wall: number = BELLY_SKIN.wall): (x: number, y: number, z: number) => number {
-  const R = band.rows, C = band.cols, y0 = band.y[0], step = R > 1 ? (band.y[R - 1] - y0) / (R - 1) : 1;
-  return (x, y, z) => {
-    const t = Math.min(R - 1, Math.max(0, (y - y0) / step)), k = Math.min(R - 2, Math.floor(t)), f = t - k;
-    const cx = band.cx[k] + (band.cx[k + 1] - band.cx[k]) * f, cz = band.cz[k] + (band.cz[k + 1] - band.cz[k]) * f;
-    const a = Math.atan2(x - cx, z - cz), u = (((a / (2 * Math.PI)) * C) % C + C) % C, c = Math.floor(u) % C, c1 = (c + 1) % C, g = u - Math.floor(u);
-    const at = (kk: number) => { const i0 = kk * C + c, i1 = kk * C + c1; return (band.rest[i0] + push[i0]) * (1 - g) + (band.rest[i1] + push[i1]) * g; };
-    const room = at(k) * (1 - f) + at(k + 1) * f - wall;
-    // (above her band's top or below its foot she has no room ahead of her ribs or her pubic bone)
-    const past = y > band.y[R - 1] ? y - band.y[R - 1] : y < y0 ? y0 - y : 0;
-    return Math.hypot(x - cx, z - cz) - room + past;
-  };
 }
 
 /** How much v2's approved belly holds past her 0%, by her BUMP %, litres: MEASURED on v2's own shapes

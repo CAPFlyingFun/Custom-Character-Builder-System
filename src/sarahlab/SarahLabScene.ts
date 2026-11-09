@@ -95,7 +95,6 @@ import { BellySkinView } from './bellySkinView';
 import { WOMB_FILL_DEFAULT, v2BellyLitres, wombDrawnMl, type SavedBelly, type V2Shapes } from '../actor/bellySkin';
 import { wombContents } from '../actor/pregnantWomb';
 import skeletonBellyV2 from '../data/belly/v2-shapes.json';
-import { V2_BELLY_CONTROLS } from './v2BellyLook';
 import { drawnFill, gutNeeds, hoursToBladderUrge, restingGut, urineMlH, type GutState } from '../actor/gut';
 import { STOMACH, RECTUM } from '../actor/abdominalOrgans';
 import skeletonBelly from '../data/belly/skeleton.json';
@@ -6274,8 +6273,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   /** What her gut holds, as her organs are drawn from it; and set by hand (the room's sliders, probes). */
   function gutFill() { return drawnFill(gut); }
-  /** v2's approved belly for v3's skin now: her BUMP % as shown and her Body panel's belly controls (v2BellyLook.ts). */
-  function v2LookNow(shown: number) { return { bump: shown, controls: Object.fromEntries(V2_BELLY_CONTROLS.map((k) => [k, body[k]])) }; }
   function setGut(next: GutState): void { gut = next; abdomen?.setFill(gutFill()); organs?.setBladder(gut.bladderMl); }
   function applyXray(): void {
     if (!model) return;
@@ -7508,12 +7505,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const wombShare = birthNow ? Math.min(birthBellyShare, 1 - BIRTH_SHRINK * bornShare - AFTERBIRTH.shrink * birthNow.afterbirth) : 1;
         const wk = pregnant() ? herWeek(bump * wombShare, babyCount, pregnancy) : null, grams = wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g);
         // (WOMB FILL: drawn between what it really holds and all of v2's belly; her belly's soft wall the rest)
-        organs.setPregnancy(wk, grams, wk === null ? 0 : wombDrawnMl(wombContents(wk, grams).volumeMl, bump * wombShare, wombFillPct / 100), wk === null ? null : skinBand?.room(v2LookNow(bump * wombShare)) ?? null);
+        organs.setPregnancy(wk, grams, wk === null ? 0 : wombDrawnMl(wombContents(wk, grams).volumeMl, bump * wombShare, wombFillPct / 100));
         skinBand?.setAfterBirth(allBorn);
         organs.update(dt);
         // her belly's organs round them, and her belly's skin over all of it (her womb, intestines and stomach push it out)
         if (abdomen) abdomen.update(dt);
-        if (skinBand) { const w = organs.wombPoints(), src: ArrayLike<number>[] = abdomen ? abdomen.fillingPoints() : []; if (w && organs.womb) src.push(w); skinBand.update(dt, src, { bump: organs.womb ? bump : 0, firmness: body.bellyFirmness, babyWeight: body.babyWeight, bounce: body.bellyBounce, fullness: organs.womb ? (bump / 100) * wombShare : 0, standing: pose === 'stand', fed: Math.min(1, (gut.stomachFoodMl + gut.stomachWaterMl) / STOMACH.fullMl), v2Look: organs.womb ? v2LookNow(bump * wombShare) : null }); }
+        if (skinBand) { const w = organs.wombPoints(), src: ArrayLike<number>[] = abdomen ? abdomen.fillingPoints() : []; if (w && organs.womb) src.push(w); skinBand.update(dt, src, { bump: organs.womb ? bump : 0, firmness: body.bellyFirmness, babyWeight: body.babyWeight, bounce: body.bellyBounce, fullness: organs.womb ? (bump / 100) * wombShare : 0, standing: pose === 'stand', fed: Math.min(1, (gut.stomachFoodMl + gut.stomachWaterMl) / STOMACH.fullMl), v2Weights: organs.womb ? bellyWeights(bump * wombShare, bellyCurve) : null }); }
         // (FOLD BACK's line follows the doors as they go, not only the slider)
         const fl = fields[SARAH_LAB_FIELD.foldBack], line = foldBackLine(foldBackPct, organs.doorAngles);
         if (fl && fl.textContent !== line) fl.textContent = line;
@@ -7741,13 +7738,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const v = new THREE.Vector3(), w = new THREE.Vector3(), p0 = 100, src = vulva.bake.src[p0 * 3];
           vulva.mesh.getVertexPosition(p0, v); vulva.mesh.localToWorld(v); b.mesh.getVertexPosition(src, w); b.mesh.localToWorld(w);
           return { nan, n: pa.count, local0: [arr[p0 * 3], arr[p0 * 3 + 1], arr[p0 * 3 + 2]], bodyLocal: [b.mesh.geometry.getAttribute('position').getX(src), b.mesh.geometry.getAttribute('position').getY(src), b.mesh.geometry.getAttribute('position').getZ(src)], world0: v.toArray(), bodyWorld: w.toArray(), meshVisible: vulva.mesh.visible, layers: vulva.mesh.layers.mask, bodyLayers: b.mesh.layers.mask, matVisible: (vulva.mesh.material as THREE.Material).visible, renderOrder: [vulva.mesh.renderOrder, b.mesh.renderOrder], bodyParentIsScene: b.mesh.parent === vulva.mesh.parent, drawn: ud.drawn, calls: ctx.renderer.gl.info.render.calls, solo: vulva.solo, parentVisible: vulva.mesh.parent?.visible, dbg: vulva.debug() };
-        },
-        // (a probe: everything in the room drawn as wireframe, to compare shapes -- Joshua, 2026-11-09: "Compare both in
-        // wireframe"; false puts it back)
-        wireAll: (on: boolean) => {
-          let k = 0;
-          three.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; for (const mat of (Array.isArray(m.material) ? m.material : [m.material]) as (THREE.Material & { wireframe?: boolean })[]) if ('wireframe' in mat) { mat.wireframe = on; mat.needsUpdate = true; k++; } });
-          return k;
         },
         // a wireframe look (Joshua, 2026-10-30: "how about doing a wireframe view of the body and it"): her body grey, the
         // rebuilt area blue, the tube red, nothing solid

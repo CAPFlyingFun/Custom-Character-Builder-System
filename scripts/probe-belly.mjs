@@ -36,7 +36,7 @@ try {
     await page.evaluate((s) => { const node = document.querySelector(s), section = node?.closest('[data-section]'); if (section && !section.hasAttribute('data-open')) document.querySelector(`[data-action="sarahlab:section:${section.dataset.section}"]`)?.click(); }, sel).catch(() => {});
     await page.click(sel, { timeout: 60_000 });
   };
-  const slide = async (field, v) => { await page.evaluate(([f, x]) => { const input = document.querySelector(`[data-field="${f}"] + input`); input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, [field, v]); };
+  const slide = async (field, v) => { await page.locator(`[data-field="${field}"] + input`).evaluate((input, x) => { input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, v); };
   const hook = (name, ...args) => page.evaluate(([n, a]) => { const h = globalThis.__sarahLabCloth[n]; const r = h(...a); return typeof r === 'function' ? null : JSON.parse(JSON.stringify(r ?? null)); }, [name, args]);
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
   const status = '[data-field="sarahlab-status"]';
@@ -45,23 +45,20 @@ try {
   await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model v2-body'), status, { timeout: 240_000 });
   // (v2 first, as the room opens on it: the same BUMP %s and views as v3's in 'compare')
   let dist0 = 2.9;
-  if (sets.includes('compare') || sets.includes('wire')) {
-    const wireBumps = sets.includes('wire') ? [100, 150] : [25, 50, 75, 100, 150];
-    const slide0 = async (field, v) => { await page.evaluate(([f, x]) => { const input = document.querySelector(`[data-field="${f}"] + input`); input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, [field, v]); };
+  if (sets.includes('compare')) {
+    const slide0 = async (field, v) => { await page.locator(`[data-field="${field}"] + input`).evaluate((input, x) => { input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, v); };
     await page.waitForTimeout(3000);
     // (her clothes off, as v3 has none: OUTFIT three times is none)
     for (let k = 0; k < 3; k++) { await click('[data-action="sarahlab:outfit"]'); await page.waitForTimeout(8000); }
-    if (sets.includes('wire')) await page.evaluate(() => globalThis.__sarahLabCloth.wireAll(true));
-    for (const b of wireBumps) {
+    for (const b of [25, 50, 75, 100, 150]) {
       await slide0('sarahlab-bump', b); await page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), 1.2);
-      for (const [v, view] of (sets.includes('wire') ? [['side', 'side'], ['front', 'front']] : [['side', 'side'], ['q34', 'three-quarter']])) {
+      for (const [v, view] of [['side', 'side'], ['q34', 'three-quarter']]) {
         await page.evaluate((v) => document.querySelector(`[data-action="sarahlab:view:${v}"]`)?.click(), view);
         if (Math.abs(dist0 - 1.5) > 1e-3) { await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(1.5 / dist0) / 0.001); dist0 = 1.5; }
         await page.waitForTimeout(400);
-        await page.screenshot({ path: path.join(SHOTS, `${sets.includes('wire') ? 'wire' : 'cmp'}-v2-${b}-${v}.png`), clip: { x: 150, y: 40, width: 540, height: 780 }, timeout: 300_000 }); log('shot', `v2-${b}-${v}`);
+        await page.screenshot({ path: path.join(SHOTS, `cmp-v2-${b}-${v}.png`), clip: { x: 150, y: 40, width: 540, height: 780 }, timeout: 300_000 }); log('shot', `cmp-v2-${b}-${v}.png`);
       }
     }
-    if (sets.includes('wire')) await page.evaluate(() => globalThis.__sarahLabCloth.wireAll(false));
   }
   await click('[data-action="sarahlab:model"]');
   await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model skeleton'), status, { timeout: 240_000 });
@@ -87,9 +84,9 @@ try {
     for (const [v, yaw] of views) { await look(yaw); await shot(`weeks-not-${v}.png`); }
     await click('[data-action="sarahlab:pregnant"]'); await run(0.5);
   }
-  if (sets.includes('weeks')) for (const bump of [30, 73, 100, 150, 200]) {
+  if (sets.includes('weeks')) for (const bump of [30, 73, 100]) {
     await at(bump); await note(`weeks-${bump}`);
-    for (const [v, yaw] of views) { await look(yaw, bump >= 150 ? 1.8 : 1.4); await shot(`weeks-${bump}-${v}.png`); }
+    for (const [v, yaw] of views) { await look(yaw); await shot(`weeks-${bump}-${v}.png`); }
   }
   if (sets.includes('xray')) { await at(100); for (const x of [0, 30, 50, 75]) { await slide('sarahlab-xray', x); await run(0.2); await look('three-quarter'); await shot(`xray-${x}.png`); } await slide('sarahlab-xray', 0); }
   if (sets.includes('organs')) {
@@ -153,11 +150,6 @@ try {
     }
     while (babies !== 1) { await click('[data-action="sarahlab:babies"]'); babies = babies % 3 + 1; }
     await slide('sarahlab-womb-fill', 50);
-  }
-  if (sets.includes('wire')) {
-    await page.evaluate(() => globalThis.__sarahLabCloth.wireAll(true));
-    for (const b of [100, 150]) { await at(b); await note(`wire-v3-${b}`); for (const [v, view] of [['side', 'side'], ['front', 'front']]) { await look(view, 1.5); await shot(`wire-v3-${b}-${v}.png`); } }
-    await page.evaluate(() => globalThis.__sarahLabCloth.wireAll(false));
   }
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));

@@ -6,7 +6,7 @@
  * half (`setSeen`).
  */
 import * as THREE from 'three';
-import { BELLY_SKIN, bandFolds, bandRoom, bandState, layBand, rowMatrices, shapeBand, v2Push, type Band, type BandState, type SavedBelly, type V2Shapes } from '../actor/bellySkin';
+import { BELLY_SKIN, bandFolds, bandState, layBand, rowMatrices, shapeBand, v2Push, type Band, type BandState, type SavedBelly, type V2Shapes } from '../actor/bellySkin';
 import { bellyTune, feltAcceleration, restingMass, restingSoftBelly, softBellyWant, stepMass, stepSoftBelly, type Mass } from './softBody';
 import { JUMP_ACCEL } from './pelvicOrgansView';
 
@@ -18,9 +18,8 @@ export interface BellySkinTune {
   /** v2's soft settle (softBody.ts `softBellyWant`): her womb against a full-term one, whether she stands (her upright is
    * learnt then), and how fed she is (0..1: her stomach against a full one -- it firms her belly a little) */
   readonly fullness?: number; readonly standing?: boolean; readonly fed?: number;
-  /** v2's approved belly now (actor/bellySkin.ts `v2Outline`): her BUMP % as shown and her Body panel's belly controls;
-   * null not pregnant */
-  readonly v2Look?: { readonly bump: number; readonly controls: Readonly<Partial<Record<string, number>>> } | null;
+  /** v2's BUMP slider's target weights now (`bellyWeights(bump, curve)`): her belly in v2's approved shape; null not pregnant */
+  readonly v2Weights?: Readonly<Record<string, number>> | null;
 }
 
 export class BellySkinView {
@@ -48,7 +47,7 @@ export class BellySkinView {
    */
   private v2Field: Float32Array | null = null;
   constructor(saved: SavedBelly, private readonly v2: V2Shapes | null, landmarks: { navel: number; xiphoid: readonly number[]; symphysisTop: readonly number[] }, bones: (name: string) => THREE.Bone | undefined, modelAtBind: THREE.Matrix4, private readonly units: number) {
-    this.band = layBand(saved, landmarks.navel, landmarks.xiphoid, landmarks.symphysisTop, undefined, v2);
+    this.band = layBand(saved, landmarks.navel, landmarks.xiphoid, landmarks.symphysisTop);
     this.state = bandState(this.band);
     this.bones = this.band.spine.map((name) => {
       const bone = bones(name);
@@ -108,16 +107,12 @@ export class BellySkinView {
       else stepSoftBelly(this.soft, dt, { side: 0, sag: 0, depth: 0 }, 1);
     }
     const pos = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const shape = this.v2 && tune.v2Look ? (this.v2Field = v2Push(this.band, this.v2, tune.v2Look.bump, tune.v2Look.controls, this.v2Field ?? undefined)) : null;
+    const shape = this.v2 && tune.v2Weights ? (this.v2Field = v2Push(this.band, this.v2, tune.v2Weights, this.v2Field ?? undefined)) : null;
     this.mostM = shapeBand(this.band, this.rows, sources, this.state, pos.array as Float32Array, this.units, dt, this.sway, [this.soft.side, this.soft.sag, this.soft.depth], shape);
     pos.needsUpdate = true;
     this.mesh.geometry.computeVertexNormals();
   }
 
-  /** Her belly's room at v2's shape for these weights (rest metres; + outside): for her womb to be drawn inside it. */
-  room(look: BellySkinTune['v2Look']): ((x: number, y: number, z: number) => number) | null {
-    return this.v2 && look ? bandRoom(this.band, v2Push(this.band, this.v2, look.bump, look.controls)) : null;
-  }
   /** After a birth her skin is soft, then firms up as it comes back in; otherwise it follows what fills her. */
   setAfterBirth(on: boolean): void { this.state.afterBirth = on; }
   /** X-RAY's first half: her skin from solid (1) to nearly gone (0). */
