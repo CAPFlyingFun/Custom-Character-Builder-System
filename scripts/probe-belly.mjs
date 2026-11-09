@@ -49,14 +49,14 @@ try {
     const slide0 = async (field, v) => { await page.locator(`[data-field="${field}"] + input`).evaluate((input, x) => { input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, v); };
     await page.waitForTimeout(3000);
     // (her clothes off, as v3 has none: OUTFIT three times is none)
-    for (let k = 0; k < 3; k++) { await click('[data-action="sarahlab:outfit"]'); await page.waitForTimeout(1500); }
+    for (let k = 0; k < 3; k++) { await click('[data-action="sarahlab:outfit"]'); await page.waitForTimeout(8000); }
     for (const b of [25, 50, 75, 100, 150]) {
       await slide0('sarahlab-bump', b); await page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), 1.2);
       for (const [v, view] of [['side', 'side'], ['q34', 'three-quarter']]) {
         await page.evaluate((v) => document.querySelector(`[data-action="sarahlab:view:${v}"]`)?.click(), view);
         if (Math.abs(dist0 - 1.5) > 1e-3) { await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(1.5 / dist0) / 0.001); dist0 = 1.5; }
         await page.waitForTimeout(400);
-        await page.screenshot({ path: path.join(SHOTS, `cmp-v2-${b}-${v}.png`), clip: { x: 150, y: 40, width: 540, height: 780 } }); log('shot', `cmp-v2-${b}-${v}.png`);
+        await page.screenshot({ path: path.join(SHOTS, `cmp-v2-${b}-${v}.png`), clip: { x: 150, y: 40, width: 540, height: 780 }, timeout: 300_000 }); log('shot', `cmp-v2-${b}-${v}.png`);
       }
     }
   }
@@ -73,7 +73,7 @@ try {
   let dist = dist0;
   const zoomTo = async (d) => { if (Math.abs(d - dist) < 1e-3) return; await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(d / dist) / 0.001); dist = d; await page.waitForTimeout(200); };
   const look = async (view, d = 1.4) => { await page.evaluate((v) => document.querySelector(`[data-action="sarahlab:view:${v}"]`)?.click(), view); await zoomTo(d); await page.waitForTimeout(300); };
-  const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 150, y: 40, width: 540, height: 780 } }); log('shot', name); };
+  const shot = async (name) => { await page.screenshot({ timeout: 300_000, path: path.join(SHOTS, name), clip: { x: 150, y: 40, width: 540, height: 780 } }); log('shot', name); };
   const views = [['front', 'front'], ['side', 'side'], ['q34', 'three-quarter']];
   const at = async (bump) => { await slide('sarahlab-bump', bump); await run(1.2); };
   const note = async (key) => { const b = await hook('belly'); const o = await hook('organs'); report[key] = { week: o?.womb?.week ?? null, skin: b?.skin, sway: b?.sway, needs: b?.needs }; log(key, JSON.stringify(report[key])); };
