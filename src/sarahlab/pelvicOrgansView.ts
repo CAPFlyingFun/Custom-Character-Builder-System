@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { DoorCloth } from '../actor/doorCloth';
 import { clothCompliance, clothDamping, clothFriction, clothGravityScale, clothMaxStretch, clothRestScale, clothStandOffMm, clothSubsteps } from './sarahLabTool';
 import { NP, NT, sacRadius, type WombShape } from './baby';
@@ -390,7 +390,7 @@ export class PelvicOrgansView {
   /** How what passes moves her doors (Joshua, 2026-11-08): as the BIRTH OPENING slider has them, set by it (`slider`);
    * that with each section's lip pushed by its own slice (`soft`, the hybrid); or every section pushed on its own
    * (`sections`). GAME TUNING; probes switch it. */
-  pressMode: 'slider' | 'soft' | 'sections' | 'cloth' = 'sections';
+  pressMode: 'slider' | 'soft' | 'sections' | 'cloth' | 'shared' = 'shared';
   /** The tee's dials her doors' cloth runs on (DOOR_CLOTH_DIALS; probes try others). */
   clothDials: { weight: number; calm: number; fit: number; close: number; stretch: number; grip: number; steps: number } = { ...DOOR_CLOTH_DIALS };
   private cloth: DoorCloth | null = null;
@@ -411,6 +411,9 @@ export class PelvicOrgansView {
         // (each door as one piece front to back: half its sections worked out a frame, in turn, each drawn toward the ones
         // beside it, then smoothed -- actor/birthDoors.ts `pressDoorLine`)
         for (const side of ['right', 'left'] as const) P.want[side] = pressDoorLine(o[side], P.want[side], uniform, (tick % 2) as 0 | 1);
+      } else if (this.pressMode === 'shared') {
+        // (plan B: one pose a door, solved against the baby as the circle was -- `sharedDoors`)
+        P.want = sharedDoors(this.doors.frame, this.passing, P.now.ends, rim, P.want);
       } else if (this.pressMode === 'cloth') {
         // (the full sim, and over it her doors as cloth on the tee's settings: actor/doorCloth.ts)
         const o = passingOutlines(this.doors.frame, this.passing, P.now.ends, rim);

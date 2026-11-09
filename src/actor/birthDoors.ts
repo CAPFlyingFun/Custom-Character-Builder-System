@@ -755,6 +755,38 @@ function levelRim(stations: Angles[], outlines: readonly (Outline | null)[]): An
 }
 
 /**
+ * PLAN B: ONE POSE, SOLVED AGAINST THE BABY AS THE CIRCLE WAS (Joshua, 2026-11-08: "keep the same sim concept, but
+ * do it on the fixed slider and like how we measured the circle and egg, we use that same concept but we use the baby
+ * model instead with the non-sim version and it can average points between the joints to open correctly"): both doors
+ * take one set of joints for all their sections, as the BIRTH OPENING slider does, found the way Joshua's circle found
+ * them -- every joint as stiff as the next, the least bending that keeps every section off what passes -- with every
+ * section's own slice of the baby counted together, so the one pose is the one that suits them all. Then her rim is
+ * levelled and her opening's ends stretch round it as before.
+ */
+export function sharedDoors(f: DoorFrame, points: ArrayLike<number>, ends: Ends, rimT: number, was?: { right: readonly Angles[]; left: readonly Angles[] }): { right: Angles[]; left: Angles[]; ends: Ends } {
+  const J = DOORS.stations, o = passingOutlines(f, points, ends, rimT), mid = (J - 1) / 2;
+  // (both doors the one pose, as the slider has them: every section of each counted against its own slice)
+  const at = [...o.right, ...o.left].map((q) => (q ? insideOf(q) : null));
+  // (nothing at them where they stand closed: closed)
+  const shut = () => ({ right: Array.from({ length: J }, () => CLOSED), left: Array.from({ length: J }, () => CLOSED), ends: o.ends });
+  if (!at.some((q, k) => q && pose(stationSection(k % J), 0, CLOSED).some(([x, t]) => q(x, t) > 0))) return shut();
+  // (and never wider than her opening's most, 10 cm across at its middle: past that what passes gives instead)
+  const sm = stationSection(mid), Fm = fastOf(sm), most = DOORS.acrossMost / 2;
+  const cost = (v: number[]) => {
+    let e = 0; for (let k = 0; k < at.length; k++) { const q = at[k]; if (q) e += strain(stationSection(k % J), v, q); }
+    poseFast(sm, [v[0], v[1], v[2], v[3], 0], Fm); let near = Infinity; for (let i = 0; i < Fm.ox.length; i++) near = Math.min(near, Fm.ox[i]);
+    if (near > most) e += 1e7 * (near - most) ** 2;
+    // (and never flipped over, its lining outward: past `PRESS.hingeMost` what passes gives instead)
+    e += 1e9 * Math.max(0, v[0] - PRESS.hingeMost * RAD) ** 2;
+    return e;
+  };
+  const a0 = was?.right[mid] ?? CLOSED, start = [a0.hinge * RAD, a0.inner * RAD, a0.mid * RAD, a0.outer * RAD];
+  const v = leastNear(cost, leastNear(cost, start, 0.03, PRESS.rounds[0]), 0.008, PRESS.rounds[1]);
+  const a: Angles = { hinge: v[0] / RAD, inner: v[1] / RAD, mid: v[2] / RAD, outer: v[3] / RAD }, row = () => Array.from({ length: J }, () => a);
+  return { right: levelRim(row(), o.right), left: levelRim(row(), o.left), ends: o.ends };
+}
+
+/**
  * HER DOORS AS THE SLIDER HAS THEM, SET BY WHAT PASSES (Joshua, 2026-11-08, after the real baby tore them: "What if we
  * don't do soft body and keep it like the slider which looks good, or just make the first 2 (outer and mid) sections soft
  * body, but the rest is not like a hybrid"): every section of both doors at the one BIRTH OPENING pose (`birthAngles`) --
