@@ -133,6 +133,26 @@ try {
       await slide('sarahlab-xray', 30); await run(0.2); await look('side', 1.5); await shot(`cmp-v3-${b}-xray.png`); await slide('sarahlab-xray', 0);
     }
   }
+  if (sets.includes('v3cmp')) {
+    // v3 alone at the BUMP %s Joshua compared against v2 (2026-11-09), skin and X-RAY 30, side
+    for (const b of [25, 50, 75, 100, 150]) {
+      await at(b); await note(`v3-${b}`);
+      await look('side', 1.5); await shot(`v3cmp-${b}-side.png`);
+      await slide('sarahlab-xray', 30); await run(0.2); await shot(`v3cmp-${b}-xray.png`); await slide('sarahlab-xray', 0);
+    }
+  }
+  if (sets.includes('swing')) {
+    // her womb swinging on its cervix (Joshua, 2026-11-09: "like a balloon"): standing, then leaning forward (squat) and
+    // back (recline), skin and X-RAY 30, side
+    await at(100);
+    for (const p of ['stand', 'squat', 'recline']) {
+      await click(`[data-action="sarahlab:${p}"]`); await run(2.5);
+      const o = await hook('organs'); report[`swing-${p}`] = o?.womb?.swingDeg ?? null; log(`swing-${p}`, JSON.stringify(report[`swing-${p}`]));
+      await look('side', p === 'stand' ? 1.5 : 2.3); await shot(`swing-${p}-side.png`);
+      await slide('sarahlab-xray', 30); await run(0.2); await shot(`swing-${p}-xray.png`); await slide('sarahlab-xray', 0);
+    }
+    await click('[data-action="sarahlab:stand"]'); await run(1.5);
+  }
   if (sets.includes('options')) {
     // Joshua, 2026-11-09: each option -- 1 real womb + v2's skin (WOMB FILL 0), 2 the womb grown to v2's belly (100), the
     // hybrid (50) -- for one, two and three babies at several belly %s

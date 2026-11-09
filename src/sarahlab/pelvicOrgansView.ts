@@ -17,6 +17,7 @@ import { openCanal, type CanalBones } from '../actor/birthCanal';
 import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, fittedDoors, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { DoorCloth } from '../actor/doorCloth';
 import { clothCompliance, clothDamping, clothFriction, clothGravityScale, clothMaxStretch, clothRestScale, clothStandOffMm, clothSubsteps } from './sarahLabTool';
+import { restingSoftBelly, softBellyWant, stepSoftBelly } from './softBody';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -47,6 +48,20 @@ const G = 9.81;
 /** Faster than her body changes its motion, m/s²: a pose put on in one frame, not a movement. GAME TUNING (about 5 g;
  * walking's hardest heel strike shakes her pelvis by 1-2 g). */
 export const JUMP_ACCEL = 50;
+/**
+ * HER WOMB SWINGS ON ITS CERVIX, A BALLOON ON ITS NECK (Joshua, 2026-11-09: "it doesn't pivot at the bottom... it's too
+ * fixed up and down like a column, and not like a balloon allowing the womb to move forward or backwards... and
+ * automatically push more forward or back like v2"). Pregnant, her womb's body turns about the top of its cervix by her
+ * lean from standing, read and eased as v2's soft settle reads it (softBody.ts `softBellyWant`, `stepSoftBelly`: her
+ * belly's give by how full it is, her FIRMNESS and how fed she is, and its springs): leaning forward it falls forward
+ * into her belly's wall, back it settles onto her spine (which stops it soon), on her side it hangs that way. Its soft
+ * body still sways round where the swing holds it. Degrees of swing per degree of lean, and the most each way: GAME
+ * TUNING (within what a pregnant womb does as she moves; back the least, her spine is right behind it).
+ */
+export const WOMB_SWING = Object.freeze({ forward: 0.35, back: 0.15, side: 0.35, mostForwardDeg: 25, mostBackDeg: 6, mostSideDeg: 18 });
+/** What the room tells her womb's swing each frame: her womb against a full-term one, her FIRMNESS, how fed she is,
+ * and whether she stands (her upright is learnt then). */
+export interface WombSwingTune { readonly fullness: number; readonly firmness: number; readonly fed: number; readonly standing: boolean }
 
 type Name = 'uterus' | 'vagina' | 'bladder';
 interface Organ { readonly name: Name; readonly cage: Cage; readonly skin: CageSkin; readonly mesh: THREE.Mesh; readonly tune: CageTune; readonly out: Float32Array }
@@ -142,6 +157,15 @@ export class PelvicOrgansView {
   private readonly restQuat = new THREE.Quaternion();
   private readonly toWorld = new THREE.Matrix4();
   private readonly materials = new Map<Name, THREE.MeshStandardMaterial>();
+  /** HER WOMB'S SWING (WOMB_SWING): pitch forward (+) in `depth`, roll to her left (+) in `side`, radians, on v2's soft
+   * settle's springs; her upright as learnt standing (her rest frame); the point it turns about (the top of its cervix,
+   * rest metres); and the room's tune for it. */
+  private readonly swingNow = restingSoftBelly();
+  private swingUpright: THREE.Vector3 | null = null;
+  private pivot: P3 | null = null;
+  private readonly pivotM = new THREE.Matrix4();
+  private readonly wombToWorld = new THREE.Matrix4();
+  swingTune: WombSwingTune = { fullness: 1, firmness: 50, fed: 0, standing: true };
 
   /**
    * @param pelvis her measured pelvis (rest metres)
@@ -256,6 +280,7 @@ export class PelvicOrgansView {
     const canal = layout.vagina, drawn: OrganLayout = { ...layout, vagina: { ...canal, path: subPath(canal.path, DOORS.hingeUp, lengthOf(canal.path)) } }, meshes = organMeshes(drawn);
     if (this.grown && this.room) makeRoom(meshes.uterus.points, this.grown, this.room);
     this.layout = layout; this.last = null;
+    this.pivot = this.grown ? this.grown.path[this.grown.path.length - WOMB_SHAPE.stations - 1] : null;
     // (pregnant, her womb is seen through: what it holds is inside)
     const wm = this.materials.get('uterus')!;
     wm.transparent = !!this.grown; wm.opacity = this.grown ? WOMB_SEEN : 1; wm.depthWrite = !this.grown; wm.needsUpdate = true;
@@ -307,7 +332,8 @@ export class PelvicOrgansView {
       let off = 0;
       for (let i = 0; i < now.length; i++) off = Math.max(off, Math.abs(now[i] - (this.last[i] + this.speed[i] * dt)));
       if (off > JUMP_ACCEL * dt * dt) {
-        for (const o of this.organs) placeCage(o.cage, toWorld);
+        this.stepSwing(0);
+        for (const o of this.organs) placeCage(o.cage, o.name === 'uterus' ? this.wombFrame(toWorld) : toWorld);
         this.last = now; // (and its speed is what it was: a pose put on mid-walk keeps her walking)
         this.draw();
         return;
@@ -318,7 +344,8 @@ export class PelvicOrgansView {
     const q = this.holder.getWorldQuaternion(new THREE.Quaternion());
     const held = new THREE.Vector3(0, -G, 0).applyQuaternion(this.restQuat.clone().invert()).applyQuaternion(q);
     const felt: [number, number, number] = [0 - held.x, -G - held.y, 0 - held.z];
-    for (const o of this.organs) stepCage(o.cage, dt, toWorld, felt, o.tune);
+    this.stepSwing(dt);
+    for (const o of this.organs) stepCage(o.cage, dt, o.name === 'uterus' ? this.wombFrame(toWorld) : toWorld, felt, o.tune);
     // (the bladder pushes on the womb and the canal; the womb's cervix sits in the canal, so those two do not push)
     for (const t of this.touching) separate(t.a, t.b, t.gaps);
     this.draw();
@@ -488,8 +515,36 @@ export class PelvicOrgansView {
     sg.setAttribute('position', new THREE.BufferAttribute(d.skin.points, 3)); sg.setIndex(new THREE.BufferAttribute(d.skin.triangles, 1)); sg.computeVertexNormals();
   }
 
+  /** Her womb's swing a step of `dt` seconds (WOMB_SWING); 0 only reads her lean. */
+  private stepSwing(dt: number): void {
+    if (!this.grown) { Object.assign(this.swingNow, restingSoftBelly()); return; }
+    const q = this.holder.getWorldQuaternion(new THREE.Quaternion()).invert(), down = new THREE.Vector3(0, -1, 0).applyQuaternion(q).normalize();
+    if (!this.swingUpright) this.swingUpright = new THREE.Vector3(0, -1, 0).applyQuaternion(this.restQuat.clone().invert()).normalize();
+    const t = this.swingTune;
+    if (t.standing && dt > 0) this.swingUpright.lerp(down, Math.min(1, dt * 2)).normalize();
+    const w = softBellyWant(down, this.swingUpright, null, t.fullness, t.firmness, t.fed), S = WOMB_SWING, r = Math.PI / 180;
+    // (a full womb gives less: v2's give, never more than at full term)
+    const give = Math.min(1, w.give);
+    const pitch = Math.max(-S.mostBackDeg, Math.min(S.mostForwardDeg, (w.leanDeg >= 0 ? S.forward : S.back) * w.leanDeg * give)) * r;
+    const roll = Math.max(-S.mostSideDeg, Math.min(S.mostSideDeg, S.side * w.sideDeg * give)) * r;
+    stepSoftBelly(this.swingNow, dt, { side: roll, sag: 0, depth: pitch }, t.fullness);
+  }
+  /** Her womb's rest frame now (world metres): her pelvis's, turned about the top of its cervix by its swing. */
+  private wombFrame(toWorld: ArrayLike<number>): ArrayLike<number> {
+    const p = this.pivot;
+    if (!p || (Math.abs(this.swingNow.depth) < 1e-5 && Math.abs(this.swingNow.side) < 1e-5)) return toWorld;
+    // (pitch about her left (+x): its top forward (+z); roll about her front (+z): its top to her left (+x))
+    const e = new THREE.Euler(this.swingNow.depth, 0, -this.swingNow.side, 'ZXY');
+    this.pivotM.makeRotationFromEuler(e);
+    const t = new THREE.Vector3(p[0], p[1], p[2]), turned = t.clone().applyMatrix4(this.pivotM);
+    this.pivotM.setPosition(t.sub(turned));
+    return this.wombToWorld.fromArray(toWorld as number[]).multiply(this.pivotM).elements;
+  }
+  /** Her womb's swing now, degrees (for probes): forward (+) and to her left (+). */
+  get wombSwingDeg(): { forward: number; side: number } { return { forward: +(this.swingNow.depth * 180 / Math.PI).toFixed(2), side: +(this.swingNow.side * 180 / Math.PI).toFixed(2) }; }
+
   private draw(): void {
-    if (this.organs.some((o) => !o.cage.primed)) { const toWorld = this.boneToWorld().elements; for (const o of this.organs) stepCage(o.cage, 0, toWorld, [0, 0, 0], o.tune); }
+    if (this.organs.some((o) => !o.cage.primed)) { const toWorld = this.boneToWorld().elements; for (const o of this.organs) stepCage(o.cage, 0, o.name === 'uterus' ? this.wombFrame(toWorld) : toWorld, [0, 0, 0], o.tune); }
     for (const o of this.organs) {
       followCage(o.cage, o.skin, o.out);
       const pos = o.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, arr = pos.array as Float32Array;

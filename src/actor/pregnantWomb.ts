@@ -61,6 +61,13 @@ export const WOMB_SHAPE = Object.freeze({
    * as it fills her belly up to her ribs. GAME TUNING (until her belly's wall holds it: the belly skin proof), within
    * what a womb does standing (about 20-40 degrees), fitted to her fundal height (a centimetre a week, 20 to 36). */
   lean: [[16, 38], [36, 28]] as readonly (readonly [number, number])[],
+  /** ITS FLUID'S PRESSURE ROUNDS IT FORWARD (Joshua, 2026-11-09: "not the forward rounded depth due to the babies, fluid
+   * pressure, etc which is missing and why it looks a little boxy"): a full sac pushes out where her belly's wall gives
+   * -- forward, her spine being behind it -- so it is this much deeper than its egg, [week, times], its length (and so
+   * its height) as it was; what it holds and weighs are unchanged. Drawn only where WOMB FILL draws it bigger than what
+   * it holds (fully a quarter bigger): the real womb alone stays its measured egg. GAME TUNING (a look; until her belly's wall is real,
+   * Phase 4). */
+  pressure: [[16, 1], [28, 1.12], [40, 1.25]] as readonly (readonly [number, number])[],
   /** Its back this far in front of her spine (the aorta and the vena cava lie there). BIOLOGICAL SHAPE. */
   spineGap: 0.015,
   /** The tissue over its front (skin, fat and muscle) that the fundal height's tape runs over, metres. GAME TUNING (v2's
@@ -156,7 +163,7 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   const os = cervix[cervix.length - 1], fundus = u.path[u.path.length - 1], x = os[0];
   // its body: its proportions and size for the week, from what it holds
   const aw = lerpTable(S.aspect, w, 1), ad = lerpTable(S.aspect, w, 2), c = lerpTable(S.widest, w, 1);
-  const L = Math.cbrt((volumeMl * 1e-6 * 6) / (Math.PI * aw * ad)), W = aw * L, D = ad * L;
+  const L = Math.cbrt((volumeMl * 1e-6 * 6) / (Math.PI * aw * ad)), press = S.pressure ? 1 + (lerpTable(S.pressure, w, 1) - 1) * Math.min(1, Math.max(0, (volumeMl / Math.max(1, contents.volumeMl) - 1) / 0.25)) : 1, W = aw * L, D = ad * L * press;
   // leaning from as it was laid to WOMB_SHAPE.leanDeg
   const laidLean = Math.atan2(fundus[2] - os[2], fundus[1] - os[1]), by = S.lean[0][0];
   const lean = w < by ? laidLean + ((S.lean[0][1] * Math.PI) / 180 - laidLean) * (w / by) : (lerpTable(S.lean, w, 1) * Math.PI) / 180;
@@ -195,7 +202,8 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   // (moved forward its slices stand closer along its axis where her spine pushes it less above: it is made that much
   // wider and deeper to hold what it holds)
   let scale = 1, laidOut = lay(1);
-  for (let pass = 0; pass < 4; pass++) { scale *= Math.sqrt((volumeMl * 1e-6) / Math.max(1e-12, held(laidOut))); laidOut = lay(scale); }
+  // (its fluid's pressure: the volume of the deeper egg, not shrunk back to the egg's)
+  for (let pass = 0; pass < 4; pass++) { scale *= Math.sqrt((volumeMl * press * 1e-6) / Math.max(1e-12, held(laidOut))); laidOut = lay(scale); }
   const { moved, halves } = laidOut;
   const path = [...cervix, ...moved];
   // which way each ring faces: the cervix its own way, the body its long axis (turning to it over its first few rings),

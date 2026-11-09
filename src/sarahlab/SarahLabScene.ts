@@ -7507,6 +7507,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (WOMB FILL: drawn between what it really holds and all of v2's belly; her belly's soft wall the rest)
         organs.setPregnancy(wk, grams, wk === null ? 0 : wombDrawnMl(wombContents(wk, grams).volumeMl, bump * wombShare, wombFillPct / 100));
         skinBand?.setAfterBirth(allBorn);
+        // (her womb swings on its cervix by her lean, read as v2's soft settle reads it)
+        organs.swingTune = { fullness: organs.womb ? (bump / 100) * wombShare : 0, firmness: body.bellyFirmness, fed: Math.min(1, (gut.stomachFoodMl + gut.stomachWaterMl) / STOMACH.fullMl), standing: pose === 'stand' };
         organs.update(dt);
         // her belly's organs round them, and her belly's skin over all of it (her womb, intestines and stomach push it out)
         if (abdomen) abdomen.update(dt);
@@ -8685,7 +8687,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (!organs) return null;
           if (bladderMl !== undefined) organs.setBladder(bladderMl);
           const w = organs.womb, baby = w ? babySize(w.week, body.babyWeight, babyCount) : null;
-          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, doorFold: organs.doorFold, doorAngles: organs.doorAngles, doorOpenCm: +(organs.doorOpenM * 100).toFixed(1), mouth: organs.passFrame(null, 0).centre.toArray().map((x) => +(x / M).toFixed(4)), ends: organs.doorEnds, seen: () => organs!.doorsSeen(), womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
+          return { bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, doorFold: organs.doorFold, doorAngles: organs.doorAngles, doorOpenCm: +(organs.doorOpenM * 100).toFixed(1), mouth: organs.passFrame(null, 0).centre.toArray().map((x) => +(x / M).toFixed(4)), ends: organs.doorEnds, seen: () => organs!.doorsSeen(), womb: w && { swingDeg: organs.wombSwingDeg, week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
             // her baby's head through her pelvis, plane by plane (actor/birthCanal.ts), at the size it is drawn
             passage: baby && headPassage(skeletonPelvis, skeletonTorso.landmarks.coccyx, baby.cm / 100) };
         },
