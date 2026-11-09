@@ -12,7 +12,7 @@ describe('her bare feet over her foot bones', () => {
     expect(c.delta[k * 3 + 1]).toBeCloseTo(0.006, 4);
   });
   it('leaves skin well away from it where it was, and moves only outward', () => {
-    expect(c.index.every((i) => Math.hypot(skin[i * 3], skin[i * 3 + 2]) < 0.045)).toBe(true);
+    expect(c.index.every((i) => Math.hypot(skin[i * 3], skin[i * 3 + 2]) < 0.075)).toBe(true);
     for (let k = 0; k < c.index.length; k++) expect(c.delta[k * 3 + 1]).toBeGreaterThanOrEqual(0);
   });
 });

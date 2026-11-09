@@ -41,8 +41,13 @@ try {
   // BAREFOOT
   for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2]]) { await aimAt('ankleL', yaw, 45); await shot(`feet-${v}.png`); }
   await slide('sarahlab-xray', 0); await run(0.2); await aimAt('ankleL', Math.PI / 4, 45); await shot('feet-skin-q34.png'); await slide('sarahlab-xray', 50); await run(0.2);
+  // (her bare feet's skin alone, front and side)
+  report.footCoverMm = await hook('skeletonDepths', 2).then((r) => r?.footCoverMm ?? null);
+  await slide('sarahlab-xray', 0); await run(0.2);
+  for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2]]) { await aimAt('ankleL', yaw, 45); await shot(`feet-skin-${v}.png`); }
+  await slide('sarahlab-xray', 50); await run(0.2);
   // HEAD SIZES
-  for (const [key, head, skull] of [['h0-fitted', 0, null], ['h0-real', 0, 1], ['h10-real', 10, 1], ['h20-real', 20, 1]]) {
+  if (process.env.ONLY !== 'feet') for (const [key, head, skull] of [['h0-fitted', 0, null], ['h0-real', 0, 1], ['h10-real', 10, 1], ['h20-real', 20, 1]]) {
     await bodySlide('head', head); await run(0.5);
     report[`${key}-fit`] = await hook('skeletonRelay', [skull]); await run(0.3);
     await depth(key, ['head', 'Bone_016', 'Jaw']);
