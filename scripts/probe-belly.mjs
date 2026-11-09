@@ -36,7 +36,7 @@ try {
     await page.evaluate((s) => { const node = document.querySelector(s), section = node?.closest('[data-section]'); if (section && !section.hasAttribute('data-open')) document.querySelector(`[data-action="sarahlab:section:${section.dataset.section}"]`)?.click(); }, sel).catch(() => {});
     await page.click(sel, { timeout: 60_000 });
   };
-  const slide = async (field, v) => { await page.locator(`[data-field="${field}"] + input`).evaluate((input, x) => { input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, v); };
+  const slide = async (field, v) => { await page.evaluate(([f, x]) => { const input = document.querySelector(`[data-field="${f}"] + input`); input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, [field, v]); };
   const hook = (name, ...args) => page.evaluate(([n, a]) => { const h = globalThis.__sarahLabCloth[n]; const r = h(...a); return typeof r === 'function' ? null : JSON.parse(JSON.stringify(r ?? null)); }, [name, args]);
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
   const status = '[data-field="sarahlab-status"]';
@@ -47,7 +47,7 @@ try {
   let dist0 = 2.9;
   if (sets.includes('compare') || sets.includes('wire')) {
     const wireBumps = sets.includes('wire') ? [100, 150] : [25, 50, 75, 100, 150];
-    const slide0 = async (field, v) => { await page.locator(`[data-field="${field}"] + input`).evaluate((input, x) => { input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, v); };
+    const slide0 = async (field, v) => { await page.evaluate(([f, x]) => { const input = document.querySelector(`[data-field="${f}"] + input`); input.value = String(x); input.dispatchEvent(new Event('input', { bubbles: true })); }, [field, v]); };
     await page.waitForTimeout(3000);
     // (her clothes off, as v3 has none: OUTFIT three times is none)
     for (let k = 0; k < 3; k++) { await click('[data-action="sarahlab:outfit"]'); await page.waitForTimeout(8000); }

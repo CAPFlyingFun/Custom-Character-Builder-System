@@ -95,6 +95,7 @@ import { BellySkinView } from './bellySkinView';
 import { WOMB_FILL_DEFAULT, v2BellyLitres, wombDrawnMl, type SavedBelly, type V2Shapes } from '../actor/bellySkin';
 import { wombContents } from '../actor/pregnantWomb';
 import skeletonBellyV2 from '../data/belly/v2-shapes.json';
+import { V2_BELLY_CONTROLS } from './v2BellyLook';
 import { drawnFill, gutNeeds, hoursToBladderUrge, restingGut, urineMlH, type GutState } from '../actor/gut';
 import { STOMACH, RECTUM } from '../actor/abdominalOrgans';
 import skeletonBelly from '../data/belly/skeleton.json';
@@ -6273,6 +6274,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   /** What her gut holds, as her organs are drawn from it; and set by hand (the room's sliders, probes). */
   function gutFill() { return drawnFill(gut); }
+  /** v2's approved belly for v3's skin now: her BUMP % as shown and her Body panel's belly controls (v2BellyLook.ts). */
+  function v2LookNow(shown: number) { return { bump: shown, controls: Object.fromEntries(V2_BELLY_CONTROLS.map((k) => [k, body[k]])) }; }
   function setGut(next: GutState): void { gut = next; abdomen?.setFill(gutFill()); organs?.setBladder(gut.bladderMl); }
   function applyXray(): void {
     if (!model) return;
@@ -7505,12 +7508,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const wombShare = birthNow ? Math.min(birthBellyShare, 1 - BIRTH_SHRINK * bornShare - AFTERBIRTH.shrink * birthNow.afterbirth) : 1;
         const wk = pregnant() ? herWeek(bump * wombShare, babyCount, pregnancy) : null, grams = wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g);
         // (WOMB FILL: drawn between what it really holds and all of v2's belly; her belly's soft wall the rest)
-        organs.setPregnancy(wk, grams, wk === null ? 0 : wombDrawnMl(wombContents(wk, grams).volumeMl, bump * wombShare, wombFillPct / 100));
+        organs.setPregnancy(wk, grams, wk === null ? 0 : wombDrawnMl(wombContents(wk, grams).volumeMl, bump * wombShare, wombFillPct / 100), wk === null ? null : skinBand?.room(v2LookNow(bump * wombShare)) ?? null);
         skinBand?.setAfterBirth(allBorn);
         organs.update(dt);
         // her belly's organs round them, and her belly's skin over all of it (her womb, intestines and stomach push it out)
         if (abdomen) abdomen.update(dt);
-        if (skinBand) { const w = organs.wombPoints(), src: ArrayLike<number>[] = abdomen ? abdomen.fillingPoints() : []; if (w && organs.womb) src.push(w); skinBand.update(dt, src, { bump: organs.womb ? bump : 0, firmness: body.bellyFirmness, babyWeight: body.babyWeight, bounce: body.bellyBounce, fullness: organs.womb ? (bump / 100) * wombShare : 0, standing: pose === 'stand', fed: Math.min(1, (gut.stomachFoodMl + gut.stomachWaterMl) / STOMACH.fullMl), v2Weights: organs.womb ? bellyWeights(bump * wombShare, bellyCurve) : null }); }
+        if (skinBand) { const w = organs.wombPoints(), src: ArrayLike<number>[] = abdomen ? abdomen.fillingPoints() : []; if (w && organs.womb) src.push(w); skinBand.update(dt, src, { bump: organs.womb ? bump : 0, firmness: body.bellyFirmness, babyWeight: body.babyWeight, bounce: body.bellyBounce, fullness: organs.womb ? (bump / 100) * wombShare : 0, standing: pose === 'stand', fed: Math.min(1, (gut.stomachFoodMl + gut.stomachWaterMl) / STOMACH.fullMl), v2Look: organs.womb ? v2LookNow(bump * wombShare) : null }); }
         // (FOLD BACK's line follows the doors as they go, not only the slider)
         const fl = fields[SARAH_LAB_FIELD.foldBack], line = foldBackLine(foldBackPct, organs.doorAngles);
         if (fl && fl.textContent !== line) fl.textContent = line;

@@ -141,7 +141,12 @@ export function spineFrontAt(torso: TorsoLandmarks, y: number): number {
  * Her womb at `week` (a fraction is fine), each of her babies weighing what `babyGrams` says, on her organs as `laid`
  * not pregnant, in front of her spine as `torso` measures it.
  */
-export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number, babyGrams: readonly number[], open = 0, shape: typeof WOMB_SHAPE = WOMB_SHAPE, drawnMl = 0): PregnantWomb {
+/** How far inside the womb drawn bigger (WOMB FILL) may be drawn smaller again to lie inside her belly's approved shape:
+ * no smaller than this share of each of its real slices. GAME TUNING (Joshua, 2026-11-09: v2's belly shape, with the
+ * womb filling it -- "may end up doing #2 as it's easier and no one will really see under the skin"). */
+export const WOMB_FIT_LEAST = 0.7;
+
+export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number, babyGrams: readonly number[], open = 0, shape: typeof WOMB_SHAPE = WOMB_SHAPE, drawnMl = 0, fit: ((x: number, y: number, z: number) => number) | null = null): PregnantWomb {
   const S = shape, w = Math.max(0, Number.isFinite(week) ? week : 0), u = laid.uterus;
   const contents = wombContents(w, babyGrams);
   // (WOMB FILL: drawn as big as `drawnMl` where that is more than it holds -- the hybrid with v2's belly; what it holds and
@@ -197,6 +202,22 @@ export function growWomb(laid: OrganLayout, torso: TorsoLandmarks, week: number,
   let scale = 1, laidOut = lay(1);
   for (let pass = 0; pass < 4; pass++) { scale *= Math.sqrt((volumeMl * 1e-6) / Math.max(1e-12, held(laidOut))); laidOut = lay(scale); }
   const { moved, halves } = laidOut;
+  // FITTED INSIDE HER BELLY (WOMB FILL, v2's shape): drawn bigger than it is, each slice drawn smaller again where it would
+  // stand outside her belly's approved shape (`fit` > 0: how far outside a point is, rest metres), never below
+  // WOMB_FIT_LEAST of its real slice -- so it fills v2's belly and never pushes it out of shape
+  if (fit && volumeMl > contents.volumeMl) {
+    const real = growWomb(laid, torso, week, babyGrams, open, shape).halves.slice(-n);
+    const k = halves.map((h, i) => {
+      let f = 1;
+      const least = Math.min(1, WOMB_FIT_LEAST * Math.max(real[i][0] / Math.max(1e-6, h[0]), real[i][1] / Math.max(1e-6, h[1])));
+      const outside = (s: number) => { for (let a = 0; a < 16; a++) { const th = (2 * Math.PI * a) / 16, ca = Math.cos(th) * h[0] * s, sb = Math.sin(th) * h[1] * s; if (fit(moved[i][0] + ca, moved[i][1] + fy * sb, moved[i][2] + fz * sb) > 0) return true; } return false; };
+      while (f > least && outside(f)) f = Math.max(least, f * 0.96);
+      return f;
+    });
+    // (each slice no more than a little different from its neighbours, so it stays one smooth womb)
+    for (let pass = 0; pass < 3; pass++) for (let i = 0; i < n; i++) k[i] = Math.min(k[i], (k[Math.max(0, i - 1)] + k[i] + k[Math.min(n - 1, i + 1)]) / 3 + 0.03);
+    halves.forEach((h, i) => { h[0] *= k[i]; h[1] *= k[i]; });
+  }
   const path = [...cervix, ...moved];
   // which way each ring faces: the cervix its own way, the body its long axis (turning to it over its first few rings),
   // kept so however her spine moves it
