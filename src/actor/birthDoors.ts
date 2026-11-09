@@ -778,6 +778,36 @@ function levelRim(stations: Angles[], outlines: readonly (Outline | null)[]): An
 }
 
 /**
+ * PLAN B, CLOSER ROUND IT (Joshua, 2026-11-08: "is there not a way to still have it close in closer around the body and
+ * match its shape? I mean, totally open is fine, but having it match the same and not be so wide would be nicer"): each
+ * section pushed by its own slice as the full sim pushes it (`pressDoorLine`, from where they lay), then each joint's
+ * angle along each door laid on one smooth curve (a quadratic front to back, by least squares) -- so a door follows the
+ * baby's shape, closer where it is narrower, but bends front to back as one smooth piece and cannot tear -- then turned
+ * out on its main hinge, all of it alike, just far enough that no section goes into the baby. Rim levelled as the slider's.
+ */
+export function fittedDoors(f: DoorFrame, points: ArrayLike<number>, ends: Ends, rimT: number, was: { right: readonly Angles[]; left: readonly Angles[] }, half?: 0 | 1): { right: Angles[]; left: Angles[]; ends: Ends; raw: { right: Angles[]; left: Angles[] } } {
+  const J = DOORS.stations, o = passingOutlines(f, points, ends, rimT), keys = ['hinge', 'inner', 'mid', 'outer'] as const;
+  const fit = (raw: readonly Angles[], outlines: readonly (Outline | null)[]): Angles[] => {
+    if (!outlines.some(Boolean)) return Array.from({ length: J }, () => CLOSED);
+    // (a quadratic in u, -1 .. 1, through each joint's angles: least squares on 1, u, u^2)
+    const us = Array.from({ length: J }, (_, j) => -1 + (2 * j) / (J - 1)), S = [0, 0, 0, 0, 0];
+    for (const u of us) for (let k = 0; k < 5; k++) S[k] += u ** k;
+    const A = [[S[0], S[1], S[2]], [S[1], S[2], S[3]], [S[2], S[3], S[4]]];
+    const solve3 = (b: number[]) => { const m = A.map((r, i) => [...r, b[i]]); for (let i = 0; i < 3; i++) { const p = m[i][i]; for (let c = i; c < 4; c++) m[i][c] /= p; for (let r = 0; r < 3; r++) if (r !== i) { const q = m[r][i]; for (let c = i; c < 4; c++) m[r][c] -= q * m[i][c]; } } return m.map((r) => r[3]); };
+    const curve = keys.map((k) => { const b = [0, 0, 0]; raw.forEach((a, j) => { for (let e = 0; e < 3; e++) b[e] += a[k] * us[j] ** e; }); return solve3(b); });
+    const at = (j: number, dh: number): Angles => { const u = us[j], v = curve.map((c) => c[0] + c[1] * u + c[2] * u * u); return { hinge: Math.max(0, v[0] + dh), inner: v[1], mid: v[2], outer: v[3] }; };
+    // (out on its main hinge, all alike, only as far as keeps every section off the baby)
+    const into = (dh: number) => Math.max(...us.map((_, j) => pressedInto(outlines[j], at(j, dh), j)));
+    let dh = 0;
+    if (into(0) > 0.001) { let lo = 0, hi = 60; for (let k = 0; k < 14; k++) { const m = (lo + hi) / 2; if (into(m) > 0.001) lo = m; else hi = m; } dh = hi; }
+    const out = us.map((_, j) => at(j, dh));
+    return levelRim(out, out.map(() => null));
+  };
+  const rawR = pressDoorLine(o.right, was.right, CLOSED, half), rawL = pressDoorLine(o.left, was.left, CLOSED, half);
+  return { right: fit(rawR, o.right), left: fit(rawL, o.left), ends: o.ends, raw: { right: rawR, left: rawL } };
+}
+
+/**
  * PLAN B: ONE POSE, SOLVED AGAINST THE BABY AS THE CIRCLE WAS (Joshua, 2026-11-08: "keep the same sim concept, but
  * do it on the fixed slider and like how we measured the circle and egg, we use that same concept but we use the baby
  * model instead with the non-sim version and it can average points between the joints to open correctly"): both doors
