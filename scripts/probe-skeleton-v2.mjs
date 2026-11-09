@@ -40,7 +40,7 @@ try {
   const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 150, y: 40, width: 540, height: 780 }, timeout: 300_000 }); log('shot', name); };
   const depths = async (key) => {
     const res = await hook('skeletonDepths', 2), d = res?.bones;
-    if (!report.stretch) { report.stretch = res?.stretch; log('limbs stretched', JSON.stringify(res?.stretch)); }
+    if (!report.stretch) { report.stretch = res?.stretch; report.fit = { left: res?.fitLeft, mostMm: res?.fitMostMm }; log('limbs stretched', JSON.stringify(res?.stretch), 'fit', JSON.stringify(report.fit)); }
     const worst = (d ?? []).slice(0, 8), through = (d ?? []).reduce((s, b) => s + b.throughCount, 0), close = (d ?? []).reduce((s, b) => s + b.closeCount, 0);
     report[key] = { through, close, worst, all: d };
     report[key].marked = await hook('skeletonMarks', true);

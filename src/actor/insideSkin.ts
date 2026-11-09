@@ -2,12 +2,16 @@
  * INSIDE HER SKIN OR NOT (the skeleton-in-v2 test, 2026-11-09). A point is inside a closed skin when a ray from it crosses
  * the skin an odd number of times. Her skin is not quite closed -- her eyes, mouth, opening and the ends of her fingers
  * have holes -- so a point is cast six ways (along her axes, tilted so no ray runs along an edge) and called inside when
- * at least four say so; a hole fools only the rays that pass through it. Its depth is the distance to the nearest
+ * at least INSIDE_VOTES say so; a hole fools only the rays that pass through it. Its depth is the distance to the nearest
  * triangle of her skin: positive inside, negative outside (through her skin).
  *
  * Triangles are binned into a uniform grid; rays walk it cell by cell (Amanatides & Woo), each triangle tested once a ray
  * (Moller-Trumbore). Pure: no three, no DOM.
  */
+
+/** How many of the six rays must say inside. Three: a hole (her opening, her eyes, her mouth) can fool two or three of
+ * them, never more than half from a point well inside. GAME TUNING (checked on a sphere with a hole: tests/insideSkin). */
+export const INSIDE_VOTES = 3;
 
 export interface SkinGrid {
   readonly pos: Float32Array;
@@ -116,7 +120,7 @@ export function depthsInSkin(g: SkinGrid, points: Float32Array, reach: number): 
       const k = (z * g.dim[1] + y) * g.dim[0] + x;
       for (let s = g.start[k]; s < g.start[k + 1]; s++) { const t = g.tris[s]; if (stamp[t] === mark) continue; stamp[t] = mark; best = Math.min(best, triDistance(g, t, px, py, pz)); }
     }
-    out[i] = inside >= 4 ? best : -best;
+    out[i] = inside >= INSIDE_VOTES ? best : -best;
   }
   return out;
 }
@@ -125,4 +129,61 @@ export function depthsInSkin(g: SkinGrid, points: Float32Array, reach: number): 
 export function raysAt(g: SkinGrid, px: number, py: number, pz: number): number[] {
   const stamp = new Uint32Array(g.tri.length / 3);
   return RAYS.map((d, k) => crossings(g, px, py, pz, d, stamp, k + 1));
+}
+
+/** For probes: the same crossings by testing every triangle (no grid), to check the grid's walk. */
+export function raysAtBrute(pos: Float32Array, tri: ArrayLike<number>, px: number, py: number, pz: number): number[] {
+  const nt = Math.floor(tri.length / 3), all = new Uint32Array(nt + 1), list = new Uint32Array(nt);
+  for (let t = 0; t < nt; t++) list[t] = t;
+  all[1] = nt;
+  const g: SkinGrid = { pos, tri, lo: [px - 1e6, py - 1e6, pz - 1e6], cell: 4e6, dim: [1, 1, 1], start: all, tris: list };
+  const stamp = new Uint32Array(nt);
+  return RAYS.map((d, k) => crossings(g, px, py, pz, d, stamp, k + 1));
+}
+
+/**
+ * BONE KEPT UNDER HER SKIN (Joshua, 2026-11-09: "the skin matches to the bone structure, not bone to skin... the bone size
+ * can be changed a little"): each point of a piece of bone nearer her skin than `margin` (or through it) is drawn in toward
+ * the middle of its own piece, and the move is shared smoothly with the points of the same piece within `blend` of it so
+ * the bone keeps its shape -- it is made a little smaller or slimmer where her body is, never cut. Repeated `passes`
+ * times. `points` (x, y, z each) is changed in place; `owner` is each point's piece (its bone); a piece `keep` says no to
+ * is left alone. Returns how many points were still within `margin` at the last pass. Units are the grid's.
+ */
+export function pullInside(g: SkinGrid, points: Float32Array, owner: ArrayLike<number>, margin: number, blend: number, keep: (piece: number) => boolean, passes = 4): number {
+  const n = points.length / 3, centre = new Map<number, [number, number, number, number]>();
+  for (let i = 0; i < n; i++) { const c = centre.get(owner[i]) ?? [0, 0, 0, 0]; c[0] += points[i * 3]; c[1] += points[i * 3 + 1]; c[2] += points[i * 3 + 2]; c[3]++; centre.set(owner[i], c); }
+  for (const c of centre.values()) { c[0] /= c[3]; c[1] /= c[3]; c[2] /= c[3]; }
+  let left = 0;
+  for (let pass = 0; pass < passes; pass++) {
+    const depth = depthsInSkin(g, points, margin * 4), push = new Float32Array(n * 3);
+    left = 0;
+    for (let i = 0; i < n; i++) {
+      if (!keep(owner[i]) || depth[i] >= margin) continue;
+      left++;
+      const c = centre.get(owner[i])!, dx = c[0] - points[i * 3], dy = c[1] - points[i * 3 + 1], dz = c[2] - points[i * 3 + 2], l = Math.hypot(dx, dy, dz) || 1, need = (margin - depth[i]) * 1.2;
+      push[i * 3] = (dx / l) * need; push[i * 3 + 1] = (dy / l) * need; push[i * 3 + 2] = (dz / l) * need;
+    }
+    if (!left) break;
+    // (shared over the piece's points within `blend`: each takes the largest nearby move, faded by distance)
+    const cell = blend, key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`, grid = new Map<string, number[]>();
+    for (let i = 0; i < n; i++) if (push[i * 3] || push[i * 3 + 1] || push[i * 3 + 2]) { const k = key(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
+    const move = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      if (!keep(owner[i])) continue;
+      const px = points[i * 3], py = points[i * 3 + 1], pz = points[i * 3 + 2], cx = Math.floor(px / cell), cy = Math.floor(py / cell), cz = Math.floor(pz / cell);
+      let best = 0;
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+        const l = grid.get(`${cx + a},${cy + b},${cz + c}`);
+        if (l) for (const j of l) {
+          if (owner[j] !== owner[i]) continue;
+          const r = Math.hypot(points[j * 3] - px, points[j * 3 + 1] - py, points[j * 3 + 2] - pz);
+          if (r >= blend) continue;
+          const f = 0.5 + 0.5 * Math.cos((Math.PI * r) / blend), m = Math.hypot(push[j * 3], push[j * 3 + 1], push[j * 3 + 2]) * f;
+          if (m > best) { best = m; move[i * 3] = push[j * 3] * f; move[i * 3 + 1] = push[j * 3 + 1] * f; move[i * 3 + 2] = push[j * 3 + 2] * f; }
+        }
+      }
+    }
+    for (let i = 0; i < n * 3; i++) points[i] += move[i];
+  }
+  return left;
 }

@@ -15,7 +15,7 @@
  * included): the random-pose test's numbers.
  */
 import * as THREE from 'three';
-import { depthsInSkin, raysAt, skinGrid } from '../actor/insideSkin';
+import { depthsInSkin, pullInside, raysAt, raysAtBrute, skinGrid } from '../actor/insideSkin';
 
 /** What counts as close to her skin: a bone this near it (or through it) is reported. GAME TUNING (Joshua, 2026-11-09:
  * "it's okay if it's close"). Metres. */
@@ -36,7 +36,15 @@ export interface LimbFit {
   /** a bone's joint at bind in her rest frame (metres): the skeleton file's, and v2's */
   readonly skeletonJoint: (name: string) => THREE.Vector3 | null;
   readonly v2Joint: (name: string) => THREE.Vector3 | null;
+  /** pieces left as they are by the fit under her skin (her fingers: v2 draws its own) */
+  readonly noFit?: ReadonlySet<string>;
 }
+
+/**
+ * HOW THE BONE IS KEPT UNDER HER SKIN (actor/insideSkin.ts `pullInside`): at least this deep (metres), each move shared
+ * over this much of its piece. GAME TUNING (Joshua: "it's okay if it's close"; the bone "can be changed a little").
+ */
+export const SKELETON_FIT = Object.freeze({ margin: 0.004, blend: 0.035, passes: 5 });
 
 export interface BoneDepth { readonly bone: string; readonly points: number; readonly leastMm: number; readonly at: readonly number[]; readonly closeCount: number; readonly throughCount: number }
 
@@ -51,6 +59,9 @@ export class SkeletonInV2 {
    */
   /** each limb laid on v2's joints (LimbFit): how far its bones were stretched, by joint, for the report */
   readonly stretch: Record<string, number> = {};
+  /** the fit under her skin: how many points it could not get deep enough, and the most any point moved (mm) */
+  fitLeft = 0;
+  fitMostMm = 0;
 
   constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null) {
     const src = skeletonMesh.geometry, pos = src.getAttribute('position'), nrm = src.getAttribute('normal');
@@ -92,7 +103,7 @@ export class SkeletonInV2 {
         else if (under(bone, a)) partOf.set(bone.name, upper);
       }
     }
-    const P = new Float32Array(n * 3), N = new Float32Array(n * 3), v = new THREE.Vector3(), d = new THREE.Vector3();
+    const R = new Float32Array(n * 3), P = new Float32Array(n * 3), N = new Float32Array(n * 3), v = new THREE.Vector3(), d = new THREE.Vector3();
     for (let i = 0; i < n; i++) {
       v.fromBufferAttribute(pos, i).applyMatrix4(skeletonToRest);
       if (nrm) d.fromBufferAttribute(nrm, i).applyMatrix3(restN);
@@ -103,9 +114,23 @@ export class SkeletonInV2 {
         v.applyQuaternion(part.q).add(part.to);
         d.applyQuaternion(part.q);
       }
-      v.applyMatrix4(toBody).toArray(P, i * 3);
+      v.toArray(R, i * 3);
       if (nrm) d.applyMatrix3(toBodyN).normalize().toArray(N, i * 3);
     }
+    // KEPT UNDER HER SKIN (SKELETON_FIT): against her body at her bind, as shaped now, in her rest frame
+    if (fit) {
+      const bp = body.geometry.getAttribute('position'), m = bp.count, S = new Float32Array(m * 3), w = new THREE.Vector3();
+      for (let i = 0; i < m; i++) { THREE.Mesh.prototype.getVertexPosition.call(body, i, w); w.applyMatrix4(bodyToRest).toArray(S, i * 3); }
+      const ix = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array;
+      if (ix) {
+        const ids = new Map<string, number>(), own = Int32Array.from(this.owner, (o) => { let k = ids.get(o); if (k === undefined) ids.set(o, (k = ids.size)); return k; });
+        const skip = new Set([...(fit.noFit ?? [])].map((o) => ids.get(o) ?? -1)), before = R.slice();
+        this.fitLeft = pullInside(skinGrid(S, ix, 0.02), R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
+        for (let i = 0; i < n; i++) this.fitMostMm = Math.max(this.fitMostMm, Math.hypot(R[i * 3] - before[i * 3], R[i * 3 + 1] - before[i * 3 + 1], R[i * 3 + 2] - before[i * 3 + 2]) * 1000);
+        this.fitMostMm = +this.fitMostMm.toFixed(1);
+      }
+    }
+    for (let i = 0; i < n; i++) v.fromArray(R, i * 3).applyMatrix4(toBody).toArray(P, i * 3);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(P, 3));
     if (nrm) g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); else g.computeVertexNormals();
@@ -167,7 +192,10 @@ export class SkeletonInV2 {
     body.updateMatrixWorld(true);
     for (let i = 0; i < m; i++) { body.getVertexPosition(i, v); v.applyMatrix4(body.matrixWorld).toArray(S, i * 3); }
     const ix = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index!.array, g = skinGrid(S, ix, 0.02 * units);
-    return { rays: raysAt(g, x, y, z), tris: ix.length / 3, verts: m, lo: g.lo, dim: g.dim };
+    let near = 0, nearUsed = 0; const used = new Uint8Array(m); for (let t = 0; t < ix.length; t++) used[ix[t]] = 1;
+    for (let i = 0; i < m; i++) if (Math.hypot(S[i * 3] - x, S[i * 3 + 1] - y, S[i * 3 + 2] - z) < 0.15 * units) { near++; if (used[i]) nearUsed++; }
+    let dmin = Infinity, hiY = -Infinity; for (let i = 0; i < m; i++) { dmin = Math.min(dmin, Math.hypot(S[i * 3] - x, S[i * 3 + 1] - y, S[i * 3 + 2] - z)); hiY = Math.max(hiY, S[i * 3 + 1]); }
+    return { brute: raysAtBrute(S, ix, x, y, z), dmin: dmin / units, hiY: hiY / units, rays: raysAt(g, x, y, z), tris: ix.length / 3, verts: m, lo: g.lo, dim: g.dim, near, nearUsed, all: !!body.userData.allIndices, index: body.geometry.index?.count ?? 0 } as never;
   }
 
   dispose(): void { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); (this.mesh.material as THREE.Material).dispose(); }
