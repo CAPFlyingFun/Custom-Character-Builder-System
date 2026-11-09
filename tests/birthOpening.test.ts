@@ -108,8 +108,11 @@ describe('her opening\'s doors', () => {
     expect(foldAngles(0.25)).toEqual({ outer: DOORS.foldDeg, mid: 0, inner: 0, hinge: 0 });
     expect(foldAngles(0.5)).toEqual({ outer: DOORS.foldDeg, mid: DOORS.foldDeg, inner: 0, hinge: 0 });
     expect(foldAngles(1)).toEqual({ outer: DOORS.foldDeg, mid: DOORS.foldDeg, inner: DOORS.foldDeg, hinge: DOORS.foldDeg });
-    let last = doorMeshes(frame, 0, 0).openM;
-    for (const f of [0.25, 0.5, 0.75, 1]) { const m = doorMeshes(frame, 0, f); expect(m.openM).toBeGreaterThan(last); last = m.openM; }
+    // (each fold opens it further or, the lip's short last piece turning out past where it is narrowest, no less)
+    const first = doorMeshes(frame, 0, 0).openM;
+    let last = first;
+    for (const f of [0.25, 0.5, 0.75, 1]) { const m = doorMeshes(frame, 0, f); expect(m.openM).toBeGreaterThanOrEqual(last - 1e-9); last = m.openM; }
+    expect(last).toBeGreaterThan(first + 0.01);
     // (every station of every door as many points as the next: the mesh holds together however it folds)
     for (const [sw, f] of [[0, 1], [1, 1], [0.5, 0.6]]) {
       const m = doorMeshes(frame, sw, f);
@@ -140,8 +143,9 @@ describe('her opening\'s doors', () => {
     const dome = [0.2, 0.3].map((b) => ({ a: birthAngles(b), open: doorOpening(b) }));
     for (const { a, open } of dome) {
       expect(a.hinge).toBeGreaterThan(20);
-      expect(a.mid).toBeLessThan(-20);
-      expect(a.outer).toBeLessThan(-20);
+      // (its folds at its own corners: Joshua, 2026-11-08, "It should only bend at 4 points")
+      expect(a.mid).toBeLessThan(-15);
+      expect(a.outer).toBeLessThan(-10);
       expect(open).toBeLessThan(0.01);
     }
     // (by hand the lip goes first, out)

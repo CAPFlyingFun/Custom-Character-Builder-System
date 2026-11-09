@@ -105,7 +105,12 @@ export function doorFrame(canal: readonly P3[]): DoorFrame {
  * (0..1) is how thick it is and how far its lip hangs, as a share of its own: a door is thickest in its middle and thins
  * to its ends, front and back, as lips do.
  */
-interface Section { points: [number, number][]; along: number[]; hinge: [number, number]; lining: number; edge: number }
+interface Section {
+  points: [number, number][]; along: number[]; hinge: [number, number]; lining: number; edge: number;
+  /** where its three folds are, as shares of the way along it -- inner, mid, outer: its own three corners, so that it
+   * bends only at its four joints (Joshua, 2026-11-08: "It should only bend at 4 points") */
+  folds: [number, number, number];
+}
 
 function section(f = 1, w = 1): Section {
   const D = DOORS, R0 = CANAL_OPENING.diameterM / 2, R = R0 * w, h = D.hingeUp, g = D.gap, k = D.thick * f, lip = -0.1 * h - (D.lip - 0.1 * h) * f;
@@ -113,16 +118,19 @@ function section(f = 1, w = 1): Section {
   const ctrl = corners(R, lip), full = corners(R0, -D.lip);
   // (each stretch between them cut finer -- as finely at every thickness, so every section has as many points -- the
   // corners kept: the opening's edge is one of them)
-  const lining: [number, number][] = [ctrl[0]];
+  const lining: [number, number][] = [ctrl[0]], corner: number[] = [];
   let edge = 0;
   for (let i = 1; i < ctrl.length; i++) {
     const [a, b] = [ctrl[i - 1], ctrl[i]], cuts = Math.max(1, Math.round(Math.hypot(full[i][0] - full[i - 1][0], full[i][1] - full[i - 1][1]) / D.fineM));
     for (let c = 1; c <= cuts; c++) lining.push([a[0] + ((b[0] - a[0]) * c) / cuts, a[1] + ((b[1] - a[1]) * c) / cuts]);
     if (i === 3) edge = lining.length - 1;
+    if (i < ctrl.length - 1) corner.push(lining.length - 1);
   }
   const at: number[] = [0];
   for (let i = 1; i < lining.length; i++) at.push(at[i - 1] + Math.hypot(lining[i][0] - lining[i - 1][0], lining[i][1] - lining[i - 1][1]));
   const along = at.map((a) => a / at[at.length - 1]);
+  // (its folds at its own corners -- between them it is straight -- so it bends at its four joints and nowhere else)
+  const folds = corner.map((k) => along[k]) as [number, number, number];
   // her skin: the lining's points moved out by the door's thickness, square to it (toward her outside); the root's to the hinge
   const skin = lining.map(([x, t], i): [number, number] => {
     const p = lining[Math.max(0, i - 1)], q = lining[Math.min(lining.length - 1, i + 1)], tx = q[0] - p[0], tt = q[1] - p[1], l = Math.hypot(tx, tt) || 1;
@@ -132,7 +140,7 @@ function section(f = 1, w = 1): Section {
   const round: [number, number][] = [0.25, 0.5, 0.75].map((u) => { const a = Math.PI + u * Math.PI; return [mid[0] + (k / 2) * Math.cos(a), mid[1] + (k / 2) * Math.sin(a)]; });
   return {
     points: [...lining, ...round, ...[...skin].reverse()], along: [...along, 1, 1, 1, ...[...along].reverse()],
-    hinge: [R + D.hingeOut, h - D.thick / 2], lining: lining.length, edge,
+    hinge: [R + D.hingeOut, h - D.thick / 2], lining: lining.length, edge, folds,
   };
 }
 
@@ -219,7 +227,7 @@ function fastOf(s: Section): Fast {
   const lining = s.points.slice(0, s.lining), at = s.along.slice(0, s.lining), n = s.points.length;
   const pivot = (u: number): [number, number] => { let k = 1; while (k < at.length - 1 && at[k] < u) k++; const f = at[k] > at[k - 1] ? (u - at[k - 1]) / (at[k] - at[k - 1]) : 0; return [lining[k - 1][0] + (lining[k][0] - lining[k - 1][0]) * f, lining[k - 1][1] + (lining[k][1] - lining[k - 1][1]) * f]; };
   const bend = (x: number) => { const t = Math.min(1, Math.max(0, x / DOORS.foldBend + 0.5)); return t * t * (3 - 2 * t); };
-  const us = [2 / 3, 1 / 3, 0], px = new Float64Array(3), pt = new Float64Array(3), w = new Float64Array(n * 3);
+  const us = [s.folds[2], s.folds[1], s.folds[0]], px = new Float64Array(3), pt = new Float64Array(3), w = new Float64Array(n * 3);
   us.forEach((u, k) => { const p = pivot(u); px[k] = p[0]; pt[k] = p[1]; for (let i = 0; i < n; i++) w[i * 3 + k] = bend(s.along[i] - u); });
   F = { px, pt, w, ox: new Float64Array(n), ot: new Float64Array(n) };
   fasts.set(s, F);
@@ -319,7 +327,7 @@ function pose(s: Section, hingeRad: number, folds: { outer: number; mid: number;
   const lining = s.points.slice(0, s.lining), at = s.along.slice(0, s.lining);
   const pivot = (u: number): [number, number] => { let k = 1; while (k < at.length - 1 && at[k] < u) k++; const f = at[k] > at[k - 1] ? (u - at[k - 1]) / (at[k] - at[k - 1]) : 0; return [lining[k - 1][0] + (lining[k][0] - lining[k - 1][0]) * f, lining[k - 1][1] + (lining[k][1] - lining[k - 1][1]) * f]; };
   const bend = (x: number) => { const t = Math.min(1, Math.max(0, x / DOORS.foldBend + 0.5)); return t * t * (3 - 2 * t); };
-  const joints: [number, number][] = [[2 / 3, folds.outer], [1 / 3, folds.mid], [0, folds.inner]], L = Math.max(1, folds.long ?? 1);
+  const joints: [number, number][] = [[s.folds[2], folds.outer], [s.folds[1], folds.mid], [s.folds[0], folds.inner]], L = Math.max(1, folds.long ?? 1);
   return s.points.map((p, i) => {
     let q = p;
     for (const [u, deg] of joints) if (deg) q = turnAbout(q, pivot(u), ((deg * Math.PI) / 180) * bend(s.along[i] - u));
@@ -360,7 +368,7 @@ export function doorSection(angles: Angles): { points: [number, number][]; linin
   const s = section(), a = { outer: angles.outer, mid: angles.mid, inner: angles.inner }, hinge = (angles.hinge * Math.PI) / 180;
   const posed = pose(s, hinge, a), at = s.along.slice(0, s.lining);
   const near = (u: number) => at.reduce((best, x, i) => (Math.abs(x - u) < Math.abs(at[best] - u) ? i : best), 0);
-  return { points: posed, lining: s.lining, hinge: s.hinge, folds: [0, 1 / 3, 2 / 3].map((u) => posed[near(u)]) };
+  return { points: posed, lining: s.lining, hinge: s.hinge, folds: s.folds.map((u) => posed[near(u)]) };
 }
 
 /** How wide the opening is, pushed open `birth` and folded back `fold`: the narrowest between the two doors, metres. */
