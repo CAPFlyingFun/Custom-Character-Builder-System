@@ -7240,7 +7240,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               const jt = measure?.joints, nameOf = (k: number | undefined) => (k === undefined ? '' : body.skeleton.bones[k]?.name ?? '');
               // (each leg on to the ball of its foot -- its ankle bone's first child -- so the foot is laid along v2's foot)
               const ballOf = (k: number) => { const c = body.skeleton.bones[k]?.children.find((o) => (o as THREE.Bone).isBone); return c?.name ?? ''; };
-              const chains = jt ? [[jt.hipL, jt.kneeL, jt.ankleL].map(nameOf).concat(ballOf(jt.ankleL)), [jt.hipR, jt.kneeR, jt.ankleR].map(nameOf).concat(ballOf(jt.ankleR)), [jt.shoulderL, jt.elbowL, jt.wristL].map(nameOf), [jt.shoulderR, jt.elbowR, jt.wristR].map(nameOf)].map((c) => c.filter(Boolean)) : [];
+              void ballOf;
+              const chains = jt ? [[jt.hipL, jt.kneeL, jt.ankleL], [jt.hipR, jt.kneeR, jt.ankleR], [jt.shoulderL, jt.elbowL, jt.wristL], [jt.shoulderR, jt.elbowR, jt.wristR]].map((c) => c.map(nameOf).filter(Boolean)) : [];
               // (her fingers left as they are: v2 draws its own over them)
               const noFit = new Set<string>();
               if (jt) for (const w of [jt.wristL, jt.wristR]) { const b = sm.skeleton.bones.find((x) => x.name === nameOf(w)); b?.traverse((o) => { if (o !== b) noFit.add(o.name); }); }
@@ -7249,7 +7250,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (her head joint is the skull's tip, carrying nothing: the skull is its parent bone, with her jaw)
               const headParent = jt ? sm.skeleton.bones.find((x) => x.name === nameOf(jt.head))?.parent : undefined, skull: string[] = [];
               headParent?.traverse((o) => skull.push(o.name));
-              const whole = jt ? [skull, under(jt.ankleL), under(jt.ankleR)].filter((g) => g.length) : [];
+              // (her feet are left as they are: in this room she wears her sneakers, and her body's feet are shaped to them)
+              if (jt) for (const a of [jt.ankleL, jt.ankleR]) for (const b of under(a)) noFit.add(b);
+              const whole = [skull].filter((g) => g.length);
               skeletonV2 = new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
                 chains, noFit, whole,
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
@@ -8695,6 +8698,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her fingers left out: v2 draws its own fingers over them; every bone under her wrists but the hands' own)
           const skip = new Set<string>(), sk = bodyOf()?.mesh.skeleton;
           if (jt && sk) for (const w of [jt.wristL, jt.wristR]) sk.bones[w]?.traverse((o) => { if (o !== sk.bones[w]) skip.add(o.name); });
+          // (and her feet: in her sneakers here)
+          if (jt && sk) for (const a of [jt.ankleL, jt.ankleR]) sk.bones[a]?.traverse((o) => skip.add(o.name));
           return { stretch: skeletonV2.stretch, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm, wholeFits: skeletonV2.wholeFits, fitMoves: Object.fromEntries(Object.entries(skeletonV2.fitMoves).map(([k, mm]) => [label.get(k) || k, mm])), bones: skeletonV2.depths(M, stride, skip).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
         },
         // (debug) each of the six rays' crossings of her skin from a point in her rest frame as she stands (metres)
