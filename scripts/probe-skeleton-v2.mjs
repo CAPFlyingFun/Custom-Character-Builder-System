@@ -39,10 +39,11 @@ try {
   const look = async (view, d = 1.6) => { await press(`sarahlab:view:${view}`); if (Math.abs(d - dist) > 1e-3) { await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(d / dist) / 0.001); dist = d; } await page.waitForTimeout(400); };
   const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 150, y: 40, width: 540, height: 780 }, timeout: 300_000 }); log('shot', name); };
   const depths = async (key) => {
-    const d = await hook('skeletonDepths', 2);
+    const res = await hook('skeletonDepths', 2), d = res?.bones;
+    if (!report.stretch) { report.stretch = res?.stretch; log('limbs stretched', JSON.stringify(res?.stretch)); }
     const worst = (d ?? []).slice(0, 8), through = (d ?? []).reduce((s, b) => s + b.throughCount, 0), close = (d ?? []).reduce((s, b) => s + b.closeCount, 0);
     report[key] = { through, close, worst, all: d };
-    log(key, `through ${through}, within 5 mm ${close};`, worst.map((b) => `${b.bone} ${b.leastMm}`).join(', '));
+    log(key, `through ${through}, within 5 mm ${close};`, worst.map((b) => `${b.joint || b.bone} ${b.leastMm}`).join(', '));
   };
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('[data-role="sarah-lab-hud"]', { timeout: 240_000 });
@@ -53,7 +54,7 @@ try {
   await run(1);
   // STANDING
   await depths('stand');
-  for (const x of [0, 70]) { await slide('sarahlab-xray', x); await run(0.2); for (const [v, view] of [['front', 'front'], ['side', 'side'], ['q34', 'three-quarter']]) { await look(view); await shot(`stand-x${x}-${v}.png`); } }
+  for (const x of [70]) { await slide('sarahlab-xray', x); await run(0.2); for (const [v, view] of [['front', 'front'], ['side', 'side'], ['q34', 'three-quarter']]) { await look(view); await shot(`stand-x${x}-${v}.png`); } }
   // HER POSES
   for (const p of ['walk', 'sit', 'squat', 'recline']) {
     await press(`sarahlab:${p}`); await run(p === 'walk' ? 1.3 : 2.5); await depths(`pose-${p}`);

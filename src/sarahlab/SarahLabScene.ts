@@ -7231,7 +7231,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               skel.scale.setScalar(M); skel.updateMatrixWorld(true);
               const sm = findSkinnedMesh(skel);
               if (!sm) throw new Error('no skinned mesh in the skeleton file');
-              skeletonV2 = new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest);
+              // (each limb onto v2's own joints: her joints at bind, in her rest frame, from each file)
+              const skelInv = new THREE.Matrix4().copy(skel.matrixWorld).invert(), skelBones = new Map(sm.skeleton.bones.map((b) => [b.name, b]));
+              const bodyBind = new THREE.Matrix4().copy(body.bindMatrix).invert(), bodyBones = new Map(body.skeleton.bones.map((b, k) => [b.name, k]));
+              const jt = measure?.joints, nameOf = (k: number | undefined) => (k === undefined ? '' : body.skeleton.bones[k]?.name ?? '');
+              const chains = jt ? ([[jt.hipL, jt.kneeL, jt.ankleL], [jt.hipR, jt.kneeR, jt.ankleR], [jt.shoulderL, jt.elbowL, jt.wristL], [jt.shoulderR, jt.elbowR, jt.wristR]] as const).map((c) => c.map(nameOf) as [string, string, string]) : [];
+              skeletonV2 = new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
+                chains,
+                skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
+                v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
+              });
               applyXray(); refresh();
               // (its file stays loaded: the laid copy shares its material's maps)
             } catch (error) { console.error('[sarahlab] her skeleton could not be laid inside v2', error); skeletonV2 = null; release(skel); }
@@ -8664,7 +8673,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // the treadmill's slope (walkStrip.ts): -30..+30, 'ahead' or 'across'
         slope: (deg: number, heading: SlopeHeading = 'ahead') => { setSlope(deg, heading); return slopeLine(slope); },
         // v2: how deep each piece of her skeleton sits under her skin now, by bone (mm; the random-pose test)
-        skeletonDepths: (stride?: number) => skeletonV2 ? skeletonV2.depths(M, stride) : null,
+        skeletonDepths: (stride?: number) => {
+          if (!skeletonV2) return null;
+          // (each bone named by the joint it is, where the room's measure knows it)
+          const jt = measure?.joints as unknown as Record<string, number> | undefined, bones = bodyOf()?.mesh.skeleton.bones ?? [], label = new Map<string, string>();
+          if (jt) for (const [k, i] of Object.entries(jt)) if (bones[i]) label.set(bones[i].name, k);
+          return { stretch: skeletonV2.stretch, bones: skeletonV2.depths(M, stride).map((b) => ({ ...b, joint: label.get(b.bone) ?? '' })) };
+        },
         // a random pose from `seed` over her own (null: none), held to her ranges (the skeleton-in-v2 test)
         randomPose: (seed: number | null) => { randomTurns = seed === null ? null : randomPoseTurns(seed); applyMotion(); return randomTurns?.length ?? 0; },
         // her pelvic organs (v3, on her skeleton): their layout (rest metres), how much her bladder holds, and how far each

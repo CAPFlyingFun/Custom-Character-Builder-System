@@ -20,6 +20,23 @@ import * as THREE from 'three';
  * "it's okay if it's close"). Metres. */
 export const SKELETON_CLOSE_M = 0.005;
 
+/**
+ * HER LIMBS ON v2's JOINTS (Joshua, 2026-11-09: "the skin matches to the bone structure, not bone to skin... the bone size
+ * can be changed a little"; the port's rule 1, v2's rig wins). The skeleton file stands in a T with its arms out and its
+ * own joints (knees 6 cm lower, shoulders 6 cm further apart than v2's rig); v2 binds with her arms down. Each limb's
+ * bones are laid on v2's joints: the upper bone from v2's first joint to its second, the lower from the second to the
+ * third -- turned onto v2's line and stretched along it to v2's length, never thicker or thinner -- and the hand or foot
+ * carried on from the third joint as the lower bone turned. Her trunk, pelvis, ribs and skull stay where the skeleton
+ * file has them (v2's spine joints are an auto-rig's, not her spine's).
+ */
+export interface LimbFit {
+  /** each limb's three joints, by bone name: [hip, knee, ankle] or [shoulder, elbow, wrist] */
+  readonly chains: readonly (readonly [string, string, string])[];
+  /** a bone's joint at bind in her rest frame (metres): the skeleton file's, and v2's */
+  readonly skeletonJoint: (name: string) => THREE.Vector3 | null;
+  readonly v2Joint: (name: string) => THREE.Vector3 | null;
+}
+
 export interface BoneDepth { readonly bone: string; readonly points: number; readonly leastMm: number; readonly closeCount: number; readonly throughCount: number }
 
 export class SkeletonInV2 {
@@ -31,19 +48,18 @@ export class SkeletonInV2 {
    * @param skeletonMesh the skeleton file's skinned mesh, and `skeletonToRest` its geometry to her rest frame (metres)
    * @param body v2's skinned body mesh, and `bodyToRest` its geometry to her rest frame (metres)
    */
-  constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4) {
+  /** each limb laid on v2's joints (LimbFit): how far its bones were stretched, by joint, for the report */
+  readonly stretch: Record<string, number> = {};
+
+  constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null) {
     const src = skeletonMesh.geometry, pos = src.getAttribute('position'), nrm = src.getAttribute('normal');
-    const toBody = new THREE.Matrix4().copy(bodyToRest).invert().multiply(skeletonToRest), toBodyN = new THREE.Matrix3().getNormalMatrix(toBody);
-    const n = pos.count, P = new Float32Array(n * 3), N = new Float32Array(n * 3), v = new THREE.Vector3();
-    for (let i = 0; i < n; i++) {
-      v.fromBufferAttribute(pos, i).applyMatrix4(toBody).toArray(P, i * 3);
-      if (nrm) v.fromBufferAttribute(nrm, i).applyMatrix3(toBodyN).normalize().toArray(N, i * 3);
-    }
+    const toBody = new THREE.Matrix4().copy(bodyToRest).invert(), toBodyN = new THREE.Matrix3().getNormalMatrix(toBody);
+    const restN = new THREE.Matrix3().getNormalMatrix(skeletonToRest);
     // its bones by name onto v2's (the skeleton's Jaw onto v2's head: the bone its own Jaw hangs from)
     const theirs = skeletonMesh.skeleton.bones, ours = body.skeleton.bones, byName = new Map(ours.map((b, k) => [b.name, k]));
     const map = theirs.map((b) => byName.get(b.name) ?? byName.get(b.parent?.name ?? '') ?? 0);
     const si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
-    const I = new Uint16Array(n * 4), W = new Float32Array(n * 4);
+    const n = pos.count, I = new Uint16Array(n * 4), W = new Float32Array(n * 4);
     this.owner = new Array(n);
     for (let i = 0; i < n; i++) {
       let best = 0, bestW = -1;
@@ -53,6 +69,41 @@ export class SkeletonInV2 {
         if (w > bestW) { bestW = w; best = j; }
       }
       this.owner[i] = theirs[best]?.name ?? '?';
+    }
+    // each limb's bones onto v2's joints (rest metres): which part of a limb each bone of the skeleton is
+    type Seg = { from: THREE.Vector3; to: THREE.Vector3; q: THREE.Quaternion; axis: THREE.Vector3; s: number; end?: undefined } | { end: true; from: THREE.Vector3; to: THREE.Vector3; q: THREE.Quaternion };
+    const partOf = new Map<string, Seg>();
+    if (fit) for (const [a, b, c] of fit.chains) {
+      const J = [a, b, c].map(fit.skeletonJoint), V = [a, b, c].map(fit.v2Joint);
+      if (J.some((x) => !x) || V.some((x) => !x)) continue;
+      const seg = (k: number): Seg & { s: number } => {
+        const dj = J[k + 1]!.clone().sub(J[k]!), dv = V[k + 1]!.clone().sub(V[k]!);
+        const s = dv.length() / Math.max(1e-6, dj.length()), axis = dj.clone().normalize();
+        this.stretch[[a, b][k]] = +s.toFixed(3);
+        return { from: J[k]!, to: V[k]!, q: new THREE.Quaternion().setFromUnitVectors(axis, dv.clone().normalize()), axis, s };
+      };
+      const upper = seg(0), lower = seg(1), end: Seg = { end: true, from: J[2]!, to: V[2]!, q: lower.q };
+      // (every bone under the third joint goes with the hand or foot; the first and second carry their own parts)
+      const under = (bone: THREE.Object3D, top: string): boolean => { for (let o: THREE.Object3D | null = bone; o; o = o.parent) if (o.name === top) return true; return false; };
+      for (const bone of theirs) {
+        if (under(bone, c)) partOf.set(bone.name, end);
+        else if (under(bone, b)) partOf.set(bone.name, lower);
+        else if (under(bone, a)) partOf.set(bone.name, upper);
+      }
+    }
+    const P = new Float32Array(n * 3), N = new Float32Array(n * 3), v = new THREE.Vector3(), d = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(skeletonToRest);
+      if (nrm) d.fromBufferAttribute(nrm, i).applyMatrix3(restN);
+      const part = partOf.get(this.owner[i]);
+      if (part) {
+        v.sub(part.from);
+        if (!part.end) v.addScaledVector(part.axis, (part.s - 1) * v.dot(part.axis));
+        v.applyQuaternion(part.q).add(part.to);
+        d.applyQuaternion(part.q);
+      }
+      v.applyMatrix4(toBody).toArray(P, i * 3);
+      if (nrm) d.applyMatrix3(toBodyN).normalize().toArray(N, i * 3);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(P, 3));
