@@ -46,6 +46,10 @@ export const DOORS = Object.freeze({
    * of its middle's (u -1 at her back end .. 1 at her front), and no narrower than `endWidth` of it. GAME TUNING. */
   ovalPower: 2.4,
   endWidth: 0.18,
+  /** how thick a door stays at its ends, as a share of its middle's: enough that stretched round what passes her
+   * opening's edge shows a lip all the way round (Joshua, 2026-11-08: "the whole opening when the baby is coming out, is
+   * a complete ring... had an edge all around"). GAME TUNING. */
+  endThick: 0.4,
   /** her outer skin's test piece: how far out from each hinge it runs, and how far it rises as it goes */
   skin: 0.035,
   skinRise: 0.015,
@@ -125,7 +129,12 @@ export function foldAngles(fold: number): Angles {
 }
 
 /** A door's four joints, degrees: its main hinge and its three folds (+ turns it out, away from her middle). */
-export interface Angles { readonly outer: number; readonly mid: number; readonly inner: number; readonly hinge: number }
+export interface Angles {
+  readonly outer: number; readonly mid: number; readonly inner: number; readonly hinge: number;
+  /** how far the door is drawn out longer than it is, from its hinge (1: as it is; a door's skin stretched round what
+   * passes to make her opening's rim) */
+  readonly long?: number;
+}
 
 /**
  * PUSHED OPEN FROM INSIDE, IN A BIRTH, BY JOSHUA'S TEST CIRCLE (2026-11-08: "draw a 10cm circle and test the shape of the
@@ -195,9 +204,10 @@ function fastOf(s: Section): Fast {
   fasts.set(s, F);
   return F;
 }
-/** `pose`, into `F.ox`/`F.ot`: the folds (radians: hinge, inner, middle, outer in `a`) distal first, then the hinge. */
+/** `pose`, into `F.ox`/`F.ot`: the folds (radians: hinge, inner, middle, outer in `a`) distal first, then the hinge, then
+ * drawn out longer from its hinge (`a[4]`: how much longer, as a share). */
 function poseFast(s: Section, a: readonly number[], F: Fast): void {
-  const A = [a[3], a[2], a[1]], [hx, ht] = s.hinge, ch = Math.cos(a[0]), sh = Math.sin(a[0]);
+  const A = [a[3], a[2], a[1]], [hx, ht] = s.hinge, ch = Math.cos(a[0]), sh = Math.sin(a[0]), L = 1 + Math.max(0, a[4] ?? 0);
   for (let i = 0; i < s.points.length; i++) {
     let x = s.points[i][0], t = s.points[i][1];
     for (let k = 0; k < 3; k++) {
@@ -205,6 +215,7 @@ function poseFast(s: Section, a: readonly number[], F: Fast): void {
       if (g) { const c = Math.cos(g), sn = Math.sin(g), dx = x - F.px[k], dt = t - F.pt[k]; x = F.px[k] + dx * c - dt * sn; t = F.pt[k] + dx * sn + dt * c; }
     }
     if (a[0]) { const dx = x - hx, dt = t - ht; x = hx + dx * ch - dt * sh; t = ht + dx * sh + dt * ch; }
+    if (L !== 1) { x = hx + (x - hx) * L; t = ht + (t - ht) * L; }
     F.ox[i] = x; F.ot[i] = t;
   }
 }
@@ -283,15 +294,17 @@ const turnAbout = (p: [number, number], c: [number, number], a: number): [number
 
 /** One door's section posed (the right one): folded at its three folds (each piece past a fold turned out with it, the
  * fold itself a short bend), then swung `hingeRad` on its main hinge. */
-function pose(s: Section, hingeRad: number, folds: { outer: number; mid: number; inner: number }): [number, number][] {
+function pose(s: Section, hingeRad: number, folds: { outer: number; mid: number; inner: number; long?: number }): [number, number][] {
   const lining = s.points.slice(0, s.lining), at = s.along.slice(0, s.lining);
   const pivot = (u: number): [number, number] => { let k = 1; while (k < at.length - 1 && at[k] < u) k++; const f = at[k] > at[k - 1] ? (u - at[k - 1]) / (at[k] - at[k - 1]) : 0; return [lining[k - 1][0] + (lining[k][0] - lining[k - 1][0]) * f, lining[k - 1][1] + (lining[k][1] - lining[k - 1][1]) * f]; };
   const bend = (x: number) => { const t = Math.min(1, Math.max(0, x / DOORS.foldBend + 0.5)); return t * t * (3 - 2 * t); };
-  const joints: [number, number][] = [[2 / 3, folds.outer], [1 / 3, folds.mid], [0, folds.inner]];
+  const joints: [number, number][] = [[2 / 3, folds.outer], [1 / 3, folds.mid], [0, folds.inner]], L = Math.max(1, folds.long ?? 1);
   return s.points.map((p, i) => {
     let q = p;
     for (const [u, deg] of joints) if (deg) q = turnAbout(q, pivot(u), ((deg * Math.PI) / 180) * bend(s.along[i] - u));
-    return hingeRad ? turnAbout(q, s.hinge, hingeRad) : q;
+    if (hingeRad) q = turnAbout(q, s.hinge, hingeRad);
+    // (drawn out longer from its hinge: its skin stretched to her opening's rim)
+    return L !== 1 ? [s.hinge[0] + (q[0] - s.hinge[0]) * L, s.hinge[1] + (q[1] - s.hinge[1]) * L] : q;
   });
 }
 
@@ -305,7 +318,7 @@ function intoSkin(posed: readonly [number, number][], along: readonly number[], 
 /** A door's angles as laid: what a birth has pushed it to (`b`) and the hand's fold back on top (`h`), its main hinge
  * only so far as keeps the door (section `s`) off her outer skin. */
 function laidOn(s: Section, b: Angles, h: Angles): Angles {
-  const want = { outer: b.outer + h.outer, mid: b.mid + h.mid, inner: b.inner + h.inner };
+  const want = { outer: b.outer + h.outer, mid: b.mid + h.mid, inner: b.inner + h.inner, long: b.long ?? 1 };
   let hinge = ((b.hinge + h.hinge) * Math.PI) / 180;
   if (intoSkin(pose(s, hinge, want), s.along, s.hinge)) { let lo = 0, hi = hinge; for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2; if (intoSkin(pose(s, m, want), s.along, s.hinge)) hi = m; else lo = m; } hinge = lo; }
   return { ...want, hinge: (hinge * 180) / Math.PI };
@@ -379,7 +392,7 @@ export const ENDS_SHUT: Ends = Object.freeze({ front: DOORS.length / 2, back: DO
  * (a door thins to its ends, as lips do, and narrows round her oval opening to meet the other at each end). */
 function stationOf(j: number, ends: Ends = ENDS_SHUT): { u: number; along: number; f: number; w: number } {
   const u = -1 + (2 * j) / (DOORS.stations - 1), p = DOORS.ovalPower;
-  return { u, along: u * (u >= 0 ? ends.front : ends.back), f: Math.max(0.08, Math.sqrt(1 - u * u)), w: Math.max(DOORS.endWidth, (1 - Math.abs(u) ** p) ** (1 / p)) };
+  return { u, along: u * (u >= 0 ? ends.front : ends.back), f: Math.max(DOORS.endThick, Math.sqrt(1 - u * u)), w: Math.max(DOORS.endWidth, (1 - Math.abs(u) ** p) ** (1 / p)) };
 }
 const sections: Section[] = [];
 const stationSection = (j: number): Section => { const st = stationOf(j); return (sections[j] ??= section(st.f, st.w)); };
@@ -425,9 +438,10 @@ const insideOf = (o: Outline): Inside => (x, t) => {
 
 /** What passes through her opening (`points`: x, y, z after one another, her rest frame, metres) cut into each door
  * station's slice and outlined, for the right door and the left, its stations where her opening's ends stand now
- * (`ends`); and how far apart what crosses her opening pushes those ends -- past it by her skin, from her opening's own
+ * (`ends`); and how far apart what crosses her opening (by its rim, `rimT` up the canal, and on up to its hinges) pushes
+ * those ends -- past it by her skin, from her opening's own
  * length to the most it stretches (Joshua's 12.5 cm). Only what is near the doors counts. */
-export function passingOutlines(f: DoorFrame, points: ArrayLike<number>, ends: Ends = ENDS_SHUT): PassingOutlines {
+export function passingOutlines(f: DoorFrame, points: ArrayLike<number>, ends: Ends = ENDS_SHUT, rimT = -DOORS.lip): PassingOutlines {
   const D = DOORS, J = D.stations, step = Math.max(ends.front, ends.back) / ((J - 1) / 2), slab = 0.75 * step;
   const along = Array.from({ length: J }, (_, j) => stationOf(j, ends).along), slices: [number, number][][] = Array.from({ length: J }, () => []);
   let front = 0, back = 0;
@@ -436,7 +450,9 @@ export function passingOutlines(f: DoorFrame, points: ArrayLike<number>, ends: E
     const x = dx * f.x[0] + dy * f.x[1] + dz * f.x[2], t = dx * f.t[0] + dy * f.t[1] + dz * f.t[2], n = dx * f.n[0] + dy * f.n[1] + dz * f.n[2];
     if (t < -0.8 || t > 0.2 || Math.abs(x) > 0.25) continue;
     // (crossing her opening, between its lips and its hinges: how far along it, each way)
-    if (t > -D.lip && t < D.hingeUp && Math.abs(x) < D.acrossMost / 2) { if (n > front) front = n; if (-n > back) back = -n; }
+    // (from a little past her opening's rim where it stands now -- out of her when it is stretched round what passes -- up
+    // to its hinges)
+    if (t > Math.min(rimT, -D.lip) - 0.01 && t < D.hingeUp && Math.abs(x) < D.acrossMost / 2) { if (n > front) front = n; if (-n > back) back = -n; }
     for (let j = 0; j < J; j++) if (Math.abs(n - along[j]) <= slab) slices[j].push([x, t]);
   }
   const reach = (r: number) => Math.min(D.lengthMost / 2, Math.max(D.length / 2, r + D.endClear));
@@ -455,30 +471,51 @@ export function passingOutlines(f: DoorFrame, points: ArrayLike<number>, ends: E
  * fold -- which turns about nearly the same place as its main hinge -- is dearer than the hinge (`PRESS.inner`), so of
  * two ways that look alike a section takes the one its neighbours take, its hinge doing the turning.
  */
-export function pressDoor(outline: Outline | null, from: Angles, j: number, near: readonly Angles[] = []): Angles {
-  if (!outline) return CLOSED;
-  const s = stationSection(j), inside = insideOf(outline);
-  if (!pose(s, 0, CLOSED).some(([x, t]) => inside(x, t) > 0)) return CLOSED;
-  const by = near.map((a) => [a.hinge, a.inner, a.mid, a.outer].map((d) => d * RAD));
+export function pressDoor(outline: Outline | null, from: Angles, j: number, near: readonly Angles[] = [], ring?: { readonly t: number; readonly k: number }): Angles {
+  if (!outline && !ring) return CLOSED;
+  const s = stationSection(j), inside: Inside = outline ? insideOf(outline) : () => -1, F = fastOf(s);
+  if (!ring && !pose(s, 0, CLOSED).some(([x, t]) => inside(x, t) > 0)) return CLOSED;
+  const vec = (a: Angles) => [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD, (a.long ?? 1) - 1], by = near.map(vec);
   const f = (v: number[]) => {
-    let e = strain(s, v, inside) + (PRESS.inner - 1) * v[1] * v[1];
-    for (const b of by) e += PRESS.link * ((v[0] - b[0]) ** 2 + (v[1] - b[1]) ** 2 + (v[2] - b[2]) ** 2 + (v[3] - b[3]) ** 2);
+    let e = strain(s, v, inside) + (PRESS.inner - 1) * v[1] * v[1] + PRESS.lengthen * v[4] * v[4] + 1e3 * (Math.min(0, v[4]) ** 2 + Math.max(0, v[4] - (PRESS.longest - 1)) ** 2);
+    // (its lip drawn to her opening's rim, where the rest of it stands: one ring -- its skin stretching, if it must)
+    if (ring) {
+      e += ring.k * (F.ot[s.lining - 1] - ring.t) ** 2;
+      // (and so, its lips held the harder to their own side of her middle against that pull)
+      for (let i = 0; i < F.ox.length; i++) { const past = DOORS.gap - F.ox[i]; if (past > 0) e += 1e8 * past * past; }
+    }
+    for (const b of by) e += PRESS.link * ((v[0] - b[0]) ** 2 + (v[1] - b[1]) ** 2 + (v[2] - b[2]) ** 2 + (v[3] - b[3]) ** 2 + (v[4] - b[4]) ** 2);
     return e;
   };
-  const a = leastNear(f, leastNear(f, [from.hinge, from.inner, from.mid, from.outer].map((d) => d * RAD), 0.03, PRESS.rounds[0]), 0.008, PRESS.rounds[1]);
-  return { hinge: a[0] / RAD, inner: a[1] / RAD, mid: a[2] / RAD, outer: a[3] / RAD };
+  // (drawn longer only once her opening is a ring: before that a door is as long as it is)
+  const n = ring ? 5 : 4, start = vec(from).slice(0, n);
+  const a = leastNear((v) => f(n === 5 ? v : [...v, 0]), leastNear((v) => f(n === 5 ? v : [...v, 0]), start, 0.03, PRESS.rounds[0]), 0.008, PRESS.rounds[1]);
+  return { hinge: a[0] / RAD, inner: a[1] / RAD, mid: a[2] / RAD, outer: a[3] / RAD, long: 1 + Math.max(0, a[4] ?? 0) };
 }
 
-/** How much deeper than its own bend a section's inner fold costs (its hinge does that turning), how hard each section
+/** How much deeper than its own bend a section's inner fold costs (its hinge does that turning), how dear drawing a
+ * door out longer is (per share longer, squared, against its bend) and the longest it goes, how hard each section
  * is drawn toward each beside it (against its own bend: radians squared), how long each is worked at (the simplex's
- * rounds, coarse then fine: a frame's time), and how many passes of smoothing front to back. GAME TUNING. */
-const PRESS = Object.freeze({ inner: 4, link: 3, rounds: [40, 25] as const, smooth: 2 });
+ * rounds, coarse then fine: a frame's time), how many passes of smoothing front to back; and how hard each lip is drawn
+ * to her opening's rim once it is stretched round what passes (per metre squared), from how far open at its middle and
+ * at its full by how far, and how near the widest-open a section must be to set the rim (`rimOf`). GAME TUNING. */
+const PRESS = Object.freeze({ inner: 4, link: 3, rounds: [40, 25] as const, smooth: 2, ring: 3000, ringFrom: 0.01, ringBy: 0.045, ringLead: 0.85, lengthen: 3, longest: 2.2 });
+
+/** How far a section at station `j`, at `a` (degrees), reaches past her middle toward the other door (metres; 0 or less:
+ * on its own side). */
+function pressedPast(a: Angles, j: number): number {
+  const s = stationSection(j), F = fastOf(s);
+  poseFast(s, [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD, (a.long ?? 1) - 1], F);
+  let most = -Infinity;
+  for (let i = 0; i < F.ox.length; i++) most = Math.max(most, DOORS.gap - F.ox[i]);
+  return most;
+}
 
 /** How far a section at station `j`, at `a` (degrees), goes into `outline` (metres; 0 or less: clear of it). */
 function pressedInto(outline: Outline | null, a: Angles, j: number): number {
   if (!outline) return 0;
   const s = stationSection(j), inside = insideOf(outline), F = fastOf(s);
-  poseFast(s, [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD], F);
+  poseFast(s, [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD, (a.long ?? 1) - 1], F);
   let most = 0;
   for (let i = 0; i < F.ox.length; i++) most = Math.max(most, inside(F.ox[i], F.ot[i]));
   return most;
@@ -492,31 +529,59 @@ function pressedInto(outline: Outline | null, a: Angles, j: number): number {
  * out wherever smoothing would take it into the baby.
  */
 export function pressDoorLine(outlines: readonly (Outline | null)[], was: readonly Angles[], rest: Angles = CLOSED, half?: 0 | 1): Angles[] {
-  const J = DOORS.stations, out = was.slice();
+  const J = DOORS.stations, out = was.slice(), rim = rimOf(was, outlines);
+  // (stretched round what passes, her opening's edge is one ring: where its widest-open sections hold their lips is where
+  // its rim is, and every other section's lip, touched or not, is drawn to it -- those few set it, the rest follow, so
+  // the ring cannot chase itself)
+  const ring = rim.k > 0 ? { t: rim.t, k: rim.k } : undefined;
   for (let j = 0; j < J; j++) {
-    if (!outlines[j]) { out[j] = rest; continue; }
+    if (!outlines[j] && !ring) { out[j] = rest; continue; }
     if (half !== undefined && j % 2 !== half) continue;
-    out[j] = pressDoor(outlines[j], out[j], j, [out[j - 1], out[j + 1]].filter((a): a is Angles => !!a));
+    out[j] = pressDoor(outlines[j], out[j], j, [out[j - 1], out[j + 1]].filter((a): a is Angles => !!a), ring && !rim.leads[j] ? ring : undefined);
   }
   const keys = ['hinge', 'inner', 'mid', 'outer'] as const;
   for (let pass = 0; pass < PRESS.smooth; pass++) {
     const was2 = out.slice();
     for (let j = 0; j < J; j++) {
-      if (!outlines[j]) continue;
+      if (!outlines[j] && !ring) continue;
       const a = was2[j - 1] ?? was2[j], b = was2[j + 1] ?? was2[j], c = was2[j];
-      const m = Object.fromEntries(keys.map((k) => [k, (a[k] + 2 * c[k] + b[k]) / 4])) as unknown as Angles;
-      if (pressedInto(outlines[j], m, j) <= Math.max(0.0005, pressedInto(outlines[j], c, j))) out[j] = m;
+      const m = { ...(Object.fromEntries(keys.map((k) => [k, (a[k] + 2 * c[k] + b[k]) / 4])) as unknown as Angles), long: ((a.long ?? 1) + 2 * (c.long ?? 1) + (b.long ?? 1)) / 4 };
+      if (pressedInto(outlines[j], m, j) <= Math.max(0.0005, pressedInto(outlines[j], c, j)) && pressedPast(m, j) <= Math.max(0.0002, pressedPast(c, j))) out[j] = m;
     }
   }
   return out;
 }
 
+/**
+ * HER OPENING'S RIM, ONE RING (Joshua, 2026-11-08: "the whole opening when the baby is coming out, is a complete ring...
+ * at max open, the opening needs to literally look like a 12.5x10 oval/ring, as that top and bottom skin moves"): where
+ * a door's sections stand (`stations`, degrees; `outlines`, what pushes each), how far up the canal their lips are on the
+ * whole, the widest-open counting most (`t`, metres; below 0 out of her), how far open it is (`open`: the widest lip from
+ * her middle, metres), and how hard every lip is drawn to that rim (`k`: none until it is open `PRESS.ringFrom`, all of
+ * it by `PRESS.ringBy` -- a ring pulled tight lies flat round what it holds).
+ */
+export function rimOf(stations: readonly Angles[], outlines?: readonly (Outline | null)[]): { t: number; open: number; k: number; leads: boolean[] } {
+  const lips = stations.map((a, j) => {
+    if (outlines && !outlines[j]) return null;
+    const s = stationSection(j), F = fastOf(s);
+    poseFast(s, [a.hinge * RAD, a.inner * RAD, a.mid * RAD, a.outer * RAD, (a.long ?? 1) - 1], F);
+    return [F.ox[s.lining - 1], F.ot[s.lining - 1]];
+  });
+  const open = Math.max(0, ...lips.map((l) => (l ? l[0] : 0)));
+  // (its widest-open sections set where it is)
+  const leads = lips.map((l) => !!l && l[0] >= PRESS.ringLead * open);
+  let sw = 0, st = 0;
+  lips.forEach((l, j) => { if (l && leads[j]) { sw += l[0]; st += l[0] * l[1]; } });
+  const g = Math.min(1, Math.max(0, (open - PRESS.ringFrom) / (PRESS.ringBy - PRESS.ringFrom)));
+  return { t: sw > 0 ? st / sw : -DOORS.lip, open, k: PRESS.ring * g * g * (3 - 2 * g), leads };
+}
+
 /** One step of a pushed section toward where it is pushed (`want`): as fast as it is pushed (`DOORS.openS`), and as the
  * pneumatic closer brings it back once let go (`DOORS.closeS`). */
 export function followDoor(now: Angles, want: Angles, dt: number): Angles {
-  const h = Math.max(0, Number.isFinite(dt) ? dt : 0), bend = (a: Angles) => Math.abs(a.hinge) + Math.abs(a.inner) + Math.abs(a.mid) + Math.abs(a.outer);
+  const h = Math.max(0, Number.isFinite(dt) ? dt : 0), bend = (a: Angles) => Math.abs(a.hinge) + Math.abs(a.inner) + Math.abs(a.mid) + Math.abs(a.outer) + 100 * ((a.long ?? 1) - 1);
   const k = 1 - Math.exp(-h / (bend(want) > bend(now) ? DOORS.openS : DOORS.closeS)), go = (x: number, y: number) => { const v = x + (y - x) * k; return Math.abs(v - y) < 1e-3 ? y : v; };
-  return { hinge: go(now.hinge, want.hinge), inner: go(now.inner, want.inner), mid: go(now.mid, want.mid), outer: go(now.outer, want.outer) };
+  return { hinge: go(now.hinge, want.hinge), inner: go(now.inner, want.inner), mid: go(now.mid, want.mid), outer: go(now.outer, want.outer), long: go(now.long ?? 1, want.long ?? 1) };
 }
 
 /** One step of her opening's ends toward where they are pushed (`want`): as fast as they are pushed, and back as the

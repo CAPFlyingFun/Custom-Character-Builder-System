@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BIRTH_OPENING, CANAL_OPENING, canalMouth, cervixAt, headPassage, openCanal, tightest } from '../src/actor/birthCanal';
-import { BIRTH_HEAD, DOORS, ENDS_SHUT, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoorLine, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
+import { BIRTH_HEAD, DOORS, ENDS_SHUT, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoorLine, rimOf, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
 import { CERVIX, layOrgans, lengthOf } from '../src/actor/pelvicOrgans';
 import { growWomb } from '../src/actor/pregnantWomb';
 
@@ -188,7 +188,7 @@ describe('her opening\'s doors', () => {
     let want = { right: Array(J).fill(shut) as Angles[], left: Array(J).fill(shut) as Angles[], ends: ENDS_SHUT as Ends }, now = { ...want };
     let mostOpen = 0, mostLong = 0, bodyOpen = Infinity;
     for (let c = 0.12; c > -0.6; c -= 0.008) {
-      const o = passingOutlines(frame, standIn(c), now.ends);
+      const o = passingOutlines(frame, standIn(c), now.ends, Math.min(rimOf(want.right).t, rimOf(want.left).t));
       want = { right: pressDoorLine(o.right, want.right), left: pressDoorLine(o.left, want.left), ends: o.ends };
       // (where they are held, at the places they were cut: what is drawn there is checked against the baby)
       const m = doorMeshes(frame, 0, 0, { ...want, ends: now.ends });

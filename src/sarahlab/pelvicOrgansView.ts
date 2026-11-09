@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -386,7 +386,7 @@ export class PelvicOrgansView {
     const P = this.pressed, tick = this.pressTick++;
     if (this.passing) {
       // (sliced where her opening's ends stand now; its ends pushed apart as far as what crosses it reaches, to 12.5 cm)
-      const o = passingOutlines(this.doors.frame, this.passing, P.now.ends);
+      const rim = Math.min(rimOf(P.now.right).t, rimOf(P.now.left).t), o = passingOutlines(this.doors.frame, this.passing, P.now.ends, rim);
       P.want.ends = o.ends;
       // (each door as one piece front to back: half its sections worked out a frame, in turn, each drawn toward the ones
       // beside it, then smoothed -- actor/birthDoors.ts `pressDoorLine`)
