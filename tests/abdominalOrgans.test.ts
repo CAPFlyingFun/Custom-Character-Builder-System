@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import torso from '../src/data/torso/skeleton.json';
 import pelvis from '../src/data/pelvis/skeleton.json';
-import { KIDNEY, RECTUM, STOMACH, inWomb, layAbdomen, layStomach, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
+import { KIDNEY, RECTUM, STOMACH, inWomb, layAbdomen, layStomach, outOfWomb, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
 import { BLADDER, layOrgans, type PelvisLandmarks } from '../src/actor/pelvicOrgans';
 import { growWomb, type TorsoLandmarks } from '../src/actor/pregnantWomb';
 import { eat, gutNeeds, hoursToBladderUrge, pee, restingGut, stepGut, urineMlH } from '../src/actor/gut';
@@ -49,7 +49,9 @@ describe('her belly organs, laid out', () => {
     for (const [week, g] of [[28, 1000], [40, 3400]] as const) {
       const womb = growWomb(laid, T, week, [g]), A = layAbdomen(T, P, opening, bladder, undefined, womb);
       expect(A.intestines.centre[1]).toBeGreaterThan(L.intestines.centre[1]);
-      for (const t of [A.stomach, A.colon]) expect(inWomb(sweepAny(t.path, t.halves, 12, 3).points, womb)).toBeLessThan(5);
+      // (each moved round it as a whole tube: almost none of it left inside; the room's drawn points are then pushed
+      // clear one by one -- outOfWomb -- so none is)
+      for (const t of [A.stomach, A.colon]) { const pts = sweepAny(t.path, t.halves, 12, 3).points; expect(inWomb(pts, womb)).toBeLessThan(0.02 * pts.length / 3); outOfWomb(pts, womb); expect(inWomb(pts, womb)).toBe(0); }
     }
   });
 });

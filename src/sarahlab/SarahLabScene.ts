@@ -145,9 +145,6 @@ const BIRTH_POSES_OK: readonly string[] = ['recline', 'squat'];
 const BIRTH_AFTER_OPEN = 0.35;
 /** GAME TUNING: how much of her belly settles away after the birth (its womb shrinking back toward a five-month size) */
 const BIRTH_SHRINK = 0.45;
-/** v3: her womb just after a birth, as big as one at this week -- its top at her navel. BIOLOGICAL SHAPE (the fundus is
- * at the umbilicus just after delivery, as at 20 weeks; https://en.wikipedia.org/wiki/Uterine_involution). */
-const POSTPARTUM_WEEK = 20;
 /** GAME TUNING: how far further in than her skin her womb is held as it settles (metres, once settled) */
 const BIRTH_WOMB_IN = 0.015;
 const BIRTH_REST = Object.freeze({ top: 1.2, span: 0.3, across: 0.05, depth: 0.32, over: 0.7, gap: 0 });
@@ -7494,16 +7491,20 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       place();
       // her pelvic organs follow her pelvis as soft bodies (v3, on her skeleton), her womb grown for HER WEEKS
       if (organs) {
-        // (once her babies are all born her womb draws in: its top at her navel, as a womb's is just after a birth -- the
-        // size of one at POSTPARTUM_WEEK; her belly's skin follows it in, soft and then firming up)
+        // (once her babies are born her womb draws in by v2's numbers -- BIRTH_SHRINK of her bump once all are out, and
+        // AFTERBIRTH.shrink more after the placenta -- so both bodies settle the same and a story can set her belly after;
+        // v3's birth is held at born, so what is born counts as delivered at once. Her belly's skin follows it in, soft
+        // and then firming up)
         const allBorn = !!birthNow && birthNow.babies.length > 0 && birthNow.babies.every((b) => b.born);
-        const herWk = pregnant() ? herWeek(bump, babyCount, pregnancy) : null, wk = herWk !== null && allBorn ? Math.min(herWk, POSTPARTUM_WEEK) : herWk;
-        organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: allBorn ? 1 : babyCount }, () => babySize(wk, body.babyWeight, allBorn ? 1 : babyCount).g));
+        const bornShare = birthNow && birthNow.babies.length ? birthNow.babies.filter((b) => b.born).length / birthNow.babies.length : 0;
+        const wombShare = birthNow ? Math.min(birthBellyShare, 1 - BIRTH_SHRINK * bornShare - AFTERBIRTH.shrink * birthNow.afterbirth) : 1;
+        const wk = pregnant() ? herWeek(bump * wombShare, babyCount, pregnancy) : null;
+        organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         skinBand?.setAfterBirth(allBorn);
         organs.update(dt);
         // her belly's organs round them, and her belly's skin over all of it (her womb, intestines and stomach push it out)
         if (abdomen) abdomen.update(dt);
-        if (skinBand) { const w = organs.wombPoints(), src: ArrayLike<number>[] = abdomen ? abdomen.fillingPoints() : []; if (w && organs.womb) src.push(w); skinBand.update(dt, src, { bump: organs.womb ? bump : 0, firmness: body.bellyFirmness, babyWeight: body.babyWeight, bounce: body.bellyBounce }); }
+        if (skinBand) { const w = organs.wombPoints(), src: ArrayLike<number>[] = abdomen ? abdomen.fillingPoints() : []; if (w && organs.womb) src.push(w); skinBand.update(dt, src, { bump: organs.womb ? bump : 0, firmness: body.bellyFirmness, babyWeight: body.babyWeight, bounce: body.bellyBounce, fullness: organs.womb ? (bump / 100) * wombShare : 0, standing: pose === 'stand', fed: Math.min(1, (gut.stomachFoodMl + gut.stomachWaterMl) / STOMACH.fullMl) }); }
         // (FOLD BACK's line follows the doors as they go, not only the slider)
         const fl = fields[SARAH_LAB_FIELD.foldBack], line = foldBackLine(foldBackPct, organs.doorAngles);
         if (fl && fl.textContent !== line) fl.textContent = line;

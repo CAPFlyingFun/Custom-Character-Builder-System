@@ -7,13 +7,18 @@
  */
 import * as THREE from 'three';
 import { BELLY_SKIN, bandFolds, bandState, layBand, rowMatrices, shapeBand, type Band, type BandState, type SavedBelly } from '../actor/bellySkin';
-import { bellyTune, feltAcceleration, restingMass, stepMass, type Mass } from './softBody';
+import { bellyTune, feltAcceleration, restingMass, restingSoftBelly, softBellyWant, stepMass, stepSoftBelly, type Mass } from './softBody';
 import { JUMP_ACCEL } from './pelvicOrgansView';
 
 /** Her skin's colour on the test band (the doors' outer skin's). */
 const SKIN_COLOUR = 0xe9c3aa;
 
-export interface BellySkinTune { readonly bump: number; readonly firmness: number; readonly babyWeight: number; readonly bounce: number }
+export interface BellySkinTune {
+  readonly bump: number; readonly firmness: number; readonly babyWeight: number; readonly bounce: number;
+  /** v2's soft settle (softBody.ts `softBellyWant`): her womb against a full-term one, whether she stands (her upright is
+   * learnt then), and how fed she is (0..1: her stomach against a full one -- it firms her belly a little) */
+  readonly fullness?: number; readonly standing?: boolean; readonly fed?: number;
+}
 
 export class BellySkinView {
   readonly mesh: THREE.Mesh;
@@ -28,6 +33,11 @@ export class BellySkinView {
   private readonly anchorRow: number;
   private mostM = 0;
   private sway: [number, number, number] = [0, 0, 0];
+  /** v2's soft settle: her belly hanging with her torso's angle -- to a side, sagging, deeper or flatter -- and her
+   * upright as learnt standing (both in the band's own frame) */
+  private readonly soft = restingSoftBelly();
+  private readonly upright = new THREE.Vector3(0, -1, 0);
+  private readonly down = new THREE.Vector3();
 
   /**
    * @param bones her bones by name (her skeleton's), and `modelAtBind` her model's world matrix read at her bind (her rest
@@ -86,9 +96,15 @@ export class BellySkinView {
       if (jumped) { this.mass.vx = this.mass.vy = this.mass.vz = 0; }
       stepMass(this.mass, dt, this.felt.x, this.felt.y, this.felt.z, T);
       this.sway = [this.mass.x * T.gain, this.mass.y * T.gain, this.mass.z * T.gain];
+      // V2'S SOFT SETTLE: the way down in the band's frame, against her upright as she stands
+      this.down.set(0, -1, 0).applyQuaternion(this.q).normalize();
+      if (tune.standing) this.upright.lerp(this.down, Math.min(1, dt * 2)).normalize();
+      const full = tune.fullness ?? 0;
+      if (full > 0.02) stepSoftBelly(this.soft, dt, softBellyWant(this.down, this.upright, null, full, tune.firmness, tune.fed ?? 0), full);
+      else stepSoftBelly(this.soft, dt, { side: 0, sag: 0, depth: 0 }, 1);
     }
     const pos = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-    this.mostM = shapeBand(this.band, this.rows, sources, this.state, pos.array as Float32Array, this.units, dt, this.sway);
+    this.mostM = shapeBand(this.band, this.rows, sources, this.state, pos.array as Float32Array, this.units, dt, this.sway, [this.soft.side, this.soft.sag, this.soft.depth]);
     pos.needsUpdate = true;
     this.mesh.geometry.computeVertexNormals();
   }
@@ -105,9 +121,9 @@ export class BellySkinView {
 
   /** For probes: how far it stands out most past its rest (metres), how loose it is, the spring's sway (metres), how many
    * places it folds or passes through itself, and its drawn points (world units). */
-  report(): { mostCm: number; loose: number; swayCm: number[]; folds: number; points: number; rows: number; cols: number } {
+  report(): { mostCm: number; loose: number; swayCm: number[]; soft: number[]; folds: number; points: number; rows: number; cols: number } {
     const pos = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-    return { mostCm: +(this.mostM * 100).toFixed(2), loose: +this.state.loose.toFixed(3), swayCm: this.sway.map((x) => +(x * 100).toFixed(2)), folds: bandFolds(this.band, pos.array as Float32Array, this.rows), points: pos.count, rows: this.band.rows, cols: this.band.cols };
+    return { mostCm: +(this.mostM * 100).toFixed(2), loose: +this.state.loose.toFixed(3), swayCm: this.sway.map((x) => +(x * 100).toFixed(2)), soft: [this.soft.side, this.soft.sag, this.soft.depth].map((x) => +x.toFixed(3)), folds: bandFolds(this.band, pos.array as Float32Array, this.rows), points: pos.count, rows: this.band.rows, cols: this.band.cols };
   }
   drawn(): Float32Array { return (this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array; }
   rowFrames(): Float32Array { return this.rows; }

@@ -206,10 +206,11 @@ export const bandState = (b: Band): BandState => ({ hold: new Float32Array(b.row
 /**
  * THE BAND THIS FRAME, into `out` (the world's units): carried by `rows` (`rowMatrices`), pushed out by `sources` (points,
  * the world's units: what fills her as drawn now), held out after what pushed it is gone, and moved by `sway` (rest
- * metres, her belly spring's mass) where it is pushed out. `units` the world's units per metre; `dt` seconds.
+ * metres, her belly spring's mass) where it is pushed out, and settled by `soft` (v2's soft settle, softBody.ts
+ * `softBellyWant`: to her side, sagging, deeper (+) or flatter, each per metre a point stands out past its rest). `units` the world's units per metre; `dt` seconds.
  * Returns the most any point stands out past its rest (metres).
  */
-export function shapeBand(band: Band, rows: Float32Array, sources: readonly ArrayLike<number>[], state: BandState, out: Float32Array, units: number, dt: number, sway: readonly [number, number, number] = [0, 0, 0]): number {
+export function shapeBand(band: Band, rows: Float32Array, sources: readonly ArrayLike<number>[], state: BandState, out: Float32Array, units: number, dt: number, sway: readonly [number, number, number] = [0, 0, 0], soft: readonly [number, number, number] = [0, 0, 0]): number {
   const S = BELLY_SKIN, R = band.rows, C = band.cols, u = units;
   for (let k = 0; k < R; k++) invertAffine(rows, 16 * k, state.inv, 16 * k);
   // NEED: how far out each point must stand (rest metres from its row's middle), from every source point
@@ -288,7 +289,9 @@ export function shapeBand(band: Band, rows: Float32Array, sources: readonly Arra
     for (let c = 0; c < C; c++) {
       const i = k * C + c, a = band.angle[i], r0 = band.rest[i] + state.hold[i];
       const w = peak > 0.005 ? state.hold[i] / peak : 0;
-      let px = band.cx[k] + r0 * Math.sin(a) + w * sx, py = band.y[k] + w * sy, pz = band.cz[k] + r0 * Math.cos(a) + w * sz;
+      // (v2's soft settle moves each point by how far it stands out, so the base of her belly holds and its front moves most)
+      const h = state.hold[i];
+      let px = band.cx[k] + r0 * Math.sin(a) + w * sx + soft[0] * h, py = band.y[k] + w * sy + soft[1] * h, pz = band.cz[k] + r0 * Math.cos(a) + w * sz + soft[2] * h;
       // (never moved by the spring back inside what it lies over)
       const dx = px - band.cx[k], dz = pz - band.cz[k], rr = Math.hypot(dx, dz), floor = Math.max(band.rest[i] * 0.98, Number.isFinite(need[i]) ? need[i] - 0.002 : 0);
       if (rr < floor && rr > 1e-6) { px = band.cx[k] + (dx * floor) / rr; pz = band.cz[k] + (dz * floor) / rr; }

@@ -67,11 +67,11 @@ try {
     for (const [v, yaw] of views) { await look(yaw); await shot(`weeks-not-${v}.png`); }
     await click('[data-action="sarahlab:pregnant"]'); await run(0.5);
   }
-  if (sets.includes('weeks')) for (const bump of [0, 30, 50, 75, 100]) {
+  if (sets.includes('weeks')) for (const bump of [30, 73, 100]) {
     await at(bump); await note(`weeks-${bump}`);
     for (const [v, yaw] of views) { await look(yaw); await shot(`weeks-${bump}-${v}.png`); }
   }
-  if (sets.includes('xray')) { await at(100); for (const x of [0, 25, 50, 75, 100]) { await slide('sarahlab-xray', x); await run(0.2); await look('three-quarter'); await shot(`xray-${x}.png`); } await slide('sarahlab-xray', 0); }
+  if (sets.includes('xray')) { await at(100); for (const x of [0, 30, 50, 75]) { await slide('sarahlab-xray', x); await run(0.2); await look('three-quarter'); await shot(`xray-${x}.png`); } await slide('sarahlab-xray', 0); }
   if (sets.includes('organs')) {
     await slide('sarahlab-xray', 50);
     for (const bump of [0, 100]) { await at(bump); for (const [v, yaw] of views) { await look(yaw, 0.95); await shot(`organs-${bump}-${v}.png`); } await note(`organs-${bump}`); }
@@ -89,7 +89,7 @@ try {
     await at(100);
     for (const p of ['walk', 'sit', 'squat', 'recline']) {
       await click(`[data-action="sarahlab:${p}"]`); await run(p === 'walk' ? 1.3 : 2.0); await note(`pose-${p}`);
-      for (const [v, yaw] of views) { await look(yaw, 1.8); await shot(`pose-${p}-${v}.png`); }
+      for (const [v, yaw] of views) { await look(yaw, p === 'walk' ? 1.8 : 2.3); await shot(`pose-${p}-${v}.png`); }
     }
     await click('[data-action="sarahlab:stand"]'); await run(1.5);
   }
@@ -101,11 +101,11 @@ try {
       const o = await hook('organs');
       const line = await page.textContent('[data-field="sarahlab-birth-line"]');
       log('birth', k, line);
-      if (k % 3 === 0 || /born/.test(line)) { await note(`birth-${k}`); await look('side', 1.8); await shot(`birth-${String(k).padStart(2, '0')}-side.png`); }
+      if (k % 3 === 0 || /born/.test(line)) { await note(`birth-${k}`); await look('side', 2.3); await shot(`birth-${String(k).padStart(2, '0')}-side.png`); }
       if (/held at born/.test(line)) break;
       void o;
     }
-    for (const sec of [3, 10, 30, 60]) { await run(sec === 3 ? 3 : sec - [3, 10, 30, 60][[3, 10, 30, 60].indexOf(sec) - 1]); await note(`after-${sec}s`); await look('side', 1.8); await shot(`after-${sec}s-side.png`); await look('three-quarter', 1.8); await shot(`after-${sec}s-q34.png`); }
+    for (const sec of [3, 10, 30, 60]) { await run(sec === 3 ? 3 : sec - [3, 10, 30, 60][[3, 10, 30, 60].indexOf(sec) - 1]); await note(`after-${sec}s`); await look('side', 2.3); await shot(`after-${sec}s-side.png`); await look('three-quarter', 2.3); await shot(`after-${sec}s-q34.png`); }
   }
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));
