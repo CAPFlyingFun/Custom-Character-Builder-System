@@ -48,7 +48,7 @@ export interface LimbFit {
  * HOW THE BONE IS KEPT UNDER HER SKIN (actor/insideSkin.ts `pullInside`): at least this deep (metres), each move shared
  * over this much of its piece. GAME TUNING (Joshua: "it's okay if it's close"; the bone "can be changed a little").
  */
-export const SKELETON_FIT = Object.freeze({ margin: 0.004, blend: 0.035, passes: 5 });
+export const SKELETON_FIT = Object.freeze({ margin: 0.004, blend: 0.035, passes: 5, jointBlend: 0.07, jointShare: 0.7 });
 
 export interface BoneDepth { readonly bone: string; readonly points: number; readonly leastMm: number; readonly at: readonly number[]; readonly closeCount: number; readonly throughCount: number }
 
@@ -93,7 +93,7 @@ export class SkeletonInV2 {
       this.owner[i] = theirs[best]?.name ?? '?';
     }
     // each limb's bones onto v2's joints (rest metres): which part of a limb each bone of the skeleton is
-    type Seg = { from: THREE.Vector3; to: THREE.Vector3; q: THREE.Quaternion; axis: THREE.Vector3; s: number; end?: undefined } | { end: true; from: THREE.Vector3; to: THREE.Vector3; q: THREE.Quaternion };
+    type Seg = { from: THREE.Vector3; to: THREE.Vector3; toEnd?: THREE.Vector3; q: THREE.Quaternion; axis: THREE.Vector3; s: number; end?: undefined } | { end: true; from: THREE.Vector3; to: THREE.Vector3; q: THREE.Quaternion };
     const partOf = new Map<string, Seg>();
     if (fit) for (const chain of fit.chains) {
       const J = chain.map(fit.skeletonJoint), V = chain.map(fit.v2Joint);
@@ -102,7 +102,7 @@ export class SkeletonInV2 {
         const dj = J[k + 1]!.clone().sub(J[k]!), dv = V[k + 1]!.clone().sub(V[k]!);
         const s = dv.length() / Math.max(1e-6, dj.length()), axis = dj.clone().normalize();
         this.stretch[chain[k]] = +s.toFixed(3);
-        return { from: J[k]!, to: V[k]!, q: new THREE.Quaternion().setFromUnitVectors(axis, dv.clone().normalize()), axis, s };
+        return { from: J[k]!, to: V[k]!, toEnd: V[k + 1]!, q: new THREE.Quaternion().setFromUnitVectors(axis, dv.clone().normalize()), axis, s };
       };
       // each bone between two joints of the chain on its segment; every bone under the last joint carried on as the last
       // segment turned (a hand under its wrist, toes under the ball of the foot)
@@ -172,7 +172,17 @@ export class SkeletonInV2 {
       for (let i = 0; i < m; i++) { const k = key(S[i * 3], S[i * 3 + 1], S[i * 3 + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
       const near: [number, number][] = [], acc = new Map<number, number>();
       for (let i = 0; i < n; i++) {
-        if (partOf.has(this.owner[i])) continue;
+        // (a limb's long bone stays rigid, but its ends -- the ball of the thigh bone in her hip, the head of the upper arm
+        // in her shoulder, the knee's and elbow's ends -- share her skin's weights within JOINT_BLEND of the joint: v2's
+        // rig bends her skin there as a blend, and a rigid end comes out through it at the limits of a hip or a shoulder)
+        const part = partOf.get(this.owner[i]);
+        let share = 1;
+        if (part) {
+          if (part.end) continue;
+          const px = R[i * 3], py = R[i * 3 + 1], pz = R[i * 3 + 2], d0 = Math.hypot(px - part.to.x, py - part.to.y, pz - part.to.z), d1 = part.toEnd ? Math.hypot(px - part.toEnd.x, py - part.toEnd.y, pz - part.toEnd.z) : Infinity;
+          share = Math.max(0, 1 - Math.min(d0, d1) / SKELETON_FIT.jointBlend) * SKELETON_FIT.jointShare;
+          if (share <= 0) continue;
+        }
         const x = R[i * 3], y = R[i * 3 + 1], z = R[i * 3 + 2], cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
         near.length = 0;
         for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) for (let c = -2; c <= 2; c++) {
@@ -184,7 +194,13 @@ export class SkeletonInV2 {
         acc.clear();
         for (const [d, j] of near.slice(0, 4)) { const f = 1 / Math.max(1e-4, d); for (let c = 0; c < 4; c++) { const wt = bw.getComponent(j, c); if (wt > 0) { const b = bi.getComponent(j, c); acc.set(b, (acc.get(b) ?? 0) + wt * f); } } }
         const top = [...acc.entries()].sort((p, q) => q[1] - p[1]).slice(0, 4), sum = top.reduce((t, e) => t + e[1], 0) || 1;
-        for (let c = 0; c < 4; c++) { I[i * 4 + c] = top[c]?.[0] ?? 0; W[i * 4 + c] = top[c] ? top[c][1] / sum : 0; }
+        if (share >= 1) { for (let c = 0; c < 4; c++) { I[i * 4 + c] = top[c]?.[0] ?? 0; W[i * 4 + c] = top[c] ? top[c][1] / sum : 0; } continue; }
+        // (a limb's end: its own bone's weights and her skin's, mixed by `share`)
+        acc.clear();
+        for (let c = 0; c < 4; c++) if (W[i * 4 + c] > 0) acc.set(I[i * 4 + c], (acc.get(I[i * 4 + c]) ?? 0) + W[i * 4 + c] * (1 - share));
+        for (const [b, wt] of top) acc.set(b, (acc.get(b) ?? 0) + (wt / sum) * share);
+        const mix = [...acc.entries()].sort((p, q) => q[1] - p[1]).slice(0, 4), msum = mix.reduce((t, e) => t + e[1], 0) || 1;
+        for (let c = 0; c < 4; c++) { I[i * 4 + c] = mix[c]?.[0] ?? 0; W[i * 4 + c] = mix[c] ? mix[c][1] / msum : 0; }
       }
     }
     for (let i = 0; i < n; i++) v.fromArray(R, i * 3).applyMatrix4(toBody).toArray(P, i * 3);
