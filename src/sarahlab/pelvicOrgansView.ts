@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, sliderDoors, swingDoors, type Angles, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
@@ -382,6 +382,11 @@ export class PelvicOrgansView {
   /** Her doors' sections pushed by what passes (each solved every other frame, the two halves in turn: a frame's time),
    * each following where it is held -- as fast as it is pushed, as the closer brings it back once let go -- and handed
    * back to BIRTH OPENING once nothing holds them. */
+  /** How what passes moves her doors (Joshua, 2026-11-08): as the BIRTH OPENING slider has them, set by it (`slider`);
+   * that with each section's lip pushed by its own slice (`soft`, the hybrid); or every section pushed on its own
+   * (`sections`). GAME TUNING; probes switch it. */
+  pressMode: 'slider' | 'soft' | 'sections' = 'slider';
+
   private pressDoors(dt: number): void {
     if (!this.passing && !this.pressed) return;
     const J = DOORS.stations, uniform = birthAngles(this.grown ? this.swing : 0), row = (): Angles[] => Array.from({ length: J }, () => uniform);
@@ -389,11 +394,18 @@ export class PelvicOrgansView {
     const P = this.pressed, tick = this.pressTick++;
     if (this.passing) {
       // (sliced where her opening's ends stand now; its ends pushed apart as far as what crosses it reaches, to 12.5 cm)
-      const rim = Math.min(rimOf(P.now.right).t, rimOf(P.now.left).t), o = passingOutlines(this.doors.frame, this.passing, P.now.ends, rim);
-      P.want.ends = o.ends;
-      // (each door as one piece front to back: half its sections worked out a frame, in turn, each drawn toward the ones
-      // beside it, then smoothed -- actor/birthDoors.ts `pressDoorLine`)
-      for (const side of ['right', 'left'] as const) P.want[side] = pressDoorLine(o[side], P.want[side], uniform, (tick % 2) as 0 | 1);
+      const rim = Math.min(rimOf(P.now.right).t, rimOf(P.now.left).t);
+      if (this.pressMode === 'sections') {
+        const o = passingOutlines(this.doors.frame, this.passing, P.now.ends, rim);
+        P.want.ends = o.ends;
+        // (each door as one piece front to back: half its sections worked out a frame, in turn, each drawn toward the ones
+        // beside it, then smoothed -- actor/birthDoors.ts `pressDoorLine`)
+        for (const side of ['right', 'left'] as const) P.want[side] = pressDoorLine(o[side], P.want[side], uniform, (tick % 2) as 0 | 1);
+      } else {
+        // (as the BIRTH OPENING slider has them, set by what passes; the hybrid's lips its own -- `sliderDoors`)
+        const d = sliderDoors(this.doors.frame, this.passing, P.now.ends, rim, this.pressMode === 'soft', P.want);
+        P.want = { right: d.right, left: d.left, ends: d.ends };
+      }
     } else { for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) P.want[side][j] = uniform; P.want.ends = ENDS_SHUT; }
     P.now.ends = followEnds(P.now.ends, P.want.ends, dt);
     let settled = !this.passing && P.now.ends.front === ENDS_SHUT.front && P.now.ends.back === ENDS_SHUT.back;

@@ -669,7 +669,7 @@ export function pressDoor(outline: Outline | null, from: Angles, j: number, near
  * one rim stretched the doors out of shape; the bands round her opening's ends carry its edge round instead), from how
  * far open at its middle and at its full by how far, and how near the widest-open a section must be to set the rim
  * (`rimOf`). GAME TUNING. */
-const PRESS = Object.freeze({ inner: 4, link: 6, rounds: [40, 25] as const, smooth: 2, ring: 0, ringFrom: 0.01, ringBy: 0.03, ringLead: 0.85, lengthen: 3, longest: 2.2, hingeMost: 110 });
+const PRESS = Object.freeze({ inner: 4, link: 6, rounds: [40, 25] as const, smooth: 2, ring: 0, ringFrom: 0.01, ringBy: 0.03, ringLead: 0.85, lengthen: 3, longest: 2.2, hingeMost: 110, softPull: 2 });
 
 /** How far a section at station `j`, at `a` (degrees), reaches past her middle toward the other door (metres; 0 or less:
  * on its own side). */
@@ -752,6 +752,58 @@ function levelRim(stations: Angles[], outlines: readonly (Outline | null)[]): An
     const s = stationSection(j), b = to(x);
     return bad(x) || (b.hinge > PRESS.hingeMost && j > 0 && j < DOORS.stations - 1) || intoSkin(pose(s, (b.hinge * Math.PI) / 180, b), s.along, s.hinge) ? a : b;
   });
+}
+
+/**
+ * HER DOORS AS THE SLIDER HAS THEM, SET BY WHAT PASSES (Joshua, 2026-11-08, after the real baby tore them: "What if we
+ * don't do soft body and keep it like the slider which looks good, or just make the first 2 (outer and mid) sections soft
+ * body, but the rest is not like a hybrid"): every section of both doors at the one BIRTH OPENING pose (`birthAngles`) --
+ * found from what passes: while its head comes down, where Joshua's 10 cm circle would be with its middle where its
+ * head's is (its crown, the furthest out of it near her middle, a head's half away); its head through, as far open as it
+ * is wide between her doors' hinges and their lips (its neck, then its shoulders, its body). Her opening's ends stretch
+ * round it as before, and her rim is levelled. `soft`: the hybrid -- each section's outer and mid folds, the lip's two
+ * thirds, pushed by its own slice of what passes, drawn to the slider's pose and to the sections beside it; its main
+ * hinge and inner fold the slider's.
+ */
+export function sliderDoors(f: DoorFrame, points: ArrayLike<number>, ends: Ends, rimT: number, soft: boolean, was?: { right: readonly Angles[]; left: readonly Angles[] }): { right: Angles[]; left: Angles[]; ends: Ends; birth: number } {
+  const D = DOORS, J = D.stations, o = passingOutlines(f, points, ends, rimT), r = BIRTH_HEAD.diameterM / 2;
+  // (its crown, and how wide it is between her doors' hinges and lips: across her, from her middle)
+  let crown = Infinity, wide = 0;
+  const lipT = Math.min(rimT, -D.lip);
+  for (let i = 0; i + 2 < points.length; i += 3) {
+    const dx = points[i] - f.mouth[0], dy = points[i + 1] - f.mouth[1], dz = points[i + 2] - f.mouth[2];
+    const x = dx * f.x[0] + dy * f.x[1] + dz * f.x[2], t = dx * f.t[0] + dy * f.t[1] + dz * f.t[2], n = dx * f.n[0] + dy * f.n[1] + dz * f.n[2];
+    if (Math.abs(x) < r && Math.abs(n) < D.lengthMost / 2 && t < crown && t > -0.8) crown = t;
+    if (t > lipT - 0.005 && t < D.hingeUp && Math.abs(n) < D.lengthMost / 2) wide = Math.max(wide, Math.abs(x));
+  }
+  // (BIRTH OPENING from its head's middle, by the circle's way down; then from how wide it is, by how far each opens)
+  const c0 = birthHead(0).centreT, c1 = birthHead(1).centreT, head = crown + r;
+  let birth: number;
+  if (!Number.isFinite(crown) || head > c0) birth = 0;
+  else if (head > c1) { let lo = 0, hi = 1; for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (birthHead(m).centreT > head) lo = m; else hi = m; } birth = (lo + hi) / 2; }
+  else { const want = Math.min(D.acrossMost, 2 * wide); let lo = 0, hi = 1; for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (doorOpening(m) < want) lo = m; else hi = m; } birth = hi; }
+  const at = birthAngles(birth), row = (): Angles[] => Array.from({ length: J }, () => at);
+  let right = row(), left = row();
+  if (soft) {
+    // (the hybrid: its lip's two folds pushed by its own slice, the slider's hinge and inner fold under them)
+    const lips = (outlines: readonly (Outline | null)[], from: readonly Angles[] | undefined): Angles[] => {
+      const out: Angles[] = [];
+      for (let j = 0; j < J; j++) {
+        const s = stationSection(j), inside: Inside = outlines[j] ? insideOf(outlines[j]!) : () => -1, prev = from?.[j] ?? at, side = [out[j - 1], from?.[j + 1]].filter((a): a is Angles => !!a);
+        const full = (v: number[]) => [at.hinge * RAD, at.inner * RAD, v[0], v[1]];
+        const cost = (v: number[]) => {
+          let e = strain(s, full(v), inside) + PRESS.softPull * ((v[0] - at.mid * RAD) ** 2 + (v[1] - at.outer * RAD) ** 2);
+          for (const b of side) e += PRESS.link * ((v[0] - b.mid * RAD) ** 2 + (v[1] - b.outer * RAD) ** 2);
+          return e;
+        };
+        const a = leastNear(cost, leastNear(cost, [prev.mid * RAD, prev.outer * RAD], 0.03, PRESS.rounds[0]), 0.008, PRESS.rounds[1]);
+        out.push({ ...at, mid: a[0] / RAD, outer: a[1] / RAD });
+      }
+      return out;
+    };
+    right = lips(o.right, was?.right); left = lips(o.left, was?.left);
+  }
+  return { right: levelRim(right, soft ? o.right : right.map(() => null)), left: levelRim(left, soft ? o.left : left.map(() => null)), ends: o.ends, birth };
 }
 
 /**
