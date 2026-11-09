@@ -54,22 +54,22 @@ for (let k = 0; k < ROWS; k++) {
   cz[k] = (f + b) / 2; cx[k] = (l + rr) / 2;
 }
 const names = BELLY_KEYS.map(([, name]) => name).filter((x): x is string => !!x);
-const shapes: Record<string, number[]> = {};
-for (const name of names) {
-  const p = at(name), sum = new Float64Array(ROWS * COLS), cnt = new Float64Array(ROWS * COLS);
+/**
+ * Her OUTLINE at a shape: in each cell (a row's height, an angle round its middle), the farthest her skin reaches out from
+ * the row's middle, from where her points ARE at that shape -- not where they were at 0%, since her points move up and
+ * down as well as out as her belly grows (her lower belly drops, its top rounds up under her breasts).
+ */
+const outline = (p: Float32Array) => {
+  const grid = new Float32Array(ROWS * COLS).fill(NaN);
   for (let i = 0; i < n; i++) {
-    const x = zero[3 * i], y = zero[3 * i + 1], z = zero[3 * i + 2];
+    const x = p[3 * i], y = p[3 * i + 1], z = p[3 * i + 2];
     if (Math.abs(x) > TORSO) continue;
-    const t = (y - bottom) / step, k = Math.round(t);
-    if (k < 0 || k >= ROWS) continue;
-    const dx = x - cx[k], dz = z - cz[k], rl = Math.hypot(dx, dz) || 1, c = ((Math.round((Math.atan2(dx, dz) / (2 * Math.PI)) * COLS) % COLS) + COLS) % COLS;
-    // (how far this key moves it straight out from the row's middle, against her 100% base)
-    const out = ((p[3 * i] - base[3 * i]) * dx + (p[3 * i + 2] - base[3 * i + 2]) * dz) / rl;
-    sum[k * COLS + c] += out; cnt[k * COLS + c]++;
+    const k = Math.round((y - bottom) / step);
+    if (k < 0 || k >= ROWS || Math.abs(y - (bottom + k * step)) > step * 0.5) continue;
+    const dx = x - cx[k], dz = z - cz[k], c = ((Math.round((Math.atan2(dx, dz) / (2 * Math.PI)) * COLS) % COLS) + COLS) % COLS, r = Math.hypot(dx, dz), j = k * COLS + c;
+    if (!(r <= grid[j])) grid[j] = Math.max(Number.isNaN(grid[j]) ? -Infinity : grid[j], r);
   }
   // (cells no point of hers fell in take their neighbours' round the row, then up and down)
-  const grid = new Float32Array(ROWS * COLS).fill(NaN);
-  for (let i = 0; i < grid.length; i++) if (cnt[i]) grid[i] = sum[i] / cnt[i];
   for (let pass = 0; pass < 64 && grid.some(Number.isNaN); pass++) {
     const prev = Float32Array.from(grid);
     for (let k = 0; k < ROWS; k++) for (let c = 0; c < COLS; c++) {
@@ -78,8 +78,12 @@ for (const name of names) {
       if (near.length) grid[i] = near.reduce((a, j) => a + prev[j], 0) / near.length;
     }
   }
-  shapes[name] = Array.from(grid, (x) => r5(Number.isNaN(x) ? 0 : x));
-}
+  return grid;
+};
+const baseOutline = outline(base);
+const shapes: Record<string, number[]> = {};
+// (each key as how far its outline stands out past her 100% base's there: v3 blends them as v2 blends its targets)
+for (const name of names) { const o = outline(at(name)); shapes[name] = Array.from(o, (r, i) => r5(Number.isFinite(r - baseOutline[i]) ? r - baseOutline[i] : 0)); }
 const saved = { model: FILE, frame: 'v3 belly band grid: rows from v2\'s bump bottom (her pubic bone) to its top (under her breastbone), cols round each row from her front toward +x her left; metres straight out from the row\'s middle, each key against her 100% base', scale: r5(s), v2Bump: [r5(bottom), r5(top)], rows: ROWS, cols: COLS, shapes };
 mkdirSync(join(ROOT, 'src', 'data', 'belly'), { recursive: true });
 writeFileSync(join(ROOT, 'src', 'data', 'belly', 'v2-shapes.json'), JSON.stringify(saved) + '\n');

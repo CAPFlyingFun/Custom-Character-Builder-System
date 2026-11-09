@@ -7739,6 +7739,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           vulva.mesh.getVertexPosition(p0, v); vulva.mesh.localToWorld(v); b.mesh.getVertexPosition(src, w); b.mesh.localToWorld(w);
           return { nan, n: pa.count, local0: [arr[p0 * 3], arr[p0 * 3 + 1], arr[p0 * 3 + 2]], bodyLocal: [b.mesh.geometry.getAttribute('position').getX(src), b.mesh.geometry.getAttribute('position').getY(src), b.mesh.geometry.getAttribute('position').getZ(src)], world0: v.toArray(), bodyWorld: w.toArray(), meshVisible: vulva.mesh.visible, layers: vulva.mesh.layers.mask, bodyLayers: b.mesh.layers.mask, matVisible: (vulva.mesh.material as THREE.Material).visible, renderOrder: [vulva.mesh.renderOrder, b.mesh.renderOrder], bodyParentIsScene: b.mesh.parent === vulva.mesh.parent, drawn: ud.drawn, calls: ctx.renderer.gl.info.render.calls, solo: vulva.solo, parentVisible: vulva.mesh.parent?.visible, dbg: vulva.debug() };
         },
+        // (a probe: everything in the room drawn as wireframe, to compare shapes -- Joshua, 2026-11-09: "Compare both in
+        // wireframe"; false puts it back)
+        wireAll: (on: boolean) => {
+          let k = 0;
+          three.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; for (const mat of (Array.isArray(m.material) ? m.material : [m.material]) as (THREE.Material & { wireframe?: boolean })[]) if ('wireframe' in mat) { mat.wireframe = on; mat.needsUpdate = true; k++; } });
+          return k;
+        },
         // a wireframe look (Joshua, 2026-10-30: "how about doing a wireframe view of the body and it"): her body grey, the
         // rebuilt area blue, the tube red, nothing solid
         wireView: (on: boolean) => {
