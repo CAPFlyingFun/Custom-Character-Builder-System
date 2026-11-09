@@ -8136,7 +8136,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { centre: r(f.centre, 1 / M), axis: r(f.axis), up: r(f.up), across: r(f.across) };
         },
         herHidden: (on: boolean) => {
-          const inBaby = (o: THREE.Object3D) => { for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === babyHolder) return true; return false; };
+          // (her baby, and her organs -- her opening's doors among them -- stay)
+          const inBaby = (o: THREE.Object3D) => { for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === babyHolder || q === organs?.group || q.name === 'pelvicOrgans') return true; return false; };
           model?.traverse((o) => { if ((o as THREE.Mesh).isMesh && !inBaby(o)) { const u = o.userData as { wasVisible?: boolean }; if (on) { u.wasVisible ??= o.visible; o.visible = false; } else if (u.wasVisible !== undefined) { o.visible = u.wasVisible; delete u.wasVisible; } } });
           if (vulva) vulva.mesh.visible = !on;
           return true;
