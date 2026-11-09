@@ -18,6 +18,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = path.join(ROOT, 'shots', 'skeleton-v2');
 const ARGS = ['--use-gl=angle', '--use-angle=swiftshader', '--disable-dev-shm-usage'];
 const RANDOM = Number(process.argv[2] ?? 10);
+// (one page, everything: CLOSE close-ups, POSES, RANDOM poses -- Joshua, 2026-11-09, on render times)
 const log = (...a) => console.log('[skel]', ...a);
 mkdirSync(SHOTS, { recursive: true });
 if (!process.env.NO_BUILD) { log('building'); await build({ root: ROOT, logLevel: 'error' }); }
@@ -39,8 +40,8 @@ try {
   const look = async (view, d = 1.6) => { await press(`sarahlab:view:${view}`); if (Math.abs(d - dist) > 1e-3) { await page.mouse.move(400, 420); await page.mouse.wheel(0, Math.log(d / dist) / 0.001); dist = d; } await page.waitForTimeout(400); };
   const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, name), clip: { x: 150, y: 40, width: 540, height: 780 }, timeout: 300_000 }); log('shot', name); };
   const depths = async (key) => {
-    const res = await hook('skeletonDepths', 2), d = res?.bones;
-    if (!report.stretch) { report.stretch = res?.stretch; report.fit = { left: res?.fitLeft, mostMm: res?.fitMostMm }; log('limbs stretched', JSON.stringify(res?.stretch), 'fit', JSON.stringify(report.fit)); }
+    const res = await hook('skeletonDepths', 3), d = res?.bones;
+    if (!report.stretch) { report.stretch = res?.stretch; report.fit = { left: res?.fitLeft, mostMm: res?.fitMostMm, whole: res?.wholeFits, moves: res?.fitMoves }; log('limbs stretched', JSON.stringify(res?.stretch), 'fit', JSON.stringify(report.fit)); }
     const worst = (d ?? []).slice(0, 8), through = (d ?? []).reduce((s, b) => s + b.throughCount, 0), close = (d ?? []).reduce((s, b) => s + b.closeCount, 0);
     report[key] = { through, close, worst, all: d };
     report[key].marked = await hook('skeletonMarks', true);
@@ -51,13 +52,23 @@ try {
   await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 240_000 });
   await page.waitForFunction(() => globalThis.__sarahLabCloth?.skeletonDepths?.(50) !== null, null, { timeout: 240_000, polling: 2000 });
   // (her clothes off: OUTFIT three times is none)
-  for (let k = 0; k < 3; k++) { await press('sarahlab:outfit'); await page.waitForTimeout(8000); }
+  for (let k = 0; k < 3; k++) await press('sarahlab:outfit');
+  await page.waitForTimeout(8000);
   await run(1);
   // STANDING
   await depths('stand');
   for (const x of [70]) { await slide('sarahlab-xray', x); await run(0.2); for (const [v, view] of [['front', 'front'], ['side', 'side'], ['q34', 'three-quarter']]) { await look(view); await shot(`stand-x${x}-${v}.png`); } }
+  // CLOSE-UPS (CLOSE=knee,ankle,head,... standing; aimed at her measured joint)
+  const JOINT = { knee: 'kneeL', ankle: 'ankleL', head: 'head', hip: 'hipL', chest: 'chest', neck: 'neck' };
+  for (const part of (process.env.CLOSE ?? '').split(',').filter(Boolean)) {
+    const j = await hook('jointHeights'), mid = [0, 1, 2].map((a) => (j.hipL[a] + j.hipR[a]) / 2), at = j[JOINT[part]];
+    if (!at) continue;
+    const off = [0, 1, 2].map((a) => (at[a] - mid[a]) / 100), shotC = (name) => page.screenshot({ path: path.join(SHOTS, name), clip: { x: 200, y: 150, width: 600, height: 600 }, timeout: 300_000 });
+    for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2]]) { await hook('aim', yaw, 0.05, 60, off[0], off[1], off[2]); await run(0.1); await shotC(`close-${part}-${v}.png`); log('shot', `close-${part}-${v}`); }
+  }
+  await press('sarahlab:view:front');
   // HER POSES
-  for (const p of ['walk', 'sit', 'squat', 'recline']) {
+  for (const p of (process.env.POSES ?? 'walk,sit,squat,recline').split(',').filter(Boolean)) {
     await press(`sarahlab:${p}`); await run(p === 'walk' ? 1.3 : 2.5); await depths(`pose-${p}`);
     for (const [v, view] of [['front', 'front'], ['side', 'side']]) { await look(view, p === 'walk' ? 1.8 : 2.4); await shot(`pose-${p}-${v}.png`); }
   }
