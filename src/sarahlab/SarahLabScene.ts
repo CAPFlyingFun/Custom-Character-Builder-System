@@ -967,6 +967,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const sneakersShown = () => sneakersOn && !!sneakers && !isBirthPose(pose);
   function setSneakers(on: boolean): void {
     sneakersOn = on;
+    // (barefoot, her feet are fitted over her foot bones: her skeleton laid if it is not yet)
+    if (!on) skeletonV2Lay?.();
     // (put on by a tap, the sound of her steps can start now)
     if (on) tileSteps.unlock();
     if (on && !sneakers && buildRig && measure && model) {
@@ -1021,6 +1023,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   const FOOT_SET = Object.freeze({ pitchDeg: -6, shift: [0, -0.008, 0.014] as [number, number, number] });
   let footCoverMm = 0;
+  /** v2: lays her skeleton when first wanted (X-RAY raised, her sneakers off, a probe asks) */
+  let skeletonV2Lay: (() => void) | null = null;
   let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0, relaySkeletonV2: ((wholeScale: (number | null)[] | null) => void) | null = null;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
   let birthSeatOn = true;
@@ -1586,8 +1590,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (foldBackInput) foldBackInput.style.display = organs ? '' : 'none'; }
     { const f5 = fields[SARAH_LAB_FIELD.xray];
       // (her skeleton's: on another body it is not shown)
-      if (f5) { f5.textContent = xrayLine(xrayPct); f5.style.display = organs || skeletonV2 ? '' : 'none'; }
-      if (xrayInput) xrayInput.style.display = organs || skeletonV2 ? '' : 'none'; }
+      const xr = organs || skeletonV2 || skeletonV2Lay;
+      if (f5) { f5.textContent = xrayLine(xrayPct); f5.style.display = xr ? '' : 'none'; }
+      if (xrayInput) xrayInput.style.display = xr ? '' : 'none'; }
     { const f3 = fields[SARAH_LAB_FIELD.birthBulge];
       if (vulva) birthBulgePct = Math.round(vulva.bulge * 100);
       if (f3) f3.textContent = birthBulgeLine(birthBulgePct, VULVA_OPEN.bulge * 100);
@@ -2662,7 +2667,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // FOLD BACK (v3, on her skeleton): her opening's doors folded back by hand, piece by piece, then on their hinges
     foldBackInput = slider(SARAH_LAB_FIELD.foldBack, foldBackPct, (v) => { foldBackPct = v; organs?.setFold(v / 100); }, 100, 'pose');
     // X-RAY (v3, on her skeleton): her bones see-through, her organs and baby solid inside them
-    xrayInput = slider(SARAH_LAB_FIELD.xray, xrayPct, (v) => { xrayPct = v; applyXray(); }, 100, 'pose');
+    xrayInput = slider(SARAH_LAB_FIELD.xray, xrayPct, (v) => { xrayPct = v; if (v > 0) skeletonV2Lay?.(); applyXray(); }, 100, 'pose');
     // HER BABY'S BIRTH: begin, pause, FAST or REALISTIC, and back to the start (birthSequence.ts)
     { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.birthLine; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; line.textContent = birthLine(null); fields[SARAH_LAB_FIELD.birthLine] = line; right.appendChild(line);
       const row = document.createElement('div'); row.dataset.tab = 'pose'; row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
@@ -7238,8 +7243,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           applyXray();
         }
         // v2: her skeleton laid inside her and bound to her own bones (skeletonInV2.ts), seen under X-RAY
-        if (recovered && babyFrame) {
-          const request = ++skeletonV2Request, toRest = babyFrame.meshToRest.clone();
+        // (laid only when first wanted -- X-RAY raised, or her sneakers off -- not on every load: it reads her whole body,
+        // seconds of work on a phone)
+        skeletonV2Lay = null;
+        const frameNow = babyFrame;
+        if (recovered && frameNow) skeletonV2Lay = () => {
+          skeletonV2Lay = null;
+          const request = ++skeletonV2Request, toRest = frameNow.meshToRest.clone();
           void assets.loadModel(SARAH_SKELETON_MODEL, () => new THREE.Object3D(), {}).then((skel) => {
             if (disposed || request !== skeletonV2Request || !model) { release(skel); return; }
             try {
@@ -7307,7 +7317,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (its file stays loaded: the laid copy shares its material's maps)
             } catch (error) { console.error('[sarahlab] her skeleton could not be laid inside v2', error); skeletonV2 = null; release(skel); }
           });
-        }
+        };
+        if (xrayPct > 0 || !sneakersShown()) skeletonV2Lay?.();
         babySkinAt = null; babyDepthOf = null;
         // her birth area shaped (birthArea.ts): a field on her body's shape, the same at every size
         if (babyFrame) {
@@ -8736,6 +8747,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         slope: (deg: number, heading: SlopeHeading = 'ahead') => { setSlope(deg, heading); return slopeLine(slope); },
         // v2: how deep each piece of her skeleton sits under her skin now, by bone (mm; the random-pose test)
         skeletonDepths: (stride?: number) => {
+          skeletonV2Lay?.();
           if (!skeletonV2) return null;
           // (each bone named by the joint it is, where the room's measure knows it)
           const jt = measure?.joints as unknown as Record<string, number> | undefined, bones = bodyOf()?.mesh.skeleton.bones ?? [], label = new Map<string, string>();
