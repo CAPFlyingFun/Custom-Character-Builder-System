@@ -6396,8 +6396,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   /** Her doors' seat in v2 as it is tried (a probe changes it, `doorsSeat`): how far out along her canal from her skin's
    * measured opening their canal begins (metres; the canal's own inset, ORGAN_PLACE.openingInset, is taken from it), their
-   * size shut, whether the skeleton's ring of outer skin is drawn round them, and their lining's colour. */
-  const v2Seat: { out: number; restScale: number; ring: boolean; lining: number } = { out: 0, restScale: V2_DOORS.restScale, ring: false, lining: V2_DOORS.lining };
+   * size shut, whether the skeleton's ring of outer skin is drawn round them, their lining's colour, and `bone`: seated as
+   * on her skeleton, under her pubic bone by her bones (actor/birthCanal.ts seatedCanal), not from her skin's opening. */
+  const v2Seat: { out: number; restScale: number; ring: boolean; lining: number; bone: boolean } = { out: 0, restScale: V2_DOORS.restScale, ring: false, lining: V2_DOORS.lining, bone: false };
   function layOrgansV2(all = true): void {
     if (!v2OrganBones || (organs && (abdomen || abdomenFailed || !all))) return;
     const f = v2OrganBones;
@@ -6406,7 +6407,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         organsGrowWomb = false;
         // (her doors' seat: her skin's opening as measured, or -- a probe trying another -- moved `out` along her canal)
         const seat = v2Seat, o = v2Pelvis.landmarks.opening, c = v2Pelvis.midpelvis.centre, l = Math.hypot(o[1] - c[1], o[2] - c[2]) || 1;
-        const pelvisNow = seat.out === 0 ? v2Pelvis : { ...v2Pelvis, landmarks: { ...v2Pelvis.landmarks, opening: [o[0], o[1] + ((o[1] - c[1]) / l) * seat.out, o[2] + ((o[2] - c[2]) / l) * seat.out] } };
+        const { opening: _skin, ...boneMarks } = v2Pelvis.landmarks; void _skin;
+        const pelvisNow = seat.bone ? { ...v2Pelvis, landmarks: boneMarks } : seat.out === 0 ? v2Pelvis : { ...v2Pelvis, landmarks: { ...v2Pelvis.landmarks, opening: [o[0], o[1] + ((o[1] - c[1]) / l) * seat.out, o[2] + ((o[2] - c[2]) / l) * seat.out] } };
         organs = new PelvicOrgansView(pelvisNow, v2Torso, f.pelvis.bone, f.pelvis.matrix, M);
         // (in v2 her own skin is round her doors: the test piece of outer skin is not drawn)
         organs.outerSkinShown = seat.ring;
