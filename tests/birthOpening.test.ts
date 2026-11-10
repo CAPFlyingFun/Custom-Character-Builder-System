@@ -222,5 +222,5 @@ describe('her opening\'s doors', () => {
     for (let k = 0; k < 180; k++) now = { right: now.right.map((a, j) => followDoor(a, want.right[j], 1 / 60)), left: now.left.map((a, j) => followDoor(a, want.left[j], 1 / 60)), ends: followEnds(now.ends, ENDS_SHUT, 1 / 60) };
     expect(doorMeshes(frame, 0, 0, now).openM).toBeLessThan(0.005);
     expect(now.ends.front + now.ends.back).toBeCloseTo(DOORS.length, 3);
-  });
+  }, 30_000); // (GAME TUNING: a long sweep, ~3 s here, past the 5 s default on the GitHub runner)
 });
