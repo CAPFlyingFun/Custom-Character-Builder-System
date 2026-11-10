@@ -1057,10 +1057,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * shape stays in her skin beside the doors (0: her skin as it lies); `skin` her skin's own colour there, for the doors'
    * outer faces (MEASURED off a render of her bare skin beside her opening). All GAME TUNING but `skin`.
    */
+  /** v2: her doors' size shut, of their full size (pelvicOrgansView.ts restScale): what lies between her thighs; and how
+   * far BIRTH OPENING has opened her before they are drawn (`doorsSeen`); their lining's colour beside her own skin (a
+   * quieter pink than on her bare skeleton). GAME TUNING. */
+  const V2_DOORS = Object.freeze({ restScale: 0.55, from: 0.03, lining: 0xb5656e });
   const OPENING_LOOKS = [
-    { name: 'A · a shade darker, close in', tint: [0.9, 0.82, 0.8], reach: 0.025, lips: 0, skin: [0.86, 0.66, 0.56] },
-    { name: 'B · darker and warmer, wider', tint: [0.84, 0.72, 0.7], reach: 0.04, lips: 0, skin: [0.86, 0.66, 0.56] },
-    { name: "C · as B, with v2's rounded lips kept", tint: [0.84, 0.72, 0.7], reach: 0.04, lips: 1, skin: [0.86, 0.66, 0.56] },
+    { name: 'A · a shade darker, close in', tint: [0.9, 0.82, 0.8], reach: 0.025, lips: 0, skin: [0.88, 0.66, 0.58] },
+    { name: 'B · darker and warmer, wider', tint: [0.84, 0.72, 0.7], reach: 0.04, lips: 0, skin: [0.88, 0.66, 0.58] },
+    { name: "C · as B, with v2's rounded lips kept", tint: [0.84, 0.72, 0.7], reach: 0.04, lips: 1, skin: [0.88, 0.66, 0.58] },
   ] as const;
   /** The rig's own bones her organs hang from, bottom to top: her pelvis, her lumbar spine below and above L3, her chest. */
   const ORGAN_SPINE = ['Bone_001', 'Bone_004', 'Bone_003', 'Bone_002'] as const;
@@ -2068,7 +2072,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her rebuilt birth area drawn as her own skin under what she wears (painted leggings and all), bare where she is not
     vulva?.setDressedLips(fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP);
     vulva?.setDressed(vulvaDressed(view));
-    if (organs && !organsGrowWomb) organs.doorsShown = skeletonOpening && !!vulva && !vulva.dressed;
+    if (organs && !organsGrowWomb) organs.doorsShown = doorsSeen();
     layBalloonWomb();
     layCrease();
     fabric?.sync();
@@ -6398,6 +6402,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         organs.outerSkinShown = false;
         // (and her opening opens by BIRTH OPENING whether or not she is pregnant, as v2's own does)
         organs.opensFreely = true;
+        organs.restScale = V2_DOORS.restScale;
         organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100); organs.setBladder(gut.bladderMl);
         three.add(organs.group);
         roomForV2Womb(v2Womb);
@@ -6424,13 +6429,25 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * setSkeletonOpening) -- or all of it v2's again. Her pelvic organs are drawn whenever her doors are (her canal is behind
    * them), and under X-RAY.
    */
+  /**
+   * v2: whether her skeleton's doors are drawn now. Shut, they lie under her own skin (which is not flat there, and moves
+   * with her legs as they do not), so shut she is her own skin, closed, as v2 is; they are drawn once her opening has
+   * begun to open (`V2_DOORS.from` of BIRTH OPENING), and never under what she wears.
+   */
+  function doorsSeen(): boolean { return skeletonOpening && !!vulva && !organsGrowWomb && !vulva.dressed && vulva.drawnOpen > V2_DOORS.from; }
   function applyOpening(): void {
     const mine = skeletonOpening && !!organs && !organsGrowWomb && !!vulva, look = OPENING_LOOKS[openingLook % OPENING_LOOKS.length];
     vulva?.setSkeletonOpening(mine, { lips: look.lips, tint: look.tint, reach: look.reach });
+    // (and her own canal -- what her baby comes down -- held by her bone: its top at the middle of her pelvis, where the
+    // skeleton's canal has it)
+    vulva?.setCanalTop(mine ? new THREE.Vector3(v2Pelvis.midpelvis.centre[0], v2Pelvis.midpelvis.centre[1], v2Pelvis.midpelvis.centre[2]) : null);
     if (organs && !organsGrowWomb) {
-      organs.setDoorSkin(new THREE.Color(look.skin[0] * look.tint[0], look.skin[1] * look.tint[1], look.skin[2] * look.tint[2]));
+      // (her skin's colour as it is seen, a screen's: so read)
+      organs.setDoorSkin(new THREE.Color().setRGB(look.skin[0] * look.tint[0], look.skin[1] * look.tint[1], look.skin[2] * look.tint[2], THREE.SRGBColorSpace), V2_DOORS.lining);
       organs.visible = mine || xrayPct > 0;
-      organs.doorsShown = mine && !vulva?.dressed;
+      // (behind her doors only her canal: her womb and bladder only while she is seen through)
+      organs.innerShown = xrayPct > 0;
+      organs.doorsShown = mine && doorsSeen();
     }
   }
   function applyXray(): void {
@@ -7693,7 +7710,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     let want = a <= t[0][0] ? t[0][1] : t[t.length - 1][1];
     for (let i = 1; i < t.length; i++) if (a <= t[i][0]) { const [a0, v0] = t[i - 1], [a1, v1] = t[i]; want = v0 + ((v1 - v0) * (a - a0)) / (a1 - a0); break; }
     naturalNow = Math.max(0, Math.min(1, naturalNow + Math.max(-NATURAL_OPEN.perSecond * dt, Math.min(NATURAL_OPEN.perSecond * dt, want - naturalNow))));
-    vulva.setNatural(naturalNow);
+    // (her skeleton's opening: her doors are shut until they are pushed, so her skin round them is not held open by her pose)
+    vulva.setNatural(vulva.skeletonOpening ? 0 : naturalNow);
   }
   function advance(dt: number): void {
       seconds += dt;
@@ -7738,7 +7756,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const wk = organsGrowWomb && pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
         organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         // (v2: her doors open as her own skin's opening does -- BIRTH OPENING, her pose's, a birth's)
-        if (!organsGrowWomb && vulva && skeletonOpening) organs.setOpening(vulva.drawnOpen);
+        if (!organsGrowWomb && vulva && skeletonOpening) { organs.setOpening(vulva.drawnOpen); const show = doorsSeen(); if (organs.doorsShown !== show) organs.doorsShown = show; }
         organs.update(dt);
         // (her belly's and her chest's organs only while they are seen: X-RAY)
         if (xrayPct > 0) { abdomen?.update(dt); thorax?.update(dt); }

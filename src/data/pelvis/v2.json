@@ -9,9 +9,9 @@
     0.00996
   ],
   "cm": {
-    "obstetricConjugate": 11.6,
+    "obstetricConjugate": 11.1,
     "inletTransverse": 13.9,
-    "inletAP": 12.3,
+    "inletAP": 11.8,
     "interspinous": 10.2,
     "intertuberous": 10.2,
     "arcRadius": 7.2
@@ -2661,5 +2661,6 @@
       -0.23346,
       -0.08513
     ]
-  ]
+  ],
+  "cmNote": "obstetricConjugate, inletTransverse, inletAP and intertuberous changed by as much as their points moved when carried into v2; interspinous and arcRadius are the skeleton's own (src/data/pelvis/skeleton.json)"
 }

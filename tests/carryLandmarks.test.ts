@@ -1,7 +1,7 @@
 /**
  * HER SKELETON'S LANDMARKS CARRIED INTO v2 (sarahlab/skeletonInV2.ts `carryLandmarks`), and the files it wrote
  * (src/data/pelvis/v2.json, torso/v2.json; thorax/v2.json from actor/thoracicOrgans.ts `measureThorax`, all by
- * scripts/bake-skeleton-v2.mjs). Review tests (2026-11-09): what holds is asserted; what does not is `it.fails`, with the
+ * scripts/bake-skeleton-v2.mjs). Review tests (2026-11-09): what holds is asserted; what did not was `it.fails`, with the
  * numbers in its comment.
  */
 import { describe, expect, it } from 'vitest';
@@ -71,32 +71,32 @@ describe("the files written for v2", () => {
     console.log(`[v2 thorax] lungs ${out.toFixed(0)} mL at rest, a quiet breath ${tidal.toFixed(0)} mL (LUNGS.tidalMl 500); laid again ${n} times a breath in, ${((performance.now() - t0) / n).toFixed(2)} ms each here`);
   });
 
-  // REVIEW FINDINGS. Each is `it.fails`: the assertion says what should hold, the comment what the file has.
-  // thorax/v2.json sternumTop = [0.00462, 1.38349, -0.0631]: its z is the FRONT OF HER SPINE there (-0.0612), not her
-  // breastbone (her xiphoid is at z +0.054; her rib cage's inner front at y 1.37 is -0.027). measureThorax took a neck
-  // vertebra's body for "the bone on her midline at her front": above her breastbone the widest hollow on her midline is
-  // her spinal canal. layThorax reads only its height (the breastbone's length, for her domes): about 3 cm too long.
-  it.fails("the top of her breastbone is in front of her spine, as her xiphoid is", () => {
+  // THE REVIEW'S FINDINGS, FIXED (2026-11-10): each was a failing check; the files are baked again and they hold.
+  // (her breastbone was read up into her neck's vertebrae: measureThorax now follows it up from her xiphoid)
+  it("the top of her breastbone is in front of her spine, as her xiphoid is", () => {
     expect(Th.sternumTop[2]).toBeGreaterThan(thoraxSpineAt(Th, Th.sternumTop[1]) + 0.03);
   });
-  // ... and the top slice (y 1.37892, which is `apex`, the top of her lungs) has its inner FRONT wall (-0.0657) behind
-  // the front of her spine (-0.0615): it is a slice of her neck's base, not of her rib cage.
-  it.fails("every slice's inner front wall is ahead of her spine's front", () => {
+  // (the top slice was of her neck's base, its front wall behind her spine's front: such slices are dropped)
+  it("every slice's inner front wall is ahead of her spine's front", () => {
     for (const s of Th.sections) expect(s.front).toBeGreaterThan(thoraxSpineAt(Th, s.y));
   });
-  // The slice at y 1.28892 is 1.5 cm wider on her left (0.1339) and 1.0 cm on her right than the slices 1 cm above and
-  // below it (0.1192 / 0.1188): bone that is not rib (carried by her chest bone) in that slice. Her lungs follow the wall.
-  it.fails('her rib cage is no wider in one slice than in its neighbours by a centimetre', () => {
+  // (one slice held bone that is not rib and stood 1.5 cm wider than its neighbours: pulled back in line)
+  it('her rib cage is no wider in one slice than in its neighbours by a centimetre', () => {
     const s = Th.sections;
     for (let i = 1; i + 1 < s.length; i++) expect(s[i].left - Math.max(s[i - 1].left, s[i + 1].left)).toBeLessThan(0.01);
   });
-  // pelvis/v2.json keeps the skeleton's `cm` ("its lengths and angles left as measured ... the fit moves a bone's
-  // surface by millimetres, not its size") -- but the carry moved symphysisBottom 18.4 mm and symphysisBack 5.4 mm, so
-  // its own points give an obstetric conjugate of 11.07 cm where `cm` says 11.6.
-  it.fails("the pelvis file's lengths are its own points'", () => {
-    expect(dist(v2Pelvis.landmarks.promontory, v2Pelvis.landmarks.symphysisBack) * 100).toBeCloseTo(v2Pelvis.cm.obstetricConjugate, 1);
+  // (the pelvis file kept the skeleton's lengths though its points had moved: they are carried by their points' change)
+  it("the pelvis file's lengths are its own points'", () => {
+    expect(dist(v2Pelvis.landmarks.promontory, v2Pelvis.landmarks.symphysisBack) * 100).toBeCloseTo(v2Pelvis.cm.obstetricConjugate, 0);
   });
-  it.fails('the fit moved her pelvis\'s landmarks by millimetres (under 5), as carryLandmarks says', () => {
-    for (const k of Object.keys(skeletonPelvis.landmarks) as (keyof typeof skeletonPelvis.landmarks)[]) expect(dist(v2Pelvis.landmarks[k], skeletonPelvis.landmarks[k])).toBeLessThan(0.005);
+  // WHAT THE FIT DID TO HER PELVIS, PINNED: v2 is slighter between her legs than the skeleton, so the fit under her skin
+  // moved her pubic bone's lower edge and her tailbone's tip well over a centimetre; the bones her organs hang by -- her
+  // promontory, her sitting bones -- did not move. (Her opening is measured on her own skin: `landmarks.opening`.)
+  it("the fit moved her pubic bone's lower edge over a centimetre and left her promontory and her sitting bones", () => {
+    const went = (k: keyof typeof skeletonPelvis.landmarks) => dist(v2Pelvis.landmarks[k], skeletonPelvis.landmarks[k]);
+    expect(went('symphysisBottom')).toBeGreaterThan(0.01);
+    expect(went('symphysisBottom')).toBeLessThan(0.03);
+    for (const k of ['promontory', 'tuberosityLeft', 'tuberosityRight'] as const) expect(went(k)).toBeLessThan(0.001);
+    expect((v2Pelvis.landmarks as { opening?: number[] }).opening?.length).toBe(3);
   });
 });

@@ -186,6 +186,14 @@ export interface VulvaPatch {
    */
   setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number }): void;
   readonly skeletonOpening: boolean;
+  /**
+   * HER CANAL HELD BY HER BONE (Joshua, 2026-11-09: "use the existing womb and design we have in v2, but lock it to the real
+   * bone now that we have a skeleton it can go through and hold on"): the top of her canal, where her cervix begins, set
+   * at `top` (her rest frame, metres: the middle of her pelvis, measured on her skeleton as it stands in her) -- her canal
+   * runs from her opening to it, her cervix goes on up from there, and her womb's wall is drawn to meet it as before. So
+   * what comes down her canal comes through her pelvis. Null: her canal on its own curve, as it was.
+   */
+  setCanalTop(top: THREE.Vector3 | null): void;
   /** drawn even while her body is not (a probe's look at the area on its own) */
   solo: boolean;
   noTube?: boolean;
@@ -452,6 +460,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   const restPos = new Float32Array(P * 3), restNrm = new Float32Array(P * 3);
   let open = 0, openApplied = -1, wantOpen = 0, naturalOpen = 0, dressed = false, dressedLips = 0, bulgeAmt = 0;
   // her skeleton's opening in this one's place (setSkeletonOpening): how much of its lips' shape stays, and her skin's tone round it
+  let canalTop: THREE.Vector3 | null = null;
   let skelOpening = false, skelLips = 0, skelTint: readonly [number, number, number] = [1, 1, 1], skelReach = 0.03;
   // A BIRTH drives her (birthSequence.ts): the opening and bulge at least what her baby's head makes them, and her cervix
   // dilated on its own; nothing while no birth runs
@@ -1761,10 +1770,25 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     // round its shoulders, the canal ran sixteen centimetres wide up inside her and stood out through her skin)
     const rEnd = Math.min(L.canalMostR * perMetre, Math.max(L.cervixShut * perMetre / 2, meanR * (0.45 + 0.55 * smooth(0, 1, open))));
     const bulgeOff = nO.clone().multiplyScalar(bulgeNow * perMetre);
+    // (held by her bone, `setCanalTop`: the way it turns to and its length found so that it ends there -- it leaves her
+    // opening square to her skin as before; a few rounds of walking its line and correcting by what it missed by)
+    let deepC = deep, lengthC = length;
+    if (canalTop) {
+      const goal = canalTop.clone().applyMatrix4(new THREE.Matrix4().copy(meshToRest).invert()), span = goal.distanceTo(ctr);
+      const walk = (dp: THREE.Vector3, len: number) => { const c = ctr.clone(), d = new THREE.Vector3(); for (let k = 1; k < KC; k++) { d.copy(inward).lerp(dp, smooth(0.1, 0.75, k / (KC - 1))).normalize(); c.addScaledVector(d, len / (KC - 1)); } return c; };
+      if (span > 0.01 * perMetre) {
+        deepC = goal.clone().sub(ctr).normalize(); lengthC = span;
+        for (let round = 0; round < 8; round++) {
+          const end = walk(deepC, lengthC), miss = goal.clone().sub(end);
+          deepC = deepC.clone().multiplyScalar(lengthC).add(miss).normalize();
+          lengthC = Math.min(0.14 * perMetre, Math.max(0.02 * perMetre, lengthC * (span / Math.max(1e-6, end.distanceTo(ctr)))));
+        }
+      }
+    }
     for (let k = 0; k < KC; k++) {
       const m = KB + k, f = k / (KC - 1), narrow = 1 - 0.55 * smooth(0, 0.35, f);
       const scale = narrow + (1 - narrow) * smooth(0, 1, open);
-      if (k > 0) { dir.copy(inward).lerp(deep, smooth(0.1, 0.75, f)).normalize(); ctr.addScaledVector(dir, length / (KC - 1)); }
+      if (k > 0) { dir.copy(inward).lerp(deepC, smooth(0.1, 0.75, f)).normalize(); ctr.addScaledVector(dir, lengthC / (KC - 1)); }
       else dir.copy(inward);
       turn.setFromUnitVectors(inward, dir);
       // (round within its first third: a stretched canal is a tube, not the opening's outline carried in as flat walls)
@@ -2278,6 +2302,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     },
     get dressed() { return dressed; },
     get skeletonOpening() { return skelOpening; },
+    setCanalTop(top: THREE.Vector3 | null) { if (top === canalTop || (top && canalTop && top.equals(canalTop))) return; canalTop = top ? top.clone() : null; openApplied = -1; posVersion = -1; sync(); },
     setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number }) {
       skelOpening = on; skelLips = Math.min(1, Math.max(0, look?.lips ?? 0)); skelTint = look?.tint ?? [1, 1, 1]; skelReach = Math.max(1e-3, look?.reach ?? 0.03);
       // (the balloon's womb alone, or all of it: its rolled rim, its canal and cervix, its womb)

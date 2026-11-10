@@ -52,9 +52,10 @@ export const ORGAN_PLACE = Object.freeze({
   introitusBelow: 0.025,
   introitusBehind: 0.02,
   /** Where her opening is measured on her own skin (`landmarks.opening`, v2), the canal's opening stands this far up into
-   * her from it, metres: her doors' lips hang that far below the canal's opening (actor/birthDoors.ts DOORS.lip), so
-   * closed they end at her skin and do not stand out of it. GAME TUNING. */
-  openingInset: 0.012,
+   * her from it, metres: her doors' lips hang below the canal's opening (actor/birthDoors.ts DOORS.lip, 12 mm), and her
+   * skin there is not flat, so the canal's opening stands further in than that: closed, her doors lie wholly under her
+   * skin and nothing stands out of it. GAME TUNING. */
+  openingInset: 0.02,
   /** The external os: this far down the canal from its top (the posterior fornix runs deeper behind the cervix), metres. */
   osBelowTop: 0.012,
   /** The womb tipped forward from the canal's line (anteversion; the vagina meets the womb at about 45 degrees standing:

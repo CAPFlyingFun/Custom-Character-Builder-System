@@ -9,8 +9,7 @@
  * game sets them later (running, sleeping, holding her breath).
  */
 import * as THREE from 'three';
-import { BREATH, HEART, PULSE, diaphragmMesh, heartMesh, layThorax, lungMesh, meshVolume, type ThoraxLandmarks, type ThoraxLayout } from '../actor/thoracicOrgans';
-import type { OrganMesh } from '../actor/pelvicOrgans';
+import { BREATH, HEART, PULSE, diaphragmMesh, diaphragmPoints, heartMesh, heartPoints, layThorax, lungMesh, lungPoints, meshVolume, type ThoraxLandmarks, type ThoraxLayout } from '../actor/thoracicOrgans';
 
 type Name = 'lungL' | 'lungR' | 'heart' | 'diaphragm';
 const NAMES: readonly Name[] = ['lungL', 'lungR', 'heart', 'diaphragm'];
@@ -18,9 +17,12 @@ const NAMES: readonly Name[] = ['lungL', 'lungR', 'heart', 'diaphragm'];
 const COLOURS: Record<Name, number> = { lungL: 0xe8a6a0, lungR: 0xe8a6a0, heart: 0x9c2f33, diaphragm: 0xa4523c };
 
 /** How they are drawn. GAME TUNING: her lungs and diaphragm are laid again only when her breath has moved `breathStep`
- * (of a quiet breath: a fifth of a millimetre of her diaphragm), her heart when its beat has moved `beatStep`; her
- * diaphragm a little see-through, so her lungs' bases and her heart show on it; `depthMost`, the deepest `depth` taken. */
-export const THORAX_DRAW = Object.freeze({ breathStep: 0.012, beatStep: 0.03, diaphragmOpacity: 0.82, depthMost: 2 });
+ * (of a quiet breath: about 22 times a breath in, each under a millimetre of her diaphragm; about a millisecond's work
+ * each), her heart when its beat has moved `beatStep`; only their points are written (their triangles never change),
+ * and their shading is worked out again every `shadeEvery`th time, and once more when they have lain still `restAfter`
+ * seconds; her diaphragm a little see-through, so her lungs' bases and her heart show on it; `depthMost`, the deepest
+ * `depth` taken. */
+export const THORAX_DRAW = Object.freeze({ breathStep: 0.04, beatStep: 0.1, shadeEvery: 2, restAfter: 1, diaphragmOpacity: 0.82, depthMost: 2 });
 
 /** Her breath through one cycle (`at` 0..1 of it): 0 the end of a breath out .. 1 the end of a breath in. Breathing in
  * takes `BREATH.inShare` of it and breathing out the rest, each eased at both ends. */
@@ -54,7 +56,10 @@ export class ThoraxView {
   /** the breath and the beat they are drawn at */
   private drawnBreath = NaN;
   private drawnBeat = NaN;
-  private lungMl = 0;
+  /** how many times her lungs and diaphragm, and her heart, have been laid since their shading was worked out, and how
+   * many seconds each has lain still */
+  private unshaded = { breath: 0, heart: 0 };
+  private still = { breath: 0, heart: 0 };
 
   /**
    * @param thorax the inside of her rib cage, measured on her bones (actor/thoracicOrgans.ts `measureThorax`)
@@ -63,19 +68,24 @@ export class ThoraxView {
    */
   constructor(private readonly thorax: ThoraxLandmarks, chest: { bone: THREE.Bone; matrix: THREE.Matrix4 }, private readonly units: number) {
     this.holder.matrixAutoUpdate = false; this.holder.matrix.copy(chest.matrix); this.holder.name = 'thoraxOrgans';
-    chest.bone.add(this.holder);
     this.group.name = 'thoraxOrgans'; this.group.matrixAutoUpdate = false;
+    // (laid before anything is hung on her: if her rib cage cannot be laid in, nothing of this is left on her bone)
     this.layout = layThorax(thorax, 0);
-    const shapes = this.shapes(0);
-    for (const name of NAMES) {
-      const sheet = name === 'diaphragm';
-      const material = new THREE.MeshStandardMaterial({ color: COLOURS[name], roughness: 0.55, metalness: 0, side: sheet ? THREE.DoubleSide : THREE.FrontSide, transparent: sheet, opacity: sheet ? THORAX_DRAW.diaphragmOpacity : 1 });
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(shapes[name].points.length), 3)); g.setIndex(new THREE.BufferAttribute(shapes[name].triangles, 1));
-      const m = new THREE.Mesh(g, material); m.name = `organ:${name}`; m.frustumCulled = false;
-      this.materials.set(name, material); this.meshes.set(name, m); this.group.add(m);
-    }
-    this.follow(); this.draw();
+    try {
+      const L = this.layout, shapes = { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, 0), diaphragm: diaphragmMesh(L) };
+      for (const name of NAMES) {
+        const sheet = name === 'diaphragm';
+        const material = new THREE.MeshStandardMaterial({ color: COLOURS[name], roughness: 0.55, metalness: 0, side: sheet ? THREE.DoubleSide : THREE.FrontSide, transparent: sheet, opacity: sheet ? THORAX_DRAW.diaphragmOpacity : 1 });
+        this.materials.set(name, material);
+        const g = new THREE.BufferGeometry(), m = new THREE.Mesh(g, material);
+        this.meshes.set(name, m);
+        // (its triangles once, here; its points written again as she breathes)
+        g.setAttribute('position', new THREE.BufferAttribute(shapes[name].points, 3)); g.setIndex(new THREE.BufferAttribute(shapes[name].triangles, 1));
+        m.name = `organ:${name}`; m.frustumCulled = false; this.group.add(m);
+      }
+      chest.bone.add(this.holder);
+      this.follow(); this.draw(); this.shade(NAMES); this.unshaded = { breath: 0, heart: 0 };
+    } catch (error) { this.dispose(); throw error; }
   }
 
   /** Her breath now: 0 the end of a breath out .. 1 the end of a breath in. */
@@ -83,16 +93,13 @@ export class ThoraxView {
   /** Her chest as laid at the breath it is drawn at. */
   get laid(): ThoraxLayout { return this.layout; }
 
-  /** Her lungs, heart and diaphragm as laid now, her heart at `beat`. */
-  private shapes(beat: number): Record<Name, OrganMesh> {
-    const L = this.layout;
-    return { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, beat), diaphragm: diaphragmMesh(L) };
+  /** An organ's own points (her rest frame, metres), to be written in place. */
+  private points(name: Name): Float32Array {
+    const pos = this.meshes.get(name)!.geometry.getAttribute('position') as THREE.BufferAttribute;
+    pos.needsUpdate = true;
+    return pos.array as Float32Array;
   }
-  private write(name: Name, shape: OrganMesh): void {
-    const g = this.meshes.get(name)!.geometry, pos = g.getAttribute('position') as THREE.BufferAttribute;
-    (pos.array as Float32Array).set(shape.points);
-    pos.needsUpdate = true; g.computeVertexNormals();
-  }
+  private shade(names: readonly Name[]): void { for (const n of names) this.meshes.get(n)?.geometry.computeVertexNormals(); }
   /** The group brought to where her chest bone carries her rest frame now. */
   private follow(): void {
     this.holder.updateWorldMatrix(true, false);
@@ -105,22 +112,24 @@ export class ThoraxView {
     if (dt > 0 && Number.isFinite(dt)) {
       this.cycle = (this.cycle + (dt * Math.max(0, this.breathsPerMinute)) / 60) % 1;
       this.pulse = (this.pulse + (dt * Math.max(0, this.beatsPerMinute)) / 60) % 1;
+      this.still.breath += dt; this.still.heart += dt;
     }
     this.follow(); this.draw();
   }
 
   private draw(): void {
     const D = THORAX_DRAW, deep = Math.min(D.depthMost, Math.max(0, Number.isFinite(this.depth) ? this.depth : 1)), breath = this.breath * deep, beat = beatCurve(this.pulse);
-    const breathed = !(Math.abs(breath - this.drawnBreath) < D.breathStep), beaten = !(Math.abs(beat - this.drawnBeat) < D.beatStep);
-    if (!breathed && !beaten) return;
+    const breathed = !(Math.abs(breath - this.drawnBreath) < D.breathStep), beaten = breathed || !(Math.abs(beat - this.drawnBeat) < D.beatStep), U = this.unshaded, S = this.still;
     if (breathed) {
-      this.layout = layThorax(this.thorax, breath); this.drawnBreath = breath;
-      const left = lungMesh(this.layout, 1), right = lungMesh(this.layout, -1);
-      this.write('lungL', left); this.write('lungR', right); this.write('diaphragm', diaphragmMesh(this.layout));
-      this.lungMl = (meshVolume(left) + meshVolume(right)) * 1e6;
+      const L = (this.layout = layThorax(this.thorax, breath)); this.drawnBreath = breath;
+      lungPoints(L, 1, this.points('lungL')); lungPoints(L, -1, this.points('lungR')); diaphragmPoints(L, this.points('diaphragm'));
+      U.breath++; S.breath = 0;
     }
     // (her heart rides on her diaphragm: laid again with her breath as well as with its own beat)
-    this.write('heart', heartMesh(this.layout, beat)); this.drawnBeat = beat;
+    if (beaten) { heartPoints(this.layout, beat, this.points('heart')); this.drawnBeat = beat; U.heart++; S.heart = 0; }
+    // their shading: every `shadeEvery`th time they are laid, and once they have lain still a while
+    if (U.breath >= D.shadeEvery || (U.breath > 0 && S.breath >= D.restAfter)) { this.shade(['lungL', 'lungR', 'diaphragm']); U.breath = 0; }
+    if (U.heart >= D.shadeEvery || (U.heart > 0 && S.heart >= D.restAfter)) { this.shade(['heart']); U.heart = 0; }
   }
 
   /** Each organ's drawn points now (world metres): for probes. */
@@ -135,9 +144,11 @@ export class ThoraxView {
     }
     return out;
   }
-  /** Her breath, what her lungs take up now (mL: air and their own tissue), and her rates: for probes. */
+  /** Her breath, what her lungs take up as drawn (mL: air and their own tissue; worked out here, when asked), and her
+   * rates: for probes. */
   report(): { breath: number; lungMl: number; beatsPerMinute: number; breathsPerMinute: number } {
-    return { breath: this.breath, lungMl: this.lungMl, beatsPerMinute: this.beatsPerMinute, breathsPerMinute: this.breathsPerMinute };
+    const held = (name: Name) => { const g = this.meshes.get(name)?.geometry; return g?.index ? meshVolume({ points: g.getAttribute('position').array as Float32Array, triangles: g.index.array as Uint32Array }) * 1e6 : 0; };
+    return { breath: this.breath, lungMl: held('lungL') + held('lungR'), beatsPerMinute: this.beatsPerMinute, breathsPerMinute: this.breathsPerMinute };
   }
   set visible(on: boolean) { this.group.visible = on; }
   dispose(): void {

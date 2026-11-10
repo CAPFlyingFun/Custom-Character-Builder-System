@@ -3,30 +3,39 @@
  * the diaphragm a dome under them... the diaphragm drops and the lungs fill on each breath. Heart: a blended teardrop
  * between the lungs, tilted left"), laid in a rib cage built here: an egg of bone about as big as her skeleton's own
  * (28 cm wide, 20 cm deep, 30 cm tall outside), narrowing to its top, open in front below the breastbone as her costal
- * margin is, with her spine up its back and her breastbone down its front.
+ * margin is, with her spine up its back (each vertebra hollow between its body and its arch) and her breastbone down
+ * its front -- and, as her chest bone's points come, her NECK's vertebrae going on up above her ribs, the necks of a
+ * first pair of ribs beside them, and her two collarbones lying across the top of her rib cage.
  */
 import { describe, expect, it } from 'vitest';
-import { BREATH, DIAPHRAGM, HEART, LUNGS, THORAX_MEASURE, diaphragmAt, diaphragmMesh, heartMesh, insideHeart, layThorax, lungMesh, lungVolume, measureThorax, meshVolume, sectionAt, thoraxSpineAt } from '../src/actor/thoracicOrgans';
+import { BREATH, DIAPHRAGM, HEART, LUNGS, THORAX_MEASURE, diaphragmAt, diaphragmMesh, diaphragmPoints, heartMesh, heartPoints, insideHeart, layThorax, lungMesh, lungPoints, lungVolume, measureThorax, meshVolume, sectionAt, soundSections, thoraxSpineAt } from '../src/actor/thoracicOrgans';
 import type { OrganMesh } from '../src/actor/pelvicOrgans';
 
-/** The egg: its middle line [x0, zc], its bottom y0, and half its width and depth at its widest. */
-const CAGE = { x0: 0.004, y0: 1.1, zc: -0.04, height: 0.3, halfW: 0.14, halfD: 0.1, sternum: [0.3, 0.92] as const, spineDeep: 0.035 };
+/** The egg: its middle line [x0, zc], its bottom y0, and half its width and depth at its widest; her breastbone from
+ * `sternum[0]` to `sternum[1]` of its height (19 cm: hers is 18.8); her spine's bodies' fronts `spineDeep` in from its
+ * back; her neck `neck` on above it; her collarbones `collar` below its top and out to `collarOut` from her middle. */
+const CAGE = { x0: 0.004, y0: 1.1, zc: -0.04, height: 0.3, halfW: 0.14, halfD: 0.1, sternum: [0.36, 1] as const, spineDeep: 0.04, neck: 0.08, collar: 0.014, collarOut: 0.19 };
 /** how wide it is at `v` of its height (0 bottom .. 1 top), as a share of its widest: widest a third of the way up */
 const girth = (v0: number, v = Math.min(1, Math.max(0, v0))) => (v < 0.35 ? 0.9 + 0.1 * Math.sin((Math.PI / 2) * (v / 0.35)) : 0.42 + 0.58 * Math.cos((Math.PI / 2) * ((v - 0.35) / 0.65)) ** 0.8);
-function ribCage(): Float32Array {
-  const C = CAGE, p: number[] = [];
-  for (let y = C.y0; y <= C.y0 + C.height + 1e-9; y += 0.004) {
-    const v = (y - C.y0) / C.height, k = girth(v), open = v < C.sternum[0] ? 0.55 + 0.45 * (v / C.sternum[0]) : 1;
+function ribCage(neck = true): Float32Array {
+  const C = CAGE, p: number[] = [], top = C.y0 + C.height;
+  for (let y = C.y0; y <= top + (neck ? C.neck : 0) + 1e-9; y += 0.004) {
+    const v = (y - C.y0) / C.height, k = girth(v), open = v < C.sternum[0] ? 0.55 + 0.45 * (v / C.sternum[0]) : 1, back = C.zc - C.halfD * k;
     // her ribs: round the egg, but not across her front's middle, nor in front below her breastbone
-    for (let d = 0; d < 360; d += 3) {
+    if (y <= top + 1e-9) for (let d = 0; d < 360; d += 3) {
       const c = Math.cos((d * Math.PI) / 180), s = Math.sin((d * Math.PI) / 180), x = C.halfW * k * c;
       if ((s > 0 && Math.abs(x) < 0.03) || s > open) continue;
       p.push(C.x0 + x, y, C.zc + C.halfD * k * s);
     }
-    // her spine up its back, its bodies standing into her chest; her breastbone down its front
-    for (let x = -0.018; x <= 0.0181; x += 0.009) for (let z = -0.01; z <= C.spineDeep + 1e-4; z += 0.005) p.push(C.x0 + x, y, C.zc - C.halfD * k + z);
-    if (v >= C.sternum[0] && v <= C.sternum[1]) for (let x = -0.015; x <= 0.0151; x += 0.005) p.push(C.x0 + x, y, C.zc + C.halfD * k + 0.002);
+    // her spine up its back and on up her neck: each vertebra's arch behind, its body standing into her chest, hollow between
+    for (let x = -0.018; x <= 0.0181; x += 0.009) for (const z of [-0.01, -0.005, C.spineDeep - 0.015, C.spineDeep - 0.01, C.spineDeep - 0.005, C.spineDeep]) p.push(C.x0 + x, y, back + z);
+    // her breastbone down its front, to the top of her ribs
+    if (v >= C.sternum[0] && y <= top + 1e-9) for (let x = -0.015; x <= 0.0151; x += 0.005) p.push(C.x0 + x, y, C.zc + C.halfD * k + 0.002);
+    // above her ribs: the necks of a pair of ribs beside her spine, nothing in front of them
+    if (neck && y > top + 0.01 && y < top + 0.02) for (const side of [-1, 1]) for (let x = 0.03; x <= 0.0601; x += 0.005) for (let z = -0.02; z <= 0.0001; z += 0.005) p.push(C.x0 + side * x, y, back + z);
   }
+  // her collarbones: a bar each side from the top of her breastbone out past her ribs and back
+  if (neck) for (const side of [-1, 1]) for (let u = 0; u <= 1.0001; u += 0.025) p.push(C.x0 + side * (0.02 + (C.collarOut - 0.02) * u), top - C.collar, C.zc + C.halfD * girth(1) - 0.05 * u);
   return Float32Array.from(p);
 }
 /** whether (x, y, z) is inside the egg's own bone */
@@ -56,11 +65,38 @@ describe('the inside of her rib cage, measured on her bones', () => {
   });
   it('finds her breastbone\'s two ends and the front of her spine', () => {
     expect(T.xiphoid[1]).toBeCloseTo(CAGE.y0 + CAGE.sternum[0] * CAGE.height, 2);
-    expect(T.sternumTop[1]).toBeCloseTo(CAGE.y0 + CAGE.sternum[1] * CAGE.height, 2);
     expect(T.xiphoid[0]).toBeCloseTo(CAGE.x0, 2);
     expect(T.xiphoid[2]).toBeGreaterThan(CAGE.zc + 0.05);
     expect(T.spineFront.length).toBeGreaterThan(24);
+    // (her vertebrae's bodies' fronts, not their arches behind the hollow in each: up her chest and on up her neck)
     for (const [y, z] of T.spineFront) { const back = CAGE.zc - CAGE.halfD * girth((y - CAGE.y0) / CAGE.height); expect(z).toBeGreaterThan(back + CAGE.spineDeep - 0.02); expect(z).toBeLessThan(back + CAGE.spineDeep + 0.02); }
+    expect(T.spineFront[T.spineFront.length - 1][0]).toBeGreaterThan(CAGE.y0 + CAGE.height + CAGE.neck - 0.02);
+  });
+  it('does not take her neck for her breastbone, nor a slice of her neck or a collarbone for her rib cage', () => {
+    const top = CAGE.y0 + CAGE.height;
+    // her breastbone's top: at the top of her ribs (not a vertebra of her neck, 8 cm on up), on her chest's front wall
+    expect(T.sternumTop[1]).toBeCloseTo(top, 2); expect(T.sternumTop[1]).toBeLessThan(top + 0.011);
+    expect(Math.abs(T.sternumTop[2] - sectionAt(T, T.sternumTop[1]).front)).toBeLessThan(0.03);
+    expect(T.sternumTop[2] - thoraxSpineAt(T, T.sternumTop[1])).toBeGreaterThan(0.03);
+    expect(T.sternumTop[1] - T.xiphoid[1]).toBeCloseTo((CAGE.sternum[1] - CAGE.sternum[0]) * CAGE.height, 2);
+    // no slice of her rib cage with its front wall at or behind her spine's front; none above her ribs
+    for (const s of T.sections) { expect(s.front).toBeGreaterThan(thoraxSpineAt(T, s.y) + 0.005); expect(s.y).toBeLessThan(top + 0.011); }
+    expect(T.apex).toBeLessThan(top + 0.011);
+    // a collarbone's points widen no slice: each as wide as without her neck and collarbones, within a few millimetres
+    const bare = measureThorax(ribCage(false));
+    expect(T.sternumTop[1]).toBeCloseTo(bare.sternumTop[1], 6); expect(T.xiphoid[1]).toBeCloseTo(bare.xiphoid[1], 6);
+    for (const s of T.sections) { const b = sectionAt(bare, s.y); expect(Math.abs(s.left - b.left)).toBeLessThan(0.004); expect(Math.abs(s.right - b.right)).toBeLessThan(0.004); expect(Math.abs(s.front - b.front)).toBeLessThan(0.004); expect(Math.abs(s.back - b.back)).toBeLessThan(0.004); }
+    // (the neck built here does fool a reading without those rules -- her breastbone's top taken up her neck, a slice of
+    // her neck kept, a collarbone's width kept: so this test catches it)
+    const fooled = measureThorax(ribCage(), { jump: 1, sternumAhead: -1, sternumMost: 1, frontAhead: -1, leak: 1 });
+    expect(fooled.sternumTop[1]).toBeGreaterThan(top + 0.05);
+    expect(fooled.sections.some((s) => s.front <= thoraxSpineAt(T, s.y))).toBe(true);
+    expect(Math.max(...fooled.sections.map((s) => s.left))).toBeGreaterThan(CAGE.x0 + CAGE.collarOut - 0.03);
+    // (and a saved set of slices is made sound the same way: one wall let out 1.5 cm, and a slice of her neck on top)
+    const mid = T.sections[12], leaky = T.sections.map((s, k) => (k === 12 ? { ...s, left: s.left + 0.015, right: s.right - 0.01 } : s)), last = T.sections[T.sections.length - 1];
+    const again = soundSections([...leaky, { y: last.y + 0.01, left: last.left, right: last.right, front: thoraxSpineAt(T, last.y) - 0.004, back: last.back }], T.spineFront);
+    expect(again.length).toBe(T.sections.length);
+    expect(Math.abs(again[12].left - mid.left)).toBeLessThan(0.004); expect(Math.abs(again[12].right - mid.right)).toBeLessThan(0.004);
   });
   it('takes no stray point for a wall, and says so when there is no rib cage', () => {
     const p = Array.from(ribCage()); p.push(0.5, 1.25, 0, NaN, 1.25, 0);
@@ -142,10 +178,11 @@ describe('her chest, laid out', () => {
     const L = layThorax(T), v = lungVolume(L), h = L.heart;
     expect(v.right).toBeGreaterThan(v.left); expect(v.right / v.both).toBeLessThan(0.6);
     expect(v.both).toBeCloseTo(v.left + v.right, 6);
-    // (the cardiac notch: beside her heart's middle the left lung's inner face stands further off her midline than above it)
+    // (the cardiac notch: beside her heart's middle the left lung's inner face stands further off her midline than its flat
+    // face does, and further than the right lung's)
     const inner = (side: -1 | 1, y0: number, y1: number) => { let x = Infinity; each(lungMesh(L, side), (px, py, pz) => { if (py > y0 && py < y1 && Math.abs(pz - h.centre[2]) < 0.02) x = Math.min(x, side * (px - L.mid)); }); return x; };
-    expect(inner(1, h.centre[1] - 0.015, h.centre[1] + 0.015)).toBeGreaterThan(inner(1, T.apex - 0.06, T.apex - 0.03) + 0.015);
-    expect(inner(1, h.centre[1] - 0.015, h.centre[1] + 0.015)).toBeGreaterThan(inner(-1, h.centre[1] - 0.015, h.centre[1] + 0.015) + 0.01);
+    expect(inner(1, h.centre[1] - 0.015, h.centre[1] + 0.015)).toBeGreaterThan(LUNGS.faceLeft + 0.005);
+    expect(inner(1, h.centre[1] - 0.015, h.centre[1] + 0.015)).toBeGreaterThan(inner(-1, h.centre[1] - 0.015, h.centre[1] + 0.015) + 0.005);
   });
   it('they hold what a woman\'s lungs hold, and a quiet breath draws about the tidal volume', () => {
     const out = lungVolume(layThorax(T, 0)).both, inn = lungVolume(layThorax(T, 1)).both, deep = lungVolume(layThorax(T, BREATH.most)).both;
@@ -160,6 +197,11 @@ describe('her chest, laid out', () => {
   });
   it('every mesh keeps its points and triangles whatever her breath, so a view only moves them', () => {
     const a = layThorax(T, 0), b = layThorax(T, 1);
+    // (a view's own arrays are written straight into: the same places as the meshes', and nothing new made)
+    for (const [m, write] of [[lungMesh(a, 1), (o: Float32Array) => lungPoints(a, 1, o)], [heartMesh(a, 0.4), (o: Float32Array) => heartPoints(a, 0.4, o)], [diaphragmMesh(a), (o: Float32Array) => diaphragmPoints(a, o)]] as const) {
+      const own = new Float32Array(m.points.length);
+      expect(write(own)).toBe(own); expect(Array.from(own)).toEqual(Array.from(m.points));
+    }
     for (const [m, n] of [[lungMesh(a, 1), lungMesh(b, 1)], [lungMesh(a, -1), lungMesh(b, -1)], [heartMesh(a), heartMesh(b, 0.7)], [diaphragmMesh(a), diaphragmMesh(b)]] as const) {
       sound(m); sound(n);
       expect(n.points.length).toBe(m.points.length); expect(Array.from(n.triangles)).toEqual(Array.from(m.triangles));

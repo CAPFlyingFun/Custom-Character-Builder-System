@@ -46,21 +46,23 @@ try {
   for (let k = 0; k < 12; k++) { const t = await page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? ''); if (/none/i.test(t)) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); }
   log('outfit', await page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? ''));
   await page.waitForTimeout(6000);
-  for (const p of (process.env.POSES ?? 'stand,apart,recline').split(',').filter(Boolean)) {
+  for (const p of (process.env.POSES ?? 'stand,apart,squat,recline').split(',').filter(Boolean)) {
     if (p !== 'stand') { await press(`sarahlab:${p}`); await run(2.5); }
     poseNow = p;
-    for (const l of (p === 'stand' ? LOOKS.filter((x) => x === String(LOOK) || x === 'v2') : LOOKS)) {
+    for (const l of (p === 'stand' || p === 'squat' ? LOOKS.filter((x) => x === String(LOOK) || x === 'v2') : LOOKS)) {
       report[`${p}-${l}`] = l === 'v2' ? await hook('opening', false) : await hook('opening', true, Number(l));
       await run(0.6); await close(`${p}-look${l}.png`);
     }
     if (p === 'recline') {
       await hook('opening', true, LOOK);
-      for (const o of (process.env.OPENS ?? '30,60,100').split(',').filter(Boolean)) { await slide('sarahlab-birth-open', Number(o)); await run(1.2); report[`open${o}`] = await hook('opening'); await close(`recline-open${o}.png`); if (o === '60') await close(`recline-open${o}-side.png`, 0.8); }
+      for (const o of (process.env.OPENS ?? '15,30,60,100').split(',').filter(Boolean)) { await slide('sarahlab-birth-open', Number(o)); await run(1.2); report[`open${o}`] = await hook('opening'); await close(`recline-open${o}.png`); if (o === '60') await close(`recline-open${o}-side.png`, 0.8); }
       await hook('opening', false); await run(0.8); await close('recline-open-last-v2.png');
       await slide('sarahlab-birth-open', 0); await run(1);
     }
     await press('sarahlab:stand'); await run(1.5);
   }
+  // (her own canal's line with her skeleton's opening on: held by her bone)
+  await hook('opening', true, LOOK); await run(0.6);
   report.organs = await hook('organs');
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));

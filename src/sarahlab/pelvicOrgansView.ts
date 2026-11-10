@@ -135,9 +135,19 @@ export class PelvicOrgansView {
   private outer: WombRoom | null = null;
   /** v2: her opening opens by BIRTH OPENING whether or not a womb is grown here (her womb is her body's own) */
   opensFreely = false;
+  /**
+   * v2: HER DOORS AT HER OWN SIZE (the new direction's step 3). The doors are laid for a 10 cm head -- their hinges 11 cm
+   * apart, 10 cm front to back -- and on her skeleton there was no flesh for that to lie in; between v2's thighs there is
+   * not that much room. So shut they are drawn `restScale` of their size about her opening (her flesh at rest), growing to
+   * their full size as they are pushed open (it stretches): 1 is as they were. GAME TUNING.
+   */
+  restScale = 1;
   private doorsOn = true;
+  private innerOn = true;
   private outerOn = true;
+  private scaledTo = 1;
   private readonly doorSkin = new THREE.Color(DOOR_COLOURS.skin);
+  private readonly doorLining = new THREE.Color(DOOR_COLOURS.lining);
   private sacOf: { womb: PregnantWomb; shape: WombShape } | null = null;
   /** The sac as her babies need it (grown round them where they stand past it), which her womb's wall makes room for. */
   private room: WombShape | null = null;
@@ -213,16 +223,19 @@ export class PelvicOrgansView {
   setOuterWomb(room: WombRoom | null): void {
     if (room === this.outer) return;
     this.outer = room;
-    const u = this.organs.find((o) => o.name === 'uterus'); if (u) u.mesh.visible = !room;
+    const u = this.organs.find((o) => o.name === 'uterus'); if (u) u.mesh.visible = !room && this.innerOn;
   }
   /** The room her womb takes, whichever womb she has: v2's own, or the one grown here (null: not pregnant). */
   get wombRoom(): WombRoom | null { return this.outer ?? this.grown; }
   /** HER OPENING'S DOORS DRAWN OR NOT (v2 keeps its own opening until the skeleton's replaces it; they still follow). */
   set doorsShown(on: boolean) { this.doorsOn = on; this.doors.mesh.visible = on && this.group.visible; this.doors.skin.visible = on && this.outerOn && this.group.visible; }
+  /** Her womb and her bladder drawn or not (v2: only while she is seen through -- behind her open doors only her canal
+   * is to be seen); her canal is always drawn with the rest. */
+  set innerShown(on: boolean) { this.innerOn = on; for (const o of this.organs) if (o.name !== 'vagina') o.mesh.visible = on && !(o.name === 'uterus' && !!this.outer); }
   /** The test piece of outer skin round her doors drawn or not: in v2 her own skin is there. */
   set outerSkinShown(on: boolean) { this.outerOn = on; this.doors.skin.visible = on && this.doorsOn && this.group.visible; }
   /** Her doors' outer faces in this colour (v2: her own skin's tone round her opening); their lining stays its own. */
-  setDoorSkin(colour: THREE.ColorRepresentation): void { this.doorSkin.set(colour); this.drawnSwing = -1; this.drawDoors(); }
+  setDoorSkin(colour: THREE.ColorRepresentation, lining?: THREE.ColorRepresentation): void { this.doorSkin.set(colour); if (lining !== undefined) this.doorLining.set(lining); this.drawnSwing = -1; this.drawDoors(); }
   get doorsShown(): boolean { return this.doorsOn; }
   /**
    * BIRTH OPENING (0 closed .. 1 full, actor/birthCanal.ts): her cervix thinned and opened to 10 cm and her canal opened
@@ -293,7 +306,7 @@ export class PelvicOrgansView {
       geometry.setIndex(new THREE.BufferAttribute(m.triangles, 1));
       const mesh = new THREE.Mesh(geometry, this.materials.get(name)!);
       mesh.name = `organ:${name}`; mesh.frustumCulled = false;
-      if (name === 'uterus' && this.outer) mesh.visible = false;
+      if ((name === 'uterus' && this.outer) || (name !== 'vagina' && !this.innerOn)) mesh.visible = false;
       this.group.add(mesh);
       this.organs.push({ name, cage, skin, mesh, tune: { shape: U[name].shape, keep: U[name].keep }, out: new Float32Array(m.points.length) });
     }
@@ -349,6 +362,15 @@ export class PelvicOrgansView {
     this.fold = swingDoors(this.fold, this.foldWant, dt);
     this.pressDoors(dt);
     this.drawDoors();
+    // (v2: at her own size shut, their full size open -- about her opening, in her rest frame)
+    if (this.restScale !== 1 || this.scaledTo !== 1) {
+      const t = Math.min(1, Math.max(0, this.swing)), s = this.restScale + (1 - this.restScale) * t * t * (3 - 2 * t);
+      if (Math.abs(s - this.scaledTo) > 1e-4) {
+        this.scaledTo = s;
+        const m = this.doors.frame.mouth, k = 1 - s;
+        for (const o of [this.doors.mesh, this.doors.skin]) { o.matrixAutoUpdate = false; o.matrix.set(s, 0, 0, m[0] * k, 0, s, 0, m[1] * k, 0, 0, s, m[2] * k, 0, 0, 0, 1); o.matrixWorldNeedsUpdate = true; }
+      }
+    }
   }
 
   /** How far a birth has pushed her opening's doors now (0 closed .. 1 open round the 10 cm circle's widest:
@@ -500,7 +522,7 @@ export class PelvicOrgansView {
     const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now), g = this.doors.mesh.geometry;
     if (this.clothPoints && this.clothPoints.length === d.points.length) d.points.set(this.clothPoints);
     this.laidAngles = d.angles; this.openNow = d.openM;
-    const colour = new Float32Array(d.lining.length * 3), lining = new THREE.Color(DOOR_COLOURS.lining), skin = this.doorSkin;
+    const colour = new Float32Array(d.lining.length * 3), lining = this.doorLining, skin = this.doorSkin;
     d.lining.forEach((l, i) => (l ? lining : skin).toArray(colour, i * 3));
     g.setAttribute('position', new THREE.BufferAttribute(d.points, 3)); g.setAttribute('color', new THREE.BufferAttribute(colour, 3));
     g.setIndex(new THREE.BufferAttribute(d.triangles, 1)); g.computeVertexNormals();

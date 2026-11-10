@@ -32,14 +32,15 @@ import type { OrganMesh } from './pelvicOrgans';
  * heavier", "The right lung is bigger than the left, and the left lung shares space in the chest with the heart", its
  * "cardiac notch", each apex "reaching shortly above the level of the sternal end of the first rib" (MEASURED and
  * BIOLOGICAL SHAPE, https://en.wikipedia.org/wiki/Lung). Metres, GAME TUNING within that shape: the `pleura` gap kept
- * between a lung and her ribs, her diaphragm and her heart; `ribSwing`, the further gap left at the end of a breath out
- * that the lungs take up by the end of a quiet breath in (her bones are not moved by her breath here: so that a quiet
- * breath draws about the tidal volume); `faceLeft`/`faceRight`, how far each lung's inner face stands off her midline
+ * between a lung and her ribs, her diaphragm and her heart; `ribSwing`, the further gap left between a lung and her ribs
+ * at the end of a breath out, which the lung takes up by the end of a quiet breath in (her bones are not moved by her
+ * breath here, so this stands for her ribs' swing out: set so that a quiet breath draws about the tidal volume in her
+ * own rib cage -- 510 mL as her bones are laid in v2, about 200 mL of it her diaphragm's); `faceLeft`/`faceRight`, how far each lung's inner face stands off her midline
  * beside her heart (the middle of her chest, fuller on her left), easing to `faceTop` at its top above her heart;
  * `spineHalf`, half the width her spine's bodies take at her back (thoracic bodies are 2.5-4 cm wide: BIOLOGICAL SHAPE);
  * `capShare`, the top share of a lung's height over which it rounds in to its apex; `corner`, how sharply its inner
  * face turns into her ribs' curve (higher: sharper); `leastRoom`, the least room a lung needs to reach a height. */
-export const LUNGS = Object.freeze({ totalMl: 4200, restMl: 1800, tidalMl: 500, residualMl: 1100, grams: 1300, pleura: 0.003, ribSwing: 0.0015, faceLeft: 0.034, faceRight: 0.024, faceTop: 0.02, spineHalf: 0.02, capShare: 0.24, corner: 4, leastRoom: 0.012 });
+export const LUNGS = Object.freeze({ totalMl: 4200, restMl: 1800, tidalMl: 500, residualMl: 1100, grams: 1300, pleura: 0.003, ribSwing: 0.004, faceLeft: 0.034, faceRight: 0.024, faceTop: 0.02, spineHalf: 0.02, capShare: 0.24, corner: 4, leastRoom: 0.012 });
 
 /** Her heart: "12 cm in length, 8 cm wide, and 6 cm in thickness", "a mass of 250-350 grams" (MEASURED,
  * https://en.wikipedia.org/wiki/Heart; a woman's at the lighter end). "Approximately a third of the heart is to the right
@@ -62,14 +63,15 @@ export const HEART = Object.freeze({ length: 0.12, width: 0.08, thickness: 0.06,
  * can be increased in well-conditioned persons to 7-8 cm"). "Its right half is higher up to the left half, since the
  * large liver rests beneath the right half"; it rises from "L1-L3, the xiphoid process, 6-12th rib and their costal
  * cartilages" (BIOLOGICAL SHAPE, https://en.wikipedia.org/wiki/Thoracic_diaphragm): `rightHigher`, by about a rib-space;
- * at the end of a quiet breath out the right dome reaches about her fifth rib, `domeUp` of her breastbone's length above
- * its bottom tip; the central part `centralBelow` under the left dome, and, held by her heart's sac, dropping only
+ * at the end of a quiet breath out the right dome stands a little above where her xiphoid joins her breastbone's body
+ * (about her sixth rib in front), `domeUp` of her breastbone's whole length above its bottom tip (GAME TUNING within
+ * that: 5 cm above the tip of her 19 cm breastbone as laid in v2, level with her T9/T10 disc); the central part `centralBelow` under the left dome, and, held by her heart's sac, dropping only
  * `centralShare` as far as the domes; its rim at the tip of her breastbone in front and `backBelow` lower at her back
  * (her twelfth rib). GAME TUNING (the sheet's shape): `rimPower`, how soon the rim falls from front to back round her
  * sides; `steep`, how steeply it rises inside her ribs before it flattens to the domes; each dome's middle `domeOut` of
  * her chest's half-width off her midline, `domeWide` and `domeDeep` of its half-width and half-depth across; `leastDome`,
  * the least it stays above its rim at her back however deep the breath; `rimInset`, its rim just inside her ribs. */
-export const DIAPHRAGM = Object.freeze({ quietDrop: 0.016, deepDrop: 0.057, rightHigher: 0.015, domeUp: 0.34, centralBelow: 0.012, centralShare: 0.7, backBelow: 0.03, rimPower: 2, steep: 7, domeOut: 0.52, domeWide: 0.34, domeDeep: 0.6, leastDome: 0.015, rimInset: 0.001 });
+export const DIAPHRAGM = Object.freeze({ quietDrop: 0.016, deepDrop: 0.057, rightHigher: 0.015, domeUp: 0.27, centralBelow: 0.012, centralShare: 0.7, backBelow: 0.03, rimPower: 2, steep: 7, domeOut: 0.52, domeWide: 0.34, domeDeep: 0.6, leastDome: 0.015, rimInset: 0.001 });
 
 /** Her breathing at rest: "the typical respiratory rate for a healthy adult at rest is 12-15 breaths per minute", "around
  * two seconds for an inhalation and three seconds exhalation" (MEASURED, https://en.wikipedia.org/wiki/Respiratory_rate):
@@ -107,7 +109,7 @@ export interface ThoraxLandmarks {
  * below; it is at least `sternumLeast` and at most `sternumMost` long (an adult's breastbone, manubrium to xiphoid, is
  * about 17 cm: bounds well either side of that). A slice whose front wall is not `frontAhead` in front of her spine's
  * front is no slice of her rib cage; a wall standing more than `leak` outside the middle one of the five slices round
- * it is a stray bone's (a collarbone, a shoulder blade) and is brought back to that. */
+ * it is a stray bone's (a collarbone, a shoulder blade) and is brought back in line with the slices below and above. */
 export const THORAX_MEASURE = Object.freeze({ slice: 0.01, rib: 0.006, midline: 0.025, strip: 0.02, frontShare: 0.25, gap: 0.02, trim: 0.01, least: 8, leastWidth: 0.05, leastDepth: 0.03, jump: 0.02, sternumAhead: 0.03, sternumLeast: 0.08, sternumMost: 0.24, frontAhead: 0.01, leak: 0.005 });
 export type ThoraxMeasureTune = { readonly [K in keyof typeof THORAX_MEASURE]: number };
 export class ThoraxMeasureError extends Error {}
@@ -125,16 +127,26 @@ function lineAt(s: readonly (readonly number[])[], y: number): number {
  * HER RIB CAGE'S SLICES MADE SOUND (what `measureThorax` does to them last; a saved set can be put through it again):
  * a slice whose front wall is at or behind the front of her spine is dropped (above her first ribs a slice is her neck,
  * not her chest), and a wall that stands out past the slices round it -- a point of her collarbone or her shoulder
- * blade taken with her ribs -- is brought back in to the middle one of the five slices round it.
+ * blade taken with her ribs -- is brought back in between the sound walls next below and above it.
  */
 export function soundSections(sections: readonly ThoraxSection[], spineFront: readonly (readonly number[])[], opts: Partial<ThoraxMeasureTune> = {}): ThoraxSection[] {
   const M: ThoraxMeasureTune = { ...THORAX_MEASURE, ...opts }, kept = sections.filter((s) => s.front - lineAt(spineFront, s.y) >= M.frontAhead && s.front - s.back >= M.leastDepth && s.left - s.right >= M.leastWidth);
-  /** a wall (`out` +1 if further out is more, -1 if less) no further out than `leak` past the middle of those round it */
-  const wall = (k: number, of: (s: ThoraxSection) => number, out: 1 | -1): number => {
-    const round = kept.slice(Math.max(0, k - 2), k + 3).map((s) => out * of(s)).sort((a, b) => a - b), middle = round[(round.length - 1) >> 1], own = out * of(kept[k]);
-    return out * (own - middle > M.leak ? middle : own);
+  /** one wall up her (`out` +1 if further out is more, -1 if less): each that stands more than `leak` outside the middle
+   * one of the five round it set on the line between the nearest that do not, below and above */
+  const wall = (of: (s: ThoraxSection) => number, out: 1 | -1): number[] => {
+    const own = kept.map((s) => out * of(s)), stray = own.map((v, k) => { const round = own.slice(Math.max(0, k - 2), k + 3).sort((a, b) => a - b); return v - round[(round.length - 1) >> 1] > M.leak; });
+    return own.map((v, k) => {
+      if (!stray[k]) return out * v;
+      let lo = k - 1, hi = k + 1;
+      while (lo >= 0 && stray[lo]) lo--;
+      while (hi < own.length && stray[hi]) hi++;
+      if (lo < 0 && hi >= own.length) return out * v;
+      if (lo < 0 || hi >= own.length) return out * own[lo < 0 ? hi : lo];
+      return out * (own[lo] + ((own[hi] - own[lo]) * (kept[k].y - kept[lo].y)) / (kept[hi].y - kept[lo].y));
+    });
   };
-  return kept.map((s, k) => ({ y: s.y, left: wall(k, (q) => q.left, 1), right: wall(k, (q) => q.right, -1), front: wall(k, (q) => q.front, 1), back: wall(k, (q) => q.back, -1) }));
+  const left = wall((q) => q.left, 1), right = wall((q) => q.right, -1), front = wall((q) => q.front, 1), back = wall((q) => q.back, -1);
+  return kept.map((s, k) => ({ y: s.y, left: left[k], right: right[k], front: front[k], back: back[k] }));
 }
 
 /**
@@ -443,7 +455,7 @@ function ringsTriangles(rows: number, cols: number, turned = false): Uint32Array
  */
 export function lungPoints(L: ThoraxLayout, side: -1 | 1, out?: Float32Array): Float32Array {
   const t = L.thorax, lung = L.lungs[side > 0 ? 0 : 1], gap = L.gap, G = THORAX_MESH, ring = G.lungRing, rows = G.lungRows, base = G.lungBase;
-  const pts = out && out.length === 3 * ring * (base + rows) ? out : new Float32Array(3 * ring * (base + rows)), offSpine = LUNGS.spineHalf + gap;
+  const pts = out && out.length === 3 * ring * (base + rows) ? out : new Float32Array(3 * ring * (base + rows)), offSpine = LUNGS.spineHalf + LUNGS.pleura;
   let n = 0;
   /** its outline at height y toward (cos, sin) from its own middle there, `k` of the way out: [x, z] */
   const outline = (y: number, cos: number, sin: number, k: number): [number, number] => {
@@ -453,13 +465,17 @@ export function lungPoints(L: ThoraxLayout, side: -1 | 1, out?: Float32Array): F
     const r = (toRibs ** -LUNGS.corner + toFace ** -LUNGS.corner) ** (-1 / LUNGS.corner) * k;
     return [x + cos * r, z + sin * r];
   };
+  // (nothing of her diaphragm is higher than this: a point above it is not asked where her diaphragm is)
+  const d = L.diaphragm, off = LUNGS.pleura, ceiling = Math.max(d.floor, d.rimFront) + d.domes[0].rise + d.domes[1].rise + off;
   const put = (x: number, y: number, z: number, onBase: boolean): void => {
+    // (twice, if the first time moved it: one move can undo another a little)
     for (let pass = 0; pass < 2; pass++) {
-      x = besideHeart(L.heart, x, y, z, side, gap);
-      if (side * (x - L.mid) < offSpine && z < thoraxSpineAt(t, y) + gap) x = L.mid + side * offSpine;
-      const under = diaphragmAt(L, x, z) + gap;
-      if (onBase || y < under) y = under;
+      const x0 = x, y0 = y, z0 = z;
+      x = besideHeart(L.heart, x, y, z, side, off);
+      if (side * (x - L.mid) < offSpine && z < thoraxSpineAt(t, y) + off) x = L.mid + side * offSpine;
+      if (onBase || y < ceiling) { const under = diaphragmAt(L, x, z) + off; if (onBase || y < under) y = under; }
       [x, z] = withinWalls(sectionAt(t, y), gap, x, z);
+      if (x === x0 && y === y0 && z === z0) break;
     }
     pts[n++] = x; pts[n++] = y; pts[n++] = z;
   };
@@ -468,7 +484,7 @@ export function lungPoints(L: ThoraxLayout, side: -1 | 1, out?: Float32Array): F
   for (let j = 0; j < ring; j++) {
     const c = Math.cos((2 * Math.PI * j) / ring), s = Math.sin((2 * Math.PI * j) / ring);
     let y = L.diaphragm.rimFront;
-    for (let pass = 0; pass < 3; pass++) { const [x, z] = outline(y, c, s, 1); y = Math.min(lung.top - 0.01, diaphragmAt(L, x, z) + gap); }
+    for (let pass = 0; pass < 3; pass++) { const [x, z] = outline(y, c, s, 1); y = Math.min(lung.top - 0.01, diaphragmAt(L, x, z) + LUNGS.pleura); }
     cosines.push(c); sines.push(s); foot.push(y);
   }
   // its hollow base, from its middle out to its edge
