@@ -19,13 +19,12 @@ function pastInlet(q: readonly number[]): number {
 describe('her pelvic organs on her skeleton', () => {
   const o = layOrgans(pelvis);
 
-  it("the canal runs from her opening under her pubic arch, below her bones, up to the midpelvis", () => {
+  it("the canal runs from her opening below her pubic bone, under her bones, up to the midpelvis", () => {
     const open = o.vagina.path[0], top = o.vagina.path[o.vagina.path.length - 1];
     expect(top).toEqual([...pelvis.midpelvis.centre]);
     expect(top[1]).toBeGreaterThan(open[1]);
-    // (below her sit bones, and behind the lower edge of her symphysis)
+    // (below her sit bones)
     expect(open[1]).toBeLessThan(Math.min(L.tuberosityLeft![1], L.tuberosityRight![1]) - 0.03);
-    expect(open[2]).toBeLessThan(L.symphysisBottom[2] - 0.05);
     // (longer than a canal at rest: it reaches down to her doors, which hang under her bones)
     expect(lengthOf(o.vagina.path)).toBeGreaterThan((VAGINA.front + VAGINA.back) / 2);
   });
@@ -87,15 +86,14 @@ describe('her pelvic organs on her skeleton', () => {
 
 describe("her canal from v2's own skin (the skeleton's doors in v2)", () => {
   const v2 = JSON.parse(readFileSync(new URL('../src/data/pelvis/v2.json', import.meta.url), 'utf8')) as PelvisLandmarks;
-  const sk = JSON.parse(readFileSync(new URL('../src/data/pelvis/skeleton.json', import.meta.url), 'utf8')) as PelvisLandmarks;
   const way = (p: PelvisLandmarks) => { const path = layOrgans(p).vagina.path, a = path[0], b = path[4], l = Math.hypot(b[1] - a[1], b[2] - a[2]); return [(b[1] - a[1]) / l, (b[2] - a[2]) / l]; };
 
-  it('leaves her skin up and back as her skeleton\'s does, not straight back (Joshua, 2026-11-10: "It looks different on v2")', () => {
+  it('leaves her skin up and back, not straight back (Joshua, 2026-11-10: "It looks different on v2")', () => {
     // (bowed out to its full length in the 5.9 cm v2 gives it, it left her skin going straight back, and her doors, which
-    // hang from its first centimetres, faced her front: 66 degrees off her skeleton's)
-    const a = way(v2), b = way(sk), deg = (Math.acos(a[0] * b[0] + a[1] * b[1]) * 180) / Math.PI;
+    // hang from its first centimetres, faced her front: 66 degrees off where her skeleton's then faced)
+    const a = way(v2);
     expect(a[0]).toBeGreaterThan(0.5);
-    expect(deg).toBeLessThan(30);
+    expect(a[1]).toBeLessThan(0);
   });
 
   it('is laid straight from her skin to its top, as long as her body gives it', () => {

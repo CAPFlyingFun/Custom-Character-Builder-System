@@ -32,7 +32,7 @@ export interface PelvisLandmarks {
    * line at rest) -- her canal runs up from there; without it, from below her pubic bone (ORGAN_PLACE). */
   readonly landmarks: { readonly symphysisTop: readonly number[]; readonly symphysisBottom: readonly number[]; readonly symphysisBack: readonly number[]; readonly promontory: readonly number[]; readonly opening?: readonly number[]; readonly tuberosityLeft?: readonly number[]; readonly tuberosityRight?: readonly number[] };
   /** her bony canal's measured centre line and how far apart her sit bones are: with them and her sit bones, her canal's
-   * opening stands under her pubic arch, below her bones (actor/birthCanal.ts `openSeat`) */
+   * opening stands under her pubic arch, below her bones (actor/birthCanal.ts `seatedCanal`) */
   readonly axis?: readonly (readonly number[])[];
   readonly cm?: { readonly intertuberous?: number };
   readonly outlet?: { readonly ring: readonly (readonly number[])[] };
@@ -143,9 +143,9 @@ export function layOrgans(p: PelvisLandmarks, bladderMl: number = BLADDER.defaul
   for (let k = 0; k < 40 && lengthOf(rest) < want; k++) { bow += 0.001; rest = bend(introitus, [mid[0], mid[1] + backward[1] * bow, mid[2] + backward[2] * bow], fornix); }
   // HER CANAL AS IT IS DRAWN, AND HER BABY'S WAY: on her skeleton its opening stands under her pubic arch, below her bones,
   // where the arch lets a head by, and it runs up from there onto her bony canal's measured line (actor/birthCanal.ts
-  // `openSeat`: laid from under the symphysis its doors and its open width cut through the arch's bones). Her womb, cervix
+  // `seatedCanal`: laid from under the symphysis its doors and its open width cut through the arch's bones). Her womb, cervix
   // and bladder stay placed from the line above, where her canal lies at rest. In v2 it still runs from her own skin.
-  const vpath = (!L.opening && p.axis ? seatedCanal({ axis: p.axis, landmarks: L, cm: p.cm, outlet: p.outlet, tail: p.tail }, x, fornix) : null) ?? rest;
+  const vpath = (!L.opening && p.axis ? seatedCanal({ axis: p.axis, landmarks: L, cm: p.cm, outlet: p.outlet, tail: p.tail }, x, fornix)?.path : null) ?? rest;
   // the bladder: behind the symphysis, its base on the canal's upper front wall, under the womb; it rises as it fills,
   // and once its middle is above the symphysis it bulges forward over the bone's top, against her belly's wall. Between
   // the bone in front and the cervix behind (held where it is by its ligaments) it has only so much room front to back:

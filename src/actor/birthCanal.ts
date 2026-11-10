@@ -99,7 +99,7 @@ export const tightest = (p: readonly Passage[]): number => Math.min(...p.flatMap
 export interface CanalBones {
   readonly axis: readonly (readonly number[])[];
   /** her pubic arch (the lower edge of her symphysis and her two sit bones) and how far apart her sit bones are inside:
-   * with them, her opening stands below her bones, under where her arch lets a head by (`openSeat`) */
+   * with them, her opening stands below her bones, under where her arch lets a head by (`seatedCanal`) */
   readonly landmarks?: { readonly symphysisBottom: readonly number[]; readonly tuberosityLeft?: readonly number[]; readonly tuberosityRight?: readonly number[] };
   readonly cm?: { readonly intertuberous?: number };
   /** the inner edge of her pubic arch as measured, point by point (the pelvis file's outlet ring): what her canal's wall is
@@ -129,18 +129,27 @@ export const CANAL_OPENING = Object.freeze({
  * was, 2 cm behind the symphysis, were both inside the V -- her doors and her canal cut through its bones, and her baby
  * had 3.8 cm to jog forward to its way out).
  *
- * So her opening is under that point, facing square off her arch's plane, and far enough below it that her doors' hinges
- * (which stand `straight` up her canal from her opening) are `boneClear` below her lowest bone there: her doors and the
- * skin round them are wholly under her bones.
+ * So her canal passes her arch there, square to its plane, and only below her bones turns forward to her opening
+ * (`turnDeg`): her doors, which hang from its last `straight` metres, and the skin round them are wholly under her bones.
  */
 export const OPEN_SEAT = Object.freeze({
   /** how far clear of her arch's bones her canal's wall passes, open, metres. GAME TUNING: on her skeleton a head's width of
    * canal has 1.15 cm to spare between her arch's measured edge and her tailbone's tip where they are closest, and this
    * and `tailClear` share it. */
   archClear: 0.003,
-  /** how far below her bones her doors' hinges stand: half a door's thickness and the flesh over the bone, metres. GAME
-   * TUNING. */
-  boneClear: 0.015,
+  /** UNDER HER ARCH IT TURNS FORWARD (Joshua, 2026-11-10, with diagrams of a birth from the side: in each the head comes
+   * down, turns forward under the pubic bone and is born below it, facing up and out -- "it does appear to sit further
+   * down"). From where it passes her arch, going straight down as she stands, her canal turns forward on one curve of
+   * radius `turnRadius` -- below her bones, where nothing is in its way -- until it goes `turnDeg` forward of square to
+   * her arch's plane, and its last centimetres, where her doors hang, run straight on: her opening is below her pubic
+   * bone, facing forward as she stands. BIOLOGICAL SHAPE (the curve of Carus's last part: a head's extension under the
+   * symphysis); GAME TUNING how far and how tightly (checked against her skeleton's own bone mesh,
+   * scripts/probe-canal-bones.mts: her doors and her canal's wall clear of every bone). */
+  turnDeg: 60,
+  turnRadius: 0.06,
+  /** how far below her bones her doors' hinges stand at the least: half a door's thickness and the flesh over the bone,
+   * metres (what the turn tried against her bone mesh was held to). GAME TUNING. */
+  boneClear: 0.01,
   /** how far clear of her tailbone's tip her canal's wall passes, open, metres. GAME TUNING (see `archClear`; its tip is a
    * knob round the measured point: at 3 mm it stood through the canal's back wall). */
   tailClear: 0.008,
@@ -154,58 +163,16 @@ export const OPEN_SEAT = Object.freeze({
   mould: 0.78,
 });
 
-/** Her opening's seat from her bones (see OPEN_SEAT): where her canal passes under her arch (`pass`), her opening below it
- * (`mouth`), and the way up into her there (`t`, unit, square to her arch's plane). Null without her sit bones. */
-export function openSeat(bones: CanalBones, x: number, straight = 0.03): { pass: P3; mouth: P3; t: P3 } | null {
-  const arch = archOf(bones, x), L = bones.landmarks, a = L?.tuberosityLeft, b = L?.tuberosityRight;
-  if (!arch || !L || !a || !b) return null;
-  const s = L.symphysisBottom, ty = (a[1] + b[1]) / 2, tz = (a[2] + b[2]) / 2, run = Math.hypot(ty - s[1], tz - s[2]);
-  if (!(run > 1e-6)) return null;
-  const uy = (ty - s[1]) / run, uz = (tz - s[2]) / run;
-  // (up into her, square to her arch's plane)
-  const t: P3 = -uz >= 0 ? [0, -uz, uy] : [0, uz, -uy];
-  // (back along her arch's plane from her symphysis to the first place a head's width of canal clears her arch -- there,
-  // and for the few centimetres it runs straight up past it)
-  let d = run * 0.4;
-  const clears = (at: number) => [-0.01, 0, 0.01, 0.02].every((h) => archDistance([x, s[1] + uy * at + t[1] * h, s[2] + uz * at + t[2] * h], arch) >= arch.need);
-  while (d < run * 3 && !clears(d)) d += 0.0005;
-  const pass: P3 = [x, s[1] + uy * d, s[2] + uz * d];
-  // (her bones' lowest there, measured up her canal from where it passes)
-  const low = Math.min(...[s, a, b].map((q) => (q[1] - pass[1]) * t[1] + (q[2] - pass[2]) * t[2]));
-  const down = straight + OPEN_SEAT.boneClear - low;
-  return { pass, mouth: [x, pass[1] - t[1] * down, pass[2] - t[2] * down], t };
-}
-
-/**
- * The way a head comes, from her opening `mouth` up into her: `straight` metres the way her canal leaves her opening
- * (`t`: where her doors hang), on up past her arch, then onto her bony canal's measured centre line and up it to `top`.
- * `underArch`: her opening stands under her arch (`openSeat`), so the measured line is followed down only to where it
- * turns forward into the arch's middle (its rearmost point) -- below that a head's way is behind it, between her sit
- * bones.
- */
-function headWay(mouth: P3, t: P3, bones: CanalBones, top: P3, straight: number, underArch: boolean): P3[] {
+/** The way a head comes where her canal is not seated under her arch (laid from her own skin: v2 for now): from her
+ * opening `mouth` up into her, `straight` metres the way her canal leaves her opening (`t`: where her doors hang), then
+ * onto her bony canal's measured centre line and up it to `top`; eased so it bends rather than kinks. */
+function headWay(mouth: P3, t: P3, bones: CanalBones, top: P3, straight: number): P3[] {
   const n = CANAL_OPENING.points;
   const foot: P3 = [mouth[0], mouth[1] + t[1] * straight, mouth[2] + t[2] * straight], on: P3 = [mouth[0], foot[1] + t[1] * 0.02, foot[2] + t[2] * 0.02];
-  const arch = underArch ? archOf(bones, mouth[0]) : null, tail = arch && bones.tail ? bones.tail : null, tailNeed = CANAL_OPENING.diameterM / 2 + OPEN_SEAT.tailClear;
-  const offTail = (p: P3): P3 => {
-    if (!tail) return p;
-    const dy = p[1] - tail[1], dz = p[2] - tail[2], l = Math.hypot(dy, dz);
-    return l >= tailNeed || l < 1e-9 ? p : [p[0], tail[1] + (dy / l) * tailNeed, tail[2] + (dz / l) * tailNeed];
-  };
-  // (off her arch and off her tailbone: each in turn, twice, the arch's last -- between them there is room)
-  const clear = (p: P3) => (arch ? offArch(offTail(offArch(offTail(p), arch)), arch) : p);
-  let axis = bones.axis.map((p): P3 => [mouth[0], p[1], p[2]]);
-  if (arch && axis.length) {
-    const rear = axis.reduce((m, p) => (p[2] < m[2] ? p : m), axis[0]);
-    axis = axis.filter((p) => p[1] >= rear[1] && archDistance(p, arch) >= arch.need && (!tail || Math.hypot(p[1] - tail[1], p[2] - tail[2]) >= tailNeed));
-  }
-  axis = axis.filter((p) => p[1] > on[1] + 0.01 && p[1] < top[1] - 1e-6).sort((a, b) => a[1] - b[1]);
+  const axis = bones.axis.map((p): P3 => [mouth[0], p[1], p[2]]).filter((p) => p[1] > on[1] + 0.01 && p[1] < top[1] - 1e-6).sort((a, b) => a[1] - b[1]);
   let way = resample([mouth, foot, on, ...axis, top], n);
-  // (eased so it bends rather than kinks, its doors' part and its ends kept -- and, under her arch, its wall kept off the
-  // arch's bones all the way up: a head's width of it turning forward to her bony canal's line sweeps into them otherwise)
   const keep = Math.ceil((straight / Math.max(1e-9, lengthAlong(way))) * (n - 1)) + 1;
-  way = way.map((p, i) => (i <= keep || i === n - 1 ? p : clear(p)));
-  for (let pass = 0; pass < 6; pass++) way = way.map((p, i) => (i <= keep || i === n - 1 ? p : clear([p[0], (way[i - 1][1] + 2 * p[1] + way[i + 1][1]) / 4, (way[i - 1][2] + 2 * p[2] + way[i + 1][2]) / 4])));
+  for (let pass = 0; pass < 6; pass++) way = way.map((p, i) => (i <= keep || i === n - 1 ? p : [p[0], (way[i - 1][1] + 2 * p[1] + way[i + 1][1]) / 4, (way[i - 1][2] + 2 * p[2] + way[i + 1][2]) / 4]));
   return way;
 }
 
@@ -275,11 +242,63 @@ function offArch(p: P3, A: Arch): P3 {
   return q;
 }
 
-/** Her canal's line from her opening's seat under her arch (`openSeat`) up to its `top`, its opening first; null without
- * her sit bones. */
-export function seatedCanal(bones: CanalBones, x: number, top: P3, straight = 0.03): P3[] | null {
-  const seat = openSeat(bones, x, straight);
-  return seat && headWay(seat.mouth, seat.t, bones, top, straight, true);
+/**
+ * HER CANAL SEATED UNDER HER ARCH (see OPEN_SEAT): its line, her opening first, up to `top`; her opening (`mouth`) and the
+ * way up into her there (`t`, unit); and where it passes her arch's plane (`pass`). Null without her sit bones.
+ *
+ * Down from `top` it follows her bony canal's measured centre line as far as that keeps a head's width of canal off her
+ * arch and her tailbone, then passes behind her arch between them (its wall held off both all the way); from its rearmost
+ * point -- where, as she stands, it is going straight down -- it turns forward on one curve (`turnRadius`) until it goes
+ * the way her opening faces (`turnDeg` forward of square to her arch's plane), and its last `straight` metres, where her
+ * doors hang, run straight on to her opening.
+ */
+export function seatedCanal(bones: CanalBones, x: number, top: P3, straight = 0.03): { path: P3[]; mouth: P3; t: P3; pass: P3 } | null {
+  const arch = archOf(bones, x), L = bones.landmarks, a = L?.tuberosityLeft, b = L?.tuberosityRight;
+  if (!arch || !L || !a || !b) return null;
+  const s = L.symphysisBottom, ty = (a[1] + b[1]) / 2, tz = (a[2] + b[2]) / 2, run = Math.hypot(ty - s[1], tz - s[2]);
+  if (!(run > 1e-6)) return null;
+  // (her arch's plane, in her midline: `u` back along it from her symphysis, `n` up into her square to it)
+  const uy = (ty - s[1]) / run, uz = (tz - s[2]) / run, n: [number, number] = -uz >= 0 ? [-uz, uy] : [uz, -uy];
+  const at = (d: number, h: number): P3 => [x, s[1] + uy * d + n[0] * h, s[2] + uz * d + n[1] * h];
+  // (back along her arch's plane to the first place a head's width of canal clears her arch -- there, and a little either
+  // side of the plane)
+  let d = run * 0.4;
+  const clears = (q: number) => [-0.01, 0, 0.01, 0.02].every((h) => archDistance(at(q, h), arch) >= arch.need);
+  while (d < run * 3 && !clears(d)) d += 0.0005;
+  const pass = at(d, 0), N = CANAL_OPENING.points;
+  // ITS WAY DOWN TO HER ARCH: from below her arch's plane straight up through `pass`, onto the measured line (down only
+  // to where that turns forward into the arch's middle, its rearmost point, and only where it is clear) and up to `top`;
+  // eased, its wall kept off her arch and her tailbone (each in turn, twice, the arch's last -- between them there is
+  // room)
+  const tail = bones.tail ?? null, tailNeed = CANAL_OPENING.diameterM / 2 + OPEN_SEAT.tailClear;
+  const offTail = (p: P3): P3 => {
+    if (!tail) return p;
+    const dy = p[1] - tail[1], dz = p[2] - tail[2], l = Math.hypot(dy, dz);
+    return l >= tailNeed || l < 1e-9 ? p : [p[0], tail[1] + (dy / l) * tailNeed, tail[2] + (dz / l) * tailNeed];
+  };
+  const clear = (p: P3) => offArch(offTail(offArch(offTail(p), arch)), arch);
+  let axis = bones.axis.map((p): P3 => [x, p[1], p[2]]);
+  if (axis.length) {
+    const rear = axis.reduce((m, p) => (p[2] < m[2] ? p : m), axis[0]);
+    axis = axis.filter((p) => p[1] >= rear[1] && archDistance(p, arch) >= arch.need && (!tail || Math.hypot(p[1] - tail[1], p[2] - tail[2]) >= tailNeed));
+  }
+  const below = at(d, -0.05), on = at(d, 0.02);
+  axis = axis.filter((p) => p[1] > on[1] + 0.01 && p[1] < top[1] - 1e-6).sort((p, q) => p[1] - q[1]);
+  let down = resample([below, at(d, -0.02), on, ...axis, top], N);
+  const keep = Math.ceil((0.03 / Math.max(1e-9, lengthAlong(down))) * (N - 1)) + 1;
+  down = down.map((p, i) => (i <= keep || i === N - 1 ? p : clear(p)));
+  for (let k = 0; k < 6; k++) down = down.map((p, i) => (i <= keep || i === N - 1 ? p : clear([p[0], (down[i - 1][1] + 2 * p[1] + down[i + 1][1]) / 4, (down[i - 1][2] + 2 * p[2] + down[i + 1][2]) / 4])));
+  // UNDER HER ARCH IT TURNS FORWARD: from its rearmost point round one curve to the way her opening faces
+  let r = 0;
+  for (let i = 1; i < N; i++) if (down[i][2] < down[r][2]) r = i;
+  const O = OPEN_SEAT, lean = (O.turnDeg * Math.PI) / 180, rho = O.turnRadius, R = down[r];
+  const t: P3 = [0, uy * Math.sin(lean) + n[0] * Math.cos(lean), uz * Math.sin(lean) + n[1] * Math.cos(lean)];
+  const turn = Math.atan2(-t[2], t[1]), round = (f: number): P3 => [x, R[1] - rho * Math.sin(f), R[2] + rho * (1 - Math.cos(f))];
+  const foot = round(turn), mouth: P3 = [x, foot[1] - t[1] * straight, foot[2] - t[2] * straight];
+  const line: P3[] = [mouth, foot], steps = Math.max(4, Math.ceil((turn * rho) / 0.006));
+  for (let k = steps - 1; k >= 1; k--) line.push(round((turn * k) / steps));
+  for (let i = r; i < N; i++) line.push(down[i]);
+  return { path: resample(line, N), mouth, t, pass };
 }
 
 /** Her canal's opening (its first point) and the way it goes up into her over its first `reach` metres (unit). */
@@ -300,11 +319,10 @@ export function canalMouth(canal: readonly P3[], reach: number): { mouth: P3; t:
 export function openCanal(laid: { readonly path: readonly P3[]; readonly width: number; readonly depth: number }, bones: CanalBones, open: number, straight = 0.03): { path: P3[]; width: number; depth: number; narrow?: number[]; narrowAcross?: number[] } {
   const o = smooth(Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0)));
   const n = CANAL_OPENING.points, top = laid.path[laid.path.length - 1], { mouth, t } = canalMouth(laid.path, straight);
-  // the way a head comes: up from the doors the way the canal went, then onto the bony canal and up it
-  // (kept off her arch only where her canal is laid from its seat under it: laid from her own skin -- v2, whose opening
-  // is still where her skin has it -- it goes as it went)
-  const seat = openSeat(bones, mouth[0], straight), seated = !!seat && Math.hypot(seat.mouth[1] - mouth[1], seat.mouth[2] - mouth[2]) < 1e-4;
-  const way = headWay(mouth, t, bones, top, straight, seated);
+  // the way a head comes: where her canal is laid from its seat under her arch, that line itself; laid from her own skin
+  // (v2, whose opening is still where her skin has it), up from her doors the way it went, then onto her bony canal
+  const seat = seatedCanal(bones, mouth[0], top, straight), seated = !!seat && Math.hypot(seat.mouth[1] - mouth[1], seat.mouth[2] - mouth[2]) < 1e-4;
+  const way = seated ? seat!.path : headWay(mouth, t, bones, top, straight);
   const as = resample(laid.path, n);
   const path = as.map((p, i): P3 => [p[0] + (way[i][0] - p[0]) * o, p[1] + (way[i][1] - p[1]) * o, p[2] + (way[i][2] - p[2]) * o]);
   const d = CANAL_OPENING.diameterM;

@@ -160,7 +160,7 @@ export function layRectum(pelvis: PelvisLandmarks, colonEnd: P3, ml: number, x0:
   const pts: P3[] = [colonEnd, ...A.sigmoid.slice(1).map(([x, y, z]) => [x0 + x, y, z] as P3), [x0, R.s3[1], R.s3[2]], [x0, R.ampulla[1], R.ampulla[2]], [x0, R.bend[1], R.bend[2]], anus];
   const path = smoothLine(pts, 36).map((q): [number, number, number] => [q[0], q[1], q[2]]);
   // (never in front of her birth canal: where they share a height it is `behindCanal` behind the canal's line -- her canal
-  // runs up behind her pubic arch, actor/birthCanal.ts `openSeat`, where these places alone had it cross)
+  // runs up behind her pubic arch, actor/birthCanal.ts `seatedCanal`, where these places alone had it cross)
   if (canal && canal.length > 1) {
     const lo = Math.min(canal[0][1], canal[canal.length - 1][1]), hi = Math.max(canal[0][1], canal[canal.length - 1][1]);
     for (const q of path) {

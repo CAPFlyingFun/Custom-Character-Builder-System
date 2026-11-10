@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openCanal } from '../src/actor/birthCanal';
-import { DOORS } from '../src/actor/birthDoors';
+import { DOORS, doorFrame, doorMeshes } from '../src/actor/birthDoors';
 import { layOrgans, narrowAt } from '../src/actor/pelvicOrgans';
 import { restOfRig } from './measureContacts';
 import { PELVIS_RIGS } from './measurePelvis';
@@ -62,4 +62,23 @@ for (let y = 0.70; y < 0.90; y += 0.02) {
   const least = band.reduce((m, q) => (q[3] < m[3] ? q : m));
   console.log(`  y ${cm(y)}..${cm(y + 0.02)}: ${band.length} points near, least ${cm(least[3])} cm clear, at x ${cm(least[0])} z ${cm(least[2])}`);
 }
+// (and her doors, shut and wide open: the least room between any point of them and any point of her bones)
+{ const frame = doorFrame(laid.vagina.path);
+  for (const swing of [0, 1]) {
+    const d = doorMeshes(frame, swing).points; let least = Infinity, where = [0, 0, 0];
+    for (let i = 0; i < d.length; i += 3) for (let k = 0; k < pos.length; k += 3) {
+      if (Math.abs(pos[k + 1] - d[i + 1]) > 0.03) continue;
+      const l = Math.hypot(pos[k] - d[i], pos[k + 1] - d[i + 1], pos[k + 2] - d[i + 2]);
+      if (l < least) { least = l; where = [pos[k], pos[k + 1], pos[k + 2]]; }
+    }
+    console.log(`her doors ${swing ? 'wide open' : 'shut'}: least ${cm(least)} cm from bone, at ${where.map(cm)} cm`);
+    // (and the skin round them: her skeleton's test piece, v2's own skin's stand-in)
+    const sk = doorMeshes(frame, swing).skin.points; let ring = Infinity, at = [0, 0, 0];
+    for (let i = 0; i < sk.length; i += 3) for (let k = 0; k < pos.length; k += 3) {
+      if (Math.abs(pos[k + 1] - sk[i + 1]) > 0.03) continue;
+      const l = Math.hypot(pos[k] - sk[i], pos[k + 1] - sk[i + 1], pos[k + 2] - sk[i + 2]);
+      if (l < ring) { ring = l; at = [pos[k], pos[k + 1], pos[k + 2]]; }
+    }
+    console.log(`  the skin round them: least ${cm(ring)} cm from bone, at ${at.map(cm)} cm`);
+  } }
 if (process.env.OUT) writeFileSync(process.env.OUT, JSON.stringify({ path, near }));
