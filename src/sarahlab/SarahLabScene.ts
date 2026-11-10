@@ -75,7 +75,7 @@ import { IRIS_CHOICES, browsLine, eyesLine, lipsLine, mouthLine, nextEyeMode } f
  * Lab's bodies are.
  */
 import * as THREE from 'three';
-import { SkeletonInV2 } from './skeletonInV2';
+import { SkeletonInV2, carryLandmarks } from './skeletonInV2';
 import { footCover } from './footCover';
 import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
 import { newJointTurn, type BindJoint, type HumanMeasure, type JointTurn, type MutableJointTurn } from '../actor/humanRig';
@@ -95,6 +95,12 @@ import { PelvicOrgansView } from './pelvicOrgansView';
 import { headPassage } from '../actor/birthCanal';
 import skeletonPelvis from '../data/pelvis/skeleton.json';
 import skeletonTorso from '../data/torso/skeleton.json';
+import v2Pelvis from '../data/pelvis/v2.json';
+import v2Torso from '../data/torso/v2.json';
+import { AbdomenView } from './abdomenView';
+import { wombRoomOf } from './wombRoom';
+import { STOMACH, RECTUM } from '../actor/abdominalOrgans';
+import { drawnFill, gutNeeds, hoursToBladderUrge, restingGut, urineMlH, type GutState } from '../actor/gut';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
@@ -935,8 +941,24 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let bonesBuilt = '';
   /** Her feet while she walks (`feetFor`, `stepFeet`). */
   let walkFeet: WalkFeet | null = null;
-  /** Her pelvic organs (v3: on her skeleton only, pelvicOrgansView.ts). */
+  /** Her pelvic organs (pelvicOrgansView.ts): on her skeleton (v3), and inside v2 once X-RAY is first raised. */
   let organs: PelvicOrgansView | null = null;
+  /**
+   * WHOSE WOMB SHE HAS (the new direction, Joshua 2026-11-09: "everything except for the birth womb is going to be copied
+   * over... we are going to use the existing womb and design we have in v2"). On her skeleton her organs grow her womb for
+   * HER WEEKS and carry her babies (true); in v2 her womb is her body's own, and her organs only make room for it.
+   */
+  let organsGrowWomb = false;
+  /** Her belly's organs (abdomenView.ts: stomach, intestines, colon, rectum, kidneys), and what her gut holds
+   * (actor/gut.ts: the room sets it by hand; the NPC brain later by time). */
+  let abdomen: AbdomenView | null = null;
+  let gut: GutState = restingGut();
+  let stomachInput: HTMLInputElement | null = null, bowelInput: HTMLInputElement | null = null, bladderInput: HTMLInputElement | null = null;
+  /** v2: her spine's bones each with her rest frame as it carries it, read at her bind (her organs hang from them), and
+   * her organs laid in her when X-RAY is first raised (they are only seen then). */
+  let v2OrganBones: Record<'pelvis' | 'lumbar' | 'upper' | 'chest', { bone: THREE.Bone; matrix: THREE.Matrix4 }> | null = null;
+  /** v2's own womb as last laid (baby.ts WombShape; null: not pregnant), for her organs to make room for */
+  let v2Womb: WombShape | null = null;
   /** The treadmill's slope under STAND and WALK (`setSlope`). */
   let slope: StageSlope = { deg: 0, heading: 'ahead' };
   /** BALANCE TEST on (`measureBalance`), and what it measured last. */
@@ -1012,6 +1034,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let xrayInput: HTMLInputElement | null = null, xrayPct = 0;
   /** v2: her skeleton inside her (skeletonInV2.ts; the plan's new direction, step 1), and the load it waits on */
   /** v2: her bare feet's field over her foot bones (footCover.ts), and how far it moved her skin most (mm) */
+  /** The rig's own bones her organs hang from, bottom to top: her pelvis, her lumbar spine below and above L3, her chest. */
+  const ORGAN_SPINE = ['Bone_001', 'Bone_004', 'Bone_003', 'Bone_002'] as const;
   const FOOT_COVER_FIELD = 'shape:foot:cover', FOOT_COVER_BELOW = 0.16;
   /** how far her foot bones may be slid into her bare foot before her skin covers the rest, metres. GAME TUNING. */
   const FOOT_SLIDE_MOST = 0.01;
@@ -1025,6 +1049,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let footCoverMm = 0;
   /** v2: lays her skeleton when first wanted (X-RAY raised, her sneakers off, a probe asks) */
   let skeletonV2Lay: (() => void) | null = null;
+  /** v2's own pelvis joint at bind, her rest frame (metres): what her carried landmark files are told as `joint` */
+  let skeletonV2PelvisJoint: number[] | null = null;
   let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0, relaySkeletonV2: ((wholeScale: (number | null)[] | null) => void) | null = null;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
   let birthSeatOn = true;
@@ -1586,8 +1612,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (birthOpenInput && Number(birthOpenInput.value) !== birthOpenPct) birthOpenInput.value = String(birthOpenPct); }
     { const f4 = fields[SARAH_LAB_FIELD.foldBack];
       // (only her skeleton has the doors yet: on another body it is not shown)
-      if (f4) { f4.textContent = foldBackLine(foldBackPct, organs ? organs.doorAngles : null); f4.style.display = organs ? '' : 'none'; }
-      if (foldBackInput) foldBackInput.style.display = organs ? '' : 'none'; }
+      if (f4) { f4.textContent = foldBackLine(foldBackPct, organs ? organs.doorAngles : null); f4.style.display = organs?.doorsShown ? '' : 'none'; }
+      if (foldBackInput) foldBackInput.style.display = organs?.doorsShown ? '' : 'none'; }
+    // her belly's organs, and what her gut holds: shown with them (on her skeleton; in v2 once X-RAY has been raised)
+    { const on = !!abdomen, all = gut.stomachFoodMl + gut.stomachWaterMl, needs = gutNeeds(gut), pc = (x: number) => `${Math.round(x * 100)}%`;
+      const lines: [string, HTMLInputElement | null, string][] = [
+        [SARAH_LAB_FIELD.stomach, stomachInput, `STOMACH ${Math.round(all)} mL · hunger ${pc(needs.hunger)}`],
+        [SARAH_LAB_FIELD.bowel, bowelInput, `BOWEL (rectum) ${Math.round(gut.rectumMl)} mL · bathroom #2 ${pc(needs.bowel)}`],
+        [SARAH_LAB_FIELD.bladder, bladderInput, `BLADDER ${Math.round(gut.bladderMl)} mL · bathroom #1 ${pc(needs.bladder)}`],
+        [SARAH_LAB_FIELD.gutLine, null, `kidneys ${Math.round(urineMlH(gut.waterMl))} mL/h · bladder urge in ${(() => { const h = hoursToBladderUrge(gut); return h === 0 ? 'now' : Number.isFinite(h) ? `${h.toFixed(1)} h` : 'never'; })()} · thirst ${pc(needs.thirst)}`],
+      ];
+      for (const [f, input, text] of lines) { const el = fields[f]; if (el) { el.textContent = text; el.style.display = on ? '' : 'none'; } if (input) input.style.display = on ? '' : 'none'; } }
     { const f5 = fields[SARAH_LAB_FIELD.xray];
       // (her skeleton's: on another body it is not shown)
       const xr = organs || skeletonV2 || skeletonV2Lay;
@@ -2667,7 +2702,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // FOLD BACK (v3, on her skeleton): her opening's doors folded back by hand, piece by piece, then on their hinges
     foldBackInput = slider(SARAH_LAB_FIELD.foldBack, foldBackPct, (v) => { foldBackPct = v; organs?.setFold(v / 100); }, 100, 'pose');
     // X-RAY (v3, on her skeleton): her bones see-through, her organs and baby solid inside them
-    xrayInput = slider(SARAH_LAB_FIELD.xray, xrayPct, (v) => { xrayPct = v; if (v > 0) skeletonV2Lay?.(); applyXray(); }, 100, 'pose');
+    xrayInput = slider(SARAH_LAB_FIELD.xray, xrayPct, (v) => { xrayPct = v; if (v > 0) { skeletonV2Lay?.(); layOrgansV2(); } applyXray(); }, 100, 'pose');
+    // HER BELLY'S ORGANS: how much her stomach, rectum and bladder hold (actor/gut.ts), and what that means to her
+    stomachInput = slider(SARAH_LAB_FIELD.stomach, Math.round(gut.stomachFoodMl + gut.stomachWaterMl), (v) => { const all = gut.stomachFoodMl + gut.stomachWaterMl, food = all > 0 ? gut.stomachFoodMl / all : 0.6; setGut({ ...gut, stomachFoodMl: v * food, stomachWaterMl: v * (1 - food) }); }, STOMACH.mostMl, 'pose');
+    bowelInput = slider(SARAH_LAB_FIELD.bowel, Math.round(gut.rectumMl), (v) => setGut({ ...gut, rectumMl: v }), RECTUM.mostMl, 'pose');
+    bladderInput = slider(SARAH_LAB_FIELD.bladder, Math.round(gut.bladderMl), (v) => setGut({ ...gut, bladderMl: Math.max(5, v) }), 600, 'pose');
+    { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.gutLine; line.style.cssText = 'font-size:12px;letter-spacing:.05em;opacity:.8'; fields[SARAH_LAB_FIELD.gutLine] = line; right.appendChild(line); }
     // HER BABY'S BIRTH: begin, pause, FAST or REALISTIC, and back to the start (birthSequence.ts)
     { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.birthLine; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; line.textContent = birthLine(null); fields[SARAH_LAB_FIELD.birthLine] = line; right.appendChild(line);
       const row = document.createElement('div'); row.dataset.tab = 'pose'; row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
@@ -5384,7 +5424,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     applyMotion();
     const b = bodyOf();
     // (v3, on her skeleton: no belly to hang a mass from, but her womb's own soft body carries her babies)
-    if (!anchors || !b || !(dt > 0)) { if (organs && dt > 0) { feltBelly.set(0, 0, 0); stepBabies(dt); } return; }
+    if (!anchors || !b || !(dt > 0)) { if (organs && organsGrowWomb && dt > 0) { feltBelly.set(0, 0, 0); stepBabies(dt); } return; }
     const meshQ = b.mesh.getWorldQuaternion(qMesh).invert();
     let walkUp = 0, walkSide = 0;
     if (pose === 'walk' && measure && rig) {
@@ -5455,7 +5495,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * fluid, moving, and placed.
    */
   function stepBabies(dt: number): void {
-    if (organs) { if (organs.womb) organs.wombMove(jiggle.belly.value); else jiggle.belly.value.set(0, 0, 0); }
+    if (organs && organsGrowWomb) { if (organs.womb) organs.wombMove(jiggle.belly.value); else jiggle.belly.value.set(0, 0, 0); }
     // a contraction: her womb drawn up and forward, and eased back
     if (birthNow && birthNow.contraction > 0) jiggle.belly.value.add(tmp.set(BIRTH_HEAD.lift[0], BIRTH_HEAD.lift[1], BIRTH_HEAD.lift[2]).multiplyScalar(birthNow.contraction));
     // her babies in their fluid: each lags what her body does a little, within the room it has (baby.ts `FLUID`)
@@ -5625,12 +5665,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function layBalloonWomb(): void {
     if (!vulva || !babyFrame) return;
     // (not pregnant: her own womb, a small bulb of its own -- not one grown round a baby or read off her belly's size)
-    if (!pregnant()) { if (balloonWombKey !== 'none') { balloonWombKey = 'none'; vulva.setWomb(null); } return; }
+    if (!pregnant()) { if (balloonWombKey !== 'none') { balloonWombKey = 'none'; vulva.setWomb(null); roomForV2Womb(null); } return; }
     const sk = bodyOf()?.mesh.skeleton, bone = sk ? sk.bones.indexOf(babyFrame.bone) : -1;
     // (once her baby is born her womb shrinks back with her belly: laid round her belly as it now is, not round the baby
     // it held -- 2026-11-02, Joshua saw it through her skin in a few spots as her belly settled)
     const settled = birthBellyShare < 1;
-    if (babyWomb && !settled) { balloonWombKey = 'baby'; vulva.setWomb(babyWomb, bone); return; }
+    if (babyWomb && !settled) { if (balloonWombKey !== 'baby' || v2Womb !== babyWomb) roomForV2Womb(babyWomb); balloonWombKey = 'baby'; vulva.setWomb(babyWomb, bone); return; }
     // (keyed on her belly's skin as it is drawn, not only on the sliders: 2026-11-02, Joshua -- on a fresh load her womb
     // showed through her belly and her shirt until a pose was pressed: it had been laid round her belly as it was while
     // the room was still putting her shape on, and the sliders had not moved since)
@@ -5642,7 +5682,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     balloonWombKey = key;
     // (and, settling, held further inside her than her skin, as a womb shrinking back is: not right under her belly)
     if (settled) for (let i = 0; i < skin.length; i += 3) skin[i + 2] -= BIRTH_WOMB_IN * (1 - birthBellyShare) / BIRTH_SHRINK;
-    try { vulva.setWomb(wombFromSkin(skin, weekForBump(onChart(bump * birthBellyShare), babyCount)), bone); } catch (error) { console.error('[sarahlab] her womb for the balloon could not be laid', error); vulva.setWomb(null); }
+    try { const w = wombFromSkin(skin, weekForBump(onChart(bump * birthBellyShare), babyCount)); vulva.setWomb(w, bone); roomForV2Womb(w); } catch (error) { console.error('[sarahlab] her womb for the balloon could not be laid', error); vulva.setWomb(null); roomForV2Womb(null); }
+  }
+  /** v2: her organs make room for her own womb as it was just laid (sarahlab/wombRoom.ts); nothing of her womb changes. */
+  function roomForV2Womb(w: WombShape | null): void {
+    v2Womb = w;
+    if (!organs || organsGrowWomb) return;
+    try { organs.setOuterWomb(w ? wombRoomOf(w) : null); } catch (error) { console.error("[sarahlab] her organs could not make room for her womb", error); organs.setOuterWomb(null); }
   }
   function bellySkin(): Float32Array | null {
     const b = bodyOf(), f = babyFrame;
@@ -5810,7 +5856,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       babySolidOf ??= babySolid(babyAll ?? babyPoints, babyCurl);
       const lies = babyLies();
       let fits: BabyFit[];
-      if (organs) {
+      if (organs && organsGrowWomb) {
         // v3, on her skeleton: her womb grown from what it holds for her week (actor/pregnantWomb.ts) is the room they
         // have -- packed into its sac as the room packs them; there is no belly skin yet to push
         const sac = organs.sac();
@@ -6297,15 +6343,44 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * with its own see-through copy of its material, made once and kept, its solid one put back at 0. Her belly skin, when
    * it comes, is one of her meshes and goes see-through with them.
    */
+  /** What her gut holds, as her organs are drawn from it; and set by hand (the room's sliders, probes). */
+  function gutFill() { return drawnFill(gut); }
+  function setGut(next: GutState): void { gut = next; abdomen?.setFill(gutFill()); organs?.setBladder(gut.bladderMl); refresh(); }
+  /**
+   * v2: HER ORGANS LAID IN HER (the new direction's step 2, Joshua 2026-11-09: "Port all organs... lock... to real bone
+   * landmarks"). Her pelvic organs (bladder, cervix and canal; her womb's small self while she is not pregnant) and her
+   * belly's (stomach, intestines, colon, rectum, kidneys and ureters), laid from her skeleton's measured landmarks as they
+   * stand in v2 (src/data/pelvis/v2.json, src/data/torso/v2.json: MEASURED on the skeleton, carried into her with the bone
+   * round each point) and hung from her own bones -- anchored, not rigid (the port's rule 3). Her womb is her body's own:
+   * none is grown here, and these make room for hers (`roomForV2Womb`). Her opening's doors are laid but not drawn while
+   * v2 keeps its own opening. Built when X-RAY is first raised: they are only seen through her.
+   */
+  function layOrgansV2(): void {
+    if (organs || !v2OrganBones) return;
+    const f = v2OrganBones;
+    try {
+      organsGrowWomb = false;
+      organs = new PelvicOrgansView(v2Pelvis, v2Torso, f.pelvis.bone, f.pelvis.matrix, M);
+      organs.doorsShown = false;
+      organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100); organs.setBladder(gut.bladderMl);
+      three.add(organs.group);
+      roomForV2Womb(v2Womb);
+      abdomen = new AbdomenView(v2Pelvis, v2Torso, f, M, organs);
+      abdomen.setFill(gutFill());
+      three.add(abdomen.group);
+    } catch (error) { console.error('[sarahlab] her organs could not be laid in her', error); abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; }
+    refresh();
+  }
   function applyXray(): void {
     if (!model) return;
     const share = organs || skeletonV2 ? Math.min(1, Math.max(0, xrayPct / 100)) : 0, opacity = Math.max(0.06, 1 - 0.94 * share);
-    // (v2: her skeleton inside her drawn solid, and only while she is seen through)
+    // (v2: her skeleton and her organs inside her drawn solid, and only while she is seen through)
     if (skeletonV2) skeletonV2.visible = share > 0;
+    if (organs && !organsGrowWomb) { organs.visible = share > 0; if (abdomen) abdomen.visible = share > 0; }
     model.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh || m.name === 'skeletonInV2') return;
-      for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === babyHolder || q.name === 'pelvicOrgans') return;
+      for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q === babyHolder || q.name === 'pelvicOrgans' || q.name === 'abdomenOrgans' || q.name === 'thoraxOrgans') return;
       const u = m.userData as { xraySolid?: THREE.Material | THREE.Material[]; xrayGhost?: THREE.Material[] };
       if (share > 0) {
         u.xraySolid ??= m.material;
@@ -7075,7 +7150,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her hair goes with her body (it is in her model's tree); a request still under way is no longer wanted
     hairMeshes = []; hairRequest++;
     if (model) { three.remove(model); rig?.dispose(); release(model); model = null; }
-    organs?.dispose(); organs = null;
+    abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; v2OrganBones = null; v2Womb = null; organsGrowWomb = false;
     skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
     vulva?.dispose(); vulva = null;
@@ -7234,9 +7309,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // v3: her pelvic organs on her skeleton (the skeleton-outward plan, Phase 1), hung from her pelvis bone in her rest
         // frame as it carries it, read here at her bind
         const pelvisBone = bones[measure.joints.pelvis];
+        // v2: her spine's bones with her rest frame as each carries it, read here at her bind, for her organs to hang from
+        // (the rig's own names -- her pelvis, her lumbar spine below and above L3, her chest: src/data/torso/)
+        if (SARAH_LAB_MODELS[modelIndex].id === 'v2-body') {
+          const at = (name: string) => { const b = loadedModel.getObjectByName(name) as THREE.Bone | undefined; return b?.isBone ? { bone: b, matrix: new THREE.Matrix4().copy(b.matrixWorld).invert().multiply(loadedModel.matrixWorld) } : null; };
+          const [p0, p1, p2, p3] = ORGAN_SPINE.map(at);
+          v2OrganBones = p0 && p1 && p2 && p3 ? { pelvis: p0, lumbar: p1, upper: p2, chest: p3 } : null;
+        }
         if (SARAH_LAB_MODELS[modelIndex].id === 'skeleton' && pelvisBone) {
           // (her babies are laid in her womb, so in the frame it hangs from)
           if (babyFrame) babyFrame = { ...babyFrame, bone: pelvisBone, matrix: new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld) };
+          organsGrowWomb = true;
           organs = new PelvicOrgansView(skeletonPelvis, skeletonTorso, pelvisBone, new THREE.Matrix4().copy(pelvisBone.matrixWorld).invert().multiply(loadedModel.matrixWorld), M);
           organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100);
           three.add(organs.group);
@@ -7289,6 +7372,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (her skull at its real size, only slid in: it fits her head so, back and up a little -- the head-size renders,
               // Joshua 2026-11-09; the Head slider grows and shrinks it with her head, it rides her head bone)
               skeletonV2 = make([1, 1, 1]);
+              { const pj = jt ? nameOf(jt.pelvis) : '', k = bodyBones.get(pj); skeletonV2PelvisJoint = k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest).toArray(); }
               // HER BARE FEET OVER HER FOOT BONES (footCover.ts; Joshua 2026-11-09): a field on her shape, drawn barefoot
               try {
                 const sb = shaped.find((x) => x.mesh === body), feet = new Set<string>();
@@ -7319,6 +7403,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           });
         };
         if (xrayPct > 0 || !sneakersShown()) skeletonV2Lay?.();
+        if (xrayPct > 0) layOrgansV2();
         babySkinAt = null; babyDepthOf = null;
         // her birth area shaped (birthArea.ts): a field on her body's shape, the same at every size
         if (babyFrame) {
@@ -7584,9 +7669,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       place();
       // her pelvic organs follow her pelvis as soft bodies (v3, on her skeleton), her womb grown for HER WEEKS
       if (organs) {
-        const wk = pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
+        // (v2: her womb is her body's own -- none is grown here)
+        const wk = organsGrowWomb && pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
         organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         organs.update(dt);
+        abdomen?.update(dt);
         // (FOLD BACK's line follows the doors as they go, not only the slider)
         const fl = fields[SARAH_LAB_FIELD.foldBack], line = foldBackLine(foldBackPct, organs.doorAngles);
         if (fl && fl.textContent !== line) fl.textContent = line;
@@ -8786,8 +8873,30 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           three.add(mesh);
           return pts.length;
         },
+        // her skeleton's measured landmarks as they stand in v2 (skeletonInV2.ts carryLandmarks): the pelvis's and the torso's
+        // files carried with the bone round each point, how far each named landmark went (mm), and her skeleton's pieces;
+        // `cloud` (a list of piece names) also gives those pieces' points as laid (rest metres, every `stride`th)
+        skeletonLandmarks: (cloud?: string[], stride = 1) => {
+          if (!skeletonV2) { skeletonV2Lay?.(); return null; }
+          const sk = skeletonV2, carry = (pts: number[][]) => sk.carry(pts);
+          const pelvis = carryLandmarks(skeletonPelvis, carry, skeletonV2PelvisJoint, 'v2-body'), torso = carryLandmarks(skeletonTorso, carry, null, 'v2-body');
+          const went: Record<string, number> = {};
+          for (const [k, p] of Object.entries(skeletonPelvis.landmarks)) { const q = (pelvis.landmarks as Record<string, number[]>)[k]; went[k] = +(Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) * 1000).toFixed(1); }
+          for (const k of ['symphysisTop', 'xiphoid', 'coccyx'] as const) { const p = skeletonTorso.landmarks[k], q = torso.landmarks[k]; went[`torso.${k}`] = +(Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) * 1000).toFixed(1); }
+          const pts = cloud ? Array.from(sk.restPointsOf(new Set(cloud))).filter((_, i) => Math.floor(i / 3) % stride === 0).map((x) => +x.toFixed(5)) : null;
+          return { pelvis, torso, went, pieces: sk.pieces(), fitMoves: sk.fitMoves, cloud: pts };
+        },
         // a random pose from `seed` over her own (null: none), held to her ranges (the skeleton-in-v2 test)
         randomPose: (seed: number | null) => { randomTurns = seed === null ? null : randomPoseTurns(seed); applyMotion(); return randomTurns?.length ?? 0; },
+        // her belly's organs: `fill` sets what her gut holds (actor/gut.ts GutState, any part of it); returns it, her needs,
+        // their layout and sway, and whether any drawn point is not a number
+        belly: (fill?: Partial<GutState>) => {
+          if (fill) setGut({ ...gut, ...fill });
+          const nan = (a: Float32Array | null) => { if (!a) return null; let n = 0; for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) n++; return n; };
+          const bad: Record<string, number | null> = {};
+          if (abdomen) for (const n of ['stomach', 'intestines', 'colon', 'rectum', 'kidneyL', 'kidneyR'] as const) bad[n] = nan(abdomen.drawn(n));
+          return { gut: { ...gut }, needs: gutNeeds(gut), urineMlH: urineMlH(gut.waterMl), layout: abdomen?.laid ?? null, sway: abdomen?.sway() ?? null, nan: bad, wombRoom: organs?.wombRoom ? { top: organs.wombRoom.top, leanDeg: organs.wombRoom.leanDeg, bottom: organs.wombRoom.path[0], widest: Math.max(...organs.wombRoom.halves.map((h) => h[0])) } : null };
+        },
         // her pelvic organs (v3, on her skeleton): their layout (rest metres), how much her bladder holds, and how far each
         // soft body is from where its bone holds it now (metres); `bladder` sets how much it holds
         organs: (bladderMl?: number) => {
@@ -9144,7 +9253,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       garmentPanel?.dispose(); garmentPanel = null;
       hud?.remove();
       hud = null;
-      organs?.dispose(); organs = null;
+      abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null;
       dropBabyHolder();
       babyCopies = [];
       if (babyRoot) { release(babyRoot); babyRoot = null; }

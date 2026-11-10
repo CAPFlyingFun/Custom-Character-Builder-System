@@ -12,7 +12,7 @@
  */
 import * as THREE from 'three';
 import { BLADDER, layOrgans, organMeshes, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
-import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks } from '../actor/pregnantWomb';
+import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks, type WombRoom } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
 import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, fittedDoors, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { DoorCloth } from '../actor/doorCloth';
@@ -132,6 +132,8 @@ export class PelvicOrgansView {
   private week: number | null = null;
   private babyGrams: readonly number[] = [];
   private grown: PregnantWomb | null = null;
+  private outer: WombRoom | null = null;
+  private doorsOn = true;
   private sacOf: { womb: PregnantWomb; shape: WombShape } | null = null;
   /** The sac as her babies need it (grown round them where they stand past it), which her womb's wall makes room for. */
   private room: WombShape | null = null;
@@ -199,6 +201,22 @@ export class PelvicOrgansView {
   /** Her womb as grown for her week (null: not pregnant). */
   get womb(): PregnantWomb | null { return this.grown; }
   /**
+   * v2: HER WOMB IS HER BODY'S OWN (the new direction, Joshua 2026-11-09: "we are going to use the existing womb and
+   * design we have in v2, but lock it to the real bone"). Given the room it takes (sarahlab/wombRoom.ts; null: she is not
+   * pregnant), no womb is grown here: the small womb of these organs is not drawn while v2's stands in its place, and
+   * her belly's organs make room for v2's (`wombRoom`).
+   */
+  setOuterWomb(room: WombRoom | null): void {
+    if (room === this.outer) return;
+    this.outer = room;
+    const u = this.organs.find((o) => o.name === 'uterus'); if (u) u.mesh.visible = !room;
+  }
+  /** The room her womb takes, whichever womb she has: v2's own, or the one grown here (null: not pregnant). */
+  get wombRoom(): WombRoom | null { return this.outer ?? this.grown; }
+  /** HER OPENING'S DOORS DRAWN OR NOT (v2 keeps its own opening until the skeleton's replaces it; they still follow). */
+  set doorsShown(on: boolean) { this.doorsOn = on; this.doors.mesh.visible = on && this.group.visible; this.doors.skin.visible = on && this.group.visible; }
+  get doorsShown(): boolean { return this.doorsOn; }
+  /**
    * BIRTH OPENING (0 closed .. 1 full, actor/birthCanal.ts): her cervix thinned and opened to 10 cm and her canal opened
    * round to a head's width. Only while she is pregnant; laid again only when it moves a hundredth.
    */
@@ -235,6 +253,9 @@ export class PelvicOrgansView {
   }
   /** The layout as laid (rest metres): for probes and the readout. */
   get laid(): OrganLayout | null { return this.layout; }
+  /** One organ's soft body (world metres), for the organs that lie against it (sarahlab/abdomenView.ts); a new one each
+   * time her organs are laid again. */
+  cage(name: Name): Cage | null { return name === 'uterus' && this.outer ? null : this.organs.find((o) => o.name === name)?.cage ?? null; }
 
   private build(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
@@ -263,6 +284,7 @@ export class PelvicOrgansView {
       geometry.setIndex(new THREE.BufferAttribute(m.triangles, 1));
       const mesh = new THREE.Mesh(geometry, this.materials.get(name)!);
       mesh.name = `organ:${name}`; mesh.frustumCulled = false;
+      if (name === 'uterus' && this.outer) mesh.visible = false;
       this.group.add(mesh);
       this.organs.push({ name, cage, skin, mesh, tune: { shape: U[name].shape, keep: U[name].keep }, out: new Float32Array(m.points.length) });
     }
@@ -506,7 +528,7 @@ export class PelvicOrgansView {
     return out;
   }
 
-  set visible(on: boolean) { this.group.visible = on; this.doors.mesh.visible = on; this.doors.skin.visible = on; }
+  set visible(on: boolean) { this.group.visible = on; this.doors.mesh.visible = on && this.doorsOn; this.doors.skin.visible = on && this.doorsOn; }
 
   dispose(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }

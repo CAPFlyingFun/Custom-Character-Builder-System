@@ -129,6 +129,14 @@ export interface PregnantWomb {
   readonly fundalHeight: number;
 }
 
+/**
+ * THE ROOM A WOMB TAKES (what the organs round it are kept out of): its body's slices up its long axis -- each one's
+ * middle, its half-sizes [across, front to back], square to an axis leaning `leanDeg` forward of upright -- and the
+ * height of its top. A womb grown here is one; v2's own womb is given as one (sarahlab/wombRoom.ts), so her belly's
+ * organs make room for whichever womb she has. Its body is its last WOMB_SHAPE.stations + 1 slices.
+ */
+export type WombRoom = Pick<PregnantWomb, 'path' | 'halves' | 'leanDeg' | 'top'>;
+
 /** The front of her spine at a height (rest metres): -Infinity below her promontory, where the sacrum falls away behind. */
 export function spineFrontAt(torso: TorsoLandmarks, y: number): number {
   const s = torso.spineFront;
@@ -273,7 +281,7 @@ export function pregnantLayout(laid: OrganLayout, womb: PregnantWomb, canal: Org
  * Whether a point (rest metres) is inside her grown womb's outer surface: which ring of its body it is level with (along
  * its long axis), and inside that ring's ellipse. Below its body (its cervix) is outside.
  */
-export function insideWomb(womb: PregnantWomb, x: number, y: number, z: number): boolean {
+export function insideWomb(womb: WombRoom, x: number, y: number, z: number): boolean {
   const n = womb.halves.length, body0 = womb.path.length - WOMB_SHAPE.stations - 1;
   const lean = (womb.leanDeg * Math.PI) / 180, ay = Math.cos(lean), az = Math.sin(lean), fy = -az, fz = ay;
   // which two slices it stands between: how far it is along the axis past each slice's middle (each slice is square to

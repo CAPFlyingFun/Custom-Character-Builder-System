@@ -83,6 +83,31 @@ export class SkeletonInV2 {
     for (let i = 0; i < this.owner.length; i++) if (names.has(this.owner[i])) out.push(this.rest[i * 3], this.rest[i * 3 + 1], this.rest[i * 3 + 2]);
     return Float32Array.from(out);
   }
+  /** its points in her rest frame as the skeleton's own file has them, before it was laid in her (metres) */
+  private rest0: Float32Array = new Float32Array(0);
+  /**
+   * A LANDMARK OF HER SKELETON, WHERE IT IS IN v2 (the port's rule 2: "v3's pelvic landmarks improve where v2's womb,
+   * cervix, canal and opening sit"): a point measured on the skeleton's own file (rest metres) carried as the bone round
+   * it was carried into her -- the move of its `k` nearest points of the pieces named (all, if none are), by inverse
+   * distance. A point on a bone goes exactly where that bone's surface went; one beside it (the middle of her inlet) goes
+   * with the bone round it. GAME TUNING: k.
+   */
+  carry(points: readonly (readonly number[])[], names: ReadonlySet<string> | null = null, k = 8): number[][] {
+    const R0 = this.rest0, R = this.rest, n = this.owner.length;
+    return points.map((p) => {
+      const near: [number, number][] = [];
+      for (let i = 0; i < n; i++) {
+        if (names && !names.has(this.owner[i])) continue;
+        const d = (R0[i * 3] - p[0]) ** 2 + (R0[i * 3 + 1] - p[1]) ** 2 + (R0[i * 3 + 2] - p[2]) ** 2;
+        if (near.length < k) { near.push([d, i]); near.sort((a, b) => a[0] - b[0]); } else if (d < near[k - 1][0]) { near[k - 1] = [d, i]; near.sort((a, b) => a[0] - b[0]); }
+      }
+      let wx = 0, wy = 0, wz = 0, ws = 0;
+      for (const [d, i] of near) { const w = 1 / Math.max(1e-6, Math.sqrt(d)); wx += w * (R[i * 3] - R0[i * 3]); wy += w * (R[i * 3 + 1] - R0[i * 3 + 1]); wz += w * (R[i * 3 + 2] - R0[i * 3 + 2]); ws += w; }
+      return ws > 0 ? [p[0] + wx / ws, p[1] + wy / ws, p[2] + wz / ws] : [p[0], p[1], p[2]];
+    });
+  }
+  /** The names of its pieces (the bone that carries each most), and how many points each has. */
+  pieces(): Record<string, number> { const out: Record<string, number> = {}; for (const o of this.owner) out[o] = (out[o] ?? 0) + 1; return out; }
   /** how far the fit moved each point (metres) */
   private moved: Float32Array = new Float32Array(0);
   /** each whole group's fit: how much smaller, how far slid (mm), how many points still too near */
@@ -130,9 +155,12 @@ export class SkeletonInV2 {
         for (let k = last; k >= 0; k--) if (under(bone, chain[k])) { partOf.set(bone.name, k === last ? end : segs[k]); break; }
       }
     }
+    const R0 = new Float32Array(n * 3);
+    this.rest0 = R0;
     const R = new Float32Array(n * 3), P = new Float32Array(n * 3), N = new Float32Array(n * 3), v = new THREE.Vector3(), d = new THREE.Vector3();
     for (let i = 0; i < n; i++) {
       v.fromBufferAttribute(pos, i).applyMatrix4(skeletonToRest);
+      v.toArray(R0, i * 3);
       if (nrm) d.fromBufferAttribute(nrm, i).applyMatrix3(restN);
       const part = partOf.get(this.owner[i]);
       if (part) {
@@ -342,4 +370,40 @@ export class SkeletonInV2 {
   }
 
   dispose(): void { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); (this.mesh.material as THREE.Material).dispose(); }
+}
+
+/**
+ * HER SKELETON'S MEASURED LANDMARKS, AS THEY STAND IN v2 (src/data/pelvis/, src/data/torso/: measured on the skeleton's
+ * own file): every point of a landmark file carried into her with the bone round it (`SkeletonInV2.carry`), its lengths
+ * and angles left as measured (the fit moves a bone's surface by millimetres, not its size). A height alone (her navel's,
+ * a disc's) and the front of her spine ([height, forward]) are carried as the point of her spine's front there.
+ * `joint` is v2's own joint for that bone, and `axisFromJoint` laid again from it.
+ */
+export function carryLandmarks<T>(file: T, carry: (points: number[][]) => number[][], v2Joint: readonly number[] | null, rig: string): T {
+  const src = file as unknown as Record<string, unknown>, pts: number[][] = [], slots: ((p: number[]) => void)[] = [];
+  const isP3 = (a: unknown): a is number[] => Array.isArray(a) && a.length === 3 && a.every((x) => typeof x === 'number');
+  const spine = (src.spineFront as number[][] | undefined) ?? null, mid = ((src.landmarks as Record<string, unknown> | undefined)?.symphysisTop as number[] | undefined)?.[0] ?? 0;
+  const frontAt = (y: number): number => { if (!spine?.length) return 0; let best = spine[0]; for (const s of spine) if (Math.abs(s[0] - y) < Math.abs(best[0] - y)) best = s; return best[1]; };
+  const r5 = (x: number) => +x.toFixed(5);
+  const walk = (o: unknown, key: string): unknown => {
+    if (key === 'axisFromJoint' || key === 'joint') return o;
+    if (key === 'spineFront' && Array.isArray(o)) { const out: number[][] = o.map(() => [0, 0]); (o as number[][]).forEach((s, i) => { pts.push([mid, s[0], s[1]]); slots.push((p) => { out[i] = [r5(p[1]), r5(p[2])]; }); }); return out; }
+    if (key === 'discs' && Array.isArray(o)) { const out: number[] = o.map(() => 0); (o as number[]).forEach((y, i) => { pts.push([mid, y, frontAt(y)]); slots.push((p) => { out[i] = r5(p[1]); }); }); return out; }
+    if (isP3(o)) { const out = [0, 0, 0]; pts.push(o); slots.push((p) => { out[0] = r5(p[0]); out[1] = r5(p[1]); out[2] = r5(p[2]); }); return out; }
+    if (Array.isArray(o)) return o.map((x) => walk(x, key));
+    if (o && typeof o === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (k === 'navel' && typeof v === 'number') { pts.push([mid, v, frontAt(v)]); slots.push((p) => { out[k] = r5(p[1]); }); out[k] = v; } else out[k] = walk(v, k);
+      }
+      return out;
+    }
+    return o;
+  };
+  const out = walk(src, '') as Record<string, unknown>;
+  carry(pts).forEach((p, i) => slots[i](p));
+  out.rig = rig;
+  if ('model' in out) out.model = 'models/sarah-skeleton.glb, laid in v2 (sarahlab/skeletonInV2.ts)';
+  if (v2Joint && 'joint' in out) { out.joint = v2Joint.map(r5); if (Array.isArray(out.axis)) out.axisFromJoint = (out.axis as number[][]).map((p) => [r5(p[0] - v2Joint[0]), r5(p[1] - v2Joint[1]), r5(p[2] - v2Joint[2])]); }
+  return out as unknown as T;
 }

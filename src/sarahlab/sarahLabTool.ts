@@ -236,6 +236,11 @@ export const SARAH_LAB_FIELD = Object.freeze({
   foldBack: 'sarahlab-fold-back',
   /** X-RAY (v3, on her skeleton): her bones see-through, her organs and her baby solid inside them */
   xray: 'sarahlab-xray',
+  /** her belly's organs: how much her stomach, her rectum and her bladder hold, and what that means to her (actor/gut.ts) */
+  stomach: 'sarahlab-stomach',
+  bowel: 'sarahlab-bowel',
+  bladder: 'sarahlab-bladder',
+  gutLine: 'sarahlab-gut-line',
   /** the BIRTH line: where her baby's birth is (birthSequence.ts) */
   birthLine: 'sarahlab-birth-line',
   /** the BIRTH timeline: where in it she is, to jump to any moment */
