@@ -6398,7 +6398,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * measured opening their canal begins (metres; the canal's own inset, ORGAN_PLACE.openingInset, is taken from it), their
    * size shut, whether the skeleton's ring of outer skin is drawn round them, their lining's colour, and `bone`: seated as
    * on her skeleton, under her pubic bone by her bones (actor/birthCanal.ts seatedCanal), not from her skin's opening. */
-  const v2Seat: { out: number; restScale: number; ring: boolean; lining: number; bone: boolean } = { out: 0, restScale: V2_DOORS.restScale, ring: false, lining: V2_DOORS.lining, bone: false };
+  const v2Seat: { out: number; restScale: number; ring: boolean; lining: number; bone: boolean } = { out: 0, restScale: V2_DOORS.restScale, ring: true, lining: V2_DOORS.lining, bone: false };
   function layOrgansV2(all = true): void {
     if (!v2OrganBones || (organs && (abdomen || abdomenFailed || !all))) return;
     const f = v2OrganBones;
@@ -6410,7 +6410,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const { opening: _skin, ...boneMarks } = v2Pelvis.landmarks; void _skin;
         const pelvisNow = seat.bone ? { ...v2Pelvis, landmarks: boneMarks } : seat.out === 0 ? v2Pelvis : { ...v2Pelvis, landmarks: { ...v2Pelvis.landmarks, opening: [o[0], o[1] + ((o[1] - c[1]) / l) * seat.out, o[2] + ((o[2] - c[2]) / l) * seat.out] } };
         organs = new PelvicOrgansView(pelvisNow, v2Torso, f.pelvis.bone, f.pelvis.matrix, M);
-        // (in v2 her own skin is round her doors: the test piece of outer skin is not drawn)
+        // (in v2 the skin round her doors is her own, carried down to them: drawn as a sleeve round her canal, up into her
+        // -- pelvicOrgansView.ts `skinSleeve`)
         organs.outerSkinShown = seat.ring;
         // (and her opening opens by BIRTH OPENING whether or not she is pregnant, as v2's own does)
         organs.opensFreely = true;
@@ -6539,7 +6540,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         organs!.setPassing(pts); }
     } else {
     // what of her baby is passing through her opening: her rim hugs its outline (the head, then its shoulders and body)
-    birthPath = vulva.canalPath();
+    // (her skeleton's opening in v2: her baby's way is that one canal -- down behind her pubic arch and forward under it to
+    // her doors -- measured by its length fully open; v2's own canal otherwise)
+    const seatWay = organs && !organsGrowWomb && skeletonOpening && vulva.skeletonOpening ? organs.canalPath() : null;
+    birthPath = seatWay ?? vulva.canalPath();
+    if (seatWay && organs && organs.canalOpenLength > 0) birthLen = organs.canalOpenLength;
     // (and the way it travels there: her canal's own way out at her opening)
     { const pp = birthPath?.points, k = pp ? pp.length - 1 : -1, axis = pp && k >= 3 ? pp[k].clone().sub(pp[k - 3]) : undefined;
       // (its middle: the head's own while the head passes -- until its middle is `BIRTH_HEAD.pastMouth` of its radius out
@@ -7779,7 +7784,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const wk = organsGrowWomb && pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
         organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         // (v2: her doors open as her own skin's opening does -- BIRTH OPENING, her pose's, a birth's)
-        if (!organsGrowWomb && vulva && skeletonOpening) { organs.setOpening(vulva.drawnOpen); const show = doorsSeen(); if (organs.doorsShown !== show) organs.doorsShown = show; }
+        if (!organsGrowWomb && vulva && skeletonOpening) {
+          organs.setOpening(vulva.drawnOpen); const show = doorsSeen(); if (organs.doorsShown !== show) organs.doorsShown = show;
+          // (her own skin carried down to her doors: the skin round them a sleeve round her canal, up into her)
+          organs.skinSleeve = v2Seat.ring;
+        }
         organs.update(dt);
         // (her belly's and her chest's organs only while they are seen: X-RAY)
         if (xrayPct > 0) { abdomen?.update(dt); thorax?.update(dt); }
@@ -8990,6 +8999,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           orbit.yaw = Math.atan2(m.out.x, m.out.z) + yawOff; orbit.pitch = Math.asin(Math.max(-1, Math.min(1, m.out.y))) + pitchOff; orbit.distance = distance; orbit.target.copy(m.at); turning = false; aimHeld = true;
           return { at: m.at.toArray().map((x) => +(x / M).toFixed(4)), out: m.out.toArray().map((x) => +x.toFixed(3)), yaw: +orbit.yaw.toFixed(3), pitch: +orbit.pitch.toFixed(3) };
         },
+        // her doors and the skin round them as drawn now (her pelvis's rest frame, metres), with her canal's line
+        doorsDrawn: () => (organs ? { ...organs.doorsSeen(), path: organs.laid?.vagina.path ?? null, mouth: organs.mouthNow().at.toArray().map((x) => x / M) } : null),
         // her doors' seat in v2 tried another way (`v2Seat`): her pelvic organs laid again with it
         doorsSeat: (next?: Partial<typeof v2Seat>) => {
           if (next && !organsGrowWomb && v2OrganBones) {

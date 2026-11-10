@@ -6,6 +6,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { openCanal, seatedCanal } from '../src/actor/birthCanal';
 import { BLADDER, CERVIX, ORGAN_PLACE, UTERUS, VAGINA, bladderRadii, intoEllipsoid, layOrgans, lengthOf, organMeshes, uterusHalf, type PelvisLandmarks } from '../src/actor/pelvicOrgans';
 
 const pelvis = JSON.parse(readFileSync(new URL('../src/data/pelvis/skeleton.json', import.meta.url), 'utf8')) as PelvisLandmarks;
@@ -94,6 +95,24 @@ describe("her canal from v2's own skin (the skeleton's doors in v2)", () => {
     const a = way(v2);
     expect(a[0]).toBeGreaterThan(0.5);
     expect(a[1]).toBeLessThan(0);
+  });
+
+  it('opening, comes down from her skin to its seat below her pubic bone, facing forward (her skin pushed out before a head)', () => {
+    const torso = JSON.parse(readFileSync(new URL('../src/data/torso/v2.json', import.meta.url), 'utf8')) as { landmarks: { coccyx: number[] } };
+    const bones = { ...v2, tail: torso.landmarks.coccyx } as PelvisLandmarks & Parameters<typeof openCanal>[1];
+    const laid = layOrgans(bones), shut = openCanal(laid.vagina, bones, 0), open = openCanal(laid.vagina, bones, 1), seat = seatedCanal(bones, laid.vagina.path[0][0], laid.vagina.path[laid.vagina.path.length - 1])!;
+    // (shut: at her own skin's opening, as laid)
+    shut.path[0].forEach((v, i) => expect(v).toBeCloseTo(laid.vagina.path[0][i], 6));
+    // (open: at its seat by her bones -- below her symphysis's lower edge, within 3 cm of under her skin's own opening front
+    // to back, and 5 to 8 cm below it)
+    open.path[0].forEach((v, i) => expect(v).toBeCloseTo(seat.mouth[i], 6));
+    const skin = v2.landmarks.opening!;
+    expect(seat.mouth[1]).toBeLessThan(v2.landmarks.symphysisBottom[1] - 0.05);
+    expect(Math.abs(seat.mouth[2] - skin[2])).toBeLessThan(0.03);
+    expect(skin[1] - seat.mouth[1]).toBeGreaterThan(0.05); expect(skin[1] - seat.mouth[1]).toBeLessThan(0.08);
+    // (and half open it is on its way between the two, coming down steadily)
+    const half = openCanal(laid.vagina, bones, 0.5).path[0];
+    expect(half[1]).toBeLessThan(shut.path[0][1] - 0.01); expect(half[1]).toBeGreaterThan(open.path[0][1] + 0.01);
   });
 
   it('is laid straight from her skin to its top, as long as her body gives it', () => {

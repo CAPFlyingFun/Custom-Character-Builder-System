@@ -319,10 +319,13 @@ export function canalMouth(canal: readonly P3[], reach: number): { mouth: P3; t:
 export function openCanal(laid: { readonly path: readonly P3[]; readonly width: number; readonly depth: number }, bones: CanalBones, open: number, straight = 0.03): { path: P3[]; width: number; depth: number; narrow?: number[]; narrowAcross?: number[] } {
   const o = smooth(Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0)));
   const n = CANAL_OPENING.points, top = laid.path[laid.path.length - 1], { mouth, t } = canalMouth(laid.path, straight);
-  // the way a head comes: where her canal is laid from its seat under her arch, that line itself; laid from her own skin
-  // (v2, whose opening is still where her skin has it), up from her doors the way it went, then onto her bony canal
-  const seat = seatedCanal(bones, mouth[0], top, straight), seated = !!seat && Math.hypot(seat.mouth[1] - mouth[1], seat.mouth[2] - mouth[2]) < 1e-4;
-  const way = seated ? seat!.path : headWay(mouth, t, bones, top, straight);
+  // the way a head comes: her canal's line seated under her arch (`seatedCanal`) wherever her bones give one. Laid from
+  // that seat (her skeleton) it is the line itself; laid from her own skin (v2: closed, her canal ends at her skin's own
+  // opening), it is drawn from as laid onto it as it opens -- her opening comes down from her skin to its seat below her
+  // pubic bone, as her skin there is pushed out before a head. Without her sit bones: up from her doors the way it went,
+  // then onto her bony canal.
+  const seat = seatedCanal(bones, mouth[0], top, straight), seated = !!seat;
+  const way = seat ? seat.path : headWay(mouth, t, bones, top, straight);
   const as = resample(laid.path, n);
   const path = as.map((p, i): P3 => [p[0] + (way[i][0] - p[0]) * o, p[1] + (way[i][1] - p[1]) * o, p[2] + (way[i][2] - p[2]) * o]);
   const d = CANAL_OPENING.diameterM;

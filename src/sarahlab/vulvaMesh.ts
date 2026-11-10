@@ -461,6 +461,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   let open = 0, openApplied = -1, wantOpen = 0, naturalOpen = 0, dressed = false, dressedLips = 0, bulgeAmt = 0;
   // her skeleton's opening in this one's place (setSkeletonOpening): how much of its lips' shape stays, and her skin's tone round it
   let canalTop: THREE.Vector3 | null = null;
+  let wombSeen = false;
   let skelOpening = false, skelLips = 0, skelTint: readonly [number, number, number] = [1, 1, 1], skelReach = 0.03;
   // A BIRTH drives her (birthSequence.ts): the opening and bulge at least what her baby's head makes them, and her cervix
   // dilated on its own; nothing while no birth runs
@@ -2312,6 +2313,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       tubeGeom.clearGroups();
       if (on) tubeGeom.addGroup(split, all - split, 1);
       else { tubeGeom.addGroup(0, rimTris, 2); tubeGeom.addGroup(rimTris, split - rimTris, 0); tubeGeom.addGroup(split, all - split, 1); }
+      wombMat.visible = wombSeen || !skelOpening;
       painted = false; openApplied = -1; sync();
     },
     setWomb(w: WombShape | null, bone = -1) {
@@ -2320,7 +2322,11 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       womb = w; wombBone = bone; openApplied = -1; posVersion = -1; sync();
     },
     seeWomb(through: boolean) {
+      wombSeen = through;
       wombMat.transparent = through; wombMat.opacity = through ? 0.14 : 1; wombMat.depthWrite = !through; wombMat.needsUpdate = true;
+      // (with her skeleton's opening, her womb's wall is inside her and seen only when she is seen through: her opening is
+      // below, at her doors, and her skin's own opening above them showed it as a second one -- Joshua, 2026-11-10)
+      wombMat.visible = through || !skelOpening;
     },
     get heldTo() { return heldTo; },
     setDressedLips(keep: number) {

@@ -28,6 +28,10 @@ export const ORGAN_TUNE = Object.freeze({
   vagina: { shape: 0.4, keep: 0.05, tieFrom: 0.09, tieTo: 0.05 },
   bladder: { shape: 0.25, keep: 0.1, tieFrom: 0.06, tieTo: 0.01 },
 });
+/** v2: her skin carried down to her doors (`skinSleeve`): how far up her canal past her doors' hinges the sleeve round it
+ * runs (metres: round the turn under her pubic bone and into her), and how much wider than her doors' feet it is by its
+ * end. GAME TUNING. */
+const SLEEVE = Object.freeze({ along: 0.15, wider: 0.12 });
 /** How firmly her canal is tied to where her bones hold it when it is fully open (ORGAN_TUNE.vagina's ties, closed, are
  * loose: it sways). GAME TUNING. */
 const CANAL_HELD = 0.6;
@@ -118,6 +122,10 @@ export class PelvicOrgansView {
   /** Her opening's doors (actor/birthDoors.ts): hung in her rest frame from her pelvis, how far they stand open now (0..1). */
   private readonly bones: PelvisLandmarks & CanalBones;
   private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial };
+  /** v2: the skin round her doors drawn as a sleeve round her canal, up into her (`skinSleeve`) */
+  private sleeveOn = false;
+  /** her canal's whole length when it is fully open (metres): what a birth measures its way down by */
+  private openLength = 0;
   private swing = 0;
   private drawnSwing = -1;
   /** FOLD BACK (by hand, actor/birthDoors.ts): where it is held (0..1), how far the doors are folded now, and the angles laid */
@@ -292,6 +300,10 @@ export class PelvicOrgansView {
     const canalNow = this.open > 0 && (this.grown || this.opensFreely) ? openCanal(laid.vagina, this.bones, this.open, DOORS.hingeUp) : laid.vagina;
     const layout = this.grown ? pregnantLayout(laid, this.grown, canalNow) : this.opensFreely ? { ...laid, vagina: canalNow } : laid;
     // (the canal drawn from where its doors hang up: below them the doors are its opening)
+    // (her doors hang from her canal's opening as it stands now: in v2 it comes down from her skin to its seat as it opens)
+    { const f = doorFrame(layout.vagina.path), g = this.doors.frame;
+      if (Math.hypot(f.mouth[1] - g.mouth[1], f.mouth[2] - g.mouth[2]) > 1e-6 || Math.hypot(f.t[1] - g.t[1], f.t[2] - g.t[2]) > 1e-6) { this.doors.frame = f; this.drawnSwing = -1; this.scaledTo = -1; this.pressed = null; } }
+    if (!this.openLength) this.openLength = lengthOf(openCanal(laid.vagina, this.bones, 1, DOORS.hingeUp).path);
     const canal = layout.vagina, canalLong = lengthOf(canal.path), drawn: OrganLayout = { ...layout, vagina: { ...canal, path: subPath(canal.path, DOORS.hingeUp, canalLong), narrow: subNarrow(canal.narrow, DOORS.hingeUp, canalLong, canalLong), narrowAcross: subNarrow(canal.narrowAcross, DOORS.hingeUp, canalLong, canalLong) } }, meshes = organMeshes(drawn);
     if (this.grown && this.room) makeRoom(meshes.uterus.points, this.grown, this.room);
     this.layout = layout; this.last = null;
@@ -399,6 +411,16 @@ export class PelvicOrgansView {
   get doorEnds(): { front: number; back: number } { return { ...(this.pressed?.now.ends ?? ENDS_SHUT) }; }
   /** How wide her opening stands now between its doors' lips, at its middle (metres). */
   get doorOpenM(): number { return this.openNow; }
+  /** Her canal's whole length fully open, metres (0 until her organs are laid). */
+  get canalOpenLength(): number { return this.openLength; }
+  /**
+   * v2: HER OWN SKIN CARRIED DOWN TO HER DOORS (Joshua, 2026-11-10: "stretch her own skin down to the base of the doors as
+   * she opens"). The skin round her doors -- on her skeleton a flat test piece -- is drawn as a sleeve round her canal:
+   * from her doors' feet back along it, round the turn under her pubic bone and on up into her, where her own skin
+   * closes over it. As her opening comes down from her skin to its seat, that is her skin pushed out before it.
+   */
+  set skinSleeve(on: boolean) { if (on !== this.sleeveOn) { this.sleeveOn = on; this.drawnSwing = -1; } }
+  get skinSleeve(): boolean { return this.sleeveOn; }
   /** Her opening's mouth and the way out of her along her canal as they stand now (world units) -- a probe's view of it,
    * the same on her skeleton and in v2. */
   mouthNow(): { at: THREE.Vector3; out: THREE.Vector3 } {
@@ -429,7 +451,7 @@ export class PelvicOrgansView {
    */
   canalPath(): { points: THREE.Vector3[]; down: number[]; length: number } | null {
     const l = this.layout;
-    if (!l || !this.grown) return null;
+    if (!l || !(this.grown || this.opensFreely)) return null;
     this.holder.updateMatrixWorld(true);
     const rest = [...l.vagina.path].reverse(), down = [0];
     for (let k = 1; k < rest.length; k++) down.push(down[k - 1] + Math.hypot(rest[k][0] - rest[k - 1][0], rest[k][1] - rest[k - 1][1], rest[k][2] - rest[k - 1][2]));
@@ -543,7 +565,29 @@ export class PelvicOrgansView {
     g.setIndex(new THREE.BufferAttribute(d.triangles, 1)); g.computeVertexNormals();
     // (her skin round it, its ends going with her opening's)
     const sg = this.doors.skin.geometry;
+    if (this.sleeveOn) this.toSleeve(d.skin.points);
     sg.setAttribute('position', new THREE.BufferAttribute(d.skin.points, 3)); sg.setIndex(new THREE.BufferAttribute(d.skin.triangles, 1)); sg.computeVertexNormals();
+  }
+
+  /** The skin round her doors (`skinRing`'s rows: its first her doors' feet, round her opening) drawn as a sleeve round her
+   * canal (`skinSleeve`): each row further up her canal's line, as far as `SLEEVE.along` past her doors' hinges, each
+   * point the same way round it as its foot and a little further out (`SLEEVE.wider` by its end). */
+  private toSleeve(ring: Float32Array): void {
+    const f = this.doors.frame, K = 8, C = ring.length / 3 / (K + 1);
+    // (the middle of her doors' feet, for each column's own place round it)
+    let ix = 0, ia = 0;
+    const foot = (c: number) => { const dx = ring[c * 3] - f.mouth[0], dy = ring[c * 3 + 1] - f.mouth[1], dz = ring[c * 3 + 2] - f.mouth[2]; return [dx * f.x[0] + dy * f.x[1] + dz * f.x[2], dx * f.n[0] + dy * f.n[1] + dz * f.n[2]]; };
+    for (let c = 0; c < C; c++) { const q = foot(c); ix += q[0] / C; ia += q[1] / C; }
+    const path = this.layout?.vagina.path ?? null, long = path ? lengthOf(path) : 0, end = Math.min(long * 0.85, DOORS.hingeUp + SLEEVE.along);
+    if (!path || end <= DOORS.hingeUp) return;
+    for (let k = 1; k <= K; k++) {
+      const sK = k / K, l = DOORS.hingeUp + (end - DOORS.hingeUp) * sK, wide = 1 + SLEEVE.wider * sK;
+      const p = along(path, l), q = along(path, Math.min(long, l + 0.004)), b = along(path, Math.max(0, l - 0.004)), ty = q[1] - b[1], tz = q[2] - b[2], tl = Math.hypot(ty, tz) || 1, ny = tz / tl, nz = -ty / tl;
+      for (let c = 0; c < C; c++) {
+        const g = foot(c), i = (k * C + c) * 3, a = ia + (g[1] - ia) * wide;
+        ring[i] = p[0] + ix + (g[0] - ix) * wide; ring[i + 1] = p[1] + ny * a; ring[i + 2] = p[2] + nz * a;
+      }
+    }
   }
 
   private draw(): void {
