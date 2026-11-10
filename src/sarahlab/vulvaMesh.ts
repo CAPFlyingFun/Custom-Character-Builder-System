@@ -1777,11 +1777,13 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       const goal = canalTop.clone().applyMatrix4(new THREE.Matrix4().copy(meshToRest).invert()), span = goal.distanceTo(ctr);
       const walk = (dp: THREE.Vector3, len: number) => { const c = ctr.clone(), d = new THREE.Vector3(); for (let k = 1; k < KC; k++) { d.copy(inward).lerp(dp, smooth(0.1, 0.75, k / (KC - 1))).normalize(); c.addScaledVector(d, len / (KC - 1)); } return c; };
       if (span > 0.01 * perMetre) {
-        deepC = goal.clone().sub(ctr).normalize(); lengthC = span;
-        for (let round = 0; round < 8; round++) {
+        // (its length a little over the straight way there, for its bend: GAME TUNING; only the way it turns to is sought)
+        deepC = goal.clone().sub(ctr).normalize(); lengthC = Math.min(0.14 * perMetre, Math.max(0.03 * perMetre, span * 1.12));
+        for (let round = 0; round < 10; round++) {
           const end = walk(deepC, lengthC), miss = goal.clone().sub(end);
-          deepC = deepC.clone().multiplyScalar(lengthC).add(miss).normalize();
-          lengthC = Math.min(0.14 * perMetre, Math.max(0.02 * perMetre, lengthC * (span / Math.max(1e-6, end.distanceTo(ctr)))));
+          // (turned by what it missed by, never further than a right angle from the straight way: it does not double back)
+          const next = deepC.clone().multiplyScalar(lengthC).add(miss).normalize(), straight = goal.clone().sub(ctr).normalize();
+          deepC = next.dot(straight) > 0 ? next : straight;
         }
       }
     }

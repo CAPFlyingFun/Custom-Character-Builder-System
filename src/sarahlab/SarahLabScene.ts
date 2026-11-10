@@ -7711,7 +7711,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     for (let i = 1; i < t.length; i++) if (a <= t[i][0]) { const [a0, v0] = t[i - 1], [a1, v1] = t[i]; want = v0 + ((v1 - v0) * (a - a0)) / (a1 - a0); break; }
     naturalNow = Math.max(0, Math.min(1, naturalNow + Math.max(-NATURAL_OPEN.perSecond * dt, Math.min(NATURAL_OPEN.perSecond * dt, want - naturalNow))));
     // (her skeleton's opening: her doors are shut until they are pushed, so her skin round them is not held open by her pose)
-    vulva.setNatural(vulva.skeletonOpening ? 0 : naturalNow);
+    // (but through a birth it is, as v2's own: her baby's head is at her opening before it is pushed open)
+    vulva.setNatural(vulva.skeletonOpening && birthClock === null ? 0 : naturalNow);
   }
   function advance(dt: number): void {
       seconds += dt;
@@ -8960,7 +8961,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return pts.length;
         },
         // her opening: the skeleton's doors (true) or v2's own (false), and which of OPENING_LOOKS her skin round it has
-        opening: (on?: boolean, look?: number) => { if (on !== undefined) { skeletonOpening = on; if (on) layOrgansV2(false); } if (look !== undefined) openingLook = look; applyOpening(); applyLook(); refresh(); return { skeleton: skeletonOpening, look: openingLook, looks: OPENING_LOOKS.length, drawn: vulva?.skeletonOpening ?? false, doors: organs?.doorsShown ?? false, openM: organs?.doorOpenM ?? null }; },
+        opening: (on?: boolean, look?: number) => { if (on !== undefined) { skeletonOpening = on; if (on) layOrgansV2(false); } if (look !== undefined) openingLook = look; applyOpening(); applyLook(); refresh(); return { skeleton: skeletonOpening, look: openingLook, looks: OPENING_LOOKS.length, drawn: vulva?.skeletonOpening ?? false, doors: organs?.doorsShown ?? false, openM: organs?.doorOpenM ?? null, dressed: vulva?.dressed ?? null, skinOpen: vulva?.drawnOpen ?? null, bottomsOff: bottomsOff(), canalM: vulva?.canalPath()?.length ?? null }; },
         // where her opening is in her own skin at rest (her rest frame, metres): the middle of v2's opening's line
         openingRest: () => (vulva ? vulva.openingRest().toArray().map((x) => +x.toFixed(5)) : null),
         // her skeleton's measured landmarks as they stand in v2 (skeletonInV2.ts carryLandmarks): the pelvis's and the torso's
