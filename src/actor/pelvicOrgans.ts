@@ -51,6 +51,10 @@ export const ORGAN_PLACE = Object.freeze({
   /** The canal's opening: this far below the symphysis's lower edge and this far behind it, metres. */
   introitusBelow: 0.025,
   introitusBehind: 0.02,
+  /** Where her opening is measured on her own skin (`landmarks.opening`, v2), the canal's opening stands this far up into
+   * her from it, metres: her doors' lips hang that far below the canal's opening (actor/birthDoors.ts DOORS.lip), so
+   * closed they end at her skin and do not stand out of it. GAME TUNING. */
+  openingInset: 0.012,
   /** The external os: this far down the canal from its top (the posterior fornix runs deeper behind the cervix), metres. */
   osBelowTop: 0.012,
   /** The womb tipped forward from the canal's line (anteversion; the vagina meets the womb at about 45 degrees standing:
@@ -114,7 +118,9 @@ export function layOrgans(p: PelvisLandmarks, bladderMl: number = BLADDER.defaul
   const top = P(L.symphysisTop), bottom = P(L.symphysisBottom), back = P(L.symphysisBack);
   const x = top[0];
   // the canal: from its opening up and back to its top at the midpelvis, bowed a little back (its back wall the longer)
-  const fornix = P(p.midpelvis.centre), introitus: P3 = L.opening ? [x, L.opening[1], L.opening[2]] : [x, bottom[1] - O.introitusBelow, bottom[2] - O.introitusBehind];
+  const fornix = P(p.midpelvis.centre);
+  const skinAt = L.opening ? Math.hypot(fornix[1] - L.opening[1], fornix[2] - L.opening[2]) || 1 : 1;
+  const introitus: P3 = L.opening ? [x, L.opening[1] + ((fornix[1] - L.opening[1]) / skinAt) * O.openingInset, L.opening[2] + ((fornix[2] - L.opening[2]) / skinAt) * O.openingInset] : [x, bottom[1] - O.introitusBelow, bottom[2] - O.introitusBehind];
   const mid = lerp(introitus, fornix, 0.5), run = dist(introitus, fornix);
   const backward: P3 = [0, (fornix[2] - introitus[2]) / run, -(fornix[1] - introitus[1]) / run];
   // (so its front wall and back wall lie either side of a centre line as long as their mean)

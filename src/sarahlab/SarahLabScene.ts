@@ -103,6 +103,7 @@ import { measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
 import v2Thorax from '../data/thorax/v2.json';
 import { wombRoomOf } from './wombRoom';
 import { STOMACH, RECTUM } from '../actor/abdominalOrgans';
+import { BLADDER } from '../actor/pelvicOrgans';
 import { drawnFill, gutNeeds, hoursToBladderUrge, restingGut, urineMlH, type GutState } from '../actor/gut';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
 import { assets, assetUrl } from '../assets/assets';
@@ -311,7 +312,7 @@ import { createNavelSoft, type NavelSoft } from './navelSoft';
 import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
 import {
-  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
+  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, nextModel, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
@@ -957,6 +958,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let abdomen: AbdomenView | null = null;
   /** Her lungs, heart and diaphragm (thoraxView.ts), in her rib cage as her bones give it (src/data/thorax/v2.json). */
   let thorax: ThoraxView | null = null;
+  let abdomenFailed = false, thoraxFailed = false;
   let gut: GutState = restingGut();
   let stomachInput: HTMLInputElement | null = null, bowelInput: HTMLInputElement | null = null, bladderInput: HTMLInputElement | null = null;
   /** v2: her spine's bones each with her rest frame as it carries it, read at her bind (her organs hang from them), and
@@ -2734,7 +2736,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // HER BELLY'S ORGANS: how much her stomach, rectum and bladder hold (actor/gut.ts), and what that means to her
     stomachInput = slider(SARAH_LAB_FIELD.stomach, Math.round(gut.stomachFoodMl + gut.stomachWaterMl), (v) => { const all = gut.stomachFoodMl + gut.stomachWaterMl, food = all > 0 ? gut.stomachFoodMl / all : 0.6; setGut({ ...gut, stomachFoodMl: v * food, stomachWaterMl: v * (1 - food) }); }, STOMACH.mostMl, 'pose');
     bowelInput = slider(SARAH_LAB_FIELD.bowel, Math.round(gut.rectumMl), (v) => setGut({ ...gut, rectumMl: v }), RECTUM.mostMl, 'pose');
-    bladderInput = slider(SARAH_LAB_FIELD.bladder, Math.round(gut.bladderMl), (v) => setGut({ ...gut, bladderMl: Math.max(5, v) }), 600, 'pose');
+    bladderInput = slider(SARAH_LAB_FIELD.bladder, Math.round(gut.bladderMl), (v) => setGut({ ...gut, bladderMl: Math.max(5, v) }), BLADDER.mostMl, 'pose');
     { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.gutLine; line.style.cssText = 'font-size:12px;letter-spacing:.05em;opacity:.8'; fields[SARAH_LAB_FIELD.gutLine] = line; right.appendChild(line); }
     // HER BABY'S BIRTH: begin, pause, FAST or REALISTIC, and back to the start (birthSequence.ts)
     { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.birthLine; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; line.textContent = birthLine(null); fields[SARAH_LAB_FIELD.birthLine] = line; right.appendChild(line);
@@ -2813,7 +2815,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
     buttons.outfit = btn(outfitLine(outfit), SARAH_LAB_ACTION.outfit, () => { wornFrom = null; pendingClothes = null; nextSource = null; dress(nextOutfit(wantedOutfit ?? outfit, garments)); });
     buttons.model = btn(modelLine(modelIndex), SARAH_LAB_ACTION.model, () => {
-      modelIndex = (modelIndex + 1) % SARAH_LAB_MODELS.length;
+      modelIndex = nextModel(modelIndex, new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth');
       armsDeg = levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) || pose === 'tpose' ? 90 : 0;
       armsOverride = pose === 'tpose';
       loadSarah();
@@ -5669,7 +5671,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     if (babyHolder) babyHolder.visible = on;
     ghost(on && !!babyHolder);
-    vulva?.seeWomb(on && !!babyHolder);
+    vulva?.seeWomb(xrayPct > 0 || (on && !!babyHolder));
     placeBaby();
   }
   function dropBabyHolder(): void {
@@ -6386,7 +6388,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * v2 keeps its own opening. Built when X-RAY is first raised: they are only seen through her.
    */
   function layOrgansV2(all = true): void {
-    if (!v2OrganBones || (organs && (abdomen || !all))) return;
+    if (!v2OrganBones || (organs && (abdomen || abdomenFailed || !all))) return;
     const f = v2OrganBones;
     try {
       if (!organs) {
@@ -6394,6 +6396,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         organs = new PelvicOrgansView(v2Pelvis, v2Torso, f.pelvis.bone, f.pelvis.matrix, M);
         // (in v2 her own skin is round her doors: the test piece of outer skin is never drawn)
         organs.outerSkinShown = false;
+        // (and her opening opens by BIRTH OPENING whether or not she is pregnant, as v2's own does)
+        organs.opensFreely = true;
         organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100); organs.setBladder(gut.bladderMl);
         three.add(organs.group);
         roomForV2Womb(v2Womb);
@@ -6401,13 +6405,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       }
       // (her belly's and her chest's organs only once she is seen through: X-RAY)
       if (!all) { refresh(); return; }
-      abdomen = new AbdomenView(v2Pelvis, v2Torso, f, M, organs);
+    } catch (error) { console.error('[sarahlab] her pelvic organs could not be laid in her', error); organs?.dispose(); organs = null; v2OrganBones = null; applyOpening(); refresh(); return; }
+    // (each on its own: one that cannot be built leaves the others, and is not tried again)
+    try {
+      abdomen = new AbdomenView(v2Pelvis, v2Torso, f, M, organs!);
       abdomen.setFill(gutFill());
       three.add(abdomen.group);
+    } catch (error) { console.error("[sarahlab] her belly's organs could not be laid in her", error); abdomen?.dispose(); abdomen = null; abdomenFailed = true; }
+    try {
       // (her lungs, heart and diaphragm in her rib cage, carried by her chest: built new in v2)
-      thorax = new ThoraxView(v2Thorax as unknown as ThoraxLandmarks, f.chest, M);
-      three.add(thorax.group);
-    } catch (error) { console.error('[sarahlab] her organs could not be laid in her', error); thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; }
+      if (!thorax && !thoraxFailed) { thorax = new ThoraxView(v2Thorax as unknown as ThoraxLandmarks, f.chest, M); three.add(thorax.group); }
+    } catch (error) { console.error('[sarahlab] her lungs and heart could not be laid in her', error); thorax?.dispose(); thorax = null; thoraxFailed = true; }
     refresh();
   }
   /**
@@ -7206,7 +7214,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her hair goes with her body (it is in her model's tree); a request still under way is no longer wanted
     hairMeshes = []; hairRequest++;
     if (model) { three.remove(model); rig?.dispose(); release(model); model = null; }
-    thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; v2OrganBones = null; v2Womb = null; organsGrowWomb = false;
+    thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; v2OrganBones = null; v2Womb = null; organsGrowWomb = false; abdomenFailed = false; thoraxFailed = false;
     skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
     vulva?.dispose(); vulva = null;
@@ -7732,8 +7740,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (v2: her doors open as her own skin's opening does -- BIRTH OPENING, her pose's, a birth's)
         if (!organsGrowWomb && vulva && skeletonOpening) organs.setOpening(vulva.drawnOpen);
         organs.update(dt);
-        abdomen?.update(dt);
-        if (thorax && xrayPct > 0) thorax.update(dt);
+        // (her belly's and her chest's organs only while they are seen: X-RAY)
+        if (xrayPct > 0) { abdomen?.update(dt); thorax?.update(dt); }
         // (FOLD BACK's line follows the doors as they go, not only the slider)
         const fl = fields[SARAH_LAB_FIELD.foldBack], line = foldBackLine(foldBackPct, organs.doorAngles);
         if (fl && fl.textContent !== line) fl.textContent = line;
@@ -8973,7 +8981,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (!organs) return null;
           if (bladderMl !== undefined) organs.setBladder(bladderMl);
           const w = organs.womb, baby = w ? babySize(w.week, body.babyWeight, babyCount) : null;
-          return { v2Opening: vulva ? vulva.openingRest().toArray().map((x) => +x.toFixed(4)) : null, v2Faces: vulva ? vulva.worldAxes() : null, v2WombLowest: v2Womb ? (() => { const w = v2Womb, r = sacRadius(w, 0, -1, 0); return [w.centre.x, w.centre.y - r, w.centre.z].map((x) => +x.toFixed(4)); })() : null, bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, doorFold: organs.doorFold, doorAngles: organs.doorAngles, doorOpenCm: +(organs.doorOpenM * 100).toFixed(1), mouth: organs.passFrame(null, 0).centre.toArray().map((x) => +(x / M).toFixed(4)), ends: organs.doorEnds, seen: () => organs!.doorsSeen(), womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
+          // (v2's own canal's middle as drawn, world metres -- standing, her rest frame -- cervix top to mouth: to set against
+          // her pelvis's measured axis, src/data/pelvis/v2.json `axis`)
+          const v2Canal = vulva ? (vulva.canalPath()?.points ?? []).map((q) => [+(q.x / M).toFixed(4), +(q.y / M).toFixed(4), +(q.z / M).toFixed(4)]) : null;
+          return { v2Canal, v2Opening: vulva ? vulva.openingRest().toArray().map((x) => +x.toFixed(4)) : null, v2Faces: vulva ? vulva.worldAxes() : null, v2WombLowest: v2Womb ? (() => { const w = v2Womb, r = sacRadius(w, 0, -1, 0); return [w.centre.x, w.centre.y - r, w.centre.z].map((x) => +x.toFixed(4)); })() : null, bladderMl: organs.bladder, layout: organs.laid, sway: organs.sway(), opening: organs.opening, doorSwing: organs.doorSwing, doorFold: organs.doorFold, doorAngles: organs.doorAngles, doorOpenCm: +(organs.doorOpenM * 100).toFixed(1), mouth: organs.passFrame(null, 0).centre.toArray().map((x) => +(x / M).toFixed(4)), ends: organs.doorEnds, seen: () => organs!.doorsSeen(), womb: w && { week: w.week, top: w.top, fundalHeight: w.fundalHeight, size: w.size, leanDeg: w.leanDeg, wallM: w.wallM, contents: w.contents, cervix: w.cervix },
             // her baby's head through her pelvis, plane by plane (actor/birthCanal.ts), at the size it is drawn
             passage: baby && headPassage(skeletonPelvis, skeletonTorso.landmarks.coccyx, baby.cm / 100) };
         },

@@ -102,23 +102,53 @@ export interface ThoraxLandmarks {
  * ahead of it, her breastbone, within `strip` and in the front `frontShare` of the slice's depth), parted from each other
  * by a `gap` at least this deep with no bone in it; `trim`, the share of a slice's points left out at each end of an
  * extent (a stray point is not a wall); a slice needs `least` points, and is the inside of her rib cage only while it is
- * `leastWidth` across and `leastDepth` deep inside. */
-export const THORAX_MEASURE = Object.freeze({ slice: 0.01, rib: 0.006, midline: 0.025, strip: 0.02, frontShare: 0.25, gap: 0.02, trim: 0.01, least: 8, leastWidth: 0.05, leastDepth: 0.03 });
+ * `leastWidth` across and `leastDepth` deep inside. Her breastbone is followed up from its tip slice by slice while its
+ * front steps back no more than `jump` a slice and stays `sternumAhead` in front of her spine's front in the slice
+ * below; it is at least `sternumLeast` and at most `sternumMost` long (an adult's breastbone, manubrium to xiphoid, is
+ * about 17 cm: bounds well either side of that). A slice whose front wall is not `frontAhead` in front of her spine's
+ * front is no slice of her rib cage; a wall standing more than `leak` outside the middle one of the five slices round
+ * it is a stray bone's (a collarbone, a shoulder blade) and is brought back to that. */
+export const THORAX_MEASURE = Object.freeze({ slice: 0.01, rib: 0.006, midline: 0.025, strip: 0.02, frontShare: 0.25, gap: 0.02, trim: 0.01, least: 8, leastWidth: 0.05, leastDepth: 0.03, jump: 0.02, sternumAhead: 0.03, sternumLeast: 0.08, sternumMost: 0.24, frontAhead: 0.01, leak: 0.005 });
 export type ThoraxMeasureTune = { readonly [K in keyof typeof THORAX_MEASURE]: number };
 export class ThoraxMeasureError extends Error {}
 
 const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, Number.isFinite(x) ? x : a));
+/** A line of [height, value] at a height: its lowest or highest beyond its ends; -Infinity with none. */
+function lineAt(s: readonly (readonly number[])[], y: number): number {
+  if (!s.length) return -Infinity;
+  if (y <= s[0][0]) return s[0][1];
+  for (let i = 1; i < s.length; i++) if (y <= s[i][0]) { const a = s[i - 1], b = s[i], k = (y - a[0]) / (b[0] - a[0]); return a[1] + (b[1] - a[1]) * k; }
+  return s[s.length - 1][1];
+}
+
+/**
+ * HER RIB CAGE'S SLICES MADE SOUND (what `measureThorax` does to them last; a saved set can be put through it again):
+ * a slice whose front wall is at or behind the front of her spine is dropped (above her first ribs a slice is her neck,
+ * not her chest), and a wall that stands out past the slices round it -- a point of her collarbone or her shoulder
+ * blade taken with her ribs -- is brought back in to the middle one of the five slices round it.
+ */
+export function soundSections(sections: readonly ThoraxSection[], spineFront: readonly (readonly number[])[], opts: Partial<ThoraxMeasureTune> = {}): ThoraxSection[] {
+  const M: ThoraxMeasureTune = { ...THORAX_MEASURE, ...opts }, kept = sections.filter((s) => s.front - lineAt(spineFront, s.y) >= M.frontAhead && s.front - s.back >= M.leastDepth && s.left - s.right >= M.leastWidth);
+  /** a wall (`out` +1 if further out is more, -1 if less) no further out than `leak` past the middle of those round it */
+  const wall = (k: number, of: (s: ThoraxSection) => number, out: 1 | -1): number => {
+    const round = kept.slice(Math.max(0, k - 2), k + 3).map((s) => out * of(s)).sort((a, b) => a - b), middle = round[(round.length - 1) >> 1], own = out * of(kept[k]);
+    return out * (own - middle > M.leak ? middle : own);
+  };
+  return kept.map((s, k) => ({ y: s.y, left: wall(k, (q) => q.left, 1), right: wall(k, (q) => q.right, -1), front: wall(k, (q) => q.front, 1), back: wall(k, (q) => q.back, -1) }));
+}
 
 /**
  * THE INSIDE OF HER RIB CAGE, MEASURED ON HER BONES: from the points of her ribs, her breastbone and her thoracic spine
- * (x, y, z triples, rest metres -- the bones' surfaces), slice by slice up her:
+ * (x, y, z triples, rest metres -- the bones' surfaces; her neck's bones above them, or a stray point of her collarbones
+ * or shoulder blades, may be among them), slice by slice up her:
  *  - its inner walls: the bones' extent left, right and front, and the back of her ribs beside her spine, each less a
- *    rib's thickness;
- *  - the front of her spine: the most forward point of the bone on her midline at her back (a slice at a disc, where no
- *    body is cut, takes it from the bodies either side);
- *  - her breastbone: the bone on her midline at her front, parted from her spine by the hollow of her chest -- its lowest
- *    point her xiphoid, its highest her jugular notch;
- *  - the top of her lungs: the highest slice still wide and deep enough inside to be her rib cage.
+ *    rib's thickness (`soundSections`);
+ *  - her breastbone: the bone on her midline at her front, parted from her spine by the hollow of her chest, followed up
+ *    slice by slice from its tip for as long as it runs on unbroken in front of her spine (a vertebra of her neck, cut
+ *    in two by its own hollow, is not it) -- its lowest point her xiphoid, its highest her jugular notch;
+ *  - the front of her spine: the most forward point of the bone on her midline that is not her breastbone (a slice at a
+ *    disc, where no body is cut, takes it from the bodies either side);
+ *  - the top of her lungs: the highest sound slice of her rib cage.
  * Her midline is the points' mean x.
  */
 export function measureThorax(points: ArrayLike<number>, opts: Partial<ThoraxMeasureTune> = {}): ThoraxLandmarks {
@@ -135,8 +165,11 @@ export function measureThorax(points: ArrayLike<number>, opts: Partial<ThoraxMea
   /** the value `share` of the way up a sorted list */
   const at = (v: number[], share: number) => v[Math.min(v.length - 1, Math.max(0, Math.round(share * (v.length - 1))))];
   const up = (a: number, b: number) => a - b;
-  const sections: ThoraxSection[] = [], spine: number[] = new Array(count).fill(NaN);
-  let xiphoid: P3 | null = null, top: P3 | null = null;
+  // each slice: its walls; and her midline's bone in it, back to front -- behind its widest hollow (if it has one) the
+  // `spine`, in front of it `fore` (her breastbone, or the body of a vertebra hollow behind), and of that what could be
+  // her breastbone (`chest`: its front, its lowest point and its highest)
+  const walls: ThoraxSection[] = [], spine: number[] = new Array(count).fill(NaN), fore: number[] = new Array(count).fill(NaN);
+  const chest: ({ z: number; low: P3; high: P3 } | null)[] = new Array(count).fill(null);
   for (let k = 0; k < count; k++) {
     const ids = slices[k];
     if (ids.length < M.least) continue;
@@ -148,32 +181,58 @@ export function measureThorax(points: ArrayLike<number>, opts: Partial<ThoraxMea
       if (Math.abs(x - mid) > M.midline) { beside.push(z); if (x > mid) onLeft++; else onRight++; } else middle.push(i);
     }
     xs.sort(up); zs.sort(up); beside.sort(up);
-    // her midline's bone, back to front: her spine, and past the widest hollow in it (if there is one) her breastbone
     middle.sort((a, b) => points[3 * a + 2] - points[3 * b + 2]);
-    let cut = middle.length, widest = M.gap;
+    let cut = middle.length, widest: number = M.gap;
     for (let j = 1; j < middle.length; j++) { const g = points[3 * middle[j] + 2] - points[3 * middle[j - 1] + 2]; if (g > widest) { widest = g; cut = j; } }
     if (cut > 0) spine[k] = points[3 * middle[cut - 1] + 2];
+    if (cut < middle.length) fore[k] = points[3 * middle[middle.length - 1] + 2];
     const ahead = zs[zs.length - 1] - M.frontShare * (zs[zs.length - 1] - zs[0]);
+    let low: P3 | null = null, high: P3 | null = null, most = -Infinity;
     for (let j = cut; j < middle.length; j++) {
       const i = middle[j], x = points[3 * i], y = points[3 * i + 1], z = points[3 * i + 2];
       if (Math.abs(x - mid) > M.strip || z < ahead) continue;
-      if (!xiphoid || y < xiphoid[1]) xiphoid = [mid, y, z];
-      if (!top || y > top[1]) top = [mid, y, z];
+      most = Math.max(most, z);
+      if (!low || y < low[1]) low = [mid, y, z];
+      if (!high || y > high[1]) high = [mid, y, z];
     }
-    // the inside of her rib cage here, while there are ribs on both her sides and room between them
-    if (!onLeft || !onRight) continue;
-    const s: ThoraxSection = { y: y0 + (k + 0.5) * M.slice, left: at(xs, 1 - M.trim) - M.rib, right: at(xs, M.trim) + M.rib, front: at(zs, 1 - M.trim) - M.rib, back: at(beside, M.trim) + M.rib };
-    if (s.left - s.right >= M.leastWidth && s.front - s.back >= M.leastDepth) sections.push(s);
+    if (low && high) chest[k] = { z: most, low, high };
+    // the inside of her rib cage here, while there are ribs on both her sides
+    if (onLeft && onRight) walls.push({ y: y0 + (k + 0.5) * M.slice, left: at(xs, 1 - M.trim) - M.rib, right: at(xs, M.trim) + M.rib, front: at(zs, 1 - M.trim) - M.rib, back: at(beside, M.trim) + M.rib });
   }
-  if (sections.length < 4) throw new ThoraxMeasureError(`found ${sections.length} slices of a rib cage, not enough to lay her chest in`);
-  if (!xiphoid || !top) throw new ThoraxMeasureError('no breastbone on her midline');
-  // the front of her spine: each slice the most forward of its own and its neighbours' (it bridges the discs)
+  // her breastbone: the longest run of slices one above the next in which it goes on up unbroken -- its front never
+  // stepping back more than `jump`, and well in front of her spine's front in the slice below
+  let run: [number, number] | null = null;
+  for (let k = 0; k < count; k++) {
+    if (!chest[k]) continue;
+    let j = k, behind = spine[k];
+    while (j + 1 < count && (j + 2 - k) * M.slice <= M.sternumMost) {
+      const next = chest[j + 1];
+      if (!next || next.z < chest[j]!.z - M.jump || next.z - behind < M.sternumAhead) break;
+      j++; if (Number.isFinite(spine[j])) behind = spine[j];
+    }
+    if (!run || j - k > run[1] - run[0]) run = [k, j];
+    k = j;
+  }
+  if (!run || (run[1] - run[0] + 1) * M.slice < M.sternumLeast) throw new ThoraxMeasureError('no breastbone on her midline');
+  const xiphoid = chest[run[0]]!.low, top = chest[run[1]]!.high;
+  // the front of her spine: above and below her breastbone, what stands in front of a hollow on her midline and is not
+  // well in front of her spine in the slice before it is a vertebra's body (going on from her breastbone's ends); then
+  // each slice the most forward of its own and its neighbours' (it bridges the discs)
+  for (const step of [1, -1]) {
+    let behind = NaN;
+    for (let k = step > 0 ? run[0] : run[1]; k >= 0 && k < count; k += step) {
+      if ((k < run[0] || k > run[1]) && Number.isFinite(fore[k]) && !(fore[k] - behind >= M.sternumAhead)) spine[k] = fore[k];
+      if (Number.isFinite(spine[k])) behind = spine[k];
+    }
+  }
   const spineFront: [number, number][] = [];
   for (let k = 0; k < count; k++) {
     let z = -Infinity;
     for (let j = Math.max(0, k - 1); j <= Math.min(count - 1, k + 1); j++) if (Number.isFinite(spine[j])) z = Math.max(z, spine[j]);
     if (Number.isFinite(z) && Number.isFinite(spine[k])) spineFront.push([y0 + (k + 0.5) * M.slice, z]);
   }
+  const sections = soundSections(walls, spineFront, M);
+  if (sections.length < 4) throw new ThoraxMeasureError(`found ${sections.length} slices of a rib cage, not enough to lay her chest in`);
   return { sections, spineFront, xiphoid, sternumTop: top, apex: sections[sections.length - 1].y };
 }
 
@@ -188,13 +247,7 @@ export function sectionAt(t: ThoraxLandmarks, y: number): ThoraxSection {
   return { y, left: a.left + (b.left - a.left) * k, right: a.right + (b.right - a.right) * k, front: a.front + (b.front - a.front) * k, back: a.back + (b.back - a.back) * k };
 }
 /** The front of her spine at a height (rest metres): the lowest or highest measured beyond them; -Infinity with none. */
-export function thoraxSpineAt(t: ThoraxLandmarks, y: number): number {
-  const s = t.spineFront;
-  if (!s.length) return -Infinity;
-  if (y <= s[0][0]) return s[0][1];
-  for (let i = 1; i < s.length; i++) if (y <= s[i][0]) { const a = s[i - 1], b = s[i], k = (y - a[0]) / (b[0] - a[0]); return a[1] + (b[1] - a[1]) * k; }
-  return s[s.length - 1][1];
-}
+export function thoraxSpineAt(t: ThoraxLandmarks, y: number): number { return lineAt(t.spineFront, y); }
 
 // HER RIB CAGE'S WALL AT A HEIGHT is drawn as the ellipse inside its slice's four walls, `inset` in from them: the least
 // a chest is (a real one is fuller at its corners), so what is kept inside it is inside her bones. BIOLOGICAL SHAPE.
@@ -367,19 +420,31 @@ export function layThorax(t: ThoraxLandmarks, breath = 0): ThoraxLayout {
 }
 
 /** How her lungs', heart's and diaphragm's meshes are cut: points round and rows up. GAME TUNING (a few hundred points
- * each, the same count whatever her breath, so a view rewrites their places and nothing else). */
+ * each, the same count and the same triangles whatever her breath, so a view rewrites their places and nothing else:
+ * `lungPoints`, `heartPoints`, `diaphragmPoints` into its own arrays). */
 export const THORAX_MESH = Object.freeze({ lungRing: 24, lungRows: 15, lungBase: 5, heartRows: 14, heartCols: 20, diaphragmSpokes: 32, diaphragmRings: 12 });
+/** The triangles of `rows` rings of `cols` points, each ring joined to the next (`turned`: wound the other way). */
+function ringsTriangles(rows: number, cols: number, turned = false): Uint32Array {
+  const tris = new Uint32Array(6 * (rows - 1) * cols);
+  let n = 0;
+  for (let i = 0; i + 1 < rows; i++) for (let j = 0; j < cols; j++) {
+    const a = i * cols + j, b = i * cols + ((j + 1) % cols), c = a + cols, d = b + cols;
+    if (turned) { tris[n++] = a; tris[n++] = c; tris[n++] = b; tris[n++] = b; tris[n++] = c; tris[n++] = d; } else { tris[n++] = a; tris[n++] = b; tris[n++] = c; tris[n++] = b; tris[n++] = d; tris[n++] = c; }
+  }
+  return tris;
+}
 
 /**
  * ONE OF HER LUNGS (`side` +1 her left, -1 her right): a shape swept up her rib cage. At each height its outline is
  * what her ribs leave it there -- out to her rib cage's wall less the gap, in to its flat inner face, the corner between
  * them rounded -- drawn in over its top `LUNGS.capShare` to a rounded apex. Its base is hollow: it lies on the dome of
  * the diaphragm under it. Then each point is moved sideways out of her heart (the left lung's cardiac notch), kept off
- * her spine, within her ribs at its own height, and on or above her diaphragm.
+ * her spine, within her ribs at its own height, and on or above her diaphragm. Its points, into `out` if given.
  */
-export function lungMesh(L: ThoraxLayout, side: -1 | 1): OrganMesh {
+export function lungPoints(L: ThoraxLayout, side: -1 | 1, out?: Float32Array): Float32Array {
   const t = L.thorax, lung = L.lungs[side > 0 ? 0 : 1], gap = L.gap, G = THORAX_MESH, ring = G.lungRing, rows = G.lungRows, base = G.lungBase;
-  const pts: number[] = [], tris: number[] = [], offSpine = LUNGS.spineHalf + gap;
+  const pts = out && out.length === 3 * ring * (base + rows) ? out : new Float32Array(3 * ring * (base + rows)), offSpine = LUNGS.spineHalf + gap;
+  let n = 0;
   /** its outline at height y toward (cos, sin) from its own middle there, `k` of the way out: [x, z] */
   const outline = (y: number, cos: number, sin: number, k: number): [number, number] => {
     const s = sectionAt(t, y), wall = (s.left + s.right) / 2 + side * ((s.left - s.right) / 2 - gap), face = lungFaceAt(L, side, y);
@@ -396,7 +461,7 @@ export function lungMesh(L: ThoraxLayout, side: -1 | 1): OrganMesh {
       if (onBase || y < under) y = under;
       [x, z] = withinWalls(sectionAt(t, y), gap, x, z);
     }
-    pts.push(x, y, z);
+    pts[n++] = x; pts[n++] = y; pts[n++] = z;
   };
   // where its base's edge lies, round it: on the diaphragm under its own outline (found by going round twice)
   const cosines: number[] = [], sines: number[] = [], foot: number[] = [];
@@ -413,41 +478,50 @@ export function lungMesh(L: ThoraxLayout, side: -1 | 1): OrganMesh {
     const u = i / (rows - 1), up = 1 - (1 - u) ** 1.5, over = Math.max(0, (up - (1 - LUNGS.capShare)) / LUNGS.capShare), k = Math.max(1e-3, Math.sqrt(Math.max(0, 1 - over * over)));
     for (let j = 0; j < ring; j++) { const y = foot[j] + (lung.top - gap - foot[j]) * up, [x, z] = outline(y, cosines[j], sines[j], k); put(x, y, z, i === 0); }
   }
-  // (its triangles wound to face outward, as her other organs' are: its base's rings run from its middle out)
-  for (let i = 0; i + 1 < base + rows; i++) for (let j = 0; j < ring; j++) { const a = i * ring + j, b = i * ring + ((j + 1) % ring), c = a + ring, d = b + ring; tris.push(a, c, b, b, c, d); }
-  return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris) };
+  return pts;
+}
+/** One of her lungs as a mesh (its triangles wound to face outward, as her other organs' are: its base's rings run from
+ * its middle out). */
+export function lungMesh(L: ThoraxLayout, side: -1 | 1): OrganMesh {
+  return { points: lungPoints(L, side), triangles: ringsTriangles(THORAX_MESH.lungBase + THORAX_MESH.lungRows, THORAX_MESH.lungRing, true) };
 }
 
 /** HER HEART: its ellipsoid narrowed over its apex half to a blunt teardrop; at `beat` 0 slack .. 1 the height of a
- * beat it is drawn in by `HEART.squeeze` across and less along (toward its middle). */
-export function heartMesh(L: ThoraxLayout, beat = 0): OrganMesh {
+ * beat it is drawn in by `HEART.squeeze` across and less along (toward its middle). Its points, into `out` if given. */
+export function heartPoints(L: ThoraxLayout, beat = 0, out?: Float32Array): Float32Array {
   const h = L.heart, G = THORAX_MESH, rows = G.heartRows, cols = G.heartCols, s = clamp(beat, 0, 1) * HEART.squeeze, across = 1 - s, along = 1 - s * HEART.squeezeLong;
-  const pts: number[] = [], tris: number[] = [];
+  const pts = out && out.length === 3 * (rows + 1) * cols ? out : new Float32Array(3 * (rows + 1) * cols);
+  let n = 0;
   for (let i = 0; i <= rows; i++) {
     const p = (Math.PI * i) / rows, u = -Math.cos(p), r = Math.sin(p) * (1 - HEART.taper * Math.max(0, u) ** 2) * across;
     for (let j = 0; j < cols; j++) {
       const q = (2 * Math.PI * j) / cols, l0 = h.radii[0] * u * along, l1 = h.radii[1] * r * Math.cos(q), l2 = h.radii[2] * r * Math.sin(q);
-      for (let c = 0; c < 3; c++) pts.push(h.centre[c] + h.axes[0][c] * l0 + h.axes[1][c] * l1 + h.axes[2][c] * l2);
+      for (let c = 0; c < 3; c++) pts[n++] = h.centre[c] + h.axes[0][c] * l0 + h.axes[1][c] * l1 + h.axes[2][c] * l2;
     }
   }
-  for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) { const a = i * cols + j, b = i * cols + ((j + 1) % cols), c = a + cols, d = b + cols; tris.push(a, b, c, b, d, c); }
-  return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris) };
+  return pts;
+}
+export function heartMesh(L: ThoraxLayout, beat = 0): OrganMesh {
+  return { points: heartPoints(L, beat), triangles: ringsTriangles(THORAX_MESH.heartRows + 1, THORAX_MESH.heartCols) };
 }
 
 /** HER DIAPHRAGM: a thin sheet from its middle out to its rim on her ribs (rings closer together toward the rim, where
- * it is steep). */
-export function diaphragmMesh(L: ThoraxLayout): OrganMesh {
+ * it is steep). Its points, into `out` if given. */
+export function diaphragmPoints(L: ThoraxLayout, out?: Float32Array): Float32Array {
   const t = L.thorax, d = L.diaphragm, G = THORAX_MESH, spokes = G.diaphragmSpokes, rings = G.diaphragmRings;
-  const pts: number[] = [], tris: number[] = [];
+  const pts = out && out.length === 3 * (rings + 1) * spokes ? out : new Float32Array(3 * (rings + 1) * spokes);
+  let n = 0;
   for (let i = 0; i <= rings; i++) {
     const k = Math.max(1e-3, 1 - (1 - i / rings) ** 1.4);
     for (let j = 0; j < spokes; j++) {
-      const c = Math.cos((2 * Math.PI * j) / spokes), s = Math.sin((2 * Math.PI * j) / spokes), [, out] = rimAt(t, d, c, s), x = d.centre[0] + c * out * k, z = d.centre[1] + s * out * k;
-      pts.push(x, sheet(t, d, x, z), z);
+      const c = Math.cos((2 * Math.PI * j) / spokes), s = Math.sin((2 * Math.PI * j) / spokes), [, far] = rimAt(t, d, c, s), x = d.centre[0] + c * far * k, z = d.centre[1] + s * far * k;
+      pts[n++] = x; pts[n++] = sheet(t, d, x, z); pts[n++] = z;
     }
   }
-  for (let i = 0; i < rings; i++) for (let j = 0; j < spokes; j++) { const a = i * spokes + j, b = i * spokes + ((j + 1) % spokes), c = a + spokes, e = b + spokes; tris.push(a, b, c, b, e, c); }
-  return { points: Float32Array.from(pts), triangles: Uint32Array.from(tris) };
+  return pts;
+}
+export function diaphragmMesh(L: ThoraxLayout): OrganMesh {
+  return { points: diaphragmPoints(L), triangles: ringsTriangles(THORAX_MESH.diaphragmRings + 1, THORAX_MESH.diaphragmSpokes) };
 }
 
 /** What a closed mesh holds, metres³. */

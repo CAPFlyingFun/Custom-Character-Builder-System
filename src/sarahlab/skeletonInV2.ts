@@ -374,8 +374,11 @@ export class SkeletonInV2 {
 
 /**
  * HER SKELETON'S MEASURED LANDMARKS, AS THEY STAND IN v2 (src/data/pelvis/, src/data/torso/: measured on the skeleton's
- * own file): every point of a landmark file carried into her with the bone round it (`SkeletonInV2.carry`), its lengths
- * and angles left as measured (the fit moves a bone's surface by millimetres, not its size). A height alone (her navel's,
+ * own file): every point of a landmark file carried into her with the bone round it (`SkeletonInV2.carry`). The fit under
+ * her skin moves some of them well over a centimetre (her pubic bone's lower edge 18 mm, her tailbone's tip 22 mm: v2 is
+ * slighter there than the skeleton), so the lengths that are read straight off the carried points (`cm`: the obstetric
+ * conjugate, the inlet across and front to back, between her sitting bones) are measured again from them; the rest of
+ * `cm` (between her ischial spines, her pubic arch) and the planes' angles stay the skeleton's own (`cmNote`). A height alone (her navel's,
  * a disc's) and the front of her spine ([height, forward]) are carried as the point of her spine's front there.
  * `joint` is v2's own joint for that bone, and `axisFromJoint` laid again from it.
  */
@@ -404,6 +407,22 @@ export function carryLandmarks<T>(file: T, carry: (points: number[][]) => number
   carry(pts).forEach((p, i) => slots[i](p));
   out.rig = rig;
   if ('model' in out) out.model = 'models/sarah-skeleton.glb, laid in v2 (sarahlab/skeletonInV2.ts)';
+  // (the lengths its own points give: each changed by as much as the same reading of its points changed when they were
+  // carried -- so a file carried nowhere keeps its own measured lengths exactly)
+  { const read = (o: Record<string, unknown>): Record<string, number> => {
+      const L = o.landmarks as Record<string, number[]> | undefined, ring = (o.inlet as { ring?: number[][] } | undefined)?.ring, got: Record<string, number> = {};
+      const d = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      if (L?.promontory && L.symphysisBack) got.obstetricConjugate = d(L.promontory, L.symphysisBack);
+      if (L?.tuberosityLeft && L.tuberosityRight) got.intertuberous = d(L.tuberosityLeft, L.tuberosityRight);
+      if (ring?.length) { let x0 = Infinity, x1 = -Infinity, ap = 0; for (const p of ring) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); } for (const p of ring) for (const q of ring) if (Math.abs(p[0] - q[0]) < 0.004) ap = Math.max(ap, Math.hypot(p[1] - q[1], p[2] - q[2])); got.inletTransverse = x1 - x0; if (ap > 0) got.inletAP = ap; }
+      return got;
+    };
+    const cm = out.cm as Record<string, number> | undefined;
+    if (cm) {
+      const was = read(src), now = read(out); let changed = false;
+      for (const k of Object.keys(now)) if (k in was && k in cm) { const by = Math.round((now[k] - was[k]) * 1000) / 10; if (by !== 0) { cm[k] = Math.round((cm[k] + by) * 10) / 10; changed = true; } }
+      if (changed) out.cmNote = "obstetricConjugate, inletTransverse, inletAP and intertuberous changed by as much as their points moved when carried into v2; interspinous and arcRadius are the skeleton's own (src/data/pelvis/skeleton.json)";
+    } }
   if (v2Joint && 'joint' in out) { out.joint = v2Joint.map(r5); if (Array.isArray(out.axis)) out.axisFromJoint = (out.axis as number[][]).map((p) => [r5(p[0] - v2Joint[0]), r5(p[1] - v2Joint[1]), r5(p[2] - v2Joint[2])]); }
   return out as unknown as T;
 }

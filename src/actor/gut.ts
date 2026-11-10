@@ -80,7 +80,9 @@ export function urineMlH(waterMl: number, kg: number = GUT.kg): number {
 
 /** She eats `foodMl` and drinks `waterMl` (into her stomach, up to the most it holds). */
 export function eat(s: GutState, foodMl: number, waterMl = 0): GutState {
-  const room = Math.max(0, STOMACH.mostMl - s.stomachFoodMl - s.stomachWaterMl), f = Math.min(room, Math.max(0, foodMl)), w = Math.min(room - f, Math.max(0, waterMl));
+  // (an amount that is not a number is nothing eaten)
+  const fin = (v: number) => (Number.isFinite(v) ? v : 0);
+  const room = Math.max(0, STOMACH.mostMl - s.stomachFoodMl - s.stomachWaterMl), f = Math.min(room, Math.max(0, fin(foodMl))), w = Math.min(room - f, Math.max(0, fin(waterMl)));
   return { ...s, stomachFoodMl: s.stomachFoodMl + f, stomachWaterMl: s.stomachWaterMl + w };
 }
 
@@ -97,7 +99,9 @@ export function stepGut(s: GutState, hours: number, kg: number = GUT.kg): GutSta
       intestineMl: out.intestineMl + f - i, colonMl: out.colonMl + i * GUT.toStoolShare - c,
       rectumMl: Math.min(RECTUM.mostMl, out.rectumMl + c),
       // (a drink's water is taken up as it reaches the intestine; food brings its own water too, as about half of it)
-      waterMl: out.waterMl + w + 0.5 * i - urine - GUT.insensibleMlH * h,
+      // (never shorter of water than a body can be: losing about 15% of its water is not survived -- MEASURED,
+      // https://en.wikipedia.org/wiki/Dehydration: "15-25% of the body water is invariably fatal")
+      waterMl: Math.max(-0.15 * GUT.waterShare * kg * 1000, out.waterMl + w + 0.5 * i - urine - GUT.insensibleMlH * h),
       bladderMl: Math.min(BLADDER.mostMl, out.bladderMl + urine),
     };
   }

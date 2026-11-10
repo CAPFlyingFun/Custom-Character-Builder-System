@@ -90,6 +90,20 @@ export const SARAH_LAB_MODELS = Object.freeze([
  */
 export const SARAH_LAB_DEFAULT_MODEL = SARAH_LAB_MODELS.findIndex((m) => m.id === 'v2-body');
 
+/**
+ * NOT ON THE MODEL BUTTON (Joshua, 2026-11-09, of her bare skeleton: "Remove it as an option once it is in V2"). Her
+ * skeleton now lives inside v2 (X-RAY shows it), so MODEL no longer steps to the bare one. It stays in the list: a saved
+ * look made on it still opens, and a probe (`?probe=cloth`) still steps to it, to compare v2 against.
+ */
+export const SARAH_LAB_MODELS_OFF_MENU: ReadonlySet<string> = new Set(['skeleton']);
+/** The model MODEL steps to from `index`: the next one on the menu (`all`: the next one, on it or not). */
+export function nextModel(index: number, all = false): number {
+  const n = SARAH_LAB_MODELS.length;
+  let k = (((index % n) + n) % n + 1) % n;
+  for (let tries = 0; tries < n && !all && SARAH_LAB_MODELS_OFF_MENU.has(SARAH_LAB_MODELS[k].id); tries++) k = (k + 1) % n;
+  return k;
+}
+
 /** The OPENING switch's line. */
 export function openingLine(skeleton: boolean): string {
   return skeleton ? "OPENING · SKELETON'S DOORS" : "OPENING · v2's OWN";

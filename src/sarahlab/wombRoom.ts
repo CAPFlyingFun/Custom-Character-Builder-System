@@ -13,12 +13,12 @@ import { sacRadius, type WombShape } from './baby';
 
 /**
  * How what is in its way is moved aside. v2's womb lies against her belly's skin, so nothing leaves it through her
- * front: a point in it goes out the way it already stands from the sac's middle with whatever of that points forward
- * taken off -- up for what is above its middle (her intestines and the colon across her, up under her ribs as a womb at
- * term has them), back and to her sides for the rest; one with no way of its own goes `up`. GAME TUNING: `far`, the
- * furthest anything is moved (metres).
+ * front or goes down: every point in it goes `up` (up and back: her intestines and the colon across her, up under her
+ * ribs as a womb at term has them), turned a little the way it already stands from the sac's middle to her side and to
+ * her back (`spread` of that, per metre it stands off) -- one smooth way over the whole sac, so neighbours stay
+ * neighbours. GAME TUNING: `up`, `spread`, and `far`, the furthest anything is moved (metres).
  */
-const ROOM = Object.freeze({ up: [0, 0.8, -0.6] as P3, far: 0.45 });
+const ROOM = Object.freeze({ up: [0, 0.8, -0.6] as P3, spread: 6, far: 0.45 });
 
 /**
  * v2's womb as the room it takes. Its slices (the last WOMB_SHAPE.stations + 1, bottom to top up her body) are given for
@@ -35,9 +35,8 @@ export function wombRoomOf(w: WombShape): WombRoom {
     for (let p = 0; p + 2 < points.length; p += 3) {
       const x = points[p], y = points[p + 1], z = points[p + 2];
       if (!inside(x, y, z, gap)) continue;
-      let ux = x - c.x, uy = y - c.y, uz = Math.min(0, z - c.z);
-      let l = Math.hypot(ux, uy, uz);
-      if (l < 0.01) { ux = ROOM.up[0]; uy = ROOM.up[1]; uz = ROOM.up[2]; l = 1; }
+      let ux = ROOM.up[0] + (x - c.x) * ROOM.spread, uy = ROOM.up[1], uz = ROOM.up[2] + Math.min(0, z - c.z) * ROOM.spread;
+      const l = Math.hypot(ux, uy, uz);
       ux /= l; uy /= l; uz /= l;
       // (the nearest place that way outside it: doubled until out, then halved to the wall)
       let lo = 0, hi = 0.01;

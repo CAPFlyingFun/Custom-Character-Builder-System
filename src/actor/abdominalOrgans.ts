@@ -28,10 +28,10 @@ import type { P3 } from './pelvisMeasure';
 import { insideWomb, spineFrontAt, WOMB_SHAPE, type TorsoLandmarks, type WombRoom } from './pregnantWomb';
 import type { OrganMesh, PelvisLandmarks } from './pelvicOrgans';
 
-/** The stomach: about 50 mL empty at rest; comfortably full about 1 L, up to about 1.5 L (stretched to 4 L at most).
+/** The stomach: about 75 mL empty at rest; comfortably full about 1 L, up to about 1.5 L (stretched to 4 L at most).
  * MEASURED (https://en.wikipedia.org/wiki/Stomach: "about 75 mL" empty, distending to about 1 L, up to 4 L). Its length
  * along its greater curvature about 25 cm (MEASURED, the same); flattened front to back when empty (BIOLOGICAL SHAPE). */
-export const STOMACH = Object.freeze({ emptyMl: 50, fullMl: 1000, mostMl: 1500, flatEmpty: 0.5, grams: 150 });
+export const STOMACH = Object.freeze({ emptyMl: 75, fullMl: 1000, mostMl: 1500, flatEmpty: 0.5, grams: 150 });
 /** The small intestine: its contents and wall as one mass of about 1 L at rest (GAME TUNING within MEASURED: the small
  * bowel holds 100-200 mL of gas and fluid between meals and is about 6 m of tube 2.5 cm across, about 1-1.5 L of bowel
  * and contents; https://en.wikipedia.org/wiki/Small_intestine), up to half again after a meal. About 1 kg. */

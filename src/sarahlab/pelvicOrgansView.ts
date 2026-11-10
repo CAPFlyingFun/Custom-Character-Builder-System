@@ -133,6 +133,8 @@ export class PelvicOrgansView {
   private babyGrams: readonly number[] = [];
   private grown: PregnantWomb | null = null;
   private outer: WombRoom | null = null;
+  /** v2: her opening opens by BIRTH OPENING whether or not a womb is grown here (her womb is her body's own) */
+  opensFreely = false;
   private doorsOn = true;
   private outerOn = true;
   private readonly doorSkin = new THREE.Color(DOOR_COLOURS.skin);
@@ -235,7 +237,7 @@ export class PelvicOrgansView {
     const o = Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0));
     if (Math.abs(o - this.open) < 0.01 && !(o === 0 && this.open !== 0)) return;
     this.open = o; this.room = null;
-    if (this.grown) this.build();
+    if (this.grown || this.opensFreely) this.build();
   }
   get opening(): number { return this.open; }
   /**
@@ -268,7 +270,8 @@ export class PelvicOrgansView {
     this.organs = [];
     const laid = layOrgans(this.pelvis, this.bladderMl);
     this.grown = this.week === null ? null : growWomb(laid, this.torso, this.week, this.babyGrams, this.open);
-    const layout = this.grown ? pregnantLayout(laid, this.grown, this.open > 0 ? openCanal(laid.vagina, this.pelvis, this.open, DOORS.hingeUp) : laid.vagina) : laid;
+    const canalNow = this.open > 0 && (this.grown || this.opensFreely) ? openCanal(laid.vagina, this.pelvis, this.open, DOORS.hingeUp) : laid.vagina;
+    const layout = this.grown ? pregnantLayout(laid, this.grown, canalNow) : this.opensFreely ? { ...laid, vagina: canalNow } : laid;
     // (the canal drawn from where its doors hang up: below them the doors are its opening)
     const canal = layout.vagina, drawn: OrganLayout = { ...layout, vagina: { ...canal, path: subPath(canal.path, DOORS.hingeUp, lengthOf(canal.path)) } }, meshes = organMeshes(drawn);
     if (this.grown && this.room) makeRoom(meshes.uterus.points, this.grown, this.room);
@@ -342,7 +345,7 @@ export class PelvicOrgansView {
     this.draw();
     // her opening's doors: toward where BIRTH OPENING holds them, closing as a pneumatic door does
     // (BIRTH OPENING lays them round Joshua's 10 cm circle coming down, closed to its widest: actor/birthDoors.ts BIRTH_HEAD)
-    this.swing = swingDoors(this.swing, this.grown ? this.doorPush : 0, dt);
+    this.swing = swingDoors(this.swing, this.grown || this.opensFreely ? this.doorPush : 0, dt);
     this.fold = swingDoors(this.fold, this.foldWant, dt);
     this.pressDoors(dt);
     this.drawDoors();

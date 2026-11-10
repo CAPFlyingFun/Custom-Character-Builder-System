@@ -7,7 +7,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { measureHuman } from '../src/actor/humanSkeleton';
-import { fleshlessModel, levelArmsModel, SARAH_LAB_MODELS, SARAH_SKELETON_MODEL, SARAH_V2_BODY_MODEL } from '../src/sarahlab/sarahLabTool';
+import { fleshlessModel, levelArmsModel, nextModel, SARAH_LAB_MODELS, SARAH_LAB_MODELS_OFF_MENU, SARAH_SKELETON_MODEL, SARAH_V2_BODY_MODEL } from '../src/sarahlab/sarahLabTool';
 
 async function bindOf(file: string) {
   await MeshoptDecoder.ready;
@@ -18,6 +18,14 @@ async function bindOf(file: string) {
 }
 
 describe("her skeleton, rigged with her own bones", () => {
+  it('is no longer on the MODEL button now that it lives inside v2, but still in the list (a probe steps to it)', () => {
+    const ids = SARAH_LAB_MODELS.map((m) => m.id), body = ids.indexOf('v2-body'), bare = ids.indexOf('skeleton');
+    expect(SARAH_LAB_MODELS_OFF_MENU.has('skeleton')).toBe(true);
+    // (MODEL from v2-body goes past it, round to the first; and every step from any model lands on the menu)
+    expect(nextModel(body)).not.toBe(bare);
+    for (let i = 0; i < ids.length; i++) expect(SARAH_LAB_MODELS_OFF_MENU.has(ids[nextModel(i)])).toBe(false);
+    expect(nextModel(body, true)).toBe(bare);
+  });
   it('is a model in the room, after v2-body, rigged level-armed and fleshless', () => {
     const ids = SARAH_LAB_MODELS.map((m) => m.id);
     expect(ids.indexOf('skeleton')).toBe(ids.indexOf('v2-body') + 1);
