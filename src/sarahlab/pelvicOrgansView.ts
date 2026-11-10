@@ -235,7 +235,7 @@ export class PelvicOrgansView {
   /** The test piece of outer skin round her doors drawn or not: in v2 her own skin is there. */
   set outerSkinShown(on: boolean) { this.outerOn = on; this.doors.skin.visible = on && this.doorsOn && this.group.visible; }
   /** Her doors' outer faces in this colour (v2: her own skin's tone round her opening); their lining stays its own. */
-  setDoorSkin(colour: THREE.ColorRepresentation, lining?: THREE.ColorRepresentation): void { this.doorSkin.set(colour); if (lining !== undefined) this.doorLining.set(lining); this.drawnSwing = -1; this.drawDoors(); }
+  setDoorSkin(colour: THREE.ColorRepresentation, lining?: THREE.ColorRepresentation): void { this.doorSkin.set(colour); this.doors.skinMaterial.color.copy(this.doorSkin); if (lining !== undefined) this.doorLining.set(lining); this.drawnSwing = -1; this.drawDoors(); }
   get doorsShown(): boolean { return this.doorsOn; }
   /**
    * BIRTH OPENING (0 closed .. 1 full, actor/birthCanal.ts): her cervix thinned and opened to 10 cm and her canal opened
@@ -391,6 +391,13 @@ export class PelvicOrgansView {
   get doorEnds(): { front: number; back: number } { return { ...(this.pressed?.now.ends ?? ENDS_SHUT) }; }
   /** How wide her opening stands now between its doors' lips, at its middle (metres). */
   get doorOpenM(): number { return this.openNow; }
+  /** Her opening's mouth and the way out of her along her canal as they stand now (world units) -- a probe's view of it,
+   * the same on her skeleton and in v2. */
+  mouthNow(): { at: THREE.Vector3; out: THREE.Vector3 } {
+    this.holder.updateMatrixWorld(true);
+    const f = this.doors.frame;
+    return { at: this.holder.localToWorld(new THREE.Vector3(f.mouth[0], f.mouth[1], f.mouth[2])), out: new THREE.Vector3(-f.t[0], -f.t[1], -f.t[2]).transformDirection(this.holder.matrixWorld) };
+  }
 
   /**
    * WHAT PASSES THROUGH HER OPENING NOW (a birth, Joshua 2026-11-08: "based on the whole baby's model, not just the head

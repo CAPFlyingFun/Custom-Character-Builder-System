@@ -82,3 +82,23 @@ describe('her pelvic organs on her skeleton', () => {
     }
   });
 });
+
+describe("her canal from v2's own skin (the skeleton's doors in v2)", () => {
+  const v2 = JSON.parse(readFileSync(new URL('../src/data/pelvis/v2.json', import.meta.url), 'utf8')) as PelvisLandmarks;
+  const sk = JSON.parse(readFileSync(new URL('../src/data/pelvis/skeleton.json', import.meta.url), 'utf8')) as PelvisLandmarks;
+  const way = (p: PelvisLandmarks) => { const path = layOrgans(p).vagina.path, a = path[0], b = path[4], l = Math.hypot(b[1] - a[1], b[2] - a[2]); return [(b[1] - a[1]) / l, (b[2] - a[2]) / l]; };
+
+  it('leaves her skin up and back as her skeleton\'s does, not straight back (Joshua, 2026-11-10: "It looks different on v2")', () => {
+    // (bowed out to its full length in the 5.9 cm v2 gives it, it left her skin going straight back, and her doors, which
+    // hang from its first centimetres, faced her front: 66 degrees off her skeleton's)
+    const a = way(v2), b = way(sk), deg = (Math.acos(a[0] * b[0] + a[1] * b[1]) * 180) / Math.PI;
+    expect(a[0]).toBeGreaterThan(0.5);
+    expect(deg).toBeLessThan(30);
+  });
+
+  it('is laid straight from her skin to its top, as long as her body gives it', () => {
+    const path = layOrgans(v2).vagina.path, a = path[0], b = path[path.length - 1];
+    expect(lengthOf(path)).toBeCloseTo(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), 4);
+    expect(lengthOf(path)).toBeLessThan((VAGINA.front + VAGINA.back) / 2);
+  });
+});

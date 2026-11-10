@@ -124,8 +124,11 @@ export function layOrgans(p: PelvisLandmarks, bladderMl: number = BLADDER.defaul
   const introitus: P3 = L.opening ? [x, L.opening[1] + ((fornix[1] - L.opening[1]) / skinAt) * O.openingInset, L.opening[2] + ((fornix[2] - L.opening[2]) / skinAt) * O.openingInset] : [x, bottom[1] - O.introitusBelow, bottom[2] - O.introitusBehind];
   const mid = lerp(introitus, fornix, 0.5), run = dist(introitus, fornix);
   const backward: P3 = [0, (fornix[2] - introitus[2]) / run, -(fornix[1] - introitus[1]) / run];
-  // (so its front wall and back wall lie either side of a centre line as long as their mean)
-  const want = (VAGINA.front + VAGINA.back) / 2;
+  // (so its front wall and back wall lie either side of a centre line as long as their mean. Laid from her skin's own
+  // opening it is as long as her body gives it and straight, as her skeleton's lies: v2's skin is 5.9 cm from her
+  // canal's top, and bowed out to its full length there it left her skin going straight back -- her doors, which hang
+  // from its first centimetres (actor/birthDoors.ts `doorFrame`), faced her front, 66 degrees off her skeleton's)
+  const want = L.opening ? 0 : (VAGINA.front + VAGINA.back) / 2;
   let bow = 0, vpath = bend(introitus, mid, fornix);
   for (let k = 0; k < 40 && lengthOf(vpath) < want; k++) { bow += 0.001; vpath = bend(introitus, [mid[0], mid[1] + backward[1] * bow, mid[2] + backward[2] * bow], fornix); }
   // the bladder: behind the symphysis, its base on the canal's upper front wall, under the womb; it rises as it fills,

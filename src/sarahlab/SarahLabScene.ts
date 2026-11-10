@@ -6391,18 +6391,25 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * none is grown here, and these make room for hers (`roomForV2Womb`). Her opening's doors are laid but not drawn while
    * v2 keeps its own opening. Built when X-RAY is first raised: they are only seen through her.
    */
+  /** Her doors' seat in v2 as it is tried (a probe changes it, `doorsSeat`): how far out along her canal from her skin's
+   * measured opening their canal begins (metres; the canal's own inset, ORGAN_PLACE.openingInset, is taken from it), their
+   * size shut, whether the skeleton's ring of outer skin is drawn round them, and their lining's colour. */
+  const v2Seat: { out: number; restScale: number; ring: boolean; lining: number } = { out: 0, restScale: V2_DOORS.restScale, ring: false, lining: V2_DOORS.lining };
   function layOrgansV2(all = true): void {
     if (!v2OrganBones || (organs && (abdomen || abdomenFailed || !all))) return;
     const f = v2OrganBones;
     try {
       if (!organs) {
         organsGrowWomb = false;
-        organs = new PelvicOrgansView(v2Pelvis, v2Torso, f.pelvis.bone, f.pelvis.matrix, M);
-        // (in v2 her own skin is round her doors: the test piece of outer skin is never drawn)
-        organs.outerSkinShown = false;
+        // (her doors' seat: her skin's opening as measured, or -- a probe trying another -- moved `out` along her canal)
+        const seat = v2Seat, o = v2Pelvis.landmarks.opening, c = v2Pelvis.midpelvis.centre, l = Math.hypot(o[1] - c[1], o[2] - c[2]) || 1;
+        const pelvisNow = seat.out === 0 ? v2Pelvis : { ...v2Pelvis, landmarks: { ...v2Pelvis.landmarks, opening: [o[0], o[1] + ((o[1] - c[1]) / l) * seat.out, o[2] + ((o[2] - c[2]) / l) * seat.out] } };
+        organs = new PelvicOrgansView(pelvisNow, v2Torso, f.pelvis.bone, f.pelvis.matrix, M);
+        // (in v2 her own skin is round her doors: the test piece of outer skin is not drawn)
+        organs.outerSkinShown = seat.ring;
         // (and her opening opens by BIRTH OPENING whether or not she is pregnant, as v2's own does)
         organs.opensFreely = true;
-        organs.restScale = V2_DOORS.restScale;
+        organs.restScale = seat.restScale;
         organs.setOpening(birthOpenPct / 100); organs.setFold(foldBackPct / 100); organs.setBladder(gut.bladderMl);
         three.add(organs.group);
         roomForV2Womb(v2Womb);
@@ -6443,7 +6450,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     vulva?.setCanalTop(mine ? new THREE.Vector3(v2Pelvis.midpelvis.centre[0], v2Pelvis.midpelvis.centre[1], v2Pelvis.midpelvis.centre[2]) : null);
     if (organs && !organsGrowWomb) {
       // (her skin's colour as it is seen, a screen's: so read)
-      organs.setDoorSkin(new THREE.Color().setRGB(look.skin[0] * look.tint[0], look.skin[1] * look.tint[1], look.skin[2] * look.tint[2], THREE.SRGBColorSpace), V2_DOORS.lining);
+      organs.setDoorSkin(new THREE.Color().setRGB(look.skin[0] * look.tint[0], look.skin[1] * look.tint[1], look.skin[2] * look.tint[2], THREE.SRGBColorSpace), v2Seat.lining);
       organs.visible = mine || xrayPct > 0;
       // (behind her doors only her canal: her womb and bladder only while she is seen through)
       organs.innerShown = xrayPct > 0;
@@ -8959,6 +8966,23 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           mesh.count = pts.length; mesh.name = 'skeletonMarks'; mesh.renderOrder = 999; mesh.frustumCulled = false;
           three.add(mesh);
           return pts.length;
+        },
+        // the view held on her doors' mouth from outside her along her canal (turned `yawOff`, `pitchOff` from that way,
+        // radians): the same look at her skeleton's opening and at v2's, for setting one against the other
+        doorsAim: (distance: number, yawOff = 0, pitchOff = 0) => {
+          if (!organs) return null;
+          const m = organs.mouthNow();
+          orbit.yaw = Math.atan2(m.out.x, m.out.z) + yawOff; orbit.pitch = Math.asin(Math.max(-1, Math.min(1, m.out.y))) + pitchOff; orbit.distance = distance; orbit.target.copy(m.at); turning = false; aimHeld = true;
+          return { at: m.at.toArray().map((x) => +(x / M).toFixed(4)), out: m.out.toArray().map((x) => +x.toFixed(3)), yaw: +orbit.yaw.toFixed(3), pitch: +orbit.pitch.toFixed(3) };
+        },
+        // her doors' seat in v2 tried another way (`v2Seat`): her pelvic organs laid again with it
+        doorsSeat: (next?: Partial<typeof v2Seat>) => {
+          if (next && !organsGrowWomb && v2OrganBones) {
+            Object.assign(v2Seat, next);
+            abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null;
+            layOrgansV2(xrayPct > 0); applyOpening(); applyXray(); refresh();
+          }
+          return { ...v2Seat, mouth: organs ? organs.mouthNow().at.toArray().map((x) => +(x / M).toFixed(4)) : null };
         },
         // her opening: the skeleton's doors (true) or v2's own (false), and which of OPENING_LOOKS her skin round it has
         opening: (on?: boolean, look?: number) => { if (on !== undefined) { skeletonOpening = on; if (on) layOrgansV2(false); } if (look !== undefined) openingLook = look; applyOpening(); applyLook(); refresh(); return { skeleton: skeletonOpening, look: openingLook, looks: OPENING_LOOKS.length, drawn: vulva?.skeletonOpening ?? false, doors: organs?.doorsShown ?? false, openM: organs?.doorOpenM ?? null, dressed: vulva?.dressed ?? null, skinOpen: vulva?.drawnOpen ?? null, bottomsOff: bottomsOff(), canalM: vulva?.canalPath()?.length ?? null }; },
