@@ -1013,6 +1013,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const FOOT_COVER_FIELD = 'shape:foot:cover', FOOT_COVER_BELOW = 0.16;
   /** how far her foot bones may be slid into her bare foot before her skin covers the rest, metres. GAME TUNING. */
   const FOOT_SLIDE_MOST = 0.01;
+  /**
+   * Her foot bones set into her foot (Joshua, 2026-11-09: forward "just a little bit", "shift down a little bit and angled
+   * slightly upward with the heel down"): turned heel-down about her ankle and moved forward and down. GAME TUNING, from the
+   * renders (the toes had about 2-3 cm of room ahead; the heel bone stood high, a 26 mm gap under it where a heel pad is
+   * about 15-20 mm).
+   */
+  const FOOT_SET = Object.freeze({ pitchDeg: -6, shift: [0, -0.008, 0.014] as [number, number, number] });
   let footCoverMm = 0;
   let skeletonV2: SkeletonInV2 | null = null, skeletonV2Request = 0, relaySkeletonV2: ((wholeScale: (number | null)[] | null) => void) | null = null;
   /** her lowest buttocks pressed in in a birth pose (a probe may turn it off to compare) */
@@ -7265,6 +7272,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               const whole = [skull, ...(jt ? [under(jt.ankleL), under(jt.ankleR)] : [])].filter((g) => g.length);
               const make = (wholeScale: (number | null)[] | undefined) => new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
                 chains, noFit, whole, wholeScale, wholeSlideMost: [Infinity, FOOT_SLIDE_MOST, FOOT_SLIDE_MOST],
+                set: jt ? [jt.ankleL, jt.ankleR].map((a) => ({ names: under(a), pivot: nameOf(a), pitchDeg: FOOT_SET.pitchDeg, shift: FOOT_SET.shift })) : [],
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
                 v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });

@@ -42,6 +42,13 @@ export interface LimbFit {
   readonly whole?: readonly (readonly string[])[];
   /** a set size for each whole group (1 its own), slid in but never made smaller than that; null: as small as it must be */
   readonly wholeScale?: readonly (number | null)[];
+  /**
+   * Pieces set a little differently before the fit (her foot bones: Joshua, 2026-11-09, "move it all forward just a
+   * little bit... shift down a little bit and angled slightly upward with the heel down"): turned about a joint by
+   * `pitchDeg` about her left-right axis (negative: heel down, toes up) and moved by `shift` (rest metres: x her left, y up,
+   * z forward).
+   */
+  readonly set?: readonly { readonly names: readonly string[]; readonly pivot: string; readonly pitchDeg: number; readonly shift: readonly [number, number, number] }[];
   /** how far each whole group may be slid in all, metres (none given: as far as it must) */
   readonly wholeSlideMost?: readonly number[];
 }
@@ -136,6 +143,18 @@ export class SkeletonInV2 {
       }
       v.toArray(R, i * 3);
       if (nrm) d.applyMatrix3(toBodyN).normalize().toArray(N, i * 3);
+    }
+    // (pieces set a little differently first: her foot bones)
+    if (fit?.set) for (const s0 of fit.set) {
+      const pv = fit.v2Joint(s0.pivot), names = new Set(s0.names);
+      if (!pv) continue;
+      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), (s0.pitchDeg * Math.PI) / 180), w = new THREE.Vector3();
+      for (let i = 0; i < n; i++) {
+        if (!names.has(this.owner[i])) continue;
+        w.fromArray(R, i * 3).sub(pv).applyQuaternion(q).add(pv);
+        w.x += s0.shift[0]; w.y += s0.shift[1]; w.z += s0.shift[2];
+        w.toArray(R, i * 3);
+      }
     }
     // KEPT UNDER HER SKIN (SKELETON_FIT): against her body at her bind, as shaped now, in her rest frame
     if (fit) {
