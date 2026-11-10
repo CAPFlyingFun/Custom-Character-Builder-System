@@ -934,6 +934,9 @@ export function followEnds(now: Ends, want: Ends, dt: number): Ends {
   return { front: go(now.front, want.front), back: go(now.back, want.back) };
 }
 
+/** How many rows of points `skinRing` has, from her doors' feet out (each all the way round her opening). */
+export const SKIN_RING_ROWS = 9;
+
 /**
  * Her outer skin's test piece, all the way round her opening, as ONE piece (Joshua, 2026-11-08: "can you extend the up
  * and down and keep the skin, but have an outward curve around it?", and then "The skin on top and bottom of the opening
@@ -947,7 +950,7 @@ export function followEnds(now: Ends, want: Ends, dt: number): Ends {
  * until her real skin is built.
  */
 export function skinRing(f: DoorFrame, ends: Ends = ENDS_SHUT, right?: readonly Angles[], left?: readonly Angles[], loop?: ReturnType<typeof doorLoop>): { points: Float32Array; triangles: Uint32Array } {
-  const D = DOORS, R0 = CANAL_OPENING.diameterM / 2, J = D.stations, K = 8, N = D.lengthMost / 2 + 0.025, flatT = D.hingeUp - D.thick, X = R0 + D.hingeOut + D.skin;
+  const D = DOORS, R0 = CANAL_OPENING.diameterM / 2, J = D.stations, K = SKIN_RING_ROWS - 1, N = D.lengthMost / 2 + 0.025, flatT = D.hingeUp - D.thick, X = R0 + D.hingeOut + D.skin;
   const shut = Array.from({ length: J }, () => CLOSED);
   // its inner edge: the foot of each of the doors' sections round the loop, by its hinge -- the bands' too, so it meets
   // them at their hinge all the way round and never dips into the slit; its outer edge an oval on her flat skin, each

@@ -276,6 +276,15 @@ const ON_HER_DRAPE: readonly (readonly [string, number, string, readonly string[
 /** v3: how far down her canal her baby's head is (the birth's `down`) before her opening's doors are told what passes them
  * (its body's points are read each frame from there). GAME TUNING (the head reaches the doors near 0.7). */
 const BIRTH_DOORS_FROM = 0.4;
+/**
+ * GAME TUNING (v2 with her skeleton's opening): how open she is (0..1) where her own skin starts to go down to her doors,
+ * and where all of it has. Up to `from` her doors' feet are still inside her -- they hang from 3 cm up her canal, and her
+ * canal has come down less than that -- so there is nothing below her to stretch her skin over: her doors stand in her
+ * skin's own opening, which opens for them as v2's does (laid on a tube that is still inside her, her skin was pushed
+ * about round it and tore, 15% and 30%, 2026-11-10). From there her skin goes down to her doors, and its own opening is
+ * let shut again by `holeShut`.
+ */
+const SEAT_SKIN_OPENS = Object.freeze({ from: 0.3, to: 0.55, holeShut: 0.5 });
 /** GAME TUNING (v2 with her skeleton's opening): from how far down her baby's head is (the birth's `down`: 1 its head at
  * her opening, 2 all of it out) her canal and doors are held as open as they have been, and how fast they are let go
  * once it is out of her (a second, of all the way open). */
@@ -6412,7 +6421,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * measured opening their canal begins (metres; the canal's own inset, ORGAN_PLACE.openingInset, is taken from it), their
    * size shut, whether the skeleton's ring of outer skin is drawn round them, their lining's colour, and `bone`: seated as
    * on her skeleton, under her pubic bone by her bones (actor/birthCanal.ts seatedCanal), not from her skin's opening. */
-  const v2Seat: { out: number; restScale: number; ring: boolean; lining: number; bone: boolean } = { out: 0, restScale: V2_DOORS.restScale, ring: true, lining: V2_DOORS.lining, bone: false };
+  // (`skin`: her own skin stretched down to her doors over the sleeve, actor/skinSeat.ts; `drawn`: the sleeve itself still
+  // drawn under it, in her skin's tone -- what shows wherever her own skin does not reach, behind her where the tube
+  // comes out through skin that is not the area's)
+  const v2Seat: { out: number; restScale: number; ring: boolean; lining: number; bone: boolean; skin: boolean; drawn: boolean } = { out: 0, restScale: V2_DOORS.restScale, ring: true, lining: V2_DOORS.lining, bone: false, skin: true, drawn: true };
   function layOrgansV2(all = true): void {
     if (!v2OrganBones || (organs && (abdomen || abdomenFailed || !all))) return;
     const f = v2OrganBones;
@@ -6426,7 +6438,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         organs = new PelvicOrgansView(pelvisNow, v2Torso, f.pelvis.bone, f.pelvis.matrix, M);
         // (in v2 the skin round her doors is her own, carried down to them: drawn as a sleeve round her canal, up into her
         // -- pelvicOrgansView.ts `skinSleeve`)
-        organs.outerSkinShown = seat.ring;
+        organs.outerSkinShown = seat.ring && (seat.drawn || !seat.skin);
         // (and her opening opens by BIRTH OPENING whether or not she is pregnant, as v2's own does)
         organs.opensFreely = true;
         organs.restScale = seat.restScale;
@@ -7868,6 +7880,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           organs.skinSleeve = v2Seat.ring;
         }
         organs.update(dt);
+        // (v2, her skeleton's opening: her own skin stretched down to her doors, over the sleeve round her canal as it now
+        // stands -- none of it up to SEAT_SKIN_OPENS.from open, all of it by SEAT_SKIN_OPENS.to)
+        if (vulva) {
+          const seated = !organsGrowWomb && skeletonOpening && vulva.skeletonOpening && v2Seat.ring && v2Seat.skin, sl = seated ? organs.sleeve : null;
+          const step = (a: number, b: number) => { const t = Math.min(1, Math.max(0, (organs!.opening - a) / (b - a))); return t * t * (3 - 2 * t); };
+          vulva.setSeat(sl ? { points: sl.points, columns: sl.columns, version: sl.version, doors: sl.doors, share: step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.to) } : null);
+          // (and her skin's own opening, which her doors stand in while she is barely open: let shut as her skin goes down)
+          if (seated) vulva.setSkeletonHole(1 - step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.holeShut));
+        }
         // (her belly's and her chest's organs only while they are seen: X-RAY)
         if (xrayPct > 0) { abdomen?.update(dt); thorax?.update(dt); }
         // (FOLD BACK's line follows the doors as they go, not only the slider)
@@ -9107,7 +9128,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null;
             layOrgansV2(xrayPct > 0); applyOpening(); applyXray(); refresh();
           }
-          return { ...v2Seat, mouth: organs ? organs.mouthNow().at.toArray().map((x) => +(x / M).toFixed(4)) : null };
+          return { ...v2Seat, mouth: organs ? organs.mouthNow().at.toArray().map((x) => +(x / M).toFixed(4)) : null, skinLaid: vulva ? vulva.seatLaid : null };
         },
         // her opening: the skeleton's doors (true) or v2's own (false), and which of OPENING_LOOKS her skin round it has
         opening: (on?: boolean, look?: number) => { if (on !== undefined) { skeletonOpening = on; if (on) layOrgansV2(false); } if (look !== undefined) openingLook = look; applyOpening(); applyLook(); refresh(); return { skeleton: skeletonOpening, look: openingLook, looks: OPENING_LOOKS.length, drawn: vulva?.skeletonOpening ?? false, doors: organs?.doorsShown ?? false, openM: organs?.doorOpenM ?? null, dressed: vulva?.dressed ?? null, skinOpen: vulva?.drawnOpen ?? null, bottomsOff: bottomsOff(), canalM: vulva?.canalPath()?.length ?? null }; },

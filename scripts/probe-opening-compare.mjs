@@ -44,6 +44,7 @@ try {
         const g = await hook('organs');
         report[`${model}-${p}-${o}`] = { opening: g?.opening, doorSwing: g?.doorSwing, doorOpenCm: g?.doorOpenCm, doorAngles: g?.doorAngles, aim: await hook('doorsAim', DIST, 0, 0) };
         await run(0.15); await shot(`${model}-${p}-${o}-front.png`);
+        if (model === 'v2') log(model, p, o, 'her skin laid over the seat', JSON.stringify((await hook('doorsSeat'))?.skinLaid ?? null));
         // (PICK=step: which mesh is drawn at each place of that picture, every `step` pixels -- for a colour nobody can name)
         if (process.env.PICK) {
           const step = Number(process.env.PICK) || 30, box = await page.evaluate(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return { x: r.left, y: r.top }; });
@@ -62,6 +63,14 @@ try {
           writeFileSync(path.join(SHOTS, `${model}-${p}-${o}-pick.json`), JSON.stringify(hits));
         }
         await hook('doorsAim', DIST, QUARTER, 0.25); await run(0.15); await shot(`${model}-${p}-${o}-quarter.png`);
+        // (VIEWS=name:yaw:pitch:distance,...: more looks at it, each turned from straight at her opening, radians)
+        for (const v of (process.env.VIEWS ?? '').split(',').filter(Boolean)) { const [name, yaw, pitch, dist] = v.split(':'); await hook('doorsAim', Number(dist ?? DIST), Number(yaw), Number(pitch)); await run(0.15); await shot(`${model}-${p}-${o}-${name}.png`); }
+        // (SOLO=1: her skin's own patch round her opening alone, her body hidden -- from the quarter, the front and her side)
+        if (process.env.SOLO && model === 'v2') {
+          await hook('vulvaSolo', true);
+          for (const [name, yaw, pitch, dist] of [['quarter', QUARTER, 0.25, DIST], ['front', 0, 0, DIST], ['side', Math.PI / 2, 0, DIST * 1.5], ['below', 0, -1.2, DIST * 1.3]]) { await hook('doorsAim', dist, yaw, pitch); await run(0.15); await shot(`${model}-${p}-${o}-solo-${name}.png`); }
+          await hook('vulvaSolo', false);
+        }
         // (and from her side, further off: her opening against her whole pelvis)
         if (process.env.SIDE) { await hook('doorsAim', DIST * 1.7, Math.PI / 2, 0); await run(0.15); await shot(`${model}-${p}-${o}-side.png`); }
       }

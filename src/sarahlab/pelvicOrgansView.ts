@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, narrowAt, organMeshes, subNarrow, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks, type WombRoom } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, ENDS_SHUT, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, fittedDoors, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, SKIN_RING_ROWS, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, fittedDoors, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { DoorCloth } from '../actor/doorCloth';
 import { clothCompliance, clothDamping, clothFriction, clothGravityScale, clothMaxStretch, clothRestScale, clothStandOffMm, clothSubsteps } from './sarahLabTool';
 import { NP, NT, sacRadius, type WombShape } from './baby';
@@ -124,6 +124,10 @@ export class PelvicOrgansView {
   private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial };
   /** v2: the skin round her doors drawn as a sleeve round her canal, up into her (`skinSleeve`) */
   private sleeveOn = false;
+  /** the sleeve as last drawn: its points (her rest frame, metres), how many round each of its rows (SKIN_RING_ROWS), and a count that
+   * goes up each time it is drawn again -- for her own skin to be stretched over (vulvaMesh.ts `setSeat`) */
+  private sleeveLaid: { points: Float32Array; columns: number; version: number; doors: Float32Array } | null = null;
+  private sleeveVersion = 0;
   /** her canal's whole length when it is fully open (metres): what a birth measures its way down by */
   private openLength = 0;
   private swing = 0;
@@ -421,6 +425,8 @@ export class PelvicOrgansView {
    */
   set skinSleeve(on: boolean) { if (on !== this.sleeveOn) { this.sleeveOn = on; this.drawnSwing = -1; } }
   get skinSleeve(): boolean { return this.sleeveOn; }
+  /** v2: the sleeve round her canal as it stands (null while it is not drawn as one, or her doors are not shown). */
+  get sleeve(): { points: Float32Array; columns: number; version: number; doors: Float32Array } | null { return this.sleeveOn && this.doors.mesh.visible ? this.sleeveLaid : null; }
   /** Her opening's mouth and the way out of her along her canal as they stand now (world units) -- a probe's view of it,
    * the same on her skeleton and in v2. */
   mouthNow(): { at: THREE.Vector3; out: THREE.Vector3 } {
@@ -566,6 +572,7 @@ export class PelvicOrgansView {
     // (her skin round it, its ends going with her opening's)
     const sg = this.doors.skin.geometry;
     if (this.sleeveOn) this.toSleeve(d.skin.points);
+    this.sleeveLaid = this.sleeveOn ? { points: d.skin.points, columns: d.skin.points.length / 3 / SKIN_RING_ROWS, version: ++this.sleeveVersion, doors: d.points } : null;
     sg.setAttribute('position', new THREE.BufferAttribute(d.skin.points, 3)); sg.setIndex(new THREE.BufferAttribute(d.skin.triangles, 1)); sg.computeVertexNormals();
   }
 
