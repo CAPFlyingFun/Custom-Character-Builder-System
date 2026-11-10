@@ -89,14 +89,17 @@ describe("the files written for v2", () => {
   it("the pelvis file's lengths are its own points'", () => {
     expect(dist(v2Pelvis.landmarks.promontory, v2Pelvis.landmarks.symphysisBack) * 100).toBeCloseTo(v2Pelvis.cm.obstetricConjugate, 0);
   });
-  // WHAT THE FIT DID TO HER PELVIS, PINNED: v2 is slighter between her legs than the skeleton, so the fit under her skin
-  // moved her pubic bone's lower edge and her tailbone's tip well over a centimetre; the bones her organs hang by -- her
-  // promontory, her sitting bones -- did not move. (Her opening is measured on her own skin: `landmarks.opening`.)
-  it("the fit moved her pubic bone's lower edge over a centimetre and left her promontory and her sitting bones", () => {
-    const went = (k: keyof typeof skeletonPelvis.landmarks) => dist(v2Pelvis.landmarks[k], skeletonPelvis.landmarks[k]);
-    expect(went('symphysisBottom')).toBeGreaterThan(0.01);
-    expect(went('symphysisBottom')).toBeLessThan(0.03);
-    for (const k of ['promontory', 'tuberosityLeft', 'tuberosityRight'] as const) expect(went(k)).toBeLessThan(0.001);
+  // WHAT THE FIT DID TO HER PELVIS, PINNED: lifted whole onto v2's own hip joints, 3.7 cm above the skeleton file's
+  // sockets (skeletonInV2.ts LimbFit.trunk) -- every landmark of it by the same, straight up. Left where the file has it,
+  // it hung that much low in her: her pubic bone was pressed on her skin between her legs and the fit had squeezed its
+  // lower edge 1.8 cm out of shape. (Her opening is measured on her own skin: `landmarks.opening`.)
+  it('her pelvis is lifted whole onto her own hip joints: every landmark by the same 3.7 cm, straight up, none squeezed', () => {
+    const went = (k: keyof typeof skeletonPelvis.landmarks) => [0, 1, 2].map((c) => v2Pelvis.landmarks[k][c] - skeletonPelvis.landmarks[k][c]);
+    for (const k of ['symphysisTop', 'symphysisBottom', 'symphysisBack', 'promontory', 'tuberosityLeft', 'tuberosityRight'] as const) {
+      const d = went(k);
+      expect(Math.abs(d[0])).toBeLessThan(0.001); expect(Math.abs(d[2])).toBeLessThan(0.001);
+      expect(d[1]).toBeGreaterThan(0.035); expect(d[1]).toBeLessThan(0.039);
+    }
     expect((v2Pelvis.landmarks as { opening?: number[] }).opening?.length).toBe(3);
   });
 });

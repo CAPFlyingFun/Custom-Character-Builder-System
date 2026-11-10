@@ -51,6 +51,16 @@ export interface LimbFit {
   readonly set?: readonly { readonly names: readonly string[]; readonly pivot: string; readonly pitchDeg: number; readonly shift: readonly [number, number, number] }[];
   /** how far each whole group may be slid in all, metres (none given: as far as it must) */
   readonly wholeSlideMost?: readonly number[];
+  /**
+   * HER PELVIS ON HER OWN HIP JOINTS (Joshua, 2026-11-10, with diagrams of a birth from the side: "we probably got v2
+   * wrong"). v2's legs are longer than the skeleton file's: her hip joints stand 3.7 cm above its hip sockets, and with
+   * her trunk left where the file has it her pelvis hung that much low in her -- her pubic bone level with her own
+   * opening and pressed on her skin there, her sit bones 5 cm below her skin between her legs. So her trunk's pieces
+   * (every piece no limb carries, but `skip`: her skull, fitted on its own) are lifted `raise` metres up to the rest
+   * height `rigidTo` (her pelvis and sacrum, whole), and above that less and less, evenly, to nothing at `to` (the base of
+   * her neck): her spine and ribs a little shorter, as her trunk is in v2.
+   */
+  readonly trunk?: { readonly raise: number; readonly rigidTo: number; readonly to: number; readonly skip: ReadonlySet<string> };
 }
 
 /**
@@ -168,6 +178,10 @@ export class SkeletonInV2 {
         if (!part.end) v.addScaledVector(part.axis, (part.s - 1) * v.dot(part.axis));
         v.applyQuaternion(part.q).add(part.to);
         d.applyQuaternion(part.q);
+      }
+      else if (fit?.trunk && !fit.trunk.skip.has(this.owner[i])) {
+        const T = fit.trunk, share = v.y <= T.rigidTo ? 1 : v.y >= T.to ? 0 : (T.to - v.y) / Math.max(1e-6, T.to - T.rigidTo);
+        v.y += T.raise * share;
       }
       v.toArray(R, i * 3);
       if (nrm) d.applyMatrix3(toBodyN).normalize().toArray(N, i * 3);

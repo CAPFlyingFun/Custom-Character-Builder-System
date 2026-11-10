@@ -1068,6 +1068,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   ] as const;
   /** The rig's own bones her organs hang from, bottom to top: her pelvis, her lumbar spine below and above L3, her chest. */
   const ORGAN_SPINE = ['Bone_001', 'Bone_004', 'Bone_003', 'Bone_002'] as const;
+  /** Her pelvis lifted onto v2's own hip joints, her trunk shorter above it (skeletonInV2.ts LimbFit.trunk); a probe turns
+   * it off (`?trunk=file`) to set the two against each other. */
+  const SKELETON_TRUNK_ON_HIPS = new URLSearchParams(globalThis.location?.search ?? '').get('trunk') !== 'file';
   const FOOT_COVER_FIELD = 'shape:foot:cover', FOOT_COVER_BELOW = 0.16;
   /** how far her foot bones may be slid into her bare foot before her skin covers the rest, metres. GAME TUNING. */
   const FOOT_SLIDE_MOST = 0.01;
@@ -7451,8 +7454,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (and each foot, the hybrid -- Joshua 2026-11-09, "Do a hybrid of both": its bones slid in up to a centimetre at
               // their real size, her bare foot's skin covering the rest, footCover.ts)
               const whole = [skull, ...(jt ? [under(jt.ankleL), under(jt.ankleR)] : [])].filter((g) => g.length);
+              // (her pelvis onto her own hip joints -- v2's stand above the skeleton file's sockets -- her trunk shorter by
+              // that above her sacrum, up to the base of her neck: skeletonInV2.ts LimbFit.trunk)
+              const restOf = (bones: Map<string, THREE.Bone>, name: string) => { const b = bones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; };
+              const v2RestOf = (name: string) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); };
+              let trunk: { raise: number; rigidTo: number; to: number; skip: Set<string> } | undefined;
+              if (jt && SKELETON_TRUNK_ON_HIPS) {
+                const rises = [jt.hipL, jt.hipR].map((h) => { const a = restOf(skelBones, nameOf(h)), b = v2RestOf(nameOf(h)); return a && b ? b.y - a.y : NaN; }), neck = restOf(skelBones, nameOf(jt.neck));
+                const raise = (rises[0] + rises[1]) / 2;
+                if (Number.isFinite(raise) && neck && Math.abs(raise) < 0.08) trunk = { raise, rigidTo: skeletonPelvis.landmarks.promontory[1], to: neck.y, skip: new Set(skull) };
+              }
               const make = (wholeScale: (number | null)[] | undefined) => new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
-                chains, noFit, whole, wholeScale, wholeSlideMost: [Infinity, FOOT_SLIDE_MOST, FOOT_SLIDE_MOST],
+                chains, noFit, whole, wholeScale, trunk, wholeSlideMost: [Infinity, FOOT_SLIDE_MOST, FOOT_SLIDE_MOST],
                 set: jt ? [jt.ankleL, jt.ankleR].map((a) => ({ names: under(a), pivot: nameOf(a), pitchDeg: FOOT_SET.pitchDeg, shift: FOOT_SET.shift })) : [],
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
                 v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },

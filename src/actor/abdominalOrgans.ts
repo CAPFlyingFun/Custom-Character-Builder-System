@@ -62,6 +62,12 @@ export const ABDOMEN_PLACE = Object.freeze({
    * coccyx/opening (the rectum lies in the sacral hollow; the anus this far behind her opening) */
   sigmoid: [[0.075, 0.945, -0.015], [0.045, 0.925, -0.03], [0.015, 0.915, -0.07]] as readonly (readonly [number, number, number])[],
   rectum: { s3: [0, 0.895, -0.092] as const, ampulla: [0, 0.86, -0.108] as const, bend: [0, 0.825, -0.095] as const },
+  /** THE HEIGHTS THESE PLACES WERE WRITTEN AT: her skeleton's own promontory and xiphoid, rest metres (MEASURED:
+   * src/data/pelvis/skeleton.json, src/data/torso/skeleton.json). A place's height above is carried to the body it is
+   * laid in by `heightIn`: below her promontory with her pelvis, whole; between her promontory and her xiphoid in
+   * proportion -- v2's pelvis stands 3.7 cm higher on her longer legs and her trunk is that much shorter (sarahlab/
+   * skeletonInV2.ts LimbFit.trunk), and written heights left as they were put her colon's ends below her pelvis's brim. */
+  written: { promontory: 0.93666, xiphoid: 1.18642 },
   anusBehindOpening: 0.033,
   /** where the rectum and her birth canal share a height, its line this far behind the canal's, metres: the canal's back
    * wall, the rectum's front wall and the tissue between them. BIOLOGICAL SHAPE (the rectovaginal septum is thin). */
@@ -144,7 +150,7 @@ export function layStomach(torso: TorsoLandmarks, ml: number, x0: number): Abdom
 /** The colon at `fill` (0 empty .. 1 full). */
 export function layColon(torso: TorsoLandmarks, fill: number, x0: number): AbdomenLayout['colon'] {
   const f = clamp(fill, 0, 1), k = COLON.emptyScale + (COLON.fullScale - COLON.emptyScale) * f;
-  const path = smoothLine(ABDOMEN_PLACE.colon.map(([x, y, z]) => [x0 + x, y, spineFrontAt(torso, y) + z]), 40);
+  const path = smoothLine(ABDOMEN_PLACE.colon.map(([x, y, z]) => { const h = heightIn(torso, y); return [x0 + x, h, spineFrontAt(torso, h) + z]; }), 40);
   const total = lineLength(path), C = COLON;
   // (wide at the caecum, narrowing up the ascending colon, across, and down the descending)
   const at = (t: number) => (t < 0.08 ? C.caecumR + (C.ascendingR - C.caecumR) * (t / 0.08) : t < 0.38 ? C.ascendingR + (C.transverseR - C.ascendingR) * ((t - 0.08) / 0.3) : t < 0.7 ? C.transverseR + (C.descendingR - C.transverseR) * ((t - 0.38) / 0.32) : C.descendingR);
@@ -153,11 +159,22 @@ export function layColon(torso: TorsoLandmarks, fill: number, x0: number): Abdom
   return { path, halves, fill: f };
 }
 
+/** A height written on her skeleton (ABDOMEN_PLACE.written) as it stands in this body: with her pelvis below her
+ * promontory, in proportion between her promontory and her xiphoid, with her xiphoid above it. */
+export function heightIn(torso: TorsoLandmarks, y: number): number {
+  const W = ABDOMEN_PLACE.written, p = torso.spineFront[0]?.[0] ?? W.promontory, x = torso.landmarks.xiphoid[1];
+  if (y <= W.promontory) return y + (p - W.promontory);
+  if (y >= W.xiphoid) return y + (x - W.xiphoid);
+  return p + ((y - W.promontory) / (W.xiphoid - W.promontory)) * (x - p);
+}
+
 /** The sigmoid, rectum and anal canal holding `ml`, from the colon's end down to her anus behind her opening. */
 export function layRectum(pelvis: PelvisLandmarks, colonEnd: P3, ml: number, x0: number, opening: P3, canal: readonly P3[] | null = null): AbdomenLayout['rectum'] {
   const A = ABDOMEN_PLACE, v = clamp(ml, 0, RECTUM.mostMl), R = A.rectum;
   const anus: P3 = [x0, opening[1] - A.anusBelowOpening, opening[2] - A.anusBehindOpening];
-  const pts: P3[] = [colonEnd, ...A.sigmoid.slice(1).map(([x, y, z]) => [x0 + x, y, z] as P3), [x0, R.s3[1], R.s3[2]], [x0, R.ampulla[1], R.ampulla[2]], [x0, R.bend[1], R.bend[2]], anus];
+  // (these lie in her pelvis, below her promontory: carried with it, whole -- ABDOMEN_PLACE.written)
+  const up = pelvis.landmarks.promontory[1] - A.written.promontory;
+  const pts: P3[] = [colonEnd, ...A.sigmoid.slice(1).map(([x, y, z]) => [x0 + x, y + up, z] as P3), [x0, R.s3[1] + up, R.s3[2]], [x0, R.ampulla[1] + up, R.ampulla[2]], [x0, R.bend[1] + up, R.bend[2]], anus];
   const path = smoothLine(pts, 36).map((q): [number, number, number] => [q[0], q[1], q[2]]);
   // (never in front of her birth canal: where they share a height it is `behindCanal` behind the canal's line -- her canal
   // runs up behind her pubic arch, actor/birthCanal.ts `seatedCanal`, where these places alone had it cross)
@@ -186,7 +203,6 @@ export function layRectum(pelvis: PelvisLandmarks, colonEnd: P3, ml: number, x0:
     else r = RECTUM.emptyR + (RECTUM.canalR - RECTUM.emptyR) * ((t - bend) / (1 - bend));
     return [r, r] as const;
   });
-  void pelvis;
   return { path, halves, ml: v };
 }
 
@@ -206,7 +222,7 @@ export function layKidneys(torso: TorsoLandmarks & { readonly discs?: readonly n
 /** The intestines' mass holding `ml`, not yet pushed by a womb. */
 export function layIntestines(torso: TorsoLandmarks, ml: number, x0: number): AbdomenLayout['intestines'] {
   const A = ABDOMEN_PLACE.intestines, v = clamp(ml, INTESTINES.restMl * 0.6, INTESTINES.mostMl), k = Math.cbrt(v / INTESTINES.restMl);
-  const y = A.centre[1];
+  const y = heightIn(torso, A.centre[1]);
   return { centre: [x0 + A.centre[0], y, spineFrontAt(torso, y) + A.centre[2]], radii: [A.radii[0] * k, A.radii[1] * k, A.radii[2] * k], ml: v };
 }
 
