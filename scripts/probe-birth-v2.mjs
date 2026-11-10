@@ -38,7 +38,10 @@ try {
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
   await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
-  await hook('opening', MODE !== 'v2', 1);
+  // (MODEL=skeleton: the same birth on her bare skeleton, looked at from outside her along her canal and from her side)
+  const SKEL = process.env.MODEL === 'skeleton';
+  if (SKEL) { for (let k = 0; k < 8 && !(await page.evaluate(() => document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '')).startsWith('model skeleton'); k++) { await press('sarahlab:model'); await page.waitForFunction(() => /^model /.test(document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? ''), null, { timeout: 300_000 }); await page.waitForTimeout(5000); } }
+  else await hook('opening', MODE !== 'v2', 1);
   await press('sarahlab:recline'); await run(2.5);
   if (process.env.XRAY) { await slide('sarahlab-xray', Number(process.env.XRAY)); await page.waitForTimeout(15000); await run(1); }
   await hook('birth', { t: 0, pace: 'fast', run: false }); await run(1.5);
@@ -47,6 +50,11 @@ try {
     const b = await hook('birth'), o = await hook('opening');
     report.at[t] = { line: b?.line, headPastMouthCm: b?.headPastMouthCm, headFromPathCm: b?.headFromPathCm, open: b?.open, doorsOpenCm: o?.openM != null ? +(o.openM * 100).toFixed(1) : null, doors: o?.doors, stage: b?.now?.stage ?? null, down: b?.now?.down, dressed: o?.dressed, bottomsOff: o?.bottomsOff, canalM: o?.canalM, pathM: b?.path?.length };
     log(t, JSON.stringify(report.at[t]));
+    if (SKEL) {
+      await hook('doorsAim', 80, 0.7, 0.25); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-quarter.png`);
+      await hook('doorsAim', 100, Math.PI / 2, 0); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-side.png`);
+      continue;
+    }
     await hook('aim', 0.0001, 0.12, 105, 0, -0.03, 0.05); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-front.png`);
     if (SIDES.has(t)) { await hook('aim', 1.2, 0.1, 150, 0, 0, 0.1); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-side.png`); }
   }
