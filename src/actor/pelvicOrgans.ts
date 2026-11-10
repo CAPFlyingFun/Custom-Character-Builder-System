@@ -23,13 +23,21 @@
  * Every size here is MEASURED (a source in its comment) or BIOLOGICAL SHAPE (where it sits, from anatomy's description of
  * it); a shape that only makes the mesh is GAME TUNING. Pure: plain arrays.
  */
+import { seatedCanal } from './birthCanal';
 import type { P3 } from './pelvisMeasure';
 
 /** What the layout needs of her measured pelvis (src/data/pelvis/<rig>.json). */
 export interface PelvisLandmarks {
   /** `opening`: where her opening is in her own skin, when she has skin (v2: MEASURED on it, the middle of her opening's
    * line at rest) -- her canal runs up from there; without it, from below her pubic bone (ORGAN_PLACE). */
-  readonly landmarks: { readonly symphysisTop: readonly number[]; readonly symphysisBottom: readonly number[]; readonly symphysisBack: readonly number[]; readonly promontory: readonly number[]; readonly opening?: readonly number[] };
+  readonly landmarks: { readonly symphysisTop: readonly number[]; readonly symphysisBottom: readonly number[]; readonly symphysisBack: readonly number[]; readonly promontory: readonly number[]; readonly opening?: readonly number[]; readonly tuberosityLeft?: readonly number[]; readonly tuberosityRight?: readonly number[] };
+  /** her bony canal's measured centre line and how far apart her sit bones are: with them and her sit bones, her canal's
+   * opening stands under her pubic arch, below her bones (actor/birthCanal.ts `openSeat`) */
+  readonly axis?: readonly (readonly number[])[];
+  readonly cm?: { readonly intertuberous?: number };
+  readonly outlet?: { readonly ring: readonly (readonly number[])[] };
+  /** her tailbone's tip (src/data/torso/ `landmarks.coccyx`), which her canal's wall keeps off */
+  readonly tail?: readonly number[];
   readonly midpelvis: { readonly centre: readonly number[] };
   readonly inlet: { readonly centre: readonly number[] };
 }
@@ -71,7 +79,9 @@ export const ORGAN_PLACE = Object.freeze({
 
 export interface OrganLayout {
   /** The canal, its opening to its top, along its centre line (rest metres). */
-  readonly vagina: { readonly path: readonly P3[]; readonly width: number; readonly depth: number };
+  /** `narrow`, `narrowAcross`: the share of its depth, and of its width, it keeps at even steps along its path, where her
+   * bones pinch it open (actor/birthCanal.ts OPEN_SEAT); without them, all of it all along */
+  readonly vagina: { readonly path: readonly P3[]; readonly width: number; readonly depth: number; readonly narrow?: readonly number[]; readonly narrowAcross?: readonly number[] };
   /** The womb's centre line, external os to fundus, and how far along it the cervix ends (the internal os), metres. */
   readonly uterus: {
     readonly path: readonly P3[]; readonly cervixEnds: number; readonly length: number; readonly anteversionDeg: number;
@@ -129,13 +139,18 @@ export function layOrgans(p: PelvisLandmarks, bladderMl: number = BLADDER.defaul
   // canal's top, and bowed out to its full length there it left her skin going straight back -- her doors, which hang
   // from its first centimetres (actor/birthDoors.ts `doorFrame`), faced her front, 66 degrees off her skeleton's)
   const want = L.opening ? 0 : (VAGINA.front + VAGINA.back) / 2;
-  let bow = 0, vpath = bend(introitus, mid, fornix);
-  for (let k = 0; k < 40 && lengthOf(vpath) < want; k++) { bow += 0.001; vpath = bend(introitus, [mid[0], mid[1] + backward[1] * bow, mid[2] + backward[2] * bow], fornix); }
+  let bow = 0, rest = bend(introitus, mid, fornix);
+  for (let k = 0; k < 40 && lengthOf(rest) < want; k++) { bow += 0.001; rest = bend(introitus, [mid[0], mid[1] + backward[1] * bow, mid[2] + backward[2] * bow], fornix); }
+  // HER CANAL AS IT IS DRAWN, AND HER BABY'S WAY: on her skeleton its opening stands under her pubic arch, below her bones,
+  // where the arch lets a head by, and it runs up from there onto her bony canal's measured line (actor/birthCanal.ts
+  // `openSeat`: laid from under the symphysis its doors and its open width cut through the arch's bones). Her womb, cervix
+  // and bladder stay placed from the line above, where her canal lies at rest. In v2 it still runs from her own skin.
+  const vpath = (!L.opening && p.axis ? seatedCanal({ axis: p.axis, landmarks: L, cm: p.cm, outlet: p.outlet, tail: p.tail }, x, fornix) : null) ?? rest;
   // the bladder: behind the symphysis, its base on the canal's upper front wall, under the womb; it rises as it fills,
   // and once its middle is above the symphysis it bulges forward over the bone's top, against her belly's wall. Between
   // the bone in front and the cervix behind (held where it is by its ligaments) it has only so much room front to back:
   // where it would reach the cervix it is narrower front to back and taller, holding the same.
-  const os = along([...vpath].reverse(), O.osBelowTop);
+  const os = along([...rest].reverse(), O.osBelowTop);
   const radii: [number, number, number] = [...bladderRadii(bladderMl)];
   const place = (): P3 => {
     const cy = top[1] - O.bladderBelowTop + radii[1];
@@ -266,7 +281,7 @@ export function organMeshes(layout: OrganLayout): { uterus: OrganMesh; vagina: O
   const from = Math.min(...half(0)), to = u.length - Math.min(...half(1)), inner = subPath(u.path, from, to), axis = wombAxis(u);
   const remap = (t: number) => (from + t * (to - from)) / u.length;
   return {
-    vagina: sweep(v.path, () => [v.width / 2, v.depth / 2], 20, 4),
+    vagina: sweep(v.path, (t) => [(v.width / 2) * narrowAt(v.narrowAcross, t), (v.depth / 2) * narrowAt(v.narrow, t)], 20, 4),
     uterus: sweep(inner, (t) => half(remap(t)), u.halves ? 36 : 28, 7, u.axes ? (t) => axis(remap(t)) : undefined),
     bladder: ellipsoid(b.centre, b.radii),
   };
@@ -303,6 +318,17 @@ export function wombAxis(u: OrganLayout['uterus']): (t: number) => P3 {
 }
 
 /** The part of a line from `from` to `to` metres along it. */
+/** A canal's `narrow` read `t` (0..1) of the way along it: 1 where it has none. */
+export function narrowAt(narrow: readonly number[] | undefined, t: number): number {
+  if (!narrow || narrow.length < 2) return 1;
+  const f = Math.min(1, Math.max(0, t)) * (narrow.length - 1), k = Math.min(narrow.length - 2, Math.floor(f));
+  return narrow[k] + (narrow[k + 1] - narrow[k]) * (f - k);
+}
+/** A canal's `narrow` for the part of it from `from` to `to` metres along a path `total` long, at as many even steps. */
+export function subNarrow(narrow: readonly number[] | undefined, from: number, to: number, total: number): number[] | undefined {
+  if (!narrow || !(total > 0)) return undefined;
+  return narrow.map((_, i) => narrowAt(narrow, (from + ((to - from) * i) / (narrow.length - 1)) / total));
+}
 export function subPath(path: readonly P3[], from: number, to: number): P3[] {
   const out: P3[] = [along(path, from)];
   let s = 0;

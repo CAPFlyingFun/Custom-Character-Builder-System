@@ -128,7 +128,7 @@ export class AbdomenView {
     this.wombLaid = womb; this.bladderLaid = pl.bladder;
     const bladder: Blob = { centre: pl.bladder.centre, radii: pl.bladder.radii };
     const opening = pl.vagina.path[0];
-    const L = layAbdomen(this.torso, this.pelvis, opening, bladder, this.fillNow, womb);
+    const L = layAbdomen(this.torso, this.pelvis, opening, bladder, this.fillNow, womb, pl.vagina.path);
     this.layout = L;
     const T = ABDOMEN_TUNE;
     const make = (name: Name, mesh: { points: Float32Array; triangles: Uint32Array }, cage: { rest: number[]; mass: number[]; tie: number[]; radius: number[] }) => {

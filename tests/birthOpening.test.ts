@@ -8,7 +8,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BIRTH_OPENING, CANAL_OPENING, canalMouth, cervixAt, headPassage, openCanal, tightest } from '../src/actor/birthCanal';
+import { BIRTH_OPENING, CANAL_OPENING, OPEN_SEAT, canalMouth, cervixAt, headPassage, openCanal, openSeat, tightest } from '../src/actor/birthCanal';
 import { BIRTH_HEAD, DOORS, ENDS_SHUT, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoorLine, rimOf, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
 import { CERVIX, layOrgans, lengthOf } from '../src/actor/pelvicOrgans';
 import { growWomb } from '../src/actor/pregnantWomb';
@@ -16,7 +16,9 @@ import { growWomb } from '../src/actor/pregnantWomb';
 const read = <T>(path: string): T => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8')) as T;
 const pelvis = read<Parameters<typeof layOrgans>[0] & Parameters<typeof headPassage>[0] & Parameters<typeof openCanal>[1]>('../src/data/pelvis/skeleton.json');
 const torso = read<Parameters<typeof growWomb>[1] & { landmarks: { coccyx: number[] } }>('../src/data/torso/skeleton.json');
-const laid = layOrgans(pelvis);
+// (her pelvis with her tailbone's tip, as the room lays her organs: sarahlab/pelvicOrgansView.ts)
+const bones = { ...pelvis, tail: torso.landmarks.coccyx };
+const laid = layOrgans(bones);
 
 describe('her cervix', () => {
   it('thins first, then opens to 10 cm', () => {
@@ -68,6 +70,61 @@ describe('her canal opening', () => {
     const a = canalMouth(laid.vagina.path, DOORS.hingeUp).t, b = canalMouth(open.path, DOORS.hingeUp).t;
     expect(a[1] * b[1] + a[2] * b[2]).toBeGreaterThan(0.98);
     expect(lengthOf(open.path)).toBeGreaterThan(lengthOf(closed.path) * 0.95);
+  });
+});
+
+describe("her opening's seat under her pubic arch (Joshua, 2026-11-10: \"if you see bones, you know something is still off\")", () => {
+  const rings = pelvis as unknown as { outlet: { ring: number[][] }; midpelvis: { ring: number[][] }; landmarks: { symphysisBottom: number[]; tuberosityLeft: number[]; tuberosityRight: number[] } };
+  const seat = openSeat(bones, laid.vagina.path[0][0], DOORS.hingeUp)!, open = openCanal(laid.vagina, bones, 1, DOORS.hingeUp);
+  /** how far a point is from a line of points, metres */
+  const off = (q: readonly number[], path: readonly (readonly number[])[]) => {
+    let best = Infinity;
+    for (let i = 0; i + 1 < path.length; i++) {
+      const a = path[i], b = path[i + 1], ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
+      const k = Math.min(1, Math.max(0, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1] + (q[2] - a[2]) * ab[2]) / l2));
+      best = Math.min(best, Math.hypot(q[0] - a[0] - ab[0] * k, q[1] - a[1] - ab[1] * k, q[2] - a[2] - ab[2] * k));
+    }
+    return best;
+  };
+
+  it('her canal is laid from it, and leaves it square off her arch', () => {
+    const { mouth, t } = canalMouth(laid.vagina.path, DOORS.hingeUp);
+    mouth.forEach((v, i) => expect(v).toBeCloseTo(seat.mouth[i], 9));
+    expect(t[1] * seat.t[1] + t[2] * seat.t[2]).toBeGreaterThan(0.9999);
+  });
+
+  it('her doors, shut and wide open, are wholly below her bones', () => {
+    const frame = doorFrame(laid.vagina.path), L = rings.landmarks;
+    // (how far up her canal from her arch's plane each of her bones' lowest points is)
+    const h = (q: readonly number[]) => (q[1] - seat.pass[1]) * seat.t[1] + (q[2] - seat.pass[2]) * seat.t[2];
+    const lowest = Math.min(h(L.symphysisBottom), h(L.tuberosityLeft), h(L.tuberosityRight));
+    for (const swing of [0, 1]) {
+      const d = doorMeshes(frame, swing);
+      let top = -Infinity;
+      for (let i = 0; i < d.points.length; i += 3) top = Math.max(top, h([d.points[i], d.points[i + 1], d.points[i + 2]]));
+      // (their thickness stands above their hinges: half a centimetre under her bones at the least)
+      expect(lowest - top).toBeGreaterThan(0.005);
+    }
+  });
+
+  it('open, a head\'s width of canal passes no bone: off her arch, her midpelvis and her tailbone all the way up', () => {
+    const r = CANAL_OPENING.diameterM / 2;
+    for (const q of rings.outlet.ring) expect(off(q, open.path)).toBeGreaterThan(r + 0.002);
+    for (const q of rings.midpelvis.ring) expect(off(q, open.path)).toBeGreaterThan(r + 0.002);
+    // (her tailbone's tip is a knob round its measured point: at 3 mm it stood through the canal's back wall)
+    expect(off(torso.landmarks.coccyx, open.path)).toBeGreaterThan(r + 0.005);
+    expect(OPEN_SEAT.archClear + OPEN_SEAT.tailClear).toBeLessThan(0.0115);
+  });
+
+  it('and her baby\'s way is one curve: no jog, no turn sharper than 15 degrees between its points', () => {
+    const p = open.path;
+    for (let i = 1; i + 1 < p.length; i++) {
+      const a = [p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]], b = [p[i + 1][1] - p[i][1], p[i + 1][2] - p[i][2]];
+      const turn = (Math.acos(Math.min(1, (a[0] * b[0] + a[1] * b[1]) / (Math.hypot(a[0], a[1]) * Math.hypot(b[0], b[1])))) * 180) / Math.PI;
+      expect(turn).toBeLessThan(15);
+    }
+    // (it was 3.8 cm straight forward from the measured line's end to her opening)
+    expect(Math.abs(p[0][0] - p[p.length - 1][0])).toBeLessThan(1e-6);
   });
 });
 

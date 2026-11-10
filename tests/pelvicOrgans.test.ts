@@ -19,13 +19,15 @@ function pastInlet(q: readonly number[]): number {
 describe('her pelvic organs on her skeleton', () => {
   const o = layOrgans(pelvis);
 
-  it('the canal is as long as its two walls on average, and runs from below the symphysis up and back to the midpelvis', () => {
-    expect(lengthOf(o.vagina.path)).toBeCloseTo((VAGINA.front + VAGINA.back) / 2, 2);
+  it("the canal runs from her opening under her pubic arch, below her bones, up to the midpelvis", () => {
     const open = o.vagina.path[0], top = o.vagina.path[o.vagina.path.length - 1];
-    expect(open[1]).toBeCloseTo(L.symphysisBottom[1] - ORGAN_PLACE.introitusBelow, 6);
     expect(top).toEqual([...pelvis.midpelvis.centre]);
     expect(top[1]).toBeGreaterThan(open[1]);
-    expect(top[2]).toBeLessThan(open[2]);
+    // (below her sit bones, and behind the lower edge of her symphysis)
+    expect(open[1]).toBeLessThan(Math.min(L.tuberosityLeft![1], L.tuberosityRight![1]) - 0.03);
+    expect(open[2]).toBeLessThan(L.symphysisBottom[2] - 0.05);
+    // (longer than a canal at rest: it reaches down to her doors, which hang under her bones)
+    expect(lengthOf(o.vagina.path)).toBeGreaterThan((VAGINA.front + VAGINA.back) / 2);
   });
 
   it('the womb is its measured length, its os in the canal just below the canal top, its fundus at about the inlet', () => {

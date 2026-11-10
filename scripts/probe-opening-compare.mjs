@@ -45,6 +45,8 @@ try {
         report[`${model}-${p}-${o}`] = { opening: g?.opening, doorSwing: g?.doorSwing, doorOpenCm: g?.doorOpenCm, doorAngles: g?.doorAngles, aim: await hook('doorsAim', DIST, 0, 0) };
         await run(0.15); await shot(`${model}-${p}-${o}-front.png`);
         await hook('doorsAim', DIST, QUARTER, 0.25); await run(0.15); await shot(`${model}-${p}-${o}-quarter.png`);
+        // (and from her side, further off: her opening against her whole pelvis)
+        if (process.env.SIDE) { await hook('doorsAim', DIST * 1.7, Math.PI / 2, 0); await run(0.15); await shot(`${model}-${p}-${o}-side.png`); }
       }
       await slide('sarahlab-birth-open', 0); await run(1);
       await press('sarahlab:stand'); await run(1.5);

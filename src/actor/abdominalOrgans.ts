@@ -63,6 +63,9 @@ export const ABDOMEN_PLACE = Object.freeze({
   sigmoid: [[0.075, 0.945, -0.015], [0.045, 0.925, -0.03], [0.015, 0.915, -0.07]] as readonly (readonly [number, number, number])[],
   rectum: { s3: [0, 0.895, -0.092] as const, ampulla: [0, 0.86, -0.108] as const, bend: [0, 0.825, -0.095] as const },
   anusBehindOpening: 0.033,
+  /** where the rectum and her birth canal share a height, its line this far behind the canal's, metres: the canal's back
+   * wall, the rectum's front wall and the tissue between them. BIOLOGICAL SHAPE (the rectovaginal septum is thin). */
+  behindCanal: 0.02,
   anusBelowOpening: 0.0,
   /** the kidneys' middles: this far from her midline, at her L1/L2 disc (the left) and this far behind her spine's front */
   kidneyOut: 0.064,
@@ -151,11 +154,22 @@ export function layColon(torso: TorsoLandmarks, fill: number, x0: number): Abdom
 }
 
 /** The sigmoid, rectum and anal canal holding `ml`, from the colon's end down to her anus behind her opening. */
-export function layRectum(pelvis: PelvisLandmarks, colonEnd: P3, ml: number, x0: number, opening: P3): AbdomenLayout['rectum'] {
+export function layRectum(pelvis: PelvisLandmarks, colonEnd: P3, ml: number, x0: number, opening: P3, canal: readonly P3[] | null = null): AbdomenLayout['rectum'] {
   const A = ABDOMEN_PLACE, v = clamp(ml, 0, RECTUM.mostMl), R = A.rectum;
   const anus: P3 = [x0, opening[1] - A.anusBelowOpening, opening[2] - A.anusBehindOpening];
   const pts: P3[] = [colonEnd, ...A.sigmoid.slice(1).map(([x, y, z]) => [x0 + x, y, z] as P3), [x0, R.s3[1], R.s3[2]], [x0, R.ampulla[1], R.ampulla[2]], [x0, R.bend[1], R.bend[2]], anus];
-  const path = smoothLine(pts, 36), total = lineLength(path);
+  const path = smoothLine(pts, 36).map((q): [number, number, number] => [q[0], q[1], q[2]]);
+  // (never in front of her birth canal: where they share a height it is `behindCanal` behind the canal's line -- her canal
+  // runs up behind her pubic arch, actor/birthCanal.ts `openSeat`, where these places alone had it cross)
+  if (canal && canal.length > 1) {
+    const lo = Math.min(canal[0][1], canal[canal.length - 1][1]), hi = Math.max(canal[0][1], canal[canal.length - 1][1]);
+    for (const q of path) {
+      if (q[1] < lo - 1e-9 || q[1] > hi + 1e-9) continue;
+      const v = canal.reduce((best, c) => (Math.abs(c[1] - q[1]) < Math.abs(best[1] - q[1]) ? c : best));
+      q[2] = Math.min(q[2], v[2] - A.behindCanal);
+    }
+  }
+  const total = lineLength(path);
   // the ampulla (between S3 and the anorectal bend) widens as it fills: its volume there is what it holds
   let s = 0;
   const along = path.map((p, i) => { if (i) s += dist(path[i - 1], p); return s / total; });
@@ -293,11 +307,11 @@ export function outOfBlob(points: Float32Array, b: Blob, gap: number): number {
 }
 
 /** Her belly's organs laid out: holding `fill`, round her womb (`womb`, null not pregnant) and her bladder. */
-export function layAbdomen(torso: TorsoLandmarks & { readonly discs?: readonly number[] }, pelvis: PelvisLandmarks, opening: P3, bladder: Blob, fill: AbdomenFill = ABDOMEN_DEFAULT_FILL, womb: WombRoom | null = null): AbdomenLayout {
+export function layAbdomen(torso: TorsoLandmarks & { readonly discs?: readonly number[] }, pelvis: PelvisLandmarks, opening: P3, bladder: Blob, fill: AbdomenFill = ABDOMEN_DEFAULT_FILL, womb: WombRoom | null = null, canal: readonly P3[] | null = null): AbdomenLayout {
   const x0 = pelvis.landmarks.symphysisTop[0];
   // (a growing womb moves the stomach and the colon round it, each as a whole tube)
   const stomach = tubeOutOfWomb(layStomach(torso, fill.stomachMl, x0), womb), colon = tubeOutOfWomb(layColon(torso, fill.colonFill, x0), womb);
-  const rectum = layRectum(pelvis, colon.path[colon.path.length - 1], fill.rectumMl, x0, opening);
+  const rectum = layRectum(pelvis, colon.path[colon.path.length - 1], fill.rectumMl, x0, opening, canal);
   const intestines = pushedIntestines(layIntestines(torso, fill.intestineMl, x0), womb, torso);
   const kidneys = layKidneys(torso, x0);
   const ureter = (k: Bean): P3[] => {

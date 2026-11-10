@@ -15,7 +15,7 @@ const laid = layOrgans(P), opening = laid.vagina.path[0], bladder = { centre: la
 const x0 = P.landmarks.symphysisTop[0];
 
 describe('her belly organs, laid out', () => {
-  const L = layAbdomen(T, P, opening, bladder);
+  const L = layAbdomen(T, P, opening, bladder, undefined, null, laid.vagina.path);
   it('the stomach under her left ribs holds what it is given', () => {
     for (const ml of [STOMACH.emptyMl, 250, STOMACH.fullMl, STOMACH.mostMl]) expect(tubeVolume(layStomach(T, ml, x0)) * 1e6).toBeCloseTo(ml, -1);
     const fundus = L.stomach.path[0], pylorus = L.stomach.path[L.stomach.path.length - 1];
