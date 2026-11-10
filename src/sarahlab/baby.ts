@@ -1563,6 +1563,85 @@ export function poseDescent(bones: ReadonlyMap<string, THREE.Bone>, k: number, f
   };
   for (const s of ['left', 'right'] as const) { arm(BABY_BONES.arm[s], k); limb(BABY_BONES.leg[s], L.legOut, legK); }
 }
+/** The way its body lies along, read from its neck back toward its feet. */
+export interface AlongWay {
+  /** the way's point `s` metres behind its neck's joint, in the world */
+  at(s: number, out: THREE.Vector3): THREE.Vector3;
+  /** how much (0..1) of what lies `s` metres behind its neck follows the way (the rest of it: as it is posed) */
+  share(s: number): number;
+  /** world units a metre */
+  readonly perMetre: number;
+  /** how far behind its neck (metres) its back comes onto the way's own line: its neck's joint is where its head has it,
+   * beside the way, and its back eases over from there (none: laid the way's direction, as far off it as its neck is) */
+  readonly settle?: number;
+}
+const awA = new THREE.Vector3(), awB = new THREE.Vector3(), awD = new THREE.Vector3(), awN = new THREE.Vector3(), awQ = new THREE.Quaternion(), awP = new THREE.Quaternion();
+/**
+ * ITS BODY ROUND THE BEND OF HER CANAL (Joshua, 2026-11-10, of her canal's way down behind her pubic arch and forward
+ * under it: "how could the baby make that tight of a turn"): a baby is not born as a rod -- its back and neck bend
+ * sideways and its legs trail up the way it has come, each part of it lying along the canal where that part is. Made
+ * long (`poseDescent`), its back from its hips to its neck and each leg are laid along `way`, piece by piece: each
+ * piece turned (the shortest turn: no twist) toward the way between where its two ends lie along it. Its neck and head
+ * are left as they are in the world -- its head is placed by its birth -- and what is out of her (`way.share` 0) lies
+ * as it was posed.
+ *
+ * Its bones hang from its hips, so laying its back moves its head: the move that puts its neck's joint back where it was
+ * is returned (world), for its root. Null where nothing was laid.
+ */
+export function poseAlong(bones: ReadonlyMap<string, THREE.Bone>, way: AlongWay): THREE.Vector3 | null {
+  const chain = [...BABY_BONES.back, BABY_BONES.neck].map((n) => bones.get(n));
+  if (chain.some((b) => !b) || chain.length < 2) return null;
+  const joints = chain as THREE.Bone[], n = joints.length, neck = joints[n - 1];
+  bones.get(BABY_BONES.root)?.updateMatrixWorld(true);
+  const at0 = joints.map((b) => b.getWorldPosition(new THREE.Vector3()));
+  const neckAt = at0[n - 1].clone(), neckTurn = neck.getWorldQuaternion(new THREE.Quaternion());
+  // (how far behind its neck each joint of its back is, along its back)
+  const s = new Array<number>(n).fill(0);
+  for (let k = n - 2; k >= 0; k--) s[k] = s[k + 1] + at0[k].distanceTo(at0[k + 1]) / way.perMetre;
+  // (where each joint of its back is to lie: on the way, as far beside it as its neck is at its neck, easing onto it)
+  const beside = way.at(0, new THREE.Vector3()).sub(neckAt).negate(), settle = way.settle ?? 0;
+  const onWay = (x: number, out: THREE.Vector3): THREE.Vector3 => {
+    way.at(x, out);
+    if (!(settle > 0)) return out;
+    const t = Math.min(1, Math.max(0, x / settle));
+    return out.addScaledVector(beside, 1 - t * t * (3 - 2 * t));
+  };
+  let laid = false;
+  for (let k = 0; k + 1 < n; k++) {
+    const w = way.share((s[k] + s[k + 1]) / 2);
+    awD.copy(at0[k + 1]).sub(at0[k]);
+    if (awD.lengthSq() < 1e-16) continue;
+    awD.normalize();
+    if (w > 0) {
+      awN.copy(onWay(s[k + 1], awB)).sub(onWay(s[k], awA));
+      if (awN.lengthSq() > 1e-16) { awQ.setFromUnitVectors(awD, awN.normalize()).slerp(awP.identity(), 1 - Math.min(1, w)); awD.applyQuaternion(awQ); laid = true; }
+    }
+    // (toward where it pointed in the world, or the way: what is before it has turned under it)
+    turnToward(joints[k], joints[k + 1], awD, 1);
+  }
+  // its neck and head as they were, in the world
+  if (neck.parent) neck.parent.getWorldQuaternion(awP).invert(); else awP.identity();
+  neck.quaternion.copy(awP.multiply(neckTurn)); neck.updateMatrixWorld(true);
+  // each leg up the way it has come: from where its hip is along it, its thigh then its shin
+  const long = at0[1].clone().sub(at0[0]).normalize();
+  for (const side of ['left', 'right'] as const) {
+    const [a, b, c] = BABY_BONES.leg[side].map((x) => bones.get(x));
+    if (!a || !b || !c) continue;
+    a.getWorldPosition(awA); const sa = s[0] + Math.max(0, awB.copy(at0[0]).sub(awA).dot(long)) / way.perMetre;
+    b.getWorldPosition(awB); const sb = sa + awA.distanceTo(awB) / way.perMetre;
+    c.getWorldPosition(awA); const sc = sb + awA.distanceTo(awB) / way.perMetre;
+    const turn = (bone: THREE.Bone, child: THREE.Bone, from: number, to: number) => {
+      const w = way.share((from + to) / 2);
+      if (!(w > 0)) return;
+      awN.copy(way.at(to, awB)).sub(way.at(from, awA));
+      if (awN.lengthSq() > 1e-16) { turnToward(bone, child, awN.normalize(), w); laid = true; }
+    };
+    turn(a, b, sa, sb); turn(b, c, sb, sc);
+  }
+  if (!laid) return null;
+  return neckAt.sub(neck.getWorldPosition(awA));
+}
+
 /** GAME TUNING: its body made long coming down -- how far its back straightens; its legs nearly together (how far out
  * from its length); its arms tucked to its chest -- each upper arm's aim (down, out, forward) and forearm's (up, in
  * across its chest, forward), as its straight body is baked (`.scratch/baby/straight-pose.json`) */

@@ -5,7 +5,7 @@
  * picture from in front (and from her side at SIDES). OPENING=v2 runs it on v2's own opening instead, to compare.
  * Into shots/birth-v2/ (or OUT), with report.json.
  *
- *     node scripts/probe-birth-v2.mjs      (NO_BUILD=1; TIMES=10,20,...; OPENING=skeleton|v2; XRAY=0)
+ *     node scripts/probe-birth-v2.mjs      (NO_BUILD=1; TIMES=10,20,...; OPENING=skeleton|v2; XRAY=0; BEND=0; SIDE=yaw,pitch,distance,dx,dy,dz; HIDE=1: her side pictures with her hidden -- her baby and her organs alone)
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -18,6 +18,8 @@ const MODE = process.env.OPENING ?? 'skeleton';
 const SHOTS = path.join(ROOT, 'shots', process.env.OUT ?? `birth-v2-${MODE}`);
 const TIMES = (process.env.TIMES ?? '4,14,24,30,34,37,40,43,47,52,60,75').split(',').map(Number);
 const SIDES = new Set((process.env.SIDES ?? '37,43').split(',').map(Number));
+// (the side look: yaw, pitch, distance, and where from the middle of her hips -- across, up, forward, metres)
+const SIDE = (process.env.SIDE ?? '1.2,0.1,150,0,0,0.1').split(',').map(Number);
 const log = (...a) => console.log('[birth]', ...a);
 mkdirSync(SHOTS, { recursive: true });
 if (!process.env.NO_BUILD) await build({ root: ROOT, logLevel: 'error' });
@@ -42,21 +44,28 @@ try {
   const SKEL = process.env.MODEL === 'skeleton';
   if (SKEL) { for (let k = 0; k < 8 && !(await page.evaluate(() => document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '')).startsWith('model skeleton'); k++) { await press('sarahlab:model'); await page.waitForFunction(() => /^model /.test(document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? ''), null, { timeout: 300_000 }); await page.waitForTimeout(5000); } }
   else await hook('opening', MODE !== 'v2', 1);
+  // (NAKED=1: her clothes off first -- OUTFIT pressed until it says none -- for a look at her from the side with nothing over it)
+  if (process.env.NAKED) { for (let k = 0; k < 12; k++) { const t = await page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? ''); if (/none/i.test(t)) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); } await page.waitForTimeout(6000); }
   await press('sarahlab:recline'); await run(2.5);
+  // (BEND=0: her baby as one stiff length down her canal, as it was, to compare)
+  if (process.env.BEND === '0') await hook('babyAlong', false);
   if (process.env.XRAY) { await slide('sarahlab-xray', Number(process.env.XRAY)); await page.waitForTimeout(15000); await run(1); }
   await hook('birth', { t: 0, pace: 'fast', run: false }); await run(1.5);
   for (const t of TIMES) {
     await hook('birth', { t, run: false }); await run(1.2);
     const b = await hook('birth'), o = await hook('opening');
-    report.at[t] = { line: b?.line, headPastMouthCm: b?.headPastMouthCm, headFromPathCm: b?.headFromPathCm, open: b?.open, doorsOpenCm: o?.openM != null ? +(o.openM * 100).toFixed(1) : null, doors: o?.doors, stage: b?.now?.stage ?? null, down: b?.now?.down, dressed: o?.dressed, bottomsOff: o?.bottomsOff, canalM: o?.canalM, pathM: b?.path?.length };
+    report.at[t] = { line: b?.line, headPastMouthCm: b?.headPastMouthCm, headFromPathCm: b?.headFromPathCm, bodyOffPathCm: b?.bodyOffPathCm, bodyInCanal: b?.bodyInCanal?.length, open: b?.open, doorsOpenCm: o?.openM != null ? +(o.openM * 100).toFixed(1) : null, doors: o?.doors, stage: b?.now?.stage ?? null, down: b?.now?.down, dressed: o?.dressed, bottomsOff: o?.bottomsOff, canalM: o?.canalM, pathM: b?.path?.length };
     log(t, JSON.stringify(report.at[t]));
+    // (DETAIL=1: each joint of its back and legs in her canal, and how far off her canal's line, cm; NOSHOT=1: no pictures)
+    if (process.env.DETAIL) log(t, 'in her canal', JSON.stringify(b?.bodyInCanal));
+    if (process.env.NOSHOT) continue;
     if (SKEL) {
       await hook('doorsAim', 80, 0.7, 0.25); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-quarter.png`);
       await hook('doorsAim', 100, Math.PI / 2, 0); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-side.png`);
       continue;
     }
     await hook('aim', 0.0001, 0.12, 105, 0, -0.03, 0.05); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-front.png`);
-    if (SIDES.has(t)) { await hook('aim', 1.2, 0.1, 150, 0, 0, 0.1); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-side.png`); }
+    if (SIDES.has(t)) { if (process.env.HIDE) await hook('herHidden', true); await hook('aim', ...SIDE); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-side.png`); if (process.env.HIDE) await hook('herHidden', false); }
   }
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));

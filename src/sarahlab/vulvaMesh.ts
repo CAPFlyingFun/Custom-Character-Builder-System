@@ -184,7 +184,7 @@ export interface VulvaPatch {
    * lips stand `lips` of their shape (0 her own skin's shape), and her skin is `tint` (a colour times her own) at the
    * opening's edge, fading out to her own over `reach` metres ("the more natural skin tone fading out"). Off: all as it was.
    */
-  setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number }): void;
+  setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number; hole?: number }): void;
   readonly skeletonOpening: boolean;
   /**
    * HER CANAL HELD BY HER BONE (Joshua, 2026-11-09: "use the existing womb and design we have in v2, but lock it to the real
@@ -467,6 +467,13 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // dilated on its own; nothing while no birth runs
   let driveOpen = 0, driveBulge = 0, cervixDrive: number | null = null;
   const openNow = () => (dressed ? 0 : Math.max(wantOpen, naturalOpen, driveOpen)), bulgeNow2 = () => (dressed ? 0 : Math.max(bulgeAmt, driveBulge));
+  // HER SKIN'S OWN HOLE, WITH HER SKELETON'S OPENING (Joshua, 2026-11-10: "the whole opening moves down and far from the
+  // skin while the skin stays, leaving two openings and different heights"): her opening is her doors, which come down
+  // to their seat under her pubic bone as they open, and her skin opening where it always had left a second one above
+  // them. So with her skeleton's opening her skin is laid as `skelHole` of how open she is (none: it stays shut), while
+  // how open she is (`shownOpen`: what her doors and her birth read, `drawnOpen`) is as it was.
+  let skelHole = 0, shownOpen = 0;
+  const laidOpen = () => { shownOpen = openNow(); return skelOpening ? shownOpen * skelHole : shownOpen; };
 
   // CARRIED BY HER PELVIS as it opens. Her skin there is weighted to her pelvis and both thighs, so a move laid on it in
   // her rest shape is turned by her thighs as well as her pelvis once she is posed -- every birth pose turns her thighs
@@ -2244,20 +2251,20 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       return { passingHugged, hugDbg, ringsDbg, passing: passing ? passing.length / 3 : 0, wombDbg, rimSize, uScale, sScale, pelvisBoneGiven: pelvisBone, pelvis: body.skeleton.bones[pelvis]?.name, pelvisIndex: pelvis, restPos: bad(restPos), restNrm: bad(restNrm), rim: bad(rim), pos: bad(pos), tau: bad(tau), colQ: bad(colQ), body: bad((g.getAttribute('position') as THREE.BufferAttribute).array), O: O.toArray(), tA: tA.toArray(), nO: nO.toArray(), across: across.toArray(), perMetre, open };
     },
     get open() { return wantOpen; },
-    setOpen(o: number) { wantOpen = Number.isFinite(o) ? Math.max(0, Math.min(1, o)) : 0; open = openNow(); sync(); },
+    setOpen(o: number) { wantOpen = Number.isFinite(o) ? Math.max(0, Math.min(1, o)) : 0; open = laidOpen(); sync(); },
     setNatural(o: number) {
       const n = Number.isFinite(o) ? Math.max(0, Math.min(1, o)) : 0;
       if (Math.abs(n - naturalOpen) < 0.004 && !(n === 0 && naturalOpen !== 0)) return;
-      naturalOpen = n; const was = open; open = openNow(); if (open !== was) sync();
+      naturalOpen = n; const was = open; open = laidOpen(); if (open !== was) sync();
     },
-    get drawnOpen() { return open; },
+    get drawnOpen() { return shownOpen; },
     get bulge() { return bulgeAmt; },
     setBirthDrive(d) {
       const o = d ? Math.max(0, Math.min(1, Math.round(d.open * 100) / 100)) : 0, b = d ? Math.max(0, Math.min(1, Math.round(d.bulge * 100) / 100)) : 0;
       const c = d ? Math.max(0, Math.min(1, Math.round(d.cervix * 50) / 50)) : null;
       if (o === driveOpen && b === driveBulge && c === cervixDrive) return;
       const relay = b !== driveBulge || c !== cervixDrive;
-      driveOpen = o; driveBulge = b; cervixDrive = c; open = openNow();
+      driveOpen = o; driveBulge = b; cervixDrive = c; open = laidOpen();
       if (relay) openApplied = -1;
       sync();
     },
@@ -2306,8 +2313,9 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     get dressed() { return dressed; },
     get skeletonOpening() { return skelOpening; },
     setCanalTop(top: THREE.Vector3 | null) { if (top === canalTop || (top && canalTop && top.equals(canalTop))) return; canalTop = top ? top.clone() : null; openApplied = -1; posVersion = -1; sync(); },
-    setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number }) {
+    setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number; hole?: number }) {
       skelOpening = on; skelLips = Math.min(1, Math.max(0, look?.lips ?? 0)); skelTint = look?.tint ?? [1, 1, 1]; skelReach = Math.max(1e-3, look?.reach ?? 0.03);
+      skelHole = Math.min(1, Math.max(0, look?.hole ?? 0)); open = laidOpen();
       // (the balloon's womb alone, or all of it: its rolled rim, its canal and cervix, its womb)
       const all = (K - 1) * M * 6, rimTris = (KB - 1) * M * 6, split = (KB + KC + KX - 1) * M * 6;
       tubeGeom.clearGroups();
@@ -2338,7 +2346,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     setDressed(on: boolean) {
       if (on === dressed) return;
       // dressed: drawn with her own material, lying as her skin does, closed (her clothes are over it)
-      dressed = on; mesh.material = on ? dressedMat : patchMat; open = openNow(); openApplied = -1; sync();
+      dressed = on; mesh.material = on ? dressedMat : patchMat; open = laidOpen(); openApplied = -1; sync();
     },
     show(on: boolean) {
       shown = on;

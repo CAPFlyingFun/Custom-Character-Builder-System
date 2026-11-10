@@ -44,6 +44,23 @@ try {
         const g = await hook('organs');
         report[`${model}-${p}-${o}`] = { opening: g?.opening, doorSwing: g?.doorSwing, doorOpenCm: g?.doorOpenCm, doorAngles: g?.doorAngles, aim: await hook('doorsAim', DIST, 0, 0) };
         await run(0.15); await shot(`${model}-${p}-${o}-front.png`);
+        // (PICK=step: which mesh is drawn at each place of that picture, every `step` pixels -- for a colour nobody can name)
+        if (process.env.PICK) {
+          const step = Number(process.env.PICK) || 30, box = await page.evaluate(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return { x: r.left, y: r.top }; });
+          const names = [], rows = [], hits = {};
+          for (let y = 150 + step / 2; y < 750; y += step) {
+            let row = '';
+            for (let x = 200 + step / 2; x < 800; x += step) {
+              const h = (await hook('pickAny', x - box.x, y - box.y, 3)) ?? [], top = h[0] ? `${h[0].parent}/${h[0].mesh}#${h[0].group}${h[0].facing < 0 ? ' (back)' : ''}` : '-';
+              if (top !== '-' && !names.includes(top)) names.push(top);
+              row += top === '-' ? '.' : String.fromCharCode(65 + names.indexOf(top));
+              hits[`${x - 200},${y - 150}`] = h;
+            }
+            rows.push(row);
+          }
+          log(`pick ${model}-${p}-${o}\n` + rows.join('\n') + '\n' + names.map((n, k) => `${String.fromCharCode(65 + k)} = ${n}`).join('\n'));
+          writeFileSync(path.join(SHOTS, `${model}-${p}-${o}-pick.json`), JSON.stringify(hits));
+        }
         await hook('doorsAim', DIST, QUARTER, 0.25); await run(0.15); await shot(`${model}-${p}-${o}-quarter.png`);
         // (and from her side, further off: her opening against her whole pelvis)
         if (process.env.SIDE) { await hook('doorsAim', DIST * 1.7, Math.PI / 2, 0); await run(0.15); await shot(`${model}-${p}-${o}-side.png`); }

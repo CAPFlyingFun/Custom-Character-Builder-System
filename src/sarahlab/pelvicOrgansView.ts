@@ -491,7 +491,7 @@ export class PelvicOrgansView {
 
   private pressDoors(dt: number): void {
     if (!this.passing && !this.pressed) return;
-    const J = DOORS.stations, uniform = birthAngles(this.grown ? this.swing : 0), row = (): Angles[] => Array.from({ length: J }, () => uniform);
+    const J = DOORS.stations, uniform = birthAngles(this.grown || this.opensFreely ? this.swing : 0), row = (): Angles[] => Array.from({ length: J }, () => uniform);
     this.pressed ??= { want: { right: row(), left: row(), ends: ENDS_SHUT }, now: { right: row(), left: row(), ends: ENDS_SHUT } };
     const P = this.pressed, tick = this.pressTick++;
     if (this.passing) {
