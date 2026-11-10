@@ -2,7 +2,8 @@
  * HER SKELETON'S LANDMARKS AS THEY STAND IN v2, WRITTEN DOWN (the new direction's step 2; the port's rule 2). Opens the
  * room on v2, has her skeleton laid in her (skeletonInV2.ts), and writes the pelvis's and the torso's measured landmark
  * files carried into her -- src/data/pelvis/v2.json and src/data/torso/v2.json (MEASURED: the skeleton's own files,
- * moved with the bone round each point) -- and, given CLOUD=name,name, those pieces' points to shots/skeleton-bake/.
+ * moved with the bone round each point), the inside of her rib cage measured on her chest's bones as laid
+ * (src/data/thorax/v2.json, actor/thoracicOrgans.ts measureThorax) -- and, given CLOUD=name,name, those pieces' points to shots/skeleton-bake/.
  *
  *     node scripts/bake-skeleton-v2.mjs            (builds first; NO_BUILD=1 to use dist/ as it is)
  */
@@ -31,10 +32,15 @@ try {
   log('each landmark went, mm', JSON.stringify(res.went));
   log('pieces', JSON.stringify(res.pieces));
   log('most each piece moved in the fit, mm', JSON.stringify(res.fitMoves));
+  // (and where her opening is in her own skin: the middle of its line on v2 at rest, MEASURED on her skin -- her canal
+  // runs up from there, actor/pelvicOrgans.ts)
+  const opening = await page.evaluate(() => globalThis.__sarahLabCloth.openingRest?.() ?? null);
+  if (opening) { res.pelvis.landmarks.opening = opening; log('her opening in her skin', JSON.stringify(opening)); } else log('her opening could not be read: landmarks.opening is not written');
   if (!process.env.DRY) {
     writeFileSync(path.join(ROOT, 'src/data/pelvis/v2.json'), JSON.stringify(res.pelvis, null, 2) + '\n');
     writeFileSync(path.join(ROOT, 'src/data/torso/v2.json'), JSON.stringify(res.torso) + '\n');
-    log('wrote src/data/pelvis/v2.json, src/data/torso/v2.json');
+    if (res.thorax && !res.thorax.error) { mkdirSync(path.join(ROOT, 'src/data/thorax'), { recursive: true }); writeFileSync(path.join(ROOT, 'src/data/thorax/v2.json'), JSON.stringify(res.thorax) + '\n'); } else log('her rib cage could not be measured', res.thorax?.error);
+    log('wrote src/data/pelvis/v2.json, src/data/torso/v2.json, src/data/thorax/v2.json');
   }
   if (res.cloud) { writeFileSync(path.join(OUT, 'cloud.json'), JSON.stringify(res.cloud)); log('cloud points', res.cloud.length / 3); }
 } finally { await browser.close(); server.httpServer.close(); }

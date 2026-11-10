@@ -221,6 +221,7 @@ export function pushedIntestines(i: AbdomenLayout['intestines'], womb: WombRoom 
  * grown by `gap`) moved out in its slice's plane to the slice's ellipse, or over its top. Returns how many moved.
  */
 export function outOfWomb(points: Float32Array, womb: WombRoom, gap: number = WOMB_PUSH.gap): number {
+  if (womb.pushOut) return womb.pushOut(points, gap);
   const n = womb.halves.length, body0 = womb.path.length - WOMB_SHAPE.stations - 1;
   const lean = (womb.leanDeg * Math.PI) / 180, ay = Math.cos(lean), az = Math.sin(lean), fy = -az, fz = ay;
   const top = womb.path[n - 1];

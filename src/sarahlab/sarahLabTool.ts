@@ -90,6 +90,11 @@ export const SARAH_LAB_MODELS = Object.freeze([
  */
 export const SARAH_LAB_DEFAULT_MODEL = SARAH_LAB_MODELS.findIndex((m) => m.id === 'v2-body');
 
+/** The OPENING switch's line. */
+export function openingLine(skeleton: boolean): string {
+  return skeleton ? "OPENING · SKELETON'S DOORS" : "OPENING · v2's OWN";
+}
+
 export function modelLine(index: number): string {
   return `MODEL · ${SARAH_LAB_MODELS[((index % SARAH_LAB_MODELS.length) + SARAH_LAB_MODELS.length) % SARAH_LAB_MODELS.length].id}`;
 }
@@ -142,6 +147,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   pregnancyClear: 'sarahlab:pregnancy-clear-',
   /** SEE BABY: her baby in her womb, her body seen through (baby.ts) */
   baby: 'sarahlab:baby',
+  /** OPENING (v2): her skeleton's doors at her opening, or v2's own as it was (the new direction's step 3) */
+  opening: 'sarahlab:opening',
   /** BABIES (one, twins, triplets) and how each LIES (auto, head down, breech, sideways, random) */
   babies: 'sarahlab:babies',
   babyLie: 'sarahlab:baby-lie',

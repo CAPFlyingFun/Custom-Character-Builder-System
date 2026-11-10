@@ -30,10 +30,11 @@ try {
   const slide = (f, v) => page.evaluate(([k, x]) => { const i = document.querySelector(`[data-field="${k}"] + input`); if (!i) return false; i.value = String(x); i.dispatchEvent(new Event('input', { bubbles: true })); return true; }, [f, v]);
   const hook = (n, ...a) => page.evaluate(([k, b]) => JSON.parse(JSON.stringify(globalThis.__sarahLabCloth[k](...b) ?? null)), [n, a]);
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
-  const shot = (name, clip = { x: 150, y: 40, width: 700, height: 800 }) => page.screenshot({ path: path.join(SHOTS, name), clip, timeout: 300_000 }).then(() => log('shot', name));
-  const set = async (tag) => {
-    for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2], ['q34', Math.PI / 4]]) { await hook('aim', yaw, 0.05, 230, 0, 0.1, 0); await run(0.15); await shot(`${tag}-${v}.png`); }
-    for (const [v, yaw] of [['front', 0.0001], ['side', Math.PI / 2]]) { await hook('aim', yaw, 0.05, 95, 0, 0.16, 0); await run(0.15); await shot(`${tag}-close-${v}.png`, { x: 200, y: 100, width: 600, height: 700 }); }
+  const shot = (name, clip = { x: 150, y: 40, width: 700, height: 800 }) => process.env.NO_SHOTS ? Promise.resolve() : page.screenshot({ path: path.join(SHOTS, name), clip, timeout: 300_000 }).then(() => log('shot', name));
+  const set = async (tag, whole = ['front', 'side', 'q34'], close = ['front', 'side']) => {
+    const YAW = { front: 0.0001, side: Math.PI / 2, q34: Math.PI / 4 };
+    for (const v of whole) { await hook('aim', YAW[v], 0.05, 230, 0, 0.1, 0); await run(0.15); await shot(`${tag}-${v}.png`); }
+    for (const v of close) { await hook('aim', YAW[v], 0.05, 110, 0, 0.2, 0); await run(0.15); await shot(`${tag}-close-${v}.png`, { x: 200, y: 100, width: 600, height: 700 }); }
   };
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
   await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
@@ -44,12 +45,16 @@ try {
   await page.waitForFunction(() => globalThis.__sarahLabCloth?.skeletonDepths?.(50) != null, null, { timeout: 300_000, polling: 2000 });
   await run(1.5);
   report.pregnant = { belly: await hook('belly'), organs: await hook('organs') };
-  if (!process.env.SKIP_PREGNANT) await set('pregnant-stand');
+  if (!process.env.SKIP_PREGNANT) await set('pregnant-stand', ['front', 'q34'], ['front', 'side']);
+  // (and with her baby shown; and at BUMPS, her belly's other sizes)
+  if (process.env.SEEBABY) { await press('sarahlab:baby'); await page.waitForTimeout(4000); await run(1.5); await set('pregnant-baby', ['side'], ['front']); await press('sarahlab:baby'); await run(0.5); }
+  for (const b of (process.env.BUMPS ?? '').split(',').filter(Boolean)) { await slide('sarahlab-bump', Number(b)); await run(2); await set(`pregnant-bump${b}`, ['side'], ['front']); report[`bump${b}`] = await hook('belly'); }
+  if (process.env.BUMPS) { await slide('sarahlab-bump', 73); await run(1.5); }
   for (const p of (process.env.POSES ?? '').split(',').filter(Boolean)) { await press(`sarahlab:${p}`); await run(2.5); await set(`pregnant-${p}`); report[`pose-${p}`] = (await hook('belly'))?.sway; }
   if (process.env.POSES) { await press('sarahlab:stand'); await run(1.5); }
   await press('sarahlab:pregnant'); await run(1.5);
   report.notPregnant = { belly: await hook('belly'), organs: await hook('organs') };
-  await set('not-pregnant-stand');
+  await set('not-pregnant-stand', ['front', 'side'], ['front']);
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));
   log('errors', errors.length ? errors.join('\n') : 'none');

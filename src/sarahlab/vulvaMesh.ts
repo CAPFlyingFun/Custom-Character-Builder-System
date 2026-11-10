@@ -176,6 +176,16 @@ export interface VulvaPatch {
   readonly open: number;
   /** read her skin weights again (they changed: birthWeights.ts) */
   resyncWeights(): void;
+  /**
+   * HER SKELETON'S OPENING IN ITS PLACE (the new direction's step 3, Joshua 2026-11-09: "from the cervix to the vagina
+   * opening, leave what v3 (skeleton) did with the opening work we did, the womb and the giant balloon style look under
+   * the skin of v2, leave as is"): her opening's doors and her canal are the skeleton's (pelvicOrgansView.ts), so of this
+   * only her skin round the opening and the balloon's womb are drawn -- its own rolled rim, canal and cervix are not, its
+   * lips stand `lips` of their shape (0 her own skin's shape), and her skin is `tint` (a colour times her own) at the
+   * opening's edge, fading out to her own over `reach` metres ("the more natural skin tone fading out"). Off: all as it was.
+   */
+  setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number }): void;
+  readonly skeletonOpening: boolean;
   /** drawn even while her body is not (a probe's look at the area on its own) */
   solo: boolean;
   noTube?: boolean;
@@ -441,6 +451,8 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   const perMetre = new THREE.Vector3(1, 0, 0).applyMatrix3(inv).length();
   const restPos = new Float32Array(P * 3), restNrm = new Float32Array(P * 3);
   let open = 0, openApplied = -1, wantOpen = 0, naturalOpen = 0, dressed = false, dressedLips = 0, bulgeAmt = 0;
+  // her skeleton's opening in this one's place (setSkeletonOpening): how much of its lips' shape stays, and her skin's tone round it
+  let skelOpening = false, skelLips = 0, skelTint: readonly [number, number, number] = [1, 1, 1], skelReach = 0.03;
   // A BIRTH drives her (birthSequence.ts): the opening and bulge at least what her baby's head makes them, and her cervix
   // dilated on its own; nothing while no birth runs
   let driveOpen = 0, driveBulge = 0, cervixDrive: number | null = null;
@@ -683,6 +695,8 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       const d = colMetres ? colMetres[bake.ring[p] * M + bake.column[p]] : Math.hypot(bake.flat[p * 2] - bake.flat[r0 * 2], bake.flat[p * 2 + 1] - bake.flat[r0 * 2 + 1]) / (uScale || 1);
       edgeDist[p] = d;
       const inner = smooth(L.inner * showing, 0, d) * showing, edge = smooth(L.inner * 0.35 * showing, 0, d) * showing;
+      // (her skeleton's opening in its place: no inside of this one's to show -- her skin's tone at the edge, fading out)
+      if (skelOpening) { const f = smooth(skelReach, 0, d); for (let c = 0; c < 3; c++) colors[p * 3 + c] = 1 + (skelTint[c] - 1) * f; continue; }
       for (let c = 0; c < 3; c++) colors[p * 3 + c] = 1 + (L.innerTint[c] - 1) * inner + (L.edgeTint[c] - L.innerTint[c]) * edge;
     }
     const ca = geom.getAttribute('color') as THREE.BufferAttribute | undefined;
@@ -724,7 +738,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   const sculptLips = (at: Float32Array, n: Float32Array) => {
     // dressed, as much of the lips' shape as shows through what is over them (VULVA DETAIL: 0 her own skin's shape
     // exactly, 1 all of it); what is painted on her lies over it as it does on the rest of her
-    const amp = dressed ? dressedLips : (VULVA_OPEN.sheet ? 0 : 1);
+    const amp = dressed ? dressedLips : skelOpening ? skelLips : (VULVA_OPEN.sheet ? 0 : 1);
     lipMax = 0; lipCount = 0;
     if (amp <= 0) return;
     const L = VULVA_OPEN;
@@ -2263,6 +2277,16 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       bulgeAmt = v; openApplied = -1; sync();
     },
     get dressed() { return dressed; },
+    get skeletonOpening() { return skelOpening; },
+    setSkeletonOpening(on: boolean, look?: { lips?: number; tint?: readonly [number, number, number]; reach?: number }) {
+      skelOpening = on; skelLips = Math.min(1, Math.max(0, look?.lips ?? 0)); skelTint = look?.tint ?? [1, 1, 1]; skelReach = Math.max(1e-3, look?.reach ?? 0.03);
+      // (the balloon's womb alone, or all of it: its rolled rim, its canal and cervix, its womb)
+      const all = (K - 1) * M * 6, rimTris = (KB - 1) * M * 6, split = (KB + KC + KX - 1) * M * 6;
+      tubeGeom.clearGroups();
+      if (on) tubeGeom.addGroup(split, all - split, 1);
+      else { tubeGeom.addGroup(0, rimTris, 2); tubeGeom.addGroup(rimTris, split - rimTris, 0); tubeGeom.addGroup(split, all - split, 1); }
+      painted = false; openApplied = -1; sync();
+    },
     setWomb(w: WombShape | null, bone = -1) {
       if (w === womb && bone === wombBone) return;
       if (w !== womb) wombFitSkin.clear();

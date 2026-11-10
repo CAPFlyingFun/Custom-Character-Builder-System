@@ -27,7 +27,9 @@ import type { P3 } from './pelvisMeasure';
 
 /** What the layout needs of her measured pelvis (src/data/pelvis/<rig>.json). */
 export interface PelvisLandmarks {
-  readonly landmarks: { readonly symphysisTop: readonly number[]; readonly symphysisBottom: readonly number[]; readonly symphysisBack: readonly number[]; readonly promontory: readonly number[] };
+  /** `opening`: where her opening is in her own skin, when she has skin (v2: MEASURED on it, the middle of her opening's
+   * line at rest) -- her canal runs up from there; without it, from below her pubic bone (ORGAN_PLACE). */
+  readonly landmarks: { readonly symphysisTop: readonly number[]; readonly symphysisBottom: readonly number[]; readonly symphysisBack: readonly number[]; readonly promontory: readonly number[]; readonly opening?: readonly number[] };
   readonly midpelvis: { readonly centre: readonly number[] };
   readonly inlet: { readonly centre: readonly number[] };
 }
@@ -112,7 +114,7 @@ export function layOrgans(p: PelvisLandmarks, bladderMl: number = BLADDER.defaul
   const top = P(L.symphysisTop), bottom = P(L.symphysisBottom), back = P(L.symphysisBack);
   const x = top[0];
   // the canal: from its opening up and back to its top at the midpelvis, bowed a little back (its back wall the longer)
-  const fornix = P(p.midpelvis.centre), introitus: P3 = [x, bottom[1] - O.introitusBelow, bottom[2] - O.introitusBehind];
+  const fornix = P(p.midpelvis.centre), introitus: P3 = L.opening ? [x, L.opening[1], L.opening[2]] : [x, bottom[1] - O.introitusBelow, bottom[2] - O.introitusBehind];
   const mid = lerp(introitus, fornix, 0.5), run = dist(introitus, fornix);
   const backward: P3 = [0, (fornix[2] - introitus[2]) / run, -(fornix[1] - introitus[1]) / run];
   // (so its front wall and back wall lie either side of a centre line as long as their mean)

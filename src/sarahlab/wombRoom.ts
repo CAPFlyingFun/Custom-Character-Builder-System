@@ -1,9 +1,9 @@
 /**
  * THE ROOM v2's OWN WOMB TAKES, FOR THE ORGANS ROUND IT (the new direction, Joshua 2026-11-09: "everything except for the
  * birth womb is going to be copied over... we are going to use the existing womb and design we have in v2"). v2's womb is
- * a sac measured out from its middle (baby.ts `WombShape`: a radius each way); her belly's organs are kept out of a womb
- * given as slices up its long axis (actor/pregnantWomb.ts `WombRoom`). This reads the one as the other: nothing of v2's
- * womb changes.
+ * a sac measured out from its middle (baby.ts `WombShape`: a radius each way), laid against her belly's skin and hanging
+ * with it; her belly's organs are kept out of a womb's room (actor/pregnantWomb.ts `WombRoom`). This reads the one as the
+ * other: nothing of v2's womb changes.
  *
  * Her rest frame, metres.
  */
@@ -11,41 +11,59 @@ import { WOMB_SHAPE, type WombRoom } from '../actor/pregnantWomb';
 import type { P3 } from '../actor/pelvisMeasure';
 import { sacRadius, type WombShape } from './baby';
 
-/** How far the sac reaches from a point `t` along its axis from its middle, in a direction square to the axis (metres;
- * 0 where the point is outside it): the sac is a radius each way from its middle, so by bisection. */
-function reach(w: WombShape, ax: P3, t: number, dir: P3): number {
-  const inside = (s: number): boolean => {
-    const x = ax[0] * t + dir[0] * s, y = ax[1] * t + dir[1] * s, z = ax[2] * t + dir[2] * s, d = Math.hypot(x, y, z);
-    return d < 1e-9 || d <= sacRadius(w, x / d, y / d, z / d);
-  };
-  if (!inside(0)) return 0;
-  let lo = 0, hi = 0.02;
-  while (inside(hi) && hi < 1) { lo = hi; hi *= 2; }
-  for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (inside(m)) lo = m; else hi = m; }
-  return lo;
-}
+/**
+ * How what is in its way is moved aside. v2's womb lies against her belly's skin, so nothing leaves it through her
+ * front: a point in it goes out the way it already stands from the sac's middle with whatever of that points forward
+ * taken off -- up for what is above its middle (her intestines and the colon across her, up under her ribs as a womb at
+ * term has them), back and to her sides for the rest; one with no way of its own goes `up`. GAME TUNING: `far`, the
+ * furthest anything is moved (metres).
+ */
+const ROOM = Object.freeze({ up: [0, 0.8, -0.6] as P3, far: 0.45 });
 
 /**
- * v2's womb as the room it takes: WOMB_SHAPE.stations + 1 slices from its bottom to its top along its long axis as it
- * leans front to back (its lean to a side, which a room has none of, is left out: v2's womb stands on her midline), each
- * slice's middle set between its front and its back.
+ * v2's womb as the room it takes. Its slices (the last WOMB_SHAPE.stations + 1, bottom to top up her body) are given for
+ * what reads a room's height; whether a point is in it, and the way out of it, are the sac's own (`inside`, `pushOut`).
  */
 export function wombRoomOf(w: WombShape): WombRoom {
-  // (its axis in her front-to-back plane, pointing up)
-  let ay = w.axis.y, az = w.axis.z;
-  if (ay < 0) { ay = -ay; az = -az; }
-  const l = Math.hypot(ay, az) || 1; ay /= l; az /= l;
-  const ax: P3 = [0, ay, az], front: P3 = [0, -az, ay], back: P3 = [0, az, -ay], left: P3 = [1, 0, 0], right: P3 = [-1, 0, 0];
-  const top = sacRadius(w, 0, ay, az), bottom = -sacRadius(w, 0, -ay, -az), n = WOMB_SHAPE.stations;
+  const c = w.centre, n = WOMB_SHAPE.stations;
+  const inside = (x: number, y: number, z: number, gap = 0): boolean => {
+    const dx = x - c.x, dy = y - c.y, dz = z - c.z, d = Math.hypot(dx, dy, dz);
+    return d < 1e-9 || d < sacRadius(w, dx / d, dy / d, dz / d) + gap;
+  };
+  const pushOut = (points: Float32Array, gap: number): number => {
+    let moved = 0;
+    for (let p = 0; p + 2 < points.length; p += 3) {
+      const x = points[p], y = points[p + 1], z = points[p + 2];
+      if (!inside(x, y, z, gap)) continue;
+      let ux = x - c.x, uy = y - c.y, uz = Math.min(0, z - c.z);
+      let l = Math.hypot(ux, uy, uz);
+      if (l < 0.01) { ux = ROOM.up[0]; uy = ROOM.up[1]; uz = ROOM.up[2]; l = 1; }
+      ux /= l; uy /= l; uz /= l;
+      // (the nearest place that way outside it: doubled until out, then halved to the wall)
+      let lo = 0, hi = 0.01;
+      while (hi < ROOM.far && inside(x + ux * hi, y + uy * hi, z + uz * hi, gap)) { lo = hi; hi *= 2; }
+      hi = Math.min(hi, ROOM.far);
+      for (let k = 0; k < 18; k++) { const m = (lo + hi) / 2; if (inside(x + ux * m, y + uy * m, z + uz * m, gap)) lo = m; else hi = m; }
+      points[p] = x + ux * hi; points[p + 1] = y + uy * hi; points[p + 2] = z + uz * hi;
+      moved++;
+    }
+    return moved;
+  };
+  // (its slices up her body: each one's middle and half-sizes across her and front to back, by bisection out from its
+  // middle's line)
+  const reach = (y: number, dx: number, dz: number): number => {
+    if (!inside(c.x, y, c.z)) return 0;
+    let lo = 0, hi = 0.02;
+    while (hi < 1 && inside(c.x + dx * hi, y, c.z + dz * hi)) { lo = hi; hi *= 2; }
+    for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2; if (inside(c.x + dx * m, y, c.z + dz * m)) lo = m; else hi = m; }
+    return lo;
+  };
+  const top = c.y + sacRadius(w, 0, 1, 0), bottom = c.y - sacRadius(w, 0, -1, 0);
   const path: P3[] = [], halves: [number, number][] = [];
   for (let k = 0; k <= n; k++) {
-    // (its two ends a hair inside, where it still has a width)
-    const t = bottom + (top - bottom) * Math.min(0.995, Math.max(0.005, k / n));
-    const f = reach(w, ax, t, front), b = reach(w, ax, t, back), across = (reach(w, ax, t, left) + reach(w, ax, t, right)) / 2, shift = (f - b) / 2;
-    path.push([w.centre.x, w.centre.y + ay * t + front[1] * shift, w.centre.z + az * t + front[2] * shift]);
-    halves.push([Math.max(1e-4, across), Math.max(1e-4, (f + b) / 2)]);
+    const y = bottom + (top - bottom) * Math.min(0.995, Math.max(0.005, k / n)), f = reach(y, 0, 1), b = reach(y, 0, -1);
+    path.push([c.x, y, c.z + (f - b) / 2]);
+    halves.push([Math.max(1e-4, (reach(y, 1, 0) + reach(y, -1, 0)) / 2), Math.max(1e-4, (f + b) / 2)]);
   }
-  let high = -Infinity;
-  for (let k = 0; k <= n; k++) high = Math.max(high, path[k][1] + halves[k][1] * Math.abs(front[1]));
-  return { path, halves, leanDeg: (Math.atan2(az, ay) * 180) / Math.PI, top: Math.max(high, w.centre.y + top * ay) };
+  return { path, halves, leanDeg: 0, top, inside: (x, y, z) => inside(x, y, z), pushOut };
 }

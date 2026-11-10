@@ -134,6 +134,8 @@ export class PelvicOrgansView {
   private grown: PregnantWomb | null = null;
   private outer: WombRoom | null = null;
   private doorsOn = true;
+  private outerOn = true;
+  private readonly doorSkin = new THREE.Color(DOOR_COLOURS.skin);
   private sacOf: { womb: PregnantWomb; shape: WombShape } | null = null;
   /** The sac as her babies need it (grown round them where they stand past it), which her womb's wall makes room for. */
   private room: WombShape | null = null;
@@ -214,7 +216,11 @@ export class PelvicOrgansView {
   /** The room her womb takes, whichever womb she has: v2's own, or the one grown here (null: not pregnant). */
   get wombRoom(): WombRoom | null { return this.outer ?? this.grown; }
   /** HER OPENING'S DOORS DRAWN OR NOT (v2 keeps its own opening until the skeleton's replaces it; they still follow). */
-  set doorsShown(on: boolean) { this.doorsOn = on; this.doors.mesh.visible = on && this.group.visible; this.doors.skin.visible = on && this.group.visible; }
+  set doorsShown(on: boolean) { this.doorsOn = on; this.doors.mesh.visible = on && this.group.visible; this.doors.skin.visible = on && this.outerOn && this.group.visible; }
+  /** The test piece of outer skin round her doors drawn or not: in v2 her own skin is there. */
+  set outerSkinShown(on: boolean) { this.outerOn = on; this.doors.skin.visible = on && this.doorsOn && this.group.visible; }
+  /** Her doors' outer faces in this colour (v2: her own skin's tone round her opening); their lining stays its own. */
+  setDoorSkin(colour: THREE.ColorRepresentation): void { this.doorSkin.set(colour); this.drawnSwing = -1; this.drawDoors(); }
   get doorsShown(): boolean { return this.doorsOn; }
   /**
    * BIRTH OPENING (0 closed .. 1 full, actor/birthCanal.ts): her cervix thinned and opened to 10 cm and her canal opened
@@ -491,7 +497,7 @@ export class PelvicOrgansView {
     const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now), g = this.doors.mesh.geometry;
     if (this.clothPoints && this.clothPoints.length === d.points.length) d.points.set(this.clothPoints);
     this.laidAngles = d.angles; this.openNow = d.openM;
-    const colour = new Float32Array(d.lining.length * 3), lining = new THREE.Color(DOOR_COLOURS.lining), skin = new THREE.Color(DOOR_COLOURS.skin);
+    const colour = new Float32Array(d.lining.length * 3), lining = new THREE.Color(DOOR_COLOURS.lining), skin = this.doorSkin;
     d.lining.forEach((l, i) => (l ? lining : skin).toArray(colour, i * 3));
     g.setAttribute('position', new THREE.BufferAttribute(d.points, 3)); g.setAttribute('color', new THREE.BufferAttribute(colour, 3));
     g.setIndex(new THREE.BufferAttribute(d.triangles, 1)); g.computeVertexNormals();
@@ -528,7 +534,7 @@ export class PelvicOrgansView {
     return out;
   }
 
-  set visible(on: boolean) { this.group.visible = on; this.doors.mesh.visible = on && this.doorsOn; this.doors.skin.visible = on && this.doorsOn; }
+  set visible(on: boolean) { this.group.visible = on; this.doors.mesh.visible = on && this.doorsOn; this.doors.skin.visible = on && this.doorsOn && this.outerOn; }
 
   dispose(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
