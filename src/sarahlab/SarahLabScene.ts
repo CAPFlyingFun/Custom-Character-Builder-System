@@ -9237,6 +9237,30 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         vulvaTry: (next?: Partial<typeof VULVA_TRY>) => { if (next) { Object.assign(VULVA_TRY, next); if (vulva) { vulva.relayOut(); vulva.sync(); } } return { ...VULVA_TRY }; },
         // (her vulva's area made again, taking another share of her skin: `vulvaArea`)
         vulvaArea: (next?: Partial<typeof vulvaArea>) => { if (next) { Object.assign(vulvaArea, next); remakeVulva?.(); applyLook(); refresh(); } return { ...vulvaArea, made: !!vulva }; },
+        // (how far a worn mesh -- by name, or its name's start -- stands off her skin, as she is posed: each of its points
+        // against her nearest, along her skin's normal there (room units; less than 0 inside her), and the share inside)
+        garmentDepth: (name: string, cell = 2) => {
+          const b = bodyOf()?.mesh; if (!b || !model) return null;
+          const ms: THREE.SkinnedMesh[] = []; model.traverse((n) => { const m = n as THREE.SkinnedMesh; if (m.isSkinnedMesh && m !== b && m.name.startsWith(name)) ms.push(m); });
+          if (!ms.length) return null;
+          model.updateMatrixWorld(true);
+          const pts: THREE.Vector3[] = [], v = new THREE.Vector3(), box = new THREE.Box3();
+          for (const m of ms) for (let i = 0; i < m.geometry.attributes.position.count; i++) { const q = m.getVertexPosition(i, new THREE.Vector3()); m.localToWorld(q); pts.push(q); box.expandByPoint(q); }
+          box.expandByScalar(4);
+          const bp = b.geometry.attributes.position, bn = b.geometry.attributes.normal as THREE.BufferAttribute, nm = new THREE.Matrix3().getNormalMatrix(b.matrixWorld);
+          const grid = new Map<string, number[]>(), wp: number[] = [], key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+          for (let i = 0; i < bp.count; i++) { b.getVertexPosition(i, v); b.localToWorld(v); if (!box.containsPoint(v)) continue; const k = wp.length / 4; wp.push(v.x, v.y, v.z, i); const kk = key(v.x, v.y, v.z); (grid.get(kk) ?? grid.set(kk, []).get(kk)!).push(k); }
+          const d: number[] = [], nv = new THREE.Vector3();
+          for (const p of pts) {
+            let best = -1, bd = Infinity; const cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell), cz = Math.floor(p.z / cell);
+            for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) for (let e = -1; e <= 1; e++) for (const k of grid.get(`${cx + a},${cy + c},${cz + e}`) ?? []) { const dd = (wp[k * 4] - p.x) ** 2 + (wp[k * 4 + 1] - p.y) ** 2 + (wp[k * 4 + 2] - p.z) ** 2; if (dd < bd) { bd = dd; best = k; } }
+            if (best < 0) continue;
+            nv.fromBufferAttribute(bn, wp[best * 4 + 3]).applyMatrix3(nm).normalize();
+            d.push((p.x - wp[best * 4]) * nv.x + (p.y - wp[best * 4 + 1]) * nv.y + (p.z - wp[best * 4 + 2]) * nv.z);
+          }
+          d.sort((x, y) => x - y); const q = (f: number) => +d[Math.min(d.length - 1, Math.floor(d.length * f))].toFixed(2);
+          return { meshes: ms.map((m) => m.name), points: pts.length, measured: d.length, inside: +(d.filter((x) => x < 0).length / Math.max(1, d.length)).toFixed(3), p05: q(0.05), p25: q(0.25), p50: q(0.5), p75: q(0.75), p95: q(0.95) };
+        },
         // (her legs holding her opening narrower: off, it opens as wide as her own area lets it -- for looking)
         legsHold: (on?: boolean) => { if (vulva && on !== undefined) vulva.legsHold = on; return vulva?.legsHold ?? null; },
         // (her opening made from her own skin, held by her skeleton -- or her skeleton's doors: `skinMadeOpening`)
