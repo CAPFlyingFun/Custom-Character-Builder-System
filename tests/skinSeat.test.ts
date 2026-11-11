@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SEAT_SKIN, footAt, laySeatSkin, sleeveTube, tubeOut, type SkinGrid } from '../src/actor/skinSeat';
+import { SEAT_SKIN, footAt, layBeyond, laySeatSkin, sleeveTube, tubeOut, type SkinBeyond, type SkinGrid } from '../src/actor/skinSeat';
 
 /** A sleeve round a canal that comes straight down (-y) from y = 0.10 to 0.04, then turns forward (+z) on a quarter of a
  * circle of 6 cm: `rows` rows of `cols` points, 5 cm round, its first row at its forward end (her doors' feet). */
@@ -122,5 +122,57 @@ describe('her skin stretched down to her doors (skinSeat)', () => {
     const g = grid(), whole = laySeatSkin(g, tube, 1), half = laySeatSkin(g, tube, 0.5), none = laySeatSkin(g, tube, 0);
     expect(Math.max(...none)).toBe(0);
     for (let i = 0; i < whole.length; i += 37) expect(half[i]).toBeCloseTo(whole[i] / 2, 9);
+  });
+
+  // HER SKIN BEYOND THE AREA: a flat sheet at y = 0.045 behind the tube's turn (z from -0.02 back to -0.14), 9 cm either
+  // side, its points 5 mm apart, joined along a square grid's edges; its rim of points held
+  const sheet = (): { mesh: SkinBeyond; at: Float32Array; side: Float32Array; nx: number; nz: number } => {
+    const nx = 37, nz = 25, N = nx * nz, at = new Float32Array(N * 3), side = new Float32Array(N), held = new Uint8Array(N), nb: number[][] = [];
+    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      const v = k * nx + i; at[v * 3] = -0.09 + i * 0.005; at[v * 3 + 1] = 0.045; at[v * 3 + 2] = -0.02 - k * 0.005;
+      side[v] = Math.atan2(at[v * 3] - tube.centres[0][0], at[v * 3 + 2] - tube.centres[0][2]);
+      held[v] = i === 0 || k === 0 || i === nx - 1 || k === nz - 1 ? 1 : 0;
+      nb.push([i > 0 ? v - 1 : -1, i < nx - 1 ? v + 1 : -1, k > 0 ? v - nx : -1, k < nz - 1 ? v + nx : -1].filter((o) => o >= 0));
+    }
+    const from = new Uint32Array(N + 1), to: number[] = [];
+    nb.forEach((l, v) => { from[v] = to.length; to.push(...l); }); from[N] = to.length;
+    return { mesh: { count: N, from, to: Uint32Array.from(to), held }, at, side, nx, nz };
+  };
+
+  it('her skin beyond the area: what the tube stands through goes out to its wall, the rest is drawn after it, its edge stays', () => {
+    // (the tube comes straight down through y = 0.045 round x = z = 0, 5 cm round: the sheet's front strip lies across it)
+    const S2 = sheet(), D = layBeyond(S2.mesh, S2.at, S2.side, tube, 1), at = (v: number) => [S2.at[v * 3] + D[v * 3], S2.at[v * 3 + 1] + D[v * 3 + 1], S2.at[v * 3 + 2] + D[v * 3 + 2]];
+    let inside = 0, moved = 0, most = 0;
+    for (let v = 0; v < S2.mesh.count; v++) {
+      const far = Math.hypot(D[v * 3], D[v * 3 + 1], D[v * 3 + 2]);
+      if (S2.mesh.held[v]) { expect(far).toBe(0); continue; }
+      if (far > 1e-6) moved++; most = Math.max(most, far);
+      const p = at(v); if (tubeOut(tube, p[0], p[1], p[2], SEAT_SKIN.standOff * 0.5)) inside++;
+    }
+    expect(inside).toBe(0);
+    expect(moved).toBeGreaterThan(200);
+    expect(most).toBeGreaterThan(0.01);
+    // (taut: down her middle from its held back edge to the tube, each point's move is close to the mean of the two
+    // either side of it along that line and its two beside it -- no step, no fold)
+    const mid = (S2.nx - 1) / 2;
+    let seen = 0;
+    for (let k = S2.nz - 2; k > 0; k--) {
+      const v = k * S2.nx + mid, p = [S2.at[v * 3], S2.at[v * 3 + 1], S2.at[v * 3 + 2]];
+      if (tubeOut(tube, p[0], p[1], p[2], SEAT_SKIN.standOff + 0.004)) break;
+      const m = [0, 1, 2].map((c) => (D[(v - 1) * 3 + c] + D[(v + 1) * 3 + c] + D[(v - S2.nx) * 3 + c] + D[(v + S2.nx) * 3 + c]) / 4);
+      if (Math.hypot(D[v * 3], D[v * 3 + 1], D[v * 3 + 2]) < 1e-5) continue;
+      expect(Math.hypot(D[v * 3] - m[0], D[v * 3 + 1] - m[1], D[v * 3 + 2] - m[2])).toBeLessThan(0.0006);
+      seen++;
+    }
+    expect(seen).toBeGreaterThan(3);
+    // (and `share` of it: half the way)
+    const H = layBeyond(S2.mesh, S2.at, S2.side, tube, 0.5);
+    for (let i = 0; i < D.length; i += 37) expect(H[i]).toBeCloseTo(D[i] * 0.5, 6);
+    expect(layBeyond(S2.mesh, S2.at, S2.side, tube, 0).every((x) => x === 0)).toBe(true);
+  });
+
+  it('her skin beyond the area: clear of the tube, none of it moves', () => {
+    const S2 = sheet(), far = Float32Array.from(S2.at, (x, i) => (i % 3 === 2 ? x - 0.2 : x));
+    expect(layBeyond(S2.mesh, far, S2.side, tube, 1).every((x) => x === 0)).toBe(true);
   });
 });

@@ -7887,7 +7887,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         if (vulva) {
           const seated = !organsGrowWomb && skeletonOpening && vulva.skeletonOpening && v2Seat.ring && v2Seat.skin, sl = seated ? organs.sleeve : null;
           const step = (a: number, b: number) => { const t = Math.min(1, Math.max(0, (organs!.opening - a) / (b - a))); return t * t * (3 - 2 * t); };
-          vulva.setSeat(sl ? { points: sl.points, columns: sl.columns, version: sl.version, doors: sl.doors, share: step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.to) } : null);
+          vulva.setSeat(sl ? { points: sl.points, columns: sl.columns, version: sl.version, doors: sl.doors, share: step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.to), tail: v2Torso.landmarks.coccyx } : null);
           // (and her skin's own opening, which her doors stand in while she is barely open: let shut as her skin goes down)
           if (seated) vulva.setSkeletonHole(1 - step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.holeShut));
         }

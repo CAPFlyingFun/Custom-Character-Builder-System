@@ -267,7 +267,10 @@ transformed += babyPush + kickMove + jiggle.x * uJiggleBelly + max(jiggle.y, 0.0
  * jiggle's, so the CPU posers read it the same way.
  */
 export const PUSH_ATTRIBUTE = 'babyPush';
-export interface Jiggle { readonly weights: Float32Array; readonly uniforms: JiggleUniforms; readonly push: Float32Array; readonly legs?: Float32Array | null }
+export interface Jiggle { readonly weights: Float32Array; readonly uniforms: JiggleUniforms; readonly push: Float32Array; readonly legs?: Float32Array | null; extra?: PushExtra | null }
+/** A second push laid over the first (`setPushExtra`): which vertices, how far each (geometry units, three a vertex), and
+ * what the first push has there (so it is put back exactly). */
+export interface PushExtra { readonly at: Uint32Array; readonly values: Float32Array; readonly under: Float32Array }
 
 /**
  * Her legs' follow weights, packed into the jiggle attribute's breast channels (no new attribute: her body is at the most
@@ -353,6 +356,30 @@ export function setPush(mesh: THREE.Object3D, values: ArrayLike<number> | null):
   const j = jiggleOf(mesh), g = (mesh as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
   if (!j || !g) return false;
   if (values) j.push.set(values); else j.push.fill(0);
+  // (what is laid over it stays on it)
+  const x = j.extra;
+  if (x) for (let k = 0; k < x.at.length; k++) for (let c = 0; c < 3; c++) { const i = x.at[k] * 3 + c; x.under[k * 3 + c] = j.push[i]; j.push[i] += x.values[k * 3 + c]; }
+  const a = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined;
+  if (a) a.needsUpdate = true;
+  return true;
+}
+/**
+ * A SECOND PUSH OVER THE FIRST, for another owner of other skin (her skin behind her opening carried out with it as she
+ * opens: vulvaMesh.ts, actor/skinSeat.ts `layBeyond` -- nowhere near her belly): `at` its vertices, `values` how far each
+ * goes (geometry units, three a vertex); null takes it off. Whatever `setPush` lays, it stays on top of. False for a mesh
+ * with no jiggle.
+ */
+export function setPushExtra(mesh: THREE.Object3D, at: ArrayLike<number> | null, values: ArrayLike<number> | null): boolean {
+  const j = jiggleOf(mesh), g = (mesh as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
+  if (!j || !g) return false;
+  const old = j.extra;
+  if (!old && !(at && values)) return true;
+  if (old) for (let k = 0; k < old.at.length; k++) for (let c = 0; c < 3; c++) j.push[old.at[k] * 3 + c] = old.under[k * 3 + c];
+  if (at && values) {
+    const x: PushExtra = { at: Uint32Array.from(at), values: Float32Array.from(values), under: new Float32Array(at.length * 3) };
+    for (let k = 0; k < x.at.length; k++) for (let c = 0; c < 3; c++) { const i = x.at[k] * 3 + c; x.under[k * 3 + c] = j.push[i]; j.push[i] += x.values[k * 3 + c]; }
+    j.extra = x;
+  } else j.extra = null;
   const a = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined;
   if (a) a.needsUpdate = true;
   return true;

@@ -125,6 +125,8 @@ describe("her opening's seat under her pubic arch (Joshua, 2026-11-10: \"if you 
     expect(Math.min(...(open.narrowAcross ?? [1]))).toBeCloseTo(OPEN_SEAT.mould, 6);
     for (const q of rings.outlet.ring) expect(off(q, open.path)).toBeGreaterThan(r * OPEN_SEAT.mould + 0.002);
     for (const q of rings.midpelvis.ring) expect(off(q, open.path)).toBeGreaterThan(r + 0.002);
+    // (and where her doors hang it is as wide as they are -- their lining is its own -- however her arch narrows it above)
+    { let s = 0; open.path.forEach((q, i) => { if (i) s += Math.hypot(q[1] - open.path[i - 1][1], q[2] - open.path[i - 1][2]); if (s <= DOORS.hingeUp + 1e-9) { expect(open.narrow![i]).toBe(1); expect(open.narrowAcross![i]).toBe(1); } }); }
     // (her tailbone's tip is a knob round its measured point: at 3 mm it stood through the canal's back wall)
     expect(off(torso.landmarks.coccyx, open.path)).toBeGreaterThan(r + 0.005);
     expect(OPEN_SEAT.archClear + OPEN_SEAT.tailClear).toBeLessThan(0.0115);

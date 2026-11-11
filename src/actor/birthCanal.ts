@@ -401,6 +401,10 @@ export function openCanal(laid: { readonly path: readonly P3[]; readonly width: 
   // (and where her bones pinch it, narrower as it opens: `narrow`, the share of its depth it keeps at even steps along
   // it, and `narrowAcross`, of its width)
   const pinch = seated && o > 0 ? pinchOf(way, bones) : null, eased = (k: number[]) => k.map((v) => 1 - (1 - v) * o);
+  // (where her doors hang -- its first `straight` metres -- it is as wide as they are: their lining is its own there.
+  // Narrowed for her arch a centimetre above, its end stood 5 mm inside her doors' roots all round, and what is behind
+  // them showed between the two: a skin-coloured ring inside her opening, 2026-11-10)
+  if (pinch) { let s = 0; for (let i = 0; i < n; i++) { if (i) s += Math.hypot(way[i][1] - way[i - 1][1], way[i][2] - way[i - 1][2]); if (s > straight + 1e-9) break; pinch.deep[i] = 1; pinch.wide[i] = 1; } }
   // (and behind, as it opens, it goes back to her spine: `back`, how much deeper its back half is than its front, at the
   // same steps)
   const back = pinch && bones.sacrum ? backOf(way, bones, pinch.deep, straight) : null;

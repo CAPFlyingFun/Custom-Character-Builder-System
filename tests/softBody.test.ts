@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  bellyTune, bounceShare, breastTune, createJiggleUniforms, jiggleAt, kickAt, KICKS, jiggleWeights, patchJiggle, restingMass, stepMass,
-  JIGGLE_SOURCES, UNITS_PER_METRE, type Mass, type MassTune,
+  attachJiggle, bellyTune, bounceShare, breastTune, createJiggleUniforms, jiggleAt, jiggleOf, kickAt, KICKS, jiggleWeights, patchJiggle, restingMass, setPush, setPushExtra, stepMass,
+  JIGGLE_SOURCES, PUSH_ATTRIBUTE, UNITS_PER_METRE, type Mass, type MassTune,
 } from '../src/sarahlab/softBody';
 import { walkSwayAccel, WALK_SWAY_M } from '../src/sarahlab/sarahLabTool';
 
@@ -156,6 +156,33 @@ describe('soft body: the skin', () => {
     jiggleAt(j, 1, out, 0.05, 1, 0); expect(out.z).toBe(0);
     expect(kickAt(uniforms, 1, 0.1, 1, 0, new THREE.Vector3()).z).toBeCloseTo(0.02 * 0.9, 9);
     uniforms.kickAt.value[0].w = 0; jiggleAt(j, 0, out, 0.1, 1, 0); expect(out.z).toBe(0);
+  });
+
+  it('a second push lies over the first (her skin behind her opening, carried out with it): added to it, kept when the first is laid again, taken off exactly', () => {
+    const { geometry, dictionary } = strip(), mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
+    mesh.morphTargetDictionary = dictionary;
+    expect(attachJiggle(mesh, createJiggleUniforms())).toBe(true);
+    const j = jiggleOf(mesh)!, attr = geometry.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute, belly = new Float32Array(12);
+    belly[0] = 0.5; belly[4] = 0.25;
+    setPush(mesh, belly);
+    const v0 = attr.version;
+    // (vertices 1 and 3: over her belly's push at 1, where there is none at 3)
+    expect(setPushExtra(mesh, [1, 3], [0, 0.1, 0, 0.2, 0, 0])).toBe(true);
+    expect(attr.version).toBeGreaterThan(v0);
+    expect(Array.from(j.push)).toEqual([0.5, 0, 0, 0, 0.35, 0, 0, 0, 0, 0.2, 0, 0].map((x) => Math.fround(x)));
+    // (her belly's push laid again, changed: the second is still on it)
+    belly[4] = 0.5; setPush(mesh, belly);
+    expect(j.push[4]).toBeCloseTo(0.6, 6); expect(j.push[9]).toBeCloseTo(0.2, 6);
+    // (laid again elsewhere: off where it was, on where it is)
+    setPushExtra(mesh, [2], [0, 0, 0.3]);
+    expect(j.push[4]).toBeCloseTo(0.5, 6); expect(j.push[9]).toBe(0); expect(j.push[8]).toBeCloseTo(0.3, 6);
+    // (and taken off: her belly's push as it is, to the last bit; her belly's cleared, nothing is left)
+    setPushExtra(mesh, null, null);
+    expect(Array.from(j.push)).toEqual(Array.from(belly));
+    setPush(mesh, null);
+    expect(j.push.every((x) => x === 0)).toBe(true);
+    // (a mesh with no jiggle has no push to lay it on)
+    expect(setPushExtra(new THREE.Mesh(new THREE.BufferGeometry()), [0], [0, 0, 0])).toBe(false);
   });
 
   it('the push is its own attribute, added before skinning with the jiggle', () => {

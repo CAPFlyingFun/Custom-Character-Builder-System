@@ -246,6 +246,57 @@ export function tubeDepth(t: SleeveTube, x: number, y: number, z: number): { dep
   return { depth: Number.isFinite(depth) ? depth : 0, way };
 }
 
+const lengths = new WeakMap<SleeveTube, Float64Array>();
+/** How far up the tube each of its rows is from its first, along its middle line (metres; worked out once a tube). */
+function rowsAlong(t: SleeveTube): Float64Array {
+  let l = lengths.get(t);
+  if (!l) { l = new Float64Array(t.rows); for (let k = 1; k < t.rows; k++) l[k] = l[k - 1] + Math.hypot(t.centres[k][0] - t.centres[k - 1][0], t.centres[k][1] - t.centres[k - 1][1], t.centres[k][2] - t.centres[k - 1][2]); lengths.set(t, l); }
+  return l;
+}
+/**
+ * A point in the tube's own terms, into `out`: how far up the tube from its first row it lies (metres along its middle
+ * line; under 0: beyond its first row, toward her opening's mouth -- her doors' room), how far from its middle line, where
+ * round it (radians, from its front toward `across`), and how far out its wall is there (her doors, in their room). By
+ * the place on its middle line nearest the point.
+ */
+function tubeAt(t: SleeveTube, x: number, y: number, z: number, out: Float64Array): void {
+  const C = t.flat.c, A = t.flat.a, X = t.across, rows = t.rows, L = rowsAlong(t);
+  let best = Infinity;
+  for (let k = 0; k + 1 < rows; k++) {
+    const i = k * 3, ax0 = C[i], ay0 = C[i + 1], az0 = C[i + 2], bx = C[i + 3] - ax0, by = C[i + 4] - ay0, bz = C[i + 5] - az0, l2 = bx * bx + by * by + bz * bz || 1e-12, l = Math.sqrt(l2);
+    let f = ((x - ax0) * bx + (y - ay0) * by + (z - az0) * bz) / l2;
+    // (beyond its first row: on along its first piece, as far as her doors' room goes; beyond its last: its last row)
+    f = k === 0 ? Math.max(-SEAT_SKIN.before / l, f) : Math.max(0, f);
+    if (f > 1) f = 1;
+    const fc = f < 0 ? 0 : f;
+    let ux = A[i] + (A[i + 3] - A[i]) * fc, uy = A[i + 1] + (A[i + 4] - A[i + 1]) * fc, uz = A[i + 2] + (A[i + 5] - A[i + 2]) * fc;
+    const ul = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1; ux /= ul; uy /= ul; uz /= ul;
+    const vx = x - (ax0 + bx * f), vy = y - (ay0 + by * f), vz = z - (az0 + bz * f), whole = Math.sqrt(vx * vx + vy * vy + vz * vz);
+    if (whole >= best) continue;
+    best = whole;
+    const al = vx * ux + vy * uy + vz * uz, rx = vx - ux * al, ry = vy - uy * al, rz = vz - uz * al;
+    let fx = X[1] * uz - X[2] * uy, fy = X[2] * ux - X[0] * uz, fz = X[0] * uy - X[1] * ux;
+    const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+    const angle = Math.atan2(rx * X[0] + ry * X[1] + rz * X[2], rx * fx + ry * fy + rz * fz);
+    out[0] = f < 0 ? f * l : L[k] + f * l; out[1] = Math.sqrt(rx * rx + ry * ry + rz * rz); out[2] = angle;
+    out[3] = f < 0 ? doorWallAt(t, -f * l, angle) : wallAt(t, k, fc, angle);
+  }
+}
+/** The point of the tube's wall `up` metres up it from its first row (under 0: of her doors' room beyond it) at a place
+ * round it, stood `off` metres out from it: into `out`. */
+function wallPoint(t: SleeveTube, up: number, angle: number, off: number, out: Float64Array): void {
+  const C = t.flat.c, A = t.flat.a, X = t.across, L = rowsAlong(t), rows = t.rows;
+  let k = 0;
+  while (k < rows - 2 && L[k + 1] < up) k++;
+  const i = k * 3, l = L[k + 1] - L[k] || 1e-9, f = Math.min(1, (up - L[k]) / l), fc = f < 0 ? 0 : f;
+  let ux = A[i] + (A[i + 3] - A[i]) * fc, uy = A[i + 1] + (A[i + 4] - A[i + 1]) * fc, uz = A[i + 2] + (A[i + 5] - A[i + 2]) * fc;
+  const ul = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1; ux /= ul; uy /= ul; uz /= ul;
+  let fx = X[1] * uz - X[2] * uy, fy = X[2] * ux - X[0] * uz, fz = X[0] * uy - X[1] * ux;
+  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+  const r = (f < 0 ? doorWallAt(t, -f * l, angle) : wallAt(t, k, fc, angle)) + off, cs = Math.cos(angle), sn = Math.sin(angle);
+  for (let e = 0; e < 3; e++) out[e] = C[i + e] + (C[i + 3 + e] - C[i + e]) * f + ((e === 0 ? fx : e === 1 ? fy : fz) * cs + X[e] * sn) * r;
+}
+
 /** Her skin round her opening, as a grid: `rings` rings (the first its rim, the last her own skin at the area's edge) by
  * `cols` columns out from it; each one's place as her skin lies; how far out its column each is (`tau`: 0 its rim, 1 the
  * area's edge); and the place round her opening each column's rim point is to go to (radians: 0 her front, toward
@@ -260,24 +311,44 @@ export interface SkinGrid {
 
 /**
  * How far each point of her skin's grid goes (rings x cols x 3, metres) -- `share` of it (0 her skin as it lies, 1 all of
- * it, evenly between): its rim to her doors' feet, each column to its place round them; the rest of each column after it, less and
- * less to none at the area's edge (a smooth step of `tau`); then, `SEAT_SKIN.passes` times, whatever of it lies inside
- * the tube put out to stand off its wall (each column to its own side of the tube: `tubeOut`), and its move evened with
- * its neighbours' (its rim and its edge held) -- so it drapes the tube as one skin, with no step where the tube lifts it
- * -- and put out of the tube again, last.
+ * it, evenly between).
+ *
+ * AS A SOCK ON THE TUBE. Each column of her skin runs from her opening's rim out to the area's edge; as it lies, its
+ * inner part is inside the tube (her canal has come down through it) and the rest outside. Its rim goes to her doors'
+ * feet, at the column's place round them, and its inner part -- every ring of it out to the last that lies inside the
+ * tube -- is laid ALONG THE TUBE'S WALL from there up to where that last ring is, each as far along as it was along her
+ * skin; the rest of the column stays her skin as it lies. (It was the rim's move handed down each column, less and less,
+ * and then put out of the tube: rings went out of it every which way and lay over one another, a ragged collar round her
+ * doors -- 2026-11-10.) Then, `SEAT_SKIN.passes` times, its move is evened with its neighbours' (its rim and its edge
+ * held) and whatever that draws into the tube put out to stand off its wall (`tubeOut`) -- so the corner where it leaves
+ * the tube for her skin is drawn taut, one skin with no step -- and put out of the tube again, last.
  */
 export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Float32Array {
   const { rings: K, cols: M } = grid, D = new Float32Array(K * M * 3), s = Math.min(1, Math.max(0, share));
   if (!(s > 0) || K < 2) return D;
-  const rimMove = new Float32Array(M * 3);
-  for (let j = 0; j < M; j++) {
-    const to = footAt(tube, grid.angle[j]);
-    for (let c = 0; c < 3; c++) rimMove[j * 3 + c] = to[c] - grid.at[j * 3 + c];
-  }
-  for (let k = 0; k < K; k++) for (let j = 0; j < M; j++) {
-    const g = Math.min(1, Math.max(0, 1 - grid.tau[k * M + j])), f = k === 0 ? 1 : k === K - 1 ? 0 : g * g * (3 - 2 * g);
-    for (let c = 0; c < 3; c++) D[(k * M + j) * 3 + c] = rimMove[j * 3 + c] * f;
-  }
+  { const tc = new Float64Array(4), w = new Float64Array(3), along = new Float64Array(K);
+    for (let j = 0; j < M; j++) {
+      const to = footAt(tube, grid.angle[j]);
+      for (let c = 0; c < 3; c++) D[j * 3 + c] = to[c] - grid.at[j * 3 + c];
+      // the last of its rings inside the tube, where it is in the tube's terms, and how far along her skin each ring is
+      let last = 0, up = 0, round = 0;
+      along[0] = 0;
+      for (let k = 1; k < K; k++) {
+        const i = (k * M + j) * 3, h = ((k - 1) * M + j) * 3;
+        along[k] = along[k - 1] + Math.hypot(grid.at[i] - grid.at[h], grid.at[i + 1] - grid.at[h + 1], grid.at[i + 2] - grid.at[h + 2]);
+        tubeAt(tube, grid.at[i], grid.at[i + 1], grid.at[i + 2], tc);
+        if (tc[1] < tc[3] + SEAT_SKIN.standOff) { last = k; up = tc[0]; round = tc[2]; }
+      }
+      if (!last || !(along[last] > 0)) continue;
+      // (round the tube the short way from its place at her doors' feet to where that ring is)
+      const a0 = grid.angle[j]; let turn = round - a0; turn -= Math.round(turn / TAU) * TAU;
+      // (its edge is her own skin and is not laid here: it is put out of the tube below as the rest is, where it lies in it)
+      for (let k = 1; k <= Math.min(last, K - 2); k++) {
+        const u = along[k] / along[last], i = (k * M + j) * 3;
+        wallPoint(tube, up * u, a0 + turn * u, SEAT_SKIN.standOff, w);
+        for (let c = 0; c < 3; c++) D[i + c] = w[c] - grid.at[i + c];
+      }
+    } }
   const out = () => {
     // (its rim is her doors' feet, on the tube's wall: it stays. The area's edge is her own skin and stays -- but where
     // the tube comes out through her skin beyond the area, the edge there lies inside the tube: it goes out to its own
@@ -325,6 +396,70 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
     }
     if (any) for (let k = 0; k < 4; k++) out(); }
   // (and `share` of all that: from her skin as it lies, evenly, to all of it)
+  if (s < 1) for (let i = 0; i < D.length; i++) D[i] *= s;
+  return D;
+}
+
+/**
+ * HER SKIN BEYOND THE AREA, CARRIED OUT WITH IT (Joshua, 2026-11-10, drawing her skin on a cut through her middle -- one
+ * slope from her tailbone down to the back edge of her opening: "the green is the skin").
+ *
+ * Her canal's back wall comes down past her tailbone and out through her skin BEHIND the area that is rebuilt to open
+ * (the cleft behind her perineum), and the area's own skin ended there at a step: under it her own skin lay as it was,
+ * across the tube. So her own skin there goes out too: what the tube stands through is put out to stand off its wall,
+ * and the skin round that is drawn after it, less and less, to nothing where it is held -- by her tailbone, and all
+ * round the piece of her that is taken. A skin held at its edge and lifted in its middle lies taut between the two: from
+ * her tailbone it runs straight down to the tube's wall, and on over it to her doors.
+ *
+ * `SkinBeyond`: that piece of her skin as points (a seam's vertices one point) -- each one's neighbours along her
+ * triangles' edges (`to[from[k] .. from[k + 1]]` are point k's) and whether it is held (1: its edge).
+ */
+export interface SkinBeyond { readonly count: number; readonly from: Uint32Array; readonly to: Uint32Array; readonly held: Uint8Array }
+
+/** GAME TUNING: how many times what the tube holds out is put off it and evened with its neighbours, how much it is
+ * evened each time (0..1); and how many times the rest is drawn after it (each point to the mean of its neighbours'
+ * moves, `over` of the way and past it -- successive over-relaxation, which settles a skin this size in that many). */
+export const BEYOND_SKIN = Object.freeze({ passes: 6, even: 0.5, settle: 140, over: 1.6 });
+
+/**
+ * How far each point of that skin goes (count x 3, metres), `share` of it: `at` where each lies now (count x 3, the
+ * tube's own frame), `side` the place round the tube each is at (radians, as her doors' feet are told: where a point deep
+ * in the tube goes out to).
+ */
+export function layBeyond(mesh: SkinBeyond, at: ArrayLike<number>, side: ArrayLike<number>, tube: SleeveTube, share: number): Float32Array {
+  const n = mesh.count, D = new Float32Array(n * 3), s = Math.min(1, Math.max(0, share)), B = BEYOND_SKIN;
+  if (!(s > 0) || n === 0) return D;
+  const { from, to, held } = mesh, onTube = new Uint8Array(n);
+  const out = () => {
+    for (let v = 0; v < n; v++) {
+      if (held[v]) continue;
+      const i = v * 3;
+      if (pushOut(tube, at[i] + D[i], at[i + 1] + D[i + 1], at[i + 2] + D[i + 2], SEAT_SKIN.standOff, side[v], pushed)) { D[i] += pushed[0]; D[i + 1] += pushed[1]; D[i + 2] += pushed[2]; onTube[v] = 1; }
+    }
+  };
+  const next = new Float32Array(D.length);
+  for (let pass = 0; pass < B.passes; pass++) {
+    out();
+    next.set(D);
+    for (let v = 0; v < n; v++) {
+      const a = from[v], b = from[v + 1];
+      if (held[v] || b === a) continue;
+      for (let c = 0; c < 3; c++) { let m = 0; for (let k = a; k < b; k++) m += D[to[k] * 3 + c]; next[v * 3 + c] = D[v * 3 + c] * (1 - B.even) + (m / (b - a)) * B.even; }
+    }
+    D.set(next);
+  }
+  for (let k = 0; k < 3; k++) out();
+  // the skin round what the tube holds: drawn after it, taut -- each point where its neighbours' moves put it
+  let any = false;
+  for (let v = 0; v < n && !any; v++) any = onTube[v] === 1;
+  if (any) for (let sweep = 0; sweep < B.settle; sweep++) for (let v = 0; v < n; v++) {
+    const a = from[v], b = from[v + 1];
+    if (held[v] || onTube[v] || b === a) continue;
+    for (let c = 0; c < 3; c++) { let m = 0; for (let k = a; k < b; k++) m += D[to[k] * 3 + c]; D[v * 3 + c] += B.over * (m / (b - a) - D[v * 3 + c]); }
+  }
+  else D.fill(0);
+  // (and off the tube, where that drew any of it in)
+  for (let k = 0; k < 3; k++) out();
   if (s < 1) for (let i = 0; i < D.length; i++) D[i] *= s;
   return D;
 }
