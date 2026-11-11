@@ -85,11 +85,13 @@ export const DOORS = Object.freeze({
    * GAME TUNING (lips, not flaps). */
   lipsOut: 0.006,
   /** HER LIPS' SKIN BOWED OUT (Joshua, 2026-11-11: "the door skin bowing outward in a half dome shape all the time, so add
-   * a slight arch from left to right but keep the same shape, just arc it and right in the middle have it the 3cm"):
-   * how far out of her the middle of her opening stands, the doors arched to it from their hinges -- a low half dome,
-   * nothing at her doors' feet. And shut, how far apart her lips stand, each from her middle (his "0% at 0.2cm"). GAME
+   * a slight arch from left to right but keep the same shape, just arc it and right in the middle have it the 3cm"; then
+   * "Let's try 2cm tall… at 100% open, we need to keep it the same height from 0-100%"): how far out of her her lips
+   * stand at her opening's middle, each door arched up to its lip from its hinge -- a low half dome, nothing at her
+   * doors' feet, its top always her lips however far apart they are. (Her lip's own roundness stands about 0.6 cm
+   * past it: MEASURED her opening's middle 2.0 to 2.3 cm out of her from shut to wide open with this.) And shut, how far apart her lips stand, each from her middle (his "0% at 0.2cm"). GAME
    * TUNING. */
-  lipsArch: 0.03,
+  lipsArch: 0.014,
   lipsShut: 0.001,
   lipsClear: 0.003,
   /** how tall each band of a slice of what passes is, up the canal (`outlineOf`). GAME TUNING (fine enough for its neck,
@@ -510,15 +512,17 @@ function loopMesh(f: DoorFrame, loop: { points: [number, number, number][] }[]):
 function lipMeshes(f: DoorFrame, birth: number, fold: number, pressed?: PressedDoors): ReturnType<typeof doorMeshes> {
   const J = DOORS.stations, hand = foldAngles(fold), ends = pressed?.ends ?? ENDS_SHUT, mid = (J - 1) / 2, rad = (hand.hinge * Math.PI) / 180;
   const slider = pressed?.lips ? null : sliderLips(birth), xs = (side: 'right' | 'left') => pressed?.lips?.[side] ?? slider!;
-  const PR = xs('right').map((x, j) => pose(lipSection(j, x), rad, hand)), PL = xs('left').map((x, j) => pose(lipSection(j, x), rad, hand));
+  // (bowed out as a low half dome: each door arched up from its hinge to its lip, `lipsArch` out of her at her
+  // opening's middle -- the arch's top always her lips, so it stands as tall however far apart they are. Shut it falls
+  // away to her opening's ends front and back, a half dome; as her lips part into a ring its ends rise with them, until
+  // wide open the ring is level all round.)
+  const R0 = CANAL_OPENING.diameterM / 2, open = Math.min(1, Math.max(0, (xs('right')[mid] + xs('left')[mid]) / 2 / R0));
+  const arch = (q: [number, number][], j: number, xl: number): [number, number][] => {
+    const s0 = lipSection(j, xl), X = s0.points[s0.points.length - 1][0], u = stationOf(j).u, A = DOORS.lipsArch * ((1 - u * u) * (1 - open) + open);
+    return q.map(([x, t]): [number, number] => { const v = Math.min(1, Math.max(0, (x - xl) / Math.max(1e-6, X - xl))); return [x, t - A * (1 - v * v)]; });
+  };
+  const PR = xs('right').map((x, j) => arch(pose(lipSection(j, x), rad, hand), j, x)), PL = xs('left').map((x, j) => arch(pose(lipSection(j, x), rad, hand), j, x));
   const loop = doorLoop([], [], ends, undefined, { right: PR, left: PL });
-  // (bowed out as a low half dome: `lipsArch` out of her at her opening's middle, arched from her doors' hinges left and
-  // right, and to her opening's ends front and back -- nothing at their feet)
-  const X = CANAL_OPENING.diameterM / 2 + DOORS.hingeOut;
-  for (const sec of loop) sec.points = sec.points.map(([x, t, a]): [number, number, number] => {
-    const N = a >= 0 ? ends.front : ends.back, k = 1 - (x / X) ** 2 - (a / N) ** 2;
-    return [x, k > 0 ? t - DOORS.lipsArch * k : t, a];
-  });
   const m = loopMesh(f, loop), openM = narrowest(PR[mid]) / 2 + narrowest(PL[mid]) / 2;
   return { ...m, openM, angles: hand, skin: skinRing(f, ends, undefined, undefined, loop) };
 }
