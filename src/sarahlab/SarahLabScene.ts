@@ -999,6 +999,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * (`OPENING_LOOKS`); her womb, and her skin opening round the doors, stay v2's. Off: v2's opening as it was.
    */
   let skeletonOpening = true;
+  /** HER OPENING MADE FROM HER OWN SKIN, HELD BY HER SKELETON (Joshua, 2026-11-11, of the opening he liked in TRADDOMIUM:
+   * "I think doing the skin might be better and shape it into the same ring and let it open the same way"; the plan he
+   * approved: "Looks good! Sounds like a plan"): with her skeleton's opening on, her skin's own opening, rolled rim and
+   * canal are what is drawn -- her canal's top held at the middle of her pelvis, where her skeleton's canal has it -- and
+   * her skeleton's doors, the sleeve and her skin laid down to them are not. Off: her skeleton's doors, as before. */
+  let skinMadeOpening = true;
+  /** Her skeleton's doors are what stands in her opening (her skeleton's opening on, and not made from her skin). */
+  const doorsOpening = (): boolean => skeletonOpening && !skinMadeOpening;
   // (her own skin's tone, no darker: Joshua, 2026-11-11, of her doors' darker tone against her skin: "let's match the
   // opening to the skin and it looks weird" -- the last of OPENING_LOOKS; the three before it are his choices of the 9th)
   let openingLook = 3;
@@ -6487,13 +6495,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * with her legs as they do not), so shut she is her own skin, closed, as v2 is; they are drawn once her opening has
    * begun to open (`V2_DOORS.from` of BIRTH OPENING), and never under what she wears.
    */
-  function doorsSeen(): boolean { return skeletonOpening && !!vulva && !organsGrowWomb && !vulva.dressed && vulva.drawnOpen > V2_DOORS.from; }
+  function doorsSeen(): boolean { return doorsOpening() && !!vulva && !organsGrowWomb && !vulva.dressed && vulva.drawnOpen > V2_DOORS.from; }
   function applyOpening(): void {
-    const mine = skeletonOpening && !!organs && !organsGrowWomb && !!vulva, look = OPENING_LOOKS[openingLook % OPENING_LOOKS.length];
+    const mine = doorsOpening() && !!organs && !organsGrowWomb && !!vulva, look = OPENING_LOOKS[openingLook % OPENING_LOOKS.length];
+    // (held by her skeleton either way: her doors' canal, or her skin's own canal with its top where her skeleton's is)
+    const held = skeletonOpening && !!organs && !organsGrowWomb && !!vulva;
     vulva?.setSkeletonOpening(mine, { lips: look.lips, tint: look.tint, reach: look.reach });
     // (and her own canal -- what her baby comes down -- held by her bone: its top at the middle of her pelvis, where the
     // skeleton's canal has it)
-    vulva?.setCanalTop(mine ? new THREE.Vector3(v2Pelvis.midpelvis.centre[0], v2Pelvis.midpelvis.centre[1], v2Pelvis.midpelvis.centre[2]) : null);
+    vulva?.setCanalTop(held ? new THREE.Vector3(v2Pelvis.midpelvis.centre[0], v2Pelvis.midpelvis.centre[1], v2Pelvis.midpelvis.centre[2]) : null);
     if (organs && !organsGrowWomb) {
       // (her skin's colour as it is seen, a screen's: so read -- and where her skin is ONE colour, skinChoices.ts EVEN,
       // that colour itself: her doors' outsides are her skin carried down over them)
@@ -6532,7 +6542,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * her opening has been since its head came to it), and the birth's clock when that was read (set back, it starts again). */
   let seatHeld = 0, seatClock = 0;
   /** v2 with her skeleton's opening: her opening is her doors at their seat, and her baby's way the one canal to them. */
-  const seatOpening = (): boolean => !!organs && !organsGrowWomb && skeletonOpening && !!vulva?.skeletonOpening;
+  const seatOpening = (): boolean => !!organs && !organsGrowWomb && doorsOpening() && !!vulva?.skeletonOpening;
   /** v3: where her baby may give a little crossing her opening: her opening at its most (12.5 by 10 cm) -- its head as
    * well, all the way through her doors (Joshua, 2026-11-08, choosing it: head and shoulders "squeeze up to 22% while
    * inside the doors (like moulding)"; on v2 its head never gives). */
@@ -7890,7 +7900,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const wk = organsGrowWomb && pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
         organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         // (v2: her doors open as her own skin's opening does -- BIRTH OPENING, her pose's, a birth's)
-        if (!organsGrowWomb && vulva && skeletonOpening) {
+        if (!organsGrowWomb && vulva && doorsOpening()) {
           organs.setOpening(Math.max(vulva.drawnOpen, seatHeld)); const show = doorsSeen(); if (organs.doorsShown !== show) organs.doorsShown = show;
           // (her own skin carried down to her doors: the skin round them a sleeve round her canal, up into her -- or, her
           // opening as lips on her skin (`lipsOnSkin`), none: her skin stops under her lips)
@@ -7904,10 +7914,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (v2, her skeleton's opening: her own skin stretched down to her doors, over the sleeve round her canal as it now
         // stands -- none of it up to SEAT_SKIN_OPENS.from open, all of it by SEAT_SKIN_OPENS.to)
         if (vulva) {
-          const seated = !organsGrowWomb && skeletonOpening && vulva.skeletonOpening && v2Seat.ring && v2Seat.skin && !lipsOnSkin, sl = seated ? organs.sleeve : null;
+          const seated = !organsGrowWomb && doorsOpening() && vulva.skeletonOpening && v2Seat.ring && v2Seat.skin && !lipsOnSkin, sl = seated ? organs.sleeve : null;
           // (her opening as lips on her skin: her skin's own opening left shut, as it lies, and cut where her lips stand --
           // a little in under their feet: vulvaMesh.ts `setRingCut`)
-          if (lipsOnSkin && skeletonOpening && vulva.skeletonOpening) { vulva.setSkeletonHole(0); if (!ringCutSet) { const o = organs; vulva.setRingCut((cam, m, shape, t) => o.ringCut(cam, m, shape, t)); ringCutSet = true; } }
+          if (lipsOnSkin && doorsOpening() && vulva.skeletonOpening) { vulva.setSkeletonHole(0); if (!ringCutSet) { const o = organs; vulva.setRingCut((cam, m, shape, t) => o.ringCut(cam, m, shape, t)); ringCutSet = true; } }
           else if (ringCutSet) { vulva.setRingCut(null); ringCutSet = false; }
           const step = (a: number, b: number) => { const t = Math.min(1, Math.max(0, (organs!.opening - a) / (b - a))); return t * t * (3 - 2 * t); };
           vulva.setSeat(sl ? { points: sl.points, columns: sl.columns, version: sl.version, doors: sl.doors, share: step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.to), tail: v2Torso.landmarks.coccyx } : null);
@@ -8407,7 +8417,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her doors' outsides and her skin round them as her look has them -- or, plain, the one colour too, with no
           // darker tone round her opening: what one solid skin colour would look like there)
           applyOpening();
-          if (mode === 'plain' && organs && vulva) { organs.setDoorSkin(new THREE.Color(colour)); vulva.setSkeletonOpening(skeletonOpening && !organsGrowWomb, { lips: 0, tint: [1, 1, 1], reach: 0.025 }); }
+          if (mode === 'plain' && organs && vulva) { organs.setDoorSkin(new THREE.Color(colour)); vulva.setSkeletonOpening(doorsOpening() && !organsGrowWomb, { lips: 0, tint: [1, 1, 1], reach: 0.025 }); }
           vulva?.sync();
           return true; },
         // (a probe: how her skin is drawn -- which sides of it, whether her model is mirrored into the room, and whether her
@@ -9204,6 +9214,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         seatStrays: (deep?: number) => (vulva ? vulva.seatStrays(deep) : null),
         // the mound her skin makes round her seated doors rounded into her, or left a collar (a probe sets one against
         // the other): laid again at once
+        // (her opening made from her own skin, held by her skeleton -- or her skeleton's doors: `skinMadeOpening`)
+        skinOpening: (on?: boolean) => { if (on !== undefined) { skinMadeOpening = on; applyOpening(); applyLook(); refresh(); } return skinMadeOpening; },
         // (her opening as lips on her own skin, or her skin laid down a sleeve to her doors as before)
         lipsOnSkin: (on?: boolean) => { if (on !== undefined) lipsOnSkin = on; return lipsOnSkin; },
         seatRound: (on?: boolean) => { if (vulva && on !== undefined) { vulva.round = on; vulva.relayOut(); } return vulva?.round ?? null; },
