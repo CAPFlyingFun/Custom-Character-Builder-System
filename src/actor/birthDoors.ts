@@ -92,6 +92,9 @@ export const DOORS = Object.freeze({
    * past it: MEASURED her opening's middle 2.0 to 2.3 cm out of her from shut to wide open with this.) And shut, how far apart her lips stand, each from her middle (his "0.1cm for 0%"). GAME
    * TUNING. */
   lipsArch: 0.014,
+  /** how far the turn round each end of her lips stands past it, as a share of how far across it is there (her doors'
+   * own: `bandReach`). GAME TUNING. */
+  lipsBand: 0.08,
   lipsShut: 0.0005,
   lipsClear: 0.003,
   /** how tall each band of a slice of what passes is, up the canal (`outlineOf`). GAME TUNING (fine enough for its neck,
@@ -528,7 +531,9 @@ function lipMeshes(f: DoorFrame, birth: number, fold: number, pressed?: PressedD
     return q.map(([x, t]): [number, number] => { const v = Math.min(1, Math.max(0, (x - xl) / Math.max(1e-6, X - xl))); return [x, t - A * (1 - v * v)]; });
   };
   const PR = xs('right').map((x, j) => arch(pose(lipSection(j, x), rad, hand), j, x)), PL = xs('left').map((x, j) => arch(pose(lipSection(j, x), rad, hand), j, x));
-  const loop = doorLoop([], [], ends, undefined, { right: PR, left: PL });
+  // (round her opening's ends in a curve nearly flat -- `lipsBand` as far past them as across: as far as a door's, the
+  // turn round each end stood out past it as a little tab, a grey puck under her lips, 2026-11-11)
+  const loop = doorLoop([], [], ends, undefined, { right: PR, left: PL, reach: DOORS.lipsBand });
   // (each section's foot, unraised, in her opening's frame; then each section raised into her by `raised` -- its foot to
   // where her own skin is, its lip and its dome with it: pelvicOrgansView.ts `setFootRise`)
   const feet = new Float32Array(loop.length * 3);
