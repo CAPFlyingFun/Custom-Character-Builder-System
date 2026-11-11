@@ -30,7 +30,13 @@ import type { P3 } from './pelvisMeasure';
  * two of the sleeve's rows is cut (see `sleeveTube`); `sockEven`: how many times her skin's places on the tube's wall are
  * evened with their neighbours' (see `laySeatSkin`).
  */
-export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10, doorOff: 0.004, fine: 3, sockEven: 30 });
+export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10, doorOff: 0.004, fine: 3, sockEven: 30,
+  /** GAME TUNING: where the sock's wall is this short a share of the skin it is to carry or less, the area's skin there
+   * is gathered onto where the sock ends -- all of it at `gather[0]`, none past `gather[1]` -- and drawn no more: her lips
+   * are her skin there, and her doors' feet meet her own skin in one strip from them to it. (Round her back, wide open
+   * with her doors' feet at her skin, 4 cm of the area's skin was laid in 5 mm of wall and lay there in folds: a striped
+   * band round her lips, 2026-11-11.) */
+  gather: [0.15, 0.4] as readonly [number, number] });
 
 /** The tube her skin lies over: its rows' middles, the way it runs at each (toward her womb), each row's own "front"
  * (square to that and to `across`), and how far out its wall is at each of `SEAT_SKIN.round` places round it. */
@@ -376,10 +382,13 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
   // (how far out each column is worked at all: to its last ring inside the tube and as many rings on as it is evened
   // times -- beyond that her skin lies as it did and nothing reaches it)
   const reach = new Int32Array(M);
+  let gathered: Uint8Array | null = null;
   { const tc = new Float64Array(4), w = new Float64Array(3), along = new Float64Array(K);
     // each of its points' own place in the tube's terms (how far up it, where round it), and the sock's: the points laid
     // on its wall, each one's place there
     const upO = new Float32Array(K * M), anO = new Float32Array(K * M), UP = new Float32Array(K * M), AN = new Float32Array(K * M), sock = new Uint8Array(K * M), lastOf = new Int32Array(M);
+    // (how far each column's sock is gathered onto where it ends: `gather`)
+    const gath = new Float32Array(M);
     for (let j = 0; j < M; j++) {
       const to = footAt(tube, grid.angle[j]);
       for (let c = 0; c < 3; c++) D[j * 3 + c] = to[c] - grid.at[j * 3 + c];
@@ -407,6 +416,7 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
       const a0 = grid.angle[j]; let turn = anO[land * M + j] - a0; turn -= Math.round(turn / TAU) * TAU;
       // (its edge is her own skin and is not laid here: it is put out of the tube below as the rest is, where it lies in it)
       for (let k = 1; k <= Math.min(last, K - 2); k++) { const u = along[k] / along[land], q = k * M + j; UP[q] = upO[land * M + j] * u; AN[q] = a0 + turn * u; sock[q] = 1; }
+      { const r = Math.abs(upO[land * M + j]) / along[land], [g0, g1] = SEAT_SKIN.gather, g = Math.min(1, Math.max(0, (g1 - r) / (g1 - g0))); gath[j] = g * g * (3 - 2 * g); }
     }
     // ONE SKIN ON THE WALL: each of the sock's points' place on it evened with its four neighbours' -- along its column
     // and across to the columns either side, her doors' feet and whatever is not the sock's staying where they are --
@@ -422,6 +432,14 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
       }
       UP[q] = su / 4; AN[q] += sa / 4;
     }
+    // (gathered: onto where its sock ends, and left there -- not evened back out, nor put out of the tube again)
+    gathered = new Uint8Array(K * M);
+    for (let j = 0; j < M; j++) {
+      const g = gath[j];
+      if (!(g > 0)) continue;
+      const land = Math.min(K - 1, lastOf[j] + 1), e = land * M + j;
+      for (let k = 1; k <= Math.min(lastOf[j], K - 2); k++) { const q = k * M + j; UP[q] += (upO[e] - UP[q]) * g; let d = anO[e] - AN[q]; d -= Math.round(d / TAU) * TAU; AN[q] += d * g; gathered[q] = 1; }
+    }
     for (let q = M; q < K * M; q++) {
       if (!sock[q]) continue;
       wallPoint(tube, UP[q], AN[q], SEAT_SKIN.standOff, w);
@@ -436,6 +454,7 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
     // side of the tube's wall as the rest does, which is where her skin beyond it meets the tube)
     for (let j = 0; j < M; j++) for (let k = 1; k <= reach[j]; k++) {
       const i = (k * M + j) * 3;
+      if (gathered![k * M + j]) continue;
       if (pushOut(tube, grid.at[i] + D[i], grid.at[i + 1] + D[i + 1], grid.at[i + 2] + D[i + 2], SEAT_SKIN.standOff, grid.angle[j], pushed)) { D[i] += pushed[0]; D[i + 1] += pushed[1]; D[i + 2] += pushed[2]; }
     }
   };
@@ -444,6 +463,7 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
     out();
     next.set(D);
     for (let j = 0; j < M; j++) for (let k = 1; k <= Math.min(reach[j], K - 2); k++) {
+      if (gathered![k * M + j]) continue;
       const i = (k * M + j) * 3, l = (k * M + ((j + M - 1) % M)) * 3, r = (k * M + ((j + 1) % M)) * 3, u = ((k - 1) * M + j) * 3, d = ((k + 1) * M + j) * 3;
       for (let c = 0; c < 3; c++) next[i + c] = D[i + c] * (1 - w) + ((D[l + c] + D[r + c] + D[u + c] + D[d + c]) / 4) * w;
     }
