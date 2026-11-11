@@ -121,9 +121,9 @@ export const CANAL_OPENING = Object.freeze({
  * WHERE HER OPENING STANDS (Joshua, 2026-11-10: "I don't remember the opening cutting into the bone... how could the baby
  * make that tight of a turn"; "the bones shouldn't be visible... if you see bones, you know something is still off").
  *
- * Her pubic arch is a narrow V: its point the lower edge of her symphysis, its sides the bones running down and back to
- * her sit bones (on her skeleton 8.2 cm long and 10.2 cm apart at their ends: 64 degrees between them, where a woman's is
- * more often 80 or over). As it first was, her opening stood in that V, 2 cm behind her symphysis, and her doors and her
+ * Her pubic arch was a narrow V: its point the lower edge of her symphysis, its sides the bones running down and back to
+ * her sit bones (on her skeleton as it came 8.2 cm long and 10.2 cm apart at their ends: 64 degrees between them, where a
+ * woman's is 90 or over). As it first was, her opening stood in that V, 2 cm behind her symphysis, and her doors and her
  * canal cut through its bones.
  *
  * Then it was taken round her arch: back behind her sit bones, where the V is a head wide, and from there forward on a
@@ -132,28 +132,37 @@ export const CANAL_OPENING = Object.freeze({
  * out like that in real life? I think it does but not as much as you are pushing it outwards", and of his diagrams of a
  * birth from the side: "it's pretty much straight out and not a sharp 90 degree bend... I believe less than 45".
  *
- * So: STRAIGHT DOWN THROUGH HER ARCH, then one lean forward (`turnDeg` in all, on `turnRadius`), her doors on its last
- * centimetres -- `seatedCanal`. It passes her arch where a MOULDED head does (`mould`, Joshua's "squeeze up to 22%"),
- * not where a round one would: 7.8 cm back along the arch's plane, not 10 -- her canal is narrower there, as a head is
- * (`pinchOf`). Her opening stands under her own outlet, facing down and forward as a woman's does standing, and her
- * doors, which are wider than her canal, hang below her bones (`footClear`).
+ * So it was laid STRAIGHT DOWN THROUGH HER ARCH, with one lean forward at its end. That was gentler, but with an arch of
+ * 64 degrees a head cannot use the room under her symphysis: it passed 7.8 cm back along the arch's plane and was born
+ * further back and lower than under an arch of 90 (obstetrics' own rule: the narrower the arch, the more the perineum has
+ * to give) -- her bones' cost, and Joshua's call.
  *
- * WHAT HER BONES STILL COST: with an arch of 64 degrees a head cannot use the room under her symphysis and is born
- * further back and lower than under an arch of 90 (obstetrics' own rule: the narrower the arch, the more the perineum
- * has to give). Her opening is as high as HER arch lets it be; higher is a wider arch -- her bones, and Joshua's call.
+ * HER ARCH, A WOMAN'S, AND HER CANAL ROUND HER PUBIC BONE (Joshua, 2026-11-10, of the drawing he chose -- a birth's stages
+ * from the side -- "this one is probably the best reference... it does have a bend and you can even see the bone
+ * points"; of her arch widened to 94 degrees: "Yeah, looks good... go ahead with it"). In that drawing a head comes down
+ * and a little back along her sacrum, swings forward ROUND THE LOWER EDGE OF HER PUBIC BONE on one curve of about 60
+ * degrees, and is born facing down and about 40 degrees forward, the front of her opening right under the bone.
+ *
+ * So `seatedCanal`: ONE CURVE ROUND HER PUBIC BONE'S LOWER EDGE, at the distance from it where a MOULDED head passes
+ * between her arch's two sides (`mould`, Joshua's "squeeze up to 22%"; her canal is narrower there, as a head is --
+ * `pinchOf`). It comes down to that curve from her fornix on the straight line that meets it without a kink, leaves it
+ * facing `faceDeg` forward of straight down, and goes straight on through her doors. On her bones nothing but `faceDeg`
+ * is chosen: a moulded head passes 6.7 cm from the bone's edge, the line down to that curve leans 17 degrees back, and
+ * the curve turns 57 -- the drawing's own, near enough. Her doors, which are wider than her canal, hang below her bones
+ * (`footClear`): their front foot 1.1 cm under the bone's edge, their back one 7 cm lower, as far as a head's width
+ * facing that way puts it (her perineum, pushed down and back before a head).
  */
 export const OPEN_SEAT = Object.freeze({
   /** how far clear of her arch's bones her canal's wall passes where it is not pinched, open, metres. GAME TUNING. */
   archClear: 0.003,
-  /** how far forward of its line down through her arch her canal turns to her opening (degrees: all the turning it does),
-   * and the radius of that one curve (metres). BIOLOGICAL SHAPE (standing, a vagina runs down and forward, its mouth facing down and a
-   * little forward; Joshua: under 45 degrees); GAME TUNING the radius -- wide, so what comes down it bends gently. */
-  turnDeg: 40,
-  turnRadius: 0.02,
+  /** which way her opening faces as she stands: this far forward of straight down, degrees. BIOLOGICAL SHAPE (standing, a
+   * vagina runs down and forward and a head is born under the pubic bone facing down and forward: about 40 degrees in the
+   * drawing Joshua chose; "less than 45"). */
+  faceDeg: 40,
   /** how far below her arch her doors' feet stand at the least, measured up her canal from them: half a door's thickness
    * and the flesh over the bone, metres. GAME TUNING (checked against her skeleton's own bone mesh,
-   * scripts/probe-canal-bones.mts). */
-  footClear: 0.01,
+   * scripts/probe-canal-bones.mts: her doors stand 1.1 cm off it shut and 1.6 wide open; at 1 cm here, 0.8 shut). */
+  footClear: 0.0125,
   /** how far clear of her tailbone's tip her canal's wall passes, open, metres. GAME TUNING (see `archClear`; its tip is a
    * knob round the measured point: at 3 mm it stood through the canal's back wall). */
   tailClear: 0.008,
@@ -229,14 +238,17 @@ function archOf(bones: CanalBones, x: number): Arch | null {
 }
 
 /**
- * HER CANAL'S LINE, SEATED (see OPEN_SEAT): from `top` (her fornix) STRAIGHT down through her arch -- to the place in her
- * arch's plane, on her midline, nearest the line measured through her bony canal where a MOULDED head's width passes
- * between her arch's two sides (`mould` of a head's width, `pinchArch` and `archClear` clear: what `pinchOf` narrows her
- * canal to there, and a little over -- its line leans on past that place)
- * -- then one curve forward (`turnDeg` in all, on `turnRadius`), and its last `straight` metres, where her doors hang,
- * straight on to her opening. The curve begins at her arch, or as far below it as her doors' feet (the end of the curve)
- * need to stand `footClear` below every point of her arch, measured up her canal from them: her doors and the skin round
- * them are wholly under her bones, whichever way they swing.
+ * HER CANAL'S LINE, SEATED (see OPEN_SEAT): ONE CURVE ROUND THE LOWER EDGE OF HER PUBIC BONE, a circle about it in her
+ * midline, as far from it as the place in her arch's plane where a MOULDED head's width passes between her arch's two
+ * sides (`mould` of a head's width, `pinchArch` and `archClear` clear: what `pinchOf` narrows her canal to there). From
+ * `top` (her fornix) it comes STRAIGHT down to that circle on the line that touches it behind the bone -- no kink where
+ * they meet -- follows it down and forward until it faces `faceDeg` forward of straight down, and goes straight on: as
+ * far as her doors' feet need to stand `footClear` below every point of her arch, measured up her canal from them (her
+ * doors and the skin round them are wholly under her bones, whichever way they swing), and its last `straight` metres,
+ * where her doors hang, to her opening.
+ *
+ * (A fornix nearer her pubic bone than that circle -- a narrow arch, which a head passes far back -- has no such line:
+ * then straight from her fornix to the place it passes her arch, and round the bone from there, the corner eased.)
  *
  * In her midline at `x`; from her opening up, CANAL_OPENING.points points. Null without her arch. `pass`: where it
  * crosses her arch's plane.
@@ -249,29 +261,32 @@ export function seatedCanal(bones: CanalBones, x: number, top: P3, straight = 0.
   // her arch's plane, in her midline: back along it from her symphysis, to the first place a moulded head's width has room
   const uy = (ty - sy) / run, uz = (tz - sz) / run, need = (CANAL_OPENING.diameterM / 2) * O.mould + O.pinchArch + O.archClear;
   const room = (d: number) => { const y = sy + uy * d, z = sz + uz * d; let least = Infinity; for (const p of arch.pts) least = Math.min(least, Math.hypot(p[0], p[1] - y, p[2] - z)); return least; };
-  let d = run * 0.3;
-  while (d < run * 3 && room(d) < need) d += 0.0005;
-  const pass: P3 = [x, sy + uy * d, sz + uz * d];
-  // the line down to it, and forward square to that line (toward her front)
-  let vy = pass[1] - top[1], vz = pass[2] - top[2];
-  const vl = Math.hypot(vy, vz);
-  if (!(vl > 0.01) || vy >= 0) return null;
-  vy /= vl; vz /= vl;
-  const fwd: [number, number] = -vy >= 0 ? [vz, -vy] : [-vz, vy];
-  const lean = (O.turnDeg * Math.PI) / 180, rho = O.turnRadius, N = CANAL_OPENING.points;
+  let rho = run * 0.3;
+  while (rho < run * 3 && room(rho) < need) rho += 0.0005;
+  // the circle round her pubic bone's lower edge at that distance, a place on it by its angle: 0 straight behind the bone,
+  // growing down and forward -- where the way along it leans that angle forward of straight down
+  const on = (f: number): P3 => [x, sy - rho * Math.sin(f), sz - rho * Math.cos(f)];
+  const fArch = Math.atan2(-uy, -uz), fOut = (O.faceDeg * Math.PI) / 180, pass = on(fArch);
+  const hy = top[1] - sy, hz = top[2] - sz, far = Math.hypot(hy, hz);
+  if (!(far > 0.01) || top[1] <= pass[1]) return null;
+  // (where the straight line down from her fornix touches it; without one, from where it passes her arch)
+  const touch = far > rho ? Math.atan2(-hy, -hz) + Math.acos(rho / far) : Infinity, smoothly = touch < fOut, from = smoothly ? touch : Math.min(fArch, fOut);
   // (the way out of her at her opening, and `t` into her there)
-  const gy = vy * Math.cos(lean) + fwd[0] * Math.sin(lean), gz = vz * Math.cos(lean) + fwd[1] * Math.sin(lean), t: P3 = [0, -gy, -gz];
-  const round = (s: number, f: number): P3 => [x, pass[1] + vy * s + rho * (Math.sin(f) * vy + (1 - Math.cos(f)) * fwd[0]), pass[2] + vz * s + rho * (Math.sin(f) * vz + (1 - Math.cos(f)) * fwd[1])];
+  const gy = -Math.cos(fOut), gz = Math.sin(fOut), t: P3 = [0, -gy, -gz], end = on(fOut);
   // her doors' feet under all of her arch: every point of it `footClear` and more up the canal from them
   const under = (foot: P3) => arch.pts.every((p) => (p[1] - foot[1]) * t[1] + (p[2] - foot[2]) * t[2] >= O.footClear);
   let s = 0;
-  while (s < 0.3 && !under(round(s, lean))) s += 0.001;
-  const foot = round(s, lean), mouth: P3 = [x, foot[1] + gy * straight, foot[2] + gz * straight];
-  const line: P3[] = [mouth, foot], steps = Math.max(4, Math.ceil((lean * rho) / 0.006));
-  for (let k = steps - 1; k >= 0; k--) line.push(round(s, (lean * k) / steps));
-  if (s > 1e-6) line.push(pass);
+  while (s < 0.3 && !under([x, end[1] + gy * s, end[2] + gz * s])) s += 0.001;
+  const foot: P3 = [x, end[1] + gy * s, end[2] + gz * s], mouth: P3 = [x, foot[1] + gy * straight, foot[2] + gz * straight];
+  const line: P3[] = [mouth, foot], steps = Math.max(1, Math.ceil(((fOut - from) * rho) / 0.004)), N = CANAL_OPENING.points;
+  for (let k = s > 1e-6 ? steps : steps - 1; k >= 0; k--) line.push(on(from + ((fOut - from) * k) / steps));
   line.push([x, top[1], top[2]]);
-  return { path: resample(line, N), mouth, t, pass };
+  let path = resample(line, N);
+  if (!smoothly) {
+    const keep = Math.ceil(((straight + s) / Math.max(1e-9, lengthAlong(path))) * (N - 1)) + 1;
+    for (let k = 0; k < 6; k++) path = path.map((p, i) => (i <= keep || i === N - 1 ? p : [p[0], (path[i - 1][1] + 2 * p[1] + path[i + 1][1]) / 4, (path[i - 1][2] + 2 * p[2] + path[i + 1][2]) / 4]));
+  }
+  return { path, mouth, t, pass };
 }
 
 /** Her canal's opening (its first point) and the way it goes up into her over its first `reach` metres (unit). */

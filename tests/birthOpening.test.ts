@@ -87,13 +87,20 @@ describe("her opening's seat under her pubic arch (Joshua, 2026-11-10: \"if you 
     return best;
   };
 
-  it('her canal is laid from it; her opening is below her bones under her outlet, facing down and a little forward (Joshua: "pretty much straight out... less than 45")', () => {
+  it('her canal is laid from it; her opening is below her bones under her outlet, facing down and forward, its front right under her pubic bone (Joshua\'s drawing; "less than 45")', () => {
     const { mouth, t } = canalMouth(laid.vagina.path, DOORS.hingeUp), L = rings.landmarks;
     mouth.forEach((v, i) => expect(v).toBeCloseTo(seat.mouth[i], 9));
     expect(t[1] * seat.t[1] + t[2] * seat.t[2]).toBeGreaterThan(0.995);
-    // (out of her: down, and forward rather than back -- it faced straight ahead of her, at the end of a spout)
-    expect(seat.t[1]).toBeGreaterThan(0.9);
-    expect(-seat.t[2]).toBeGreaterThan(0);
+    // (out of her: down and forward, OPEN_SEAT.faceDeg forward of straight down -- 30 to 45 degrees; it faced straight
+    // ahead of her, at the end of a spout, and then all but straight down)
+    expect(Math.atan2(-seat.t[2], seat.t[1]) * 180 / Math.PI).toBeCloseTo(OPEN_SEAT.faceDeg, 6);
+    expect(OPEN_SEAT.faceDeg).toBeGreaterThanOrEqual(30); expect(OPEN_SEAT.faceDeg).toBeLessThanOrEqual(45);
+    // (the front of her opening right under her pubic bone: her doors' front foot within 2 cm of its lower edge, and
+    // below it -- it hung 4 cm under it)
+    const foot = [mouth[1] + seat.t[1] * DOORS.hingeUp, mouth[2] + seat.t[2] * DOORS.hingeUp], out = CANAL_OPENING.diameterM / 2 + DOORS.hingeOut;
+    const front = [foot[0] - seat.t[2] * out, foot[1] + seat.t[1] * out];
+    expect(Math.hypot(front[0] - L.symphysisBottom[1], front[1] - L.symphysisBottom[2])).toBeLessThan(0.02);
+    expect(front[0]).toBeLessThan(L.symphysisBottom[1]);
     // (below her symphysis's lower edge and her sit bones, and under her outlet: within 3 cm, front to back, of where
     // the line measured down her bony canal ends)
     expect(mouth[1]).toBeLessThan(Math.min(L.symphysisBottom[1], L.tuberosityLeft[1], L.tuberosityRight[1]) - 0.03);
@@ -123,27 +130,60 @@ describe("her opening's seat under her pubic arch (Joshua, 2026-11-10: \"if you 
     expect(OPEN_SEAT.archClear + OPEN_SEAT.tailClear).toBeLessThan(0.0115);
   });
 
-  it('and her baby\'s way is all but straight: one gentle lean forward, under 45 degrees in all (it turned 139)', () => {
-    const p = open.path;
+  it('and her baby\'s way is one curve round her pubic bone: down and a little back, then forward some 60 degrees (it turned 139; then all but straight)', () => {
+    const p = open.path, n = p.length;
     let total = 0;
-    for (let i = 1; i + 1 < p.length; i++) {
+    for (let i = 1; i + 1 < n; i++) {
       const a = [p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]], b = [p[i + 1][1] - p[i][1], p[i + 1][2] - p[i][2]], la = Math.hypot(a[0], a[1]), lb = Math.hypot(b[0], b[1]);
       const turn = Math.asin(Math.max(-1, Math.min(1, (a[0] * b[1] - a[1] * b[0]) / (la * lb))));
-      // (its line's radius where it leans: no tighter than 1.5 cm -- and that over 25 degrees, not a quarter turn)
-      expect(Math.abs(turn)).toBeLessThan((la + lb) / 2 / 0.015);
-      // (from her opening up past her arch -- the lower two thirds of it -- never bending back the other way by as much
-      // as 3 degrees: no S, no jog; above that it is her bony canal's measured line, which has its own slight sway)
-      if (i < p.length * 0.66) expect(turn * 180 / Math.PI).toBeGreaterThan(-3);
+      // (a wide curve: its line's radius no tighter than 5 cm anywhere -- it leaned on 2 -- and never bending back the
+      // other way: no S, no jog)
+      expect(Math.abs(turn)).toBeLessThan((la + lb) / 2 / 0.05);
+      expect(turn * 180 / Math.PI).toBeGreaterThan(-1);
       total += turn;
     }
-    // (in all it leans forward by 15 to 45 degrees)
-    expect(total * 180 / Math.PI).toBeGreaterThan(15);
-    expect(total * 180 / Math.PI).toBeLessThan(45);
+    // (in all it turns forward by 45 to 70 degrees: the drawing's about 60)
+    expect(total * 180 / Math.PI).toBeGreaterThan(45);
+    expect(total * 180 / Math.PI).toBeLessThan(70);
+    // (from her fornix it comes down and a little BACK, 5 to 30 degrees off straight down, before it turns)
+    const lead = Math.atan2(-(p[n - 2][2] - p[n - 1][2]), -(p[n - 2][1] - p[n - 1][1])) * 180 / Math.PI;
+    expect(lead).toBeGreaterThan(5); expect(lead).toBeLessThan(30);
+    // (round her pubic bone's lower edge: where it turns, its line keeps one distance from it, within 2 mm)
+    const S = rings.landmarks.symphysisBottom, from = (q: readonly number[]) => Math.hypot(q[1] - S[1], q[2] - S[2]), rho = from(seat.pass);
+    let turning = 0;
+    for (let i = 1; i + 1 < n; i++) {
+      const a = [p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]], b = [p[i + 1][1] - p[i][1], p[i + 1][2] - p[i][2]];
+      if (Math.abs(a[0] * b[1] - a[1] * b[0]) / (Math.hypot(a[0], a[1]) * Math.hypot(b[0], b[1])) < 0.06) continue;
+      turning++; expect(Math.abs(from(p[i]) - rho)).toBeLessThan(0.002);
+    }
+    expect(turning).toBeGreaterThan(6);
     // (and it is short: under 15 cm from her fornix to her opening -- it was 20.5)
-    let long = 0; for (let i = 1; i < p.length; i++) long += Math.hypot(p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]);
+    let long = 0; for (let i = 1; i < n; i++) long += Math.hypot(p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]);
     expect(long).toBeLessThan(0.15);
-    // (it was 3.8 cm straight forward from the measured line's end to her opening)
-    expect(Math.abs(p[0][0] - p[p.length - 1][0])).toBeLessThan(1e-6);
+    expect(Math.abs(p[0][0] - p[n - 1][0])).toBeLessThan(1e-6);
+  });
+
+  it('under a narrow arch, which a head passes further back than her fornix is from the bone: straight to where it passes, then round, no corner', () => {
+    // (her own bones, her arch's two sides and her sit bones drawn in to 70% of their width: a man's V)
+    const mid = rings.landmarks.symphysisBottom[0], pinchX = (q: readonly number[]) => [mid + (q[0] - mid) * 0.7, q[1], q[2]];
+    const narrow = { ...bones, cm: { ...pelvis.cm, intertuberous: pelvis.cm.intertuberous * 0.7 }, outlet: { ...pelvis.outlet, ring: rings.outlet.ring.map(pinchX) }, landmarks: { ...pelvis.landmarks, tuberosityLeft: pinchX(rings.landmarks.tuberosityLeft), tuberosityRight: pinchX(rings.landmarks.tuberosityRight) } } as unknown as typeof bones;
+    const top = laid.vagina.path[laid.vagina.path.length - 1], s = seatedCanal(narrow, mid, top, DOORS.hingeUp)!, S = rings.landmarks.symphysisBottom;
+    expect(s).not.toBeNull();
+    // (it passes her arch further from the bone than her fornix stands: no straight line down touches that circle)
+    expect(Math.hypot(s.pass[1] - S[1], s.pass[2] - S[2])).toBeGreaterThan(Math.hypot(top[1] - S[1], top[2] - S[2]));
+    expect(Math.hypot(s.pass[1] - S[1], s.pass[2] - S[2])).toBeGreaterThan(Math.hypot(seat.pass[1] - S[1], seat.pass[2] - S[2]) + 0.005);
+    // (it still ends at her opening facing the same way, from her fornix, and nowhere turns a corner)
+    expect(Math.atan2(-s.t[2], s.t[1]) * 180 / Math.PI).toBeCloseTo(OPEN_SEAT.faceDeg, 6);
+    const p = s.path, n = p.length;
+    p[n - 1].forEach((v, i) => expect(v).toBeCloseTo(top[i], 9)); p[0].forEach((v, i) => expect(v).toBeCloseTo(s.mouth[i], 9));
+    let total = 0;
+    for (let i = 1; i + 1 < n; i++) {
+      const a = [p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]], b = [p[i + 1][1] - p[i][1], p[i + 1][2] - p[i][2]], la = Math.hypot(a[0], a[1]), lb = Math.hypot(b[0], b[1]);
+      const turn = Math.asin(Math.max(-1, Math.min(1, (a[0] * b[1] - a[1] * b[0]) / (la * lb))));
+      expect(Math.abs(turn) * 180 / Math.PI).toBeLessThan(20);
+      total += turn;
+    }
+    expect(total * 180 / Math.PI).toBeGreaterThan(20); expect(total * 180 / Math.PI).toBeLessThan(90);
   });
 });
 
