@@ -481,8 +481,8 @@ export function doorOpening(birth: number, fold = 0): number {
  * skin round them (`skinRing`); how wide the opening is between the lips at its middle; and the angles laid there on
  * the right door (degrees).
  */
-export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: PressedDoors, lips = false): { points: Float32Array; triangles: Uint32Array; lining: Uint8Array; openM: number; angles: Angles; skin: { points: Float32Array; triangles: Uint32Array } } {
-  if (lips) return lipMeshes(f, birth, fold, pressed);
+export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: PressedDoors, lips = false, raised?: ArrayLike<number>): { points: Float32Array; triangles: Uint32Array; lining: Uint8Array; openM: number; angles: Angles; skin: { points: Float32Array; triangles: Uint32Array }; feet?: Float32Array } {
+  if (lips) return lipMeshes(f, birth, fold, pressed, raised);
   const J = DOORS.stations, hand = foldAngles(fold), uniform = pressed ? null : birthAngles(birth), ends = pressed?.ends ?? ENDS_SHUT, mid = (J - 1) / 2;
   const laid = (side: 0 | 1) => Array.from({ length: J }, (_, j) => laidOn(stationSection(j), pressed ? (side === 0 ? pressed.right : pressed.left)[j] : uniform!, hand));
   // (her opening's edge one ring: BIRTH OPENING's doors, which all take one pose, drawn out to one level rim where they
@@ -515,7 +515,7 @@ function loopMesh(f: DoorFrame, loop: { points: [number, number, number][] }[]):
 
 /** `doorMeshes` with her doors drawn as LIPS (`lipCorners`): each station's lip where BIRTH OPENING parts them
  * (`sliderLips`) or, given `pressed` with its `lips`, where what passes holds them; the hand's fold on top. */
-function lipMeshes(f: DoorFrame, birth: number, fold: number, pressed?: PressedDoors): ReturnType<typeof doorMeshes> {
+function lipMeshes(f: DoorFrame, birth: number, fold: number, pressed?: PressedDoors, raised?: ArrayLike<number>): ReturnType<typeof doorMeshes> {
   const J = DOORS.stations, hand = foldAngles(fold), ends = pressed?.ends ?? ENDS_SHUT, mid = (J - 1) / 2, rad = (hand.hinge * Math.PI) / 180;
   const slider = pressed?.lips ? null : sliderLips(birth), xs = (side: 'right' | 'left') => pressed?.lips?.[side] ?? slider!;
   // (bowed out as a low half dome: each door arched up from its hinge to its lip, `lipsArch` out of her at her
@@ -529,8 +529,18 @@ function lipMeshes(f: DoorFrame, birth: number, fold: number, pressed?: PressedD
   };
   const PR = xs('right').map((x, j) => arch(pose(lipSection(j, x), rad, hand), j, x)), PL = xs('left').map((x, j) => arch(pose(lipSection(j, x), rad, hand), j, x));
   const loop = doorLoop([], [], ends, undefined, { right: PR, left: PL });
+  // (each section's foot, unraised, in her opening's frame; then each section raised into her by `raised` -- its foot to
+  // where her own skin is, its lip and its dome with it: pelvicOrgansView.ts `setFootRise`)
+  const feet = new Float32Array(loop.length * 3);
+  loop.forEach((sec, c) => { feet[c * 3] = sec.root[0]; feet[c * 3 + 1] = sec.root[1]; feet[c * 3 + 2] = sec.root[2]; });
+  if (raised && raised.length === loop.length) loop.forEach((sec, c) => {
+    const r = raised[c];
+    if (!(r > 0)) return;
+    sec.points = sec.points.map(([x, t, a]): [number, number, number] => [x, t + r, a]);
+    sec.root = sec.points[sec.points.length - 1];
+  });
   const m = loopMesh(f, loop), openM = narrowest(PR[mid]) / 2 + narrowest(PL[mid]) / 2;
-  return { ...m, openM, angles: hand, skin: skinRing(f, ends, undefined, undefined, loop) };
+  return { ...m, openM, angles: hand, skin: skinRing(f, ends, undefined, undefined, loop), feet };
 }
 
 /**

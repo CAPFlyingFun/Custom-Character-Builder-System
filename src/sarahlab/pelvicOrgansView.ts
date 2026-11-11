@@ -48,6 +48,9 @@ const DOOR_COLOURS = Object.freeze({ lining: 0xd88895, skin: 0xe9c3aa });
 const SQUEEZE_SLAB = 0.1;
 /** Each station's lip, how far across from her middle (metres): the right's and the left's. */
 type Lips = { right: number[]; left: number[] };
+/** GAME TUNING: how far her doors' feet are raised into her at most (metres), over how many passes round her they are
+ * evened, and what share of the way to where they are going they follow each frame (`setFootRise`). */
+const FOOT_RISE = Object.freeze({ most: 0.05, even: 3, follow: 0.25 });
 const SQUEEZE_OUT = 0.02;
 /** Her doors as cloth (`pressMode` 'cloth'): the tee's dials as Joshua set his Sarah's (2026-11-08, her saved
  * character: WEIGHT 25, CALM 100, FIT 100, CLOSE 100, STRETCH 50, GRIP 100, STEPS 43). GAME TUNING. */
@@ -514,6 +517,52 @@ export class PelvicOrgansView {
   private clothPoints: Float32Array | null = null;
   private clothOutlines: PassingOutlines | null = null;
 
+  /** Her doors' feet raised into her, each section's (metres along her canal), as they are drawn now and where they go. */
+  private footNow: Float32Array | null = null;
+  private footWant: Float32Array | null = null;
+  /** Each section's foot as it stands unraised, in her opening's frame (x, t, along): read when her doors are drawn. */
+  private feet: Float32Array | null = null;
+  /**
+   * HER DOORS' FEET AT HER SKIN (Joshua, 2026-11-11: "Better… keep working", of her opening as lips with her own skin
+   * still standing round them as a tube). Wide open in RECLINE her own skin, laid down the sleeve to her doors' feet,
+   * left it 3 to 4 cm up round her back half (MEASURED): her opening sat that far out of her there, the rest a wall of her
+   * own skin. So each section's foot is raised into her to where her skin leaves the sleeve at its place round it
+   * (`ring`: vulvaMesh.ts `seatRise`, all round, as last laid) -- as far as her skin is laid down to them (`share`) --
+   * and its section with it: her lips, their dome on them, stand where her skin is. Followed a little each frame: what her
+   * skin is laid to next follows from where her feet now are. Drawn as lips only.
+   */
+  setFootRise(ring: Float32Array | null, share: number): void {
+    const feet = this.feet, C = feet ? feet.length / 3 : 0;
+    if (!this.lips || !feet || !C) { if (this.footNow) { this.footNow = null; this.drawnSwing = -1; } return; }
+    const want = (this.footWant = this.footWant?.length === C ? this.footWant : new Float32Array(C));
+    want.fill(0);
+    if (ring && ring.length >= 9 && share > 0) {
+      const f = this.doors.frame, N = ring.length / 3, place = new Float32Array(N * 2);
+      let ix = 0, ia = 0;
+      for (let c = 0; c < C; c++) { ix += feet[c * 3] / C; ia += feet[c * 3 + 2] / C; }
+      // (each place round her: its angle about her doors' middle, and how far up her canal it is)
+      for (let b = 0; b < N; b++) {
+        const dx = ring[b * 3] - f.mouth[0], dy = ring[b * 3 + 1] - f.mouth[1], dz = ring[b * 3 + 2] - f.mouth[2];
+        const x = dx * f.x[0] + dy * f.x[1] + dz * f.x[2], t = dx * f.t[0] + dy * f.t[1] + dz * f.t[2], a = dx * f.n[0] + dy * f.n[1] + dz * f.n[2];
+        place[b * 2] = Math.atan2(a - ia, x - ix); place[b * 2 + 1] = t;
+      }
+      for (let c = 0; c < C; c++) {
+        const g = Math.atan2(feet[c * 3 + 2] - ia, feet[c * 3] - ix);
+        // (the two places either side of it round her)
+        let best = -1, bd = Infinity, sec = -1, sd = Infinity;
+        for (let b = 0; b < N; b++) { let d = Math.abs(place[b * 2] - g); if (d > Math.PI) d = 2 * Math.PI - d; if (d < bd) { sec = best; sd = bd; best = b; bd = d; } else if (d < sd) { sec = b; sd = d; } }
+        const w = sd + bd > 1e-9 ? sd / (sd + bd) : 1, t = sec >= 0 ? place[best * 2 + 1] * w + place[sec * 2 + 1] * (1 - w) : place[best * 2 + 1];
+        want[c] = Math.min(FOOT_RISE.most, Math.max(0, t - feet[c * 3 + 1])) * share;
+      }
+      // (evened round her: her feet one smooth line)
+      for (let pass = 0; pass < FOOT_RISE.even; pass++) { const w = want.slice(); for (let c = 0; c < C; c++) want[c] = (w[(c + C - 1) % C] + 2 * w[c] + w[(c + 1) % C]) / 4; }
+    }
+    const now = (this.footNow = this.footNow?.length === C ? this.footNow : new Float32Array(C));
+    let moved = false;
+    for (let c = 0; c < C; c++) { const v = now[c] + (want[c] - now[c]) * FOOT_RISE.follow; if (Math.abs(v - now[c]) > 1e-5) { now[c] = v; moved = true; } }
+    if (moved) this.drawnSwing = -1;
+  }
+
   private pressDoors(dt: number): void {
     if (!this.passing && !this.pressed) return;
     const J = DOORS.stations, uniform = birthAngles(this.grown || this.opensFreely ? this.swing : 0), row = (): Angles[] => Array.from({ length: J }, () => uniform);
@@ -590,7 +639,8 @@ export class PelvicOrgansView {
   private drawDoors(): void {
     if (Math.abs(this.swing - this.drawnSwing) < 1e-4 && Math.abs(this.fold - this.drawnFold) < 1e-4) return;
     this.drawnSwing = this.swing; this.drawnFold = this.fold;
-    const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now, this.lips), g = this.doors.mesh.geometry;
+    const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now, this.lips, this.lips ? this.footNow ?? undefined : undefined), g = this.doors.mesh.geometry;
+    this.feet = d.feet ?? null;
     if (this.clothPoints && this.clothPoints.length === d.points.length) d.points.set(this.clothPoints);
     this.laidAngles = d.angles; this.openNow = d.openM;
     const colour = new Float32Array(d.lining.length * 3), lining = this.doorLining, skin = this.doorSkin;
@@ -638,12 +688,20 @@ export class PelvicOrgansView {
     const foot = (c: number) => { const dx = ring[c * 3] - f.mouth[0], dy = ring[c * 3 + 1] - f.mouth[1], dz = ring[c * 3 + 2] - f.mouth[2]; return [dx * f.x[0] + dy * f.x[1] + dz * f.x[2], dx * f.n[0] + dy * f.n[1] + dz * f.n[2]]; };
     for (let c = 0; c < C; c++) { const q = foot(c); ix += q[0] / C; ia += q[1] / C; }
     const path = this.layout?.vagina.path ?? null, long = path ? lengthOf(path) : 0, end = Math.min(long * 0.85, DOORS.hingeUp + SLEEVE.along);
+    // (each column's rows begin as far up her canal as its foot is raised: `setFootRise`)
+    const raised = this.lips && this.footNow?.length === C ? this.footNow : null;
     if (!path || end <= DOORS.hingeUp) return;
     for (let k = 1; k <= K; k++) {
       const sK = k / K, l = DOORS.hingeUp + (end - DOORS.hingeUp) * sK, wide = 1 + SLEEVE.wider * sK;
       const p = along(path, l), q = along(path, Math.min(long, l + 0.004)), b = along(path, Math.max(0, l - 0.004)), ty = q[1] - b[1], tz = q[2] - b[2], tl = Math.hypot(ty, tz) || 1, ny = tz / tl, nz = -ty / tl;
       for (let c = 0; c < C; c++) {
         const g = foot(c), i = (k * C + c) * 3, a = ia + (g[1] - ia) * wide;
+        if (raised && raised[c] > 0) {
+          const from = DOORS.hingeUp + raised[c], lc = from + (end - from) * sK, pc = along(path, Math.min(long, lc)), qc = along(path, Math.min(long, lc + 0.004)), bc = along(path, Math.max(0, lc - 0.004));
+          const ty2 = qc[1] - bc[1], tz2 = qc[2] - bc[2], tl2 = Math.hypot(ty2, tz2) || 1;
+          ring[i] = pc[0] + ix + (g[0] - ix) * wide; ring[i + 1] = pc[1] + (tz2 / tl2) * a; ring[i + 2] = pc[2] + (-ty2 / tl2) * a;
+          continue;
+        }
         ring[i] = p[0] + ix + (g[0] - ix) * wide; ring[i + 1] = p[1] + ny * a; ring[i + 2] = p[2] + nz * a;
       }
     }

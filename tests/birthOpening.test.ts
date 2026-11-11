@@ -446,4 +446,13 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
     const none = passingLips(frame, Float32Array.from([0, -5, 0, 0, -5, 0.01, 0.01, -5, 0]));
     expect(none.right.every((x) => x === DOORS.lipsShut)).toBe(true);
   });
+  it('her lips raised into her section by section to where her skin is: each whole, its foot with it; the feet reported unraised', () => {
+    const plain = doorMeshes(frame, 0.5, 0, undefined, true), C = 2 * DOORS.stations + 2 * (DOORS.bandSteps - 1), n = plain.points.length / 3 / C;
+    const raised = Array.from({ length: C }, (_, c) => (c > C / 2 ? 0.03 : 0)), up = doorMeshes(frame, 0.5, 0, undefined, true, raised);
+    expect(up.feet).toEqual(plain.feet);
+    for (const c of [0, C / 2 + 3, C - 1]) for (let i = 0; i < n; i += 5) {
+      const k = (c * n + i) * 3, d = [0, 1, 2].map((e) => up.points[k + e] - plain.points[k + e]);
+      expect(d[0] * frame.t[0] + d[1] * frame.t[1] + d[2] * frame.t[2]).toBeCloseTo(raised[c], 6);
+    }
+  });
 });

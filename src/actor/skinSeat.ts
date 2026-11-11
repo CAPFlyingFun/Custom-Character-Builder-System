@@ -646,6 +646,18 @@ export function roundOf(t: SleeveTube, laid: ArrayLike<number>, held?: ArrayLike
 
 const rm = new Float64Array(4), rw0 = new Float64Array(3), rw1 = new Float64Array(3);
 /** How far a point of her laid skin goes to be on the rounded corner (`roundOf`): into `out` (three numbers), whether it moves at all. */
+/**
+ * WHERE HER SKIN LEAVES THE TUBE, ALL ROUND (`roundOf`'s corner at each place: `rise` up the wall from its first row, as
+ * sure as its `share`): the wall's point there, each place's in turn (x, y, z, metres; a place not read: the tube's first
+ * row). Her doors' feet are raised to it (pelvicOrgansView.ts `setFootRise`): her skin then meets them where it is, with
+ * no wall of her own skin between.
+ */
+export function riseRing(t: SleeveTube, r: SeatRound): Float32Array {
+  const N = SEAT_SKIN.round, out = new Float32Array(N * 3), p = new Float64Array(3);
+  for (let b = 0; b < N; b++) { wallPoint(t, r.rise[b] * Math.min(1, r.share[b]), (b / N) * TAU, 0, p); out[b * 3] = p[0]; out[b * 3 + 1] = p[1]; out[b * 3 + 2] = p[2]; }
+  return out;
+}
+
 export function roundMove(t: SleeveTube, r: SeatRound, x: number, y: number, z: number, out: Float64Array): boolean {
   tubeAt(t, x, y, z, rm);
   const up = rm[0], rho = rm[1] - rm[3], ang = rm[2];

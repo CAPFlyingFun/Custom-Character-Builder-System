@@ -7890,6 +7890,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (her own skin carried down to her doors: the skin round them a sleeve round her canal, up into her)
           organs.skinSleeve = v2Seat.ring;
         }
+        // (her doors' feet raised to where her own skin leaves the sleeve round them, as last laid, as far as her skin is
+        // laid down to them: no wall of her own skin round her lips -- pelvicOrgansView.ts `setFootRise`)
+        if (vulva) { const t = Math.min(1, Math.max(0, (organs.opening - SEAT_SKIN_OPENS.from) / (SEAT_SKIN_OPENS.to - SEAT_SKIN_OPENS.from))); organs.setFootRise(vulva.seatRise, t * t * (3 - 2 * t)); }
         organs.update(dt);
         // (v2, her skeleton's opening: her own skin stretched down to her doors, over the sleeve round her canal as it now
         // stands -- none of it up to SEAT_SKIN_OPENS.from open, all of it by SEAT_SKIN_OPENS.to)

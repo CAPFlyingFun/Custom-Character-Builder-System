@@ -9,7 +9,7 @@ import { bakeVulva, type VulvaBake } from './vulvaPatch';
 import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, SOFT_REF_ATTRIBUTE, UNITS_PER_METRE, patchJiggle, patchWombSoft, setPushExtra } from './softBody';
 import { birthAreaCentre } from './birthArea';
 import { sacRadius, type WombShape } from './baby';
-import { footAt, layBeyond, laySeatSkin, roundMove, roundOf, sleeveTube, tubeOut, tubePlace, type SkinBeyond } from '../actor/skinSeat';
+import { footAt, layBeyond, laySeatSkin, roundMove, roundOf, riseRing, sleeveTube, tubeOut, tubePlace, type SkinBeyond } from '../actor/skinSeat';
 
 /**
  * GAME TUNING for the opening (Joshua's references, 2026-10-30: at crowning the whole area round the opening domes out
@@ -223,6 +223,9 @@ export interface VulvaPatch {
   /** the mound her skin makes round her seated doors rounded into her (actor/skinSeat.ts `roundOf`; on unless a probe
    * turns it off to compare); laid again by `relayOut` */
   round: boolean;
+  /** where her skin leaves the tube round her seated doors, all round (actor/skinSeat.ts `riseRing`; in her doors' sleeve's
+   * own space), as last laid -- her doors' feet are raised to it; null while nothing is laid */
+  readonly seatRise: Float32Array | null;
   relayOut(): void;
   /** Lays what is waiting to be laid now (her skin over her seat is laid again only so often as she opens: `sync`). */
   settle(): boolean;
@@ -2189,9 +2192,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   };
   /** takes what was laid beyond the area off her */
   const clearBeyond = () => { if (beyondOn) { setPushExtra(body, null, null); beyondOn = false; beyondPush?.fill(0); beyondDbg = {}; } unlightBeyond(); };
+  let seatRiseNow: Float32Array | null = null;
   function laySeat(pos: Float32Array, nrm: Float32Array): void {
     seatPoints = 0; seatMost = 0;
-    if (!seatOn() || !seat || !patchI || !patchW) { clearBeyond(); return; }
+    if (!seatOn() || !seat || !patchI || !patchW) { clearBeyond(); seatRiseNow = null; return; }
     const t0 = performance.now();
     const tube = sleeveTube(seat.points, seat.columns, [1, 0, 0], seat.doors);
     if (!tube) { clearBeyond(); trimEdge(); return; }
@@ -2292,6 +2296,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       if (bey) for (let k = 0; k < NB; k++) { for (let c = 0; c < 3; c++) laid[k * 3 + c] = bey.at[k * 3 + c] + bey.DB[k * 3 + c] * s1; heldL[k] = bey.piece.mesh.held[k]; }
       for (let q = 0; q < G; q++) for (let c = 0; c < 3; c++) laid[(NB + q) * 3 + c] = at[q * 3 + c] + D[q * 3 + c] * s1;
       const round = roundOf(tube, laid, heldL), mv = new Float64Array(3);
+      seatRiseNow = riseRing(tube, round);
       let moved = 0, most = 0;
       for (let k = 0; k < NB + G; k++) {
         if (heldL[k] || !roundMove(tube, round, laid[k * 3], laid[k * 3 + 1], laid[k * 3 + 2], mv)) continue;
@@ -2842,6 +2847,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       // (new: laid at once; moved on: when its pace allows)
       seat = next; if (was && was.share > 0) seatWaiting = true; else openApplied = -1;
     },
+    get seatRise() { return seatRiseNow; },
     get seatLaid() { return { points: seatPoints, most: seatMost, ...seatDbg }; },
     seatStrays,
     setWomb(w: WombShape | null, bone = -1) {
