@@ -26,9 +26,11 @@ import type { P3 } from './pelvisMeasure';
  * is drawn (`tuck`, metres, for an edge `tuckDeep` and more inside the wall), from how far out its column (`tuckFrom`).
  * `doorSlabs`: into how many slices her doors' room (`before`) is cut to read how far out her doors stand in each, and
  * `doorOff` how far her skin stands off them there (metres: more than off the tube -- her doors' own points are some way
- * apart, and her skin lay in and out of them along a ragged line).
+ * apart, and her skin lay in and out of them along a ragged line). `fine`: into how many each stretch of the tube between
+ * two of the sleeve's rows is cut (see `sleeveTube`); `sockEven`: how many times her skin's places on the tube's wall are
+ * evened with their neighbours' (see `laySeatSkin`).
  */
-export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10, doorOff: 0.004 });
+export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10, doorOff: 0.004, fine: 3, sockEven: 30 });
 
 /** The tube her skin lies over: its rows' middles, the way it runs at each (toward her womb), each row's own "front"
  * (square to that and to `across`), and how far out its wall is at each of `SEAT_SKIN.round` places round it. */
@@ -71,8 +73,13 @@ const wrap = (a: number): number => ((a % TAU) + TAU) % TAU;
  * `across` and to the way the tube runs there, and a place round a row is told from its front toward `across`.
  */
 export function sleeveTube(points: ArrayLike<number>, cols: number, across: P3 = [1, 0, 0], doorPoints?: ArrayLike<number>): SleeveTube | null {
-  const rows = Math.floor(points.length / 3 / cols);
-  if (!(cols >= 3) || rows < 2) return null;
+  const coarse = Math.floor(points.length / 3 / cols);
+  if (!(cols >= 3) || coarse < 2) return null;
+  return fineTube(coarseTube(points, cols, coarse, across), across, doorPoints);
+}
+
+/** The sleeve's own rows read: each one's middle, and how far out its wall is at each place round it. */
+function coarseTube(points: ArrayLike<number>, cols: number, rows: number, across: P3): { rows: number; centres: P3[]; radius: Float32Array; foot: P3[]; footAngle: number[] } {
   const at = (k: number, c: number): P3 => { const i = (k * cols + c) * 3; return [points[i], points[i + 1], points[i + 2]]; };
   const centres: P3[] = [];
   for (let k = 0; k < rows; k++) { const m = [0, 0, 0]; for (let c = 0; c < cols; c++) { const p = at(k, c); m[0] += p[0] / cols; m[1] += p[1] / cols; m[2] += p[2] / cols; } centres.push([m[0], m[1], m[2]]); }
@@ -104,6 +111,32 @@ export function sleeveTube(points: ArrayLike<number>, cols: number, across: P3 =
   }
   const foot: P3[] = [], footAngle: number[] = [];
   for (let c = 0; c < cols; c++) { const p = at(0, c), v = sub(p, centres[0]); foot.push(p); footAngle.push(wrap(Math.atan2(dot(v, across), dot(v, fronts[0])))); }
+  return { rows, centres, radius, foot, footAngle };
+}
+
+/**
+ * THE TUBE HER SKIN LIES ON IS FINER THAN THE SLEEVE THAT IS DRAWN (2026-11-11). The sleeve has nine rows, a centimetre
+ * apart, and her canal turns some 37 degrees within the first four of them: a tube of straight pieces between those rows
+ * has a corner of five to ten degrees at each, and her skin, laid on it and lit as it lies, showed them -- rings round
+ * the mound under her, light and dark, once her skin there was lit the right way out. So each stretch between two rows
+ * is cut in `SEAT_SKIN.fine`: the middles on a smooth curve through the rows' own (Catmull-Rom), the wall's size
+ * between the two rows' evenly. The sleeve as drawn lies within a fifth of a millimetre of it, under her skin.
+ */
+function fineTube(T: { rows: number; centres: P3[]; radius: Float32Array; foot: P3[]; footAngle: number[] }, across: P3, doorPoints?: ArrayLike<number>): SleeveTube {
+  const N = SEAT_SKIN.round, F = Math.max(1, Math.round(SEAT_SKIN.fine)), R0 = T.rows, rows = (R0 - 1) * F + 1, cols = T.foot.length, foot = T.foot, footAngle = T.footAngle;
+  const cm = (k: number): P3 => (k < 0 ? [2 * T.centres[0][0] - T.centres[1][0], 2 * T.centres[0][1] - T.centres[1][1], 2 * T.centres[0][2] - T.centres[1][2]] : k >= R0 ? [2 * T.centres[R0 - 1][0] - T.centres[R0 - 2][0], 2 * T.centres[R0 - 1][1] - T.centres[R0 - 2][1], 2 * T.centres[R0 - 1][2] - T.centres[R0 - 2][2]] : T.centres[k]);
+  const centres: P3[] = [], radius = new Float32Array(rows * N);
+  for (let q = 0; q < rows; q++) {
+    const k = Math.min(R0 - 2, Math.floor(q / F)), f = q / F - k, p0 = cm(k - 1), p1 = cm(k), p2 = cm(k + 1), p3 = cm(k + 2), f2 = f * f, f3 = f2 * f;
+    centres.push([0, 1, 2].map((e) => 0.5 * (2 * p1[e] + (p2[e] - p0[e]) * f + (2 * p0[e] - 5 * p1[e] + 4 * p2[e] - p3[e]) * f2 + (3 * p1[e] - p0[e] - 3 * p2[e] + p3[e]) * f3)) as unknown as P3);
+    for (let b = 0; b < N; b++) radius[q * N + b] = T.radius[k * N + b] + (T.radius[(k + 1) * N + b] - T.radius[k * N + b]) * f;
+  }
+  const axes: P3[] = [], fronts: P3[] = [];
+  for (let k = 0; k < rows; k++) {
+    const a = unit(sub(centres[Math.min(rows - 1, k + 1)], centres[Math.max(0, k - 1)]));
+    const d = dot(a, across), ax = unit([a[0] - across[0] * d, a[1] - across[1] * d, a[2] - across[2] * d]);
+    axes.push(ax); fronts.push(unit(cross(across, ax)));
+  }
   const c = new Float64Array(rows * 3), a = new Float64Array(rows * 3), most = new Float64Array(rows), box = new Float64Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
   let widest = 0;
   for (let k = 0; k < rows; k++) { for (let e = 0; e < 3; e++) { c[k * 3 + e] = centres[k][e]; a[k * 3 + e] = axes[k][e]; } for (let b = 0; b < N; b++) most[k] = Math.max(most[k], radius[k * N + b]); widest = Math.max(widest, most[k]); }
@@ -329,8 +362,9 @@ export interface SkinGrid {
  * AS A SOCK ON THE TUBE. Each column of her skin runs from her opening's rim out to the area's edge; as it lies, its
  * inner part is inside the tube (her canal has come down through it) and the rest outside. Its rim goes to her doors'
  * feet, at the column's place round them, and its inner part -- every ring of it out to the last that lies inside the
- * tube -- is laid ALONG THE TUBE'S WALL from there up to where that last ring is, each as far along as it was along her
- * skin; the rest of the column stays her skin as it lies. (It was the rim's move handed down each column, less and less,
+ * tube -- is laid ALONG THE TUBE'S WALL from there up to where the first ring past it stands, each as far along as it
+ * was along her skin, and each one's place on the wall evened with its neighbours' all round; the rest of the column
+ * stays her skin as it lies. (It was the rim's move handed down each column, less and less,
  * and then put out of the tube: rings went out of it every which way and lay over one another, a ragged collar round her
  * doors -- 2026-11-10.) Then, `SEAT_SKIN.passes` times, its move is evened with its neighbours' (its rim and its edge
  * held) and whatever that draws into the tube put out to stand off its wall (`tubeOut`) -- so the corner where it leaves
@@ -343,28 +377,55 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
   // times -- beyond that her skin lies as it did and nothing reaches it)
   const reach = new Int32Array(M);
   { const tc = new Float64Array(4), w = new Float64Array(3), along = new Float64Array(K);
+    // each of its points' own place in the tube's terms (how far up it, where round it), and the sock's: the points laid
+    // on its wall, each one's place there
+    const upO = new Float32Array(K * M), anO = new Float32Array(K * M), UP = new Float32Array(K * M), AN = new Float32Array(K * M), sock = new Uint8Array(K * M), lastOf = new Int32Array(M);
     for (let j = 0; j < M; j++) {
       const to = footAt(tube, grid.angle[j]);
       for (let c = 0; c < 3; c++) D[j * 3 + c] = to[c] - grid.at[j * 3 + c];
-      // the last of its rings inside the tube, where it is in the tube's terms, and how far along her skin each ring is
-      let last = 0, up = 0, round = 0;
+      // the last of its rings inside the tube, and how far along her skin each ring is
+      let last = 0;
       along[0] = 0;
       for (let k = 1; k < K; k++) {
         const i = (k * M + j) * 3, h = ((k - 1) * M + j) * 3;
         along[k] = along[k - 1] + Math.hypot(grid.at[i] - grid.at[h], grid.at[i + 1] - grid.at[h + 1], grid.at[i + 2] - grid.at[h + 2]);
         tubeAt(tube, grid.at[i], grid.at[i + 1], grid.at[i + 2], tc);
-        if (tc[1] < tc[3] + SEAT_SKIN.standOff) { last = k; up = tc[0]; round = tc[2]; }
+        upO[k * M + j] = tc[0]; anO[k * M + j] = tc[2];
+        // (INSIDE it: not standing on its wall. Her own skin at the area's edge has been put out to the wall already
+        // -- it stands off it by exactly as much -- and by a hair's rounding one column's edge read as inside and its
+        // neighbour's as out: half a millimetre is taken off)
+        if (tc[1] < tc[3] + SEAT_SKIN.standOff - 0.0005) last = k;
       }
-      reach[j] = last;
-      if (!last || !(along[last] > 0)) continue;
-      // (round the tube the short way from its place at her doors' feet to where that ring is)
-      const a0 = grid.angle[j]; let turn = round - a0; turn -= Math.round(turn / TAU) * TAU;
+      lastOf[j] = last; reach[j] = last;
+      // WHERE THE SOCK ENDS: the first of the column's rings past the last inside the tube -- on the tube's wall or out
+      // beyond it, its own place -- and the sock runs from her doors' feet to there, each ring as far along as it was
+      // along her skin. (It ran to where the last ring INSIDE the tube lay, taken out to the wall -- and a ring deep in
+      // the tube, near its middle line, is anywhere round it: one column's sock ended a quarter of the way round from
+      // its neighbour's, and her skin on the mound lay in crossed folds, 2026-11-11.)
+      const land = Math.min(K - 1, last + 1);
+      if (!last || !(along[land] > 0)) continue;
+      const a0 = grid.angle[j]; let turn = anO[land * M + j] - a0; turn -= Math.round(turn / TAU) * TAU;
       // (its edge is her own skin and is not laid here: it is put out of the tube below as the rest is, where it lies in it)
-      for (let k = 1; k <= Math.min(last, K - 2); k++) {
-        const u = along[k] / along[last], i = (k * M + j) * 3;
-        wallPoint(tube, up * u, a0 + turn * u, SEAT_SKIN.standOff, w);
-        for (let c = 0; c < 3; c++) D[i + c] = w[c] - grid.at[i + c];
+      for (let k = 1; k <= Math.min(last, K - 2); k++) { const u = along[k] / along[land], q = k * M + j; UP[q] = upO[land * M + j] * u; AN[q] = a0 + turn * u; sock[q] = 1; }
+    }
+    // ONE SKIN ON THE WALL: each of the sock's points' place on it evened with its four neighbours' -- along its column
+    // and across to the columns either side, her doors' feet and whatever is not the sock's staying where they are --
+    // `sockEven` times: no column crosses the next, and none is gathered where the next is stretched.
+    for (let pass = 0; pass < SEAT_SKIN.sockEven; pass++) for (let j = 0; j < M; j++) for (let k = 1; k <= Math.min(lastOf[j], K - 2); k++) {
+      const q = k * M + j;
+      if (!sock[q]) continue;
+      let su = 0, sa = 0;
+      for (const [k2, j2] of [[k - 1, j], [k + 1, j], [k, (j + M - 1) % M], [k, (j + 1) % M]]) {
+        const n = k2 * M + j2, u2 = k2 === 0 ? 0 : sock[n] ? UP[n] : upO[n];
+        let a2 = (k2 === 0 ? grid.angle[j2] : sock[n] ? AN[n] : anO[n]) - AN[q]; a2 -= Math.round(a2 / TAU) * TAU;
+        su += u2; sa += a2;
       }
+      UP[q] = su / 4; AN[q] += sa / 4;
+    }
+    for (let q = M; q < K * M; q++) {
+      if (!sock[q]) continue;
+      wallPoint(tube, UP[q], AN[q], SEAT_SKIN.standOff, w);
+      for (let c = 0; c < 3; c++) D[q * 3 + c] = w[c] - grid.at[q * 3 + c];
     }
     // (a column is evened with its neighbours either side as well: it is worked as far out as the furthest of them)
     const own = Int32Array.from(reach), spread = SEAT_SKIN.passes + 2;
@@ -488,4 +549,126 @@ export function layBeyond(mesh: SkinBeyond, at: ArrayLike<number>, side: ArrayLi
   for (let k = 0; k < 3; k++) out();
   if (s < 1) for (let i = 0; i < D.length; i++) D[i] *= s;
   return D;
+}
+
+/**
+ * THE MOUND ROUNDED INTO HER (Joshua, 2026-11-11, drawing lines over it that flare out from her doors' feet onto her
+ * body: "add a more rounded shape upwards towards it so it looks better and not like a cylinder").
+ *
+ * Laid, her skin runs up the tube's wall from her doors' feet and, where the tube comes through her, out along her own
+ * skin: a corner all round behind her opening -- a collar standing off her (lying back, 3 to 4.5 cm of it: MEASURED on
+ * her laid skin in the tube's terms). A corner is rounded by taking the two straight runs that meet in it for the legs
+ * of one curve: from her doors' feet, toward a point a little way out along her own skin (`lean` of the curve's reach
+ * past the corner), to her own skin `reach` past the corner -- a curve that leaves her doors' feet leaning out from the
+ * wall and comes down onto her own skin lying along it (a conic: both ends true). Every point of her skin near the two
+ * runs moves to the curve by how far along them it is; past the curve's end nothing moves.
+ *
+ * It is a warp of the PLACE, not of a mesh: the area's own skin and her body's go by the same rule, so where the two
+ * meet they still meet, and it knows nothing of her bones: where her skin leaves the wall at her doors' feet (in front
+ * of her, lying back) there is no corner and nothing is rounded; where her skin runs up nearly along the tube (her
+ * back) the two runs are nearly one line and the curve is nearly that line.
+ *
+ * `SeatRound`, at each of `SEAT_SKIN.round` places round the tube: how far up the wall the corner is (`rise`, metres),
+ * which way her skin runs from it in the plane through the tube's line (`out` from the wall, `up` the tube: a unit
+ * way), how far along it the curve comes down (`reach`, metres) and how much of the rounding the place takes (`share`).
+ */
+export interface SeatRound { readonly rise: Float32Array; readonly out: Float32Array; readonly up: Float32Array; readonly reach: Float32Array; readonly share: Float32Array }
+
+/**
+ * GAME TUNING: how far past the corner the curve comes down, of the corner's height (`reach`), at most (`most`, metres)
+ * and no nearer her skin's held edge than `hold` of the way to it; a corner lower than `least` is not rounded (all of it
+ * from twice that); how far out along her skin the curve's middle leg points (`lean`, of its reach: 0 leaves her doors'
+ * feet straight up the wall); how near the two runs a point must be to go with them (all of it within `near`, none
+ * past `far`, metres); her skin just off the wall is read between `fit[0]` and `near` out from it for the corner's
+ * height, and out to `fit[1]` for the way it runs; and over how many places either side all of it is evened round her.
+ */
+export const SEAT_ROUND = Object.freeze({ reach: 1.5, most: 0.07, hold: 0.85, least: 0.006, lean: 0.35, near: 0.012, far: 0.03, fit: [0.004, 0.035] as readonly [number, number], even: 3 });
+
+const smoothTo = (a: number, b: number, v: number): number => { const u = Math.min(1, Math.max(0, (v - a) / (b - a))); return u * u * (3 - 2 * u); };
+
+/**
+ * The corner all round, read off her skin as it is laid (`laid`: x, y, z a point, the tube's own frame -- her body's
+ * skin and the area's together); `held` marks the points that cannot move (her skin's edge: the curve comes down
+ * short of the nearest of them at each place).
+ */
+export function roundOf(t: SleeveTube, laid: ArrayLike<number>, held?: ArrayLike<number>): SeatRound {
+  const N = SEAT_SKIN.round, R = SEAT_ROUND, n = Math.floor(laid.length / 3), top = rowsAlong(t)[t.rows - 1], tc = new Float64Array(4);
+  const up = new Float32Array(n), rho = new Float32Array(n), bin = new Int32Array(n).fill(-1);
+  // her skin beyond the wall at each place, in bands 4 mm wide out from it: each band's points' heights up the tube
+  const BANDS = Math.max(3, Math.round((R.fit[1] - R.fit[0]) / 0.004)), wide = (R.fit[1] - R.fit[0]) / BANDS, bands: number[][] = Array.from({ length: N * BANDS }, () => []);
+  for (let i = 0; i < n; i++) {
+    tubeAt(t, laid[i * 3], laid[i * 3 + 1], laid[i * 3 + 2], tc);
+    // (her doors' room below the tube's first row, and what lies past its last, are not the tube's wall)
+    if (!(tc[0] > -0.002) || tc[0] > top - 0.002) continue;
+    up[i] = tc[0]; rho[i] = tc[1] - tc[3] - SEAT_SKIN.standOff; bin[i] = Math.round((wrap(tc[2]) / TAU) * N) % N;
+    const q = Math.floor((rho[i] - R.fit[0]) / wide);
+    if (q >= 0 && q < BANDS) bands[bin[i] * BANDS + q].push(tc[0]);
+  }
+  // THE CORNER at each place: her skin's own line there -- through the LOWEST of it in each band (what is seen of her
+  // from her doors' side: other skin may lie further up the tube behind it), a straight line fitted to them -- and
+  // where that line meets the wall. (The lowest of her skin just off the wall is not it: where her skin runs on up
+  // steeply, that is already well up it.) Her skin's points are few where it is stretched: each place reads its own
+  // and its two neighbours', 15 degrees of her.
+  const rise = new Float32Array(N), out = new Float32Array(N).fill(1), upW = new Float32Array(N), reach = new Float32Array(N), share = new Float32Array(N), room = new Float32Array(N).fill(Infinity);
+  for (let b = 0; b < N; b++) {
+    let sn = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let q = 0; q < BANDS; q++) {
+      const L = [...bands[((b + N - 1) % N) * BANDS + q], ...bands[b * BANDS + q], ...bands[((b + 1) % N) * BANDS + q]];
+      if (!L.length) continue;
+      L.sort((x, y) => x - y);
+      const x = R.fit[0] + (q + 0.5) * wide, y = L[Math.floor(L.length * 0.15)];
+      sn++; sx += x; sy += y; sxx += x * x; sxy += x * y;
+    }
+    const den = sn * sxx - sx * sx;
+    if (sn < 3 || !(den > 1e-12)) continue;
+    const slope = (sn * sxy - sx * sy) / den, at0 = (sy - slope * sx) / sn;
+    // (never steeper up the tube than 80 degrees, nor down it than 30)
+    const a = Math.min(1.4, Math.max(-0.52, Math.atan(slope)));
+    rise[b] = Math.max(0, at0); out[b] = Math.cos(a); upW[b] = Math.sin(a);
+  }
+  if (held) for (let i = 0; i < n; i++) { const b = bin[i]; if (b < 0 || !held[i] || !(rise[b] > 0)) continue; const s = rho[i] * out[b] + (up[i] - rise[b]) * upW[b]; if (s > 0 && s < room[b]) room[b] = s; }
+  for (let b = 0; b < N; b++) {
+    reach[b] = Math.max(0, Math.min(R.reach * rise[b], R.most, R.hold * room[b]));
+    // (and never past the tube's own end: beyond it there is no wall to tell a place by)
+    if (upW[b] > 0.05) reach[b] = Math.max(0, Math.min(reach[b], (top - 0.004 - rise[b]) / upW[b]));
+    share[b] = smoothTo(R.least, 2 * R.least, rise[b]) * smoothTo(0, R.least, reach[b]);
+  }
+  // evened round her, so the rounding does not step from place to place (its reach first no further than its neighbours')
+  const E = R.even, ev = (A: Float32Array) => { const B = new Float32Array(N); for (let b = 0; b < N; b++) { let m = 0; for (let d = -E; d <= E; d++) m += A[(b + d + N) % N]; B[b] = m / (2 * E + 1); } A.set(B); };
+  { const least = Float32Array.from(reach); for (let b = 0; b < N; b++) reach[b] = Math.min(least[(b + N - 1) % N], least[b], least[(b + 1) % N]); }
+  // (a place with no corner has no height or way of its own to even in: it takes its neighbours' as they are evened)
+  { const w = Float32Array.from(share), ax = new Float32Array(N), ay = new Float32Array(N), ar = new Float32Array(N), al = new Float32Array(N), aw = new Float32Array(N);
+    for (let b = 0; b < N; b++) for (let d = -E; d <= E; d++) { const q = (b + d + N) % N; ax[b] += out[q] * w[q]; ay[b] += upW[q] * w[q]; ar[b] += rise[q] * w[q]; al[b] += reach[q] * w[q]; aw[b] += w[q]; }
+    for (let b = 0; b < N; b++) { if (!(aw[b] > 1e-6)) { rise[b] = 0; reach[b] = 0; out[b] = 1; upW[b] = 0; continue; } const l = Math.hypot(ax[b], ay[b]) || 1; out[b] = ax[b] / l; upW[b] = ay[b] / l; rise[b] = ar[b] / aw[b]; reach[b] = al[b] / aw[b]; } }
+  ev(share);
+  return { rise, out, up: upW, reach, share };
+}
+
+const rm = new Float64Array(4), rw0 = new Float64Array(3), rw1 = new Float64Array(3);
+/** How far a point of her laid skin goes to be on the rounded corner (`roundOf`): into `out` (three numbers), whether it moves at all. */
+export function roundMove(t: SleeveTube, r: SeatRound, x: number, y: number, z: number, out: Float64Array): boolean {
+  tubeAt(t, x, y, z, rm);
+  const up = rm[0], rho = rm[1] - rm[3], ang = rm[2];
+  if (!(up > 0) || up > rowsAlong(t)[t.rows - 1] - 0.002) return false;
+  const N = SEAT_SKIN.round, R = SEAT_ROUND, b = (wrap(ang) / TAU) * N, b0 = Math.floor(b) % N, b1 = (b0 + 1) % N, g = b - Math.floor(b);
+  const share = r.share[b0] + (r.share[b1] - r.share[b0]) * g;
+  if (!(share > 1e-4)) return false;
+  const H = r.rise[b0] + (r.rise[b1] - r.rise[b0]) * g, ell = r.reach[b0] + (r.reach[b1] - r.reach[b0]) * g;
+  if (!(H > 1e-4) || !(ell > 1e-4)) return false;
+  let dx = r.out[b0] + (r.out[b1] - r.out[b0]) * g, dy = r.up[b0] + (r.up[b1] - r.up[b0]) * g;
+  const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+  // where it is along the two runs -- up the wall, then out along her skin -- by the nearer run the more
+  const q = Math.max(0, rho - SEAT_SKIN.standOff), aw = Math.min(up, H), nw = up <= H ? q : Math.hypot(q, up - H);
+  const sb = Math.max(0, q * dx + (up - H) * dy), nb = Math.hypot(q - sb * dx, up - H - sb * dy);
+  const ww = 1 / (nw + 1e-4), wb = 1 / (nb + 1e-4), a = (aw * ww + (H + sb) * wb) / (ww + wb), L = H + ell;
+  if (!(a < L)) return false;
+  const fade = 1 - smoothTo(R.near, R.far, Math.min(nw, nb));
+  if (!(fade > 0)) return false;
+  // the curve there (its legs: her doors' feet -> a point `lean` of its reach out along her skin -> her skin at its
+  // reach), and the point of the two runs it stands for
+  const f = a / L, u = 1 - f, bx = 2 * f * u * (R.lean * ell * dx) + f * f * (ell * dx), by = 2 * f * u * (H + R.lean * ell * dy) + f * f * (H + ell * dy);
+  const px = a <= H ? 0 : (a - H) * dx, py = a <= H ? a : H + (a - H) * dy, k = share * fade;
+  wallPoint(t, up, ang, rho, rw0); wallPoint(t, up + (by - py) * k, ang, rho + (bx - px) * k, rw1);
+  out[0] = rw1[0] - rw0[0]; out[1] = rw1[1] - rw0[1]; out[2] = rw1[2] - rw0[2];
+  return true;
 }

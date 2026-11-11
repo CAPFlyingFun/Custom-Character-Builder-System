@@ -9,7 +9,7 @@ import { bakeVulva, type VulvaBake } from './vulvaPatch';
 import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, SOFT_REF_ATTRIBUTE, UNITS_PER_METRE, patchJiggle, patchWombSoft, setPushExtra } from './softBody';
 import { birthAreaCentre } from './birthArea';
 import { sacRadius, type WombShape } from './baby';
-import { footAt, layBeyond, laySeatSkin, sleeveTube, tubeOut, tubePlace, type SkinBeyond } from '../actor/skinSeat';
+import { footAt, layBeyond, laySeatSkin, roundMove, roundOf, sleeveTube, tubeOut, tubePlace, type SkinBeyond } from '../actor/skinSeat';
 
 /**
  * GAME TUNING for the opening (Joshua's references, 2026-10-30: at crowning the whole area round the opening domes out
@@ -220,6 +220,9 @@ export interface VulvaPatch {
   backing: boolean;
   /** the area's thin outer band given back to the backing (on unless a probe turns it off); laid again by `relayOut` */
   trim: boolean;
+  /** the mound her skin makes round her seated doors rounded into her (actor/skinSeat.ts `roundOf`; on unless a probe
+   * turns it off to compare); laid again by `relayOut` */
+  round: boolean;
   relayOut(): void;
   /** Lays what is waiting to be laid now (her skin over her seat is laid again only so often as she opens: `sync`). */
   settle(): boolean;
@@ -1991,7 +1994,13 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // skin had to go was made up between there and her opening: a skirt that left her at a kink. So the piece reaches
   // `above` over her tailbone's tip and `skin` behind it -- up the cleft over her sacrum -- and her skin there goes out
   // a little with the rest, less and less up to where it is held.
-  const BEYOND = Object.freeze({ across: 0.13, front: 0.06, below: 0.12, above: 0.055, skin: 0.035 });
+  //
+  // WIDE ENOUGH FOR THE MOUND TO TAPER OFF INTO HER (Joshua, 2026-11-11: "make the outer ring like a funnel all around
+  // the opening so it will naturally taper off in the skin"). The mound is rounded into her skin (actor/skinSeat.ts
+  // `roundOf`) no further than the piece's held edge -- and behind her opening, lying back, that edge was 2 to 3 cm from
+  // the tube's wall (MEASURED on her laid skin in the tube's terms): a funnel 2 cm long. So the piece reaches further
+  // over her buttocks -- `skin` behind her tailbone's tip 8.5 cm for 3.5, `above` it 7.5 for 5.5, `across` 16 for 13.
+  const BEYOND = Object.freeze({ across: 0.16, front: 0.06, below: 0.12, above: 0.075, skin: 0.085 });
   let beyond: { mesh: SkinBeyond; rep: Uint32Array; vertFrom: Uint32Array; verts: Uint32Array; tris: Uint32Array; pointOf: Int32Array } | null | undefined;
   /** her body's vertices' seat push (her geometry's units, three a vertex): what `laySeat` last laid beyond the area */
   let beyondPush: Float32Array | null = null, beyondOn = false, beyondDbg: Record<string, unknown> = {};
@@ -2161,6 +2170,23 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     if (na && na.version === beyondLitVersion) { const Nn = na.array as Float32Array, V = beyond.verts; for (let q = 0; q < V.length; q++) for (let c = 0; c < 3; c++) Nn[V[q] * 3 + c] = beyondRestNormals[q * 3 + c]; na.needsUpdate = true; }
     beyondLitOn = false;
   };
+  /** Her skin beyond the area as laid (`layBeyond`, rounded or not): each point's move back through its own turn into
+   * `beyondPush` (the push her shader adds before her bones turn it) -- and, `show`, onto her, with its light. */
+  let beyondValues = new Float32Array(0);
+  const putBeyond = (b: { piece: NonNullable<typeof beyond>; at: Float32Array; DB: Float32Array; TB: Float64Array }, show: boolean) => {
+    const { piece, DB, TB } = b, N = piece.mesh.count;
+    if (!beyondPush || beyondPush.length !== n * 3) beyondPush = new Float32Array(n * 3);
+    if (beyondValues.length !== piece.verts.length * 3) beyondValues = new Float32Array(piece.verts.length * 3);
+    const values = beyondValues;
+    for (let k = 0; k < N; k++) {
+      const el = seatU.fromArray(TB, k * 16).invert().elements, dx = DB[k * 3], dy = DB[k * 3 + 1], dz = DB[k * 3 + 2];
+      const ux = el[0] * dx + el[4] * dy + el[8] * dz, uy = el[1] * dx + el[5] * dy + el[9] * dz, uz = el[2] * dx + el[6] * dy + el[10] * dz;
+      for (let q = piece.vertFrom[k]; q < piece.vertFrom[k + 1]; q++) { const i = piece.verts[q]; values[q * 3] = ux; values[q * 3 + 1] = uy; values[q * 3 + 2] = uz; beyondPush[i * 3] = ux; beyondPush[i * 3 + 1] = uy; beyondPush[i * 3 + 2] = uz; }
+    }
+    if (!show) return;
+    setPushExtra(body, piece.verts, values); beyondOn = true;
+    lightBeyond(piece, b.at, DB, TB);
+  };
   /** takes what was laid beyond the area off her */
   const clearBeyond = () => { if (beyondOn) { setPushExtra(body, null, null); beyondOn = false; beyondPush?.fill(0); beyondDbg = {}; } unlightBeyond(); };
   function laySeat(pos: Float32Array, nrm: Float32Array): void {
@@ -2184,6 +2210,9 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     // its own bones' turn -- laid off the tube, and put on her as a push through the inverse of that turn. `lift`: what of
     // that push each of the area's own points has (its edge is her vertices: all of it; a triangle or two in: some).
     const lift = new Float32Array(P * 3);
+    // (her skin beyond the area as it is laid here -- its place, its move and its own turns -- kept: it is ROUNDED with
+    // the area's own skin once that is laid, below, and put on her then)
+    let bey: { piece: NonNullable<typeof beyond>; at: Float32Array; DB: Float32Array; TB: Float64Array } | null = null;
     { const piece = seat.tail && seat.tail.length === 3 ? beyondOf(seat.tail) : null, bp = g.getAttribute('position') as THREE.BufferAttribute;
       readBodySkin();
       if (piece && bodyI && bodyW && pushOf()) {
@@ -2197,33 +2226,11 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
           side[k] = Math.atan2(at[k * 3] - c0[0], at[k * 3 + 2] - c0[2]);
         }
         const DB = layBeyond(piece.mesh, at, side, tube, seat.share);
-        if (!beyondPush || beyondPush.length !== n * 3) beyondPush = new Float32Array(n * 3);
-        const values = new Float32Array(piece.verts.length * 3);
-        let moved = 0, most = 0;
-        for (let k = 0; k < N; k++) {
-          const far = Math.hypot(DB[k * 3], DB[k * 3 + 1], DB[k * 3 + 2]);
-          if (far > 1e-6) { moved++; most = Math.max(most, far); }
-          // (back through its own turn: the push her shader adds before her bones turn it)
-          const el = seatU.fromArray(TB, k * 16).invert().elements, dx = DB[k * 3], dy = DB[k * 3 + 1], dz = DB[k * 3 + 2];
-          const ux = el[0] * dx + el[4] * dy + el[8] * dz, uy = el[1] * dx + el[5] * dy + el[9] * dz, uz = el[2] * dx + el[6] * dy + el[10] * dz;
-          for (let q = piece.vertFrom[k]; q < piece.vertFrom[k + 1]; q++) { const i = piece.verts[q]; values[q * 3] = ux; values[q * 3 + 1] = uy; values[q * 3 + 2] = uz; beyondPush[i * 3] = ux; beyondPush[i * 3 + 1] = uy; beyondPush[i * 3 + 2] = uz; }
-        }
-        setPushExtra(body, piece.verts, values); beyondOn = true;
-        lightBeyond(piece, at, DB, TB);
-        sampleInto(lift, beyondPush, 3, bake.src, bake.bary, P);
-        // (a probe's: her skin beyond the area down her middle -- where each point lay and where it lies, [y, z] metres)
-        const midline: number[][] = [];
-        for (let k = 0; k < N; k++) if (Math.abs(at[k * 3] - c0[0]) < 0.006) midline.push([+at[k * 3 + 1].toFixed(4), +at[k * 3 + 2].toFixed(4), +(at[k * 3 + 1] + DB[k * 3 + 1]).toFixed(4), +(at[k * 3 + 2] + DB[k * 3 + 2]).toFixed(4), piece.mesh.held[k]]);
-        // (and all of it near the tube in the tube's own terms -- [place round it (degrees), up it and out beyond its wall
-        // where it lay, the same where it lies (mm), whether it is held])
-        const round: number[][] = [];
-        for (let k = 0; k < N; k++) {
-          const a0 = tubePlace(tube, at[k * 3], at[k * 3 + 1], at[k * 3 + 2]);
-          if (a0[1] - a0[3] > 0.1 || a0[0] > 0.16) continue;
-          const a1 = tubePlace(tube, at[k * 3] + DB[k * 3], at[k * 3 + 1] + DB[k * 3 + 1], at[k * 3 + 2] + DB[k * 3 + 2]);
-          round.push([Math.round((a0[2] * 180) / Math.PI), Math.round(a0[0] * 1000), Math.round((a0[1] - a0[3]) * 1000), Math.round(a1[0] * 1000), Math.round((a1[1] - a1[3]) * 1000), piece.mesh.held[k]]);
-        }
-        beyondDbg = { points: N, held: piece.mesh.held.reduce((a, b) => a + b, 0), moved, mostCm: +(most * 100).toFixed(2), midline, round };
+        bey = { piece, at, DB, TB };
+        // (what of that each of the area's own points has, for where the area's skin stands before it is laid: her
+        // push as laid, not yet rounded)
+        putBeyond(bey, false);
+        sampleInto(lift, beyondPush!, 3, bake.src, bake.bary, P);
       } else clearBeyond(); }
     const turned = (p: number, v: Float32Array, o: number, out: Float32Array | Float64Array | number[], oo: number) => {
       // (where the point stands: its own place and what her skin beyond the area lifts it by)
@@ -2273,6 +2280,51 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       for (let j = 0; j < M; j++) angle[j] = sm[0] + (sm[j] - sm[0]) * scale; }
     const t1 = performance.now();
     const D = laySeatSkin({ rings: R + 1, cols: M, at, tau: tauG, angle }, tube, seat.share);
+    // THE MOUND ROUNDED INTO HER (actor/skinSeat.ts `roundOf`; Joshua, 2026-11-11: "a more rounded shape upwards towards
+    // it so it looks better and not like a cylinder"). The corner where her laid skin leaves the tube's wall for her own
+    // skin is read off BOTH skins as laid -- her body's beyond the area and the area's own -- and both are moved by the
+    // one rule, a warp of the place: where the two meet they still meet. Worked out on the whole of the lay (her skin is
+    // laid `share` of the way as she begins to open: each move is that share of the whole's), and her body's skin is
+    // put on her only now, rounded.
+    let roundDbg: Record<string, unknown> | null = null;
+    if (api.round && seat.share > 0) {
+      const s1 = 1 / seat.share, NB = bey ? bey.piece.mesh.count : 0, laid = new Float32Array((NB + G) * 3), heldL = new Uint8Array(NB + G);
+      if (bey) for (let k = 0; k < NB; k++) { for (let c = 0; c < 3; c++) laid[k * 3 + c] = bey.at[k * 3 + c] + bey.DB[k * 3 + c] * s1; heldL[k] = bey.piece.mesh.held[k]; }
+      for (let q = 0; q < G; q++) for (let c = 0; c < 3; c++) laid[(NB + q) * 3 + c] = at[q * 3 + c] + D[q * 3 + c] * s1;
+      const round = roundOf(tube, laid, heldL), mv = new Float64Array(3);
+      let moved = 0, most = 0;
+      for (let k = 0; k < NB + G; k++) {
+        if (heldL[k] || !roundMove(tube, round, laid[k * 3], laid[k * 3 + 1], laid[k * 3 + 2], mv)) continue;
+        const into = k < NB ? bey!.DB : D, o = (k < NB ? k : k - NB) * 3;
+        for (let c = 0; c < 3; c++) into[o + c] += mv[c] * seat.share;
+        moved++; most = Math.max(most, Math.hypot(mv[0], mv[1], mv[2]));
+      }
+      const r1 = (A: Float32Array, f: number) => Array.from(A).filter((_, b2) => b2 % 6 === 0).map((x) => +(x * f).toFixed(1));
+      roundDbg = { moved, mostCm: +(most * 100).toFixed(2), every30deg: { riseCm: r1(round.rise, 100), reachCm: r1(round.reach, 100), share: r1(round.share, 1), wayDeg: Array.from(round.up).filter((_, b2) => b2 % 6 === 0).map((u, q) => Math.round((Math.atan2(u, round.out[q * 6]) * 180) / Math.PI)) } };
+    }
+    // her skin beyond the area on her now, with its light; and what of its push each of the area's points has (the
+    // area's own shader adds it: it is taken off the area's points below)
+    const liftAll = bey ? new Float32Array(P * 3) : lift;
+    if (bey) {
+      putBeyond(bey, true);
+      sampleInto(liftAll, beyondPush!, 3, bake.src, bake.bary, P);
+      const { piece, at: atB, DB } = bey, N = piece.mesh.count, c0 = tube.centres[0];
+      let moved = 0, most = 0;
+      for (let k = 0; k < N; k++) { const far = Math.hypot(DB[k * 3], DB[k * 3 + 1], DB[k * 3 + 2]); if (far > 1e-6) { moved++; most = Math.max(most, far); } }
+      // (a probe's: her skin beyond the area down her middle -- where each point lay and where it lies, [y, z] metres)
+      const midline: number[][] = [];
+      for (let k = 0; k < N; k++) if (Math.abs(atB[k * 3] - c0[0]) < 0.006) midline.push([+atB[k * 3 + 1].toFixed(4), +atB[k * 3 + 2].toFixed(4), +(atB[k * 3 + 1] + DB[k * 3 + 1]).toFixed(4), +(atB[k * 3 + 2] + DB[k * 3 + 2]).toFixed(4), piece.mesh.held[k]]);
+      // (and all of it near the tube in the tube's own terms -- [place round it (degrees), up it and out beyond its wall
+      // where it lay, the same where it lies (mm), whether it is held])
+      const round: number[][] = [];
+      for (let k = 0; k < N; k++) {
+        const a0 = tubePlace(tube, atB[k * 3], atB[k * 3 + 1], atB[k * 3 + 2]);
+        if (a0[1] - a0[3] > 0.1 || a0[0] > 0.16) continue;
+        const a1 = tubePlace(tube, atB[k * 3] + DB[k * 3], atB[k * 3 + 1] + DB[k * 3 + 1], atB[k * 3 + 2] + DB[k * 3 + 2]);
+        round.push([Math.round((a0[2] * 180) / Math.PI), Math.round(a0[0] * 1000), Math.round((a0[1] - a0[3]) * 1000), Math.round(a1[0] * 1000), Math.round((a1[1] - a1[3]) * 1000), piece.mesh.held[k]]);
+      }
+      beyondDbg = { points: N, held: piece.mesh.held.reduce((a, b) => a + b, 0), moved, mostCm: +(most * 100).toFixed(2), midline, round };
+    }
     const t2 = performance.now();
     // her skin's own way out there now (for its light): across the grid, turned the way her skin faced
     const nG = new Float32Array(G * 3), a3 = new THREE.Vector3(), b3 = new THREE.Vector3();
@@ -2342,7 +2394,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     for (let p = 0; p < P; p++) {
       const g = bake.ring[p] * M + bake.column[p], far = Math.hypot(D[g * 3], D[g * 3 + 1], D[g * 3 + 2]);
       // (what her skin beyond the area lifts the point by, metres: its edge goes with her own vertices, all of the way)
-      const up = Math.hypot(lift[p * 3], lift[p * 3 + 1], lift[p * 3 + 2]) / perMetre;
+      const up = Math.hypot(liftAll[p * 3], liftAll[p * 3 + 1], liftAll[p * 3 + 2]) / perMetre;
       if (far < 1e-6 && up < 1e-6) continue;
       seatPoints++; seatMost = Math.max(seatMost, far);
       turned(p, pos, p * 3, here, 0); seatV.set(here[0] + D[g * 3], here[1] + D[g * 3 + 1], here[2] + D[g * 3 + 2]);
@@ -2358,10 +2410,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       seatU.invert();
       seatV.applyMatrix4(seatU).toArray(pos, p * 3);
       // (less what her shader adds to it again: the push her skin beyond the area gives it)
-      pos[p * 3] -= lift[p * 3]; pos[p * 3 + 1] -= lift[p * 3 + 1]; pos[p * 3 + 2] -= lift[p * 3 + 2];
+      pos[p * 3] -= liftAll[p * 3]; pos[p * 3 + 1] -= liftAll[p * 3 + 1]; pos[p * 3 + 2] -= liftAll[p * 3 + 2];
       seatN.transformDirection(seatU).toArray(nrm, p * 3);
     }
-    seatDbg.beyond = beyondDbg;
+    seatDbg.beyond = beyondDbg; seatDbg.round = roundDbg;
     seatDbg.ms = +(performance.now() - t0).toFixed(1); seatDbg.parts = seatMs.map((x) => +x.toFixed(1));
   }
   // ---- THE SOFT CANAL (Joshua, 2026-11-02: "can we make the birth canal (and vagina opening) a hybrid soft body like
@@ -2620,7 +2672,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   };
   const api: VulvaPatch = {
     pathSoft: true,
-    mesh, tube, sheet, bake, sync, solo: false, backing: true, trim: true,
+    mesh, tube, sheet, bake, sync, solo: false, backing: true, trim: true, round: true,
     relayOut() { openApplied = -1; sync(); },
     settle() { if (seatWaiting || openApplied !== open) { openApplied = -1; return sync(); } return false; },
     resyncWeights() {

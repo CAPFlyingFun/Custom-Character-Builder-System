@@ -46,6 +46,8 @@ try {
         report[`${model}-${p}-${o}`] = { opening: g?.opening, doorSwing: g?.doorSwing, doorOpenCm: g?.doorOpenCm, doorAngles: g?.doorAngles, aim: await hook('doorsAim', DIST, 0, 0) };
         await run(0.15); await shot(`${model}-${p}-${o}-front.png`);
         if (model.startsWith('v2')) {
+          // (ROUND=0: the mound her skin makes left a collar, not rounded into her -- the room's `seatRound` -- to compare)
+          if (process.env.ROUND === '0') { await hook('seatRound', false); await run(0.4); }
           const laid = (await hook('doorsSeat'))?.skinLaid ?? null; report[`${model}-${p}-${o}`].skinLaid = laid; log(model, p, o, 'her skin laid over the seat', JSON.stringify(laid && { ...laid, angles: undefined, columns: undefined, spokes: undefined, tube: undefined, beyond: laid.beyond && { ...laid.beyond, midline: undefined, round: undefined } }));
           // (her body's own skin still standing inside the tube round her canal: how many of her vertices, the deepest, cm)
           const strays = (await hook('seatStrays', 0.001)) ?? []; report[`${model}-${p}-${o}`].strays = { count: strays.length, legs: strays.filter((q) => q[4]).length, deepestCm: +(Math.max(0, ...strays.map((q) => q[3])) * 100).toFixed(2) }; log(model, p, o, 'her own skin inside the tube', JSON.stringify(report[`${model}-${p}-${o}`].strays));

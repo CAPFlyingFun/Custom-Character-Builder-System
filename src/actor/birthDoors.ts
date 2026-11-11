@@ -65,6 +65,17 @@ export const DOORS = Object.freeze({
    * TUNING. */
   ringWall: 3,
   ringRoot: 0.06,
+  /** ONE LEVEL RING, FOLDING AS IT SHUTS (Joshua, 2026-11-11, sketching it from underneath at 100, 50, 40 and 0: "each
+   * side should open like it is, but, the lower skin sides should be the same height up so it looks like one ring. As it
+   * closes, those middle sides will start to fold on itself sinking down"): how much later the fold at each end of her
+   * opening -- the middle of the band there -- comes up level than her doors' own sections do, as a share of the way
+   * her opening takes to become a ring (`oneRing`); so shutting, the fold sinks first. GAME TUNING (his sketch: nearly
+   * level at 50 with its middle starting to dip, two peaks and a deep valley at 40). */
+  ringLag: 0.3,
+  /** how far up that ring's wall from its foot (as a share of the way to her rim) each section's wall takes to come from
+   * its own foot's width to the ring's (`oneRing`). GAME TUNING (long enough that the wall round her opening's ends, where
+   * her doors' feet are narrow, does not bulge into her canal on its way). */
+  ringFoot: 0.6,
   /** how tall each band of a slice of what passes is, up the canal (`outlineOf`). GAME TUNING (fine enough for its neck,
    * coarse enough that each has a few of its points). */
   sliceBand: 0.004,
@@ -387,7 +398,9 @@ export function doorOpening(birth: number, fold = 0): number {
 export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: PressedDoors): { points: Float32Array; triangles: Uint32Array; lining: Uint8Array; openM: number; angles: Angles; skin: { points: Float32Array; triangles: Uint32Array } } {
   const J = DOORS.stations, hand = foldAngles(fold), uniform = pressed ? null : birthAngles(birth), ends = pressed?.ends ?? ENDS_SHUT, mid = (J - 1) / 2;
   const laid = (side: 0 | 1) => Array.from({ length: J }, (_, j) => laidOn(stationSection(j), pressed ? (side === 0 ? pressed.right : pressed.left)[j] : uniform!, hand));
-  const R = laid(0), L = laid(1), loop = doorLoop(R, L, ends, !!pressed);
+  // (her opening's edge one ring: BIRTH OPENING's doors, which all take one pose, drawn out to one level rim where they
+  // stand -- their feet left where they are; a birth's as its `level` says, their feet rounded as they were)
+  const R = laid(0), L = laid(1), loop = doorLoop(R, L, ends, pressed ? { level: !!pressed.level, roots: true } : { level: true, roots: false });
   // (round the loop, each section joined to the next: one mesh, both doors and the bands at their ends)
   const n = section().points.length, lin = stationSection(0).lining, pts: number[] = [], tris: number[] = [], lining: number[] = [], C = loop.length;
   const at = (x: number, t: number, a: number) => [0, 1, 2].map((c) => f.mouth[c] + f.x[c] * x + f.t[c] * t + f.n[c] * a);
@@ -413,7 +426,7 @@ export function doorMeshes(f: DoorFrame, birth: number, fold = 0, pressed?: Pres
  * edge becomes one ring. The loop: the right door back to front, the band round her front end, the left door front to
  * back, the band round her back end; each section [x, t, along] in her opening's frame (metres), posed.
  */
-function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring = false): { points: [number, number, number][]; root: [number, number, number] }[] {
+function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring?: Ring): { points: [number, number, number][]; root: [number, number, number] }[] {
   const J = DOORS.stations, M = DOORS.bandSteps, out: { points: [number, number, number][]; root: [number, number, number] }[] = [];
   const posed = (j: number, a: Angles) => pose(stationSection(j), (a.hinge * Math.PI) / 180, a);
   // (each section's points' share of the way from its root to its lip, for `roundRing`)
@@ -429,15 +442,21 @@ function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring =
   const lin = stationSection(0).lining, open = Math.max(...[...PR, ...PL].map((q) => q[lin - 1][0]));
   const g0 = ring ? Math.min(1, Math.max(0, (open - PRESS.ringFrom) / (PRESS.ringBy - PRESS.ringFrom))) : 0, g = g0 * g0 * (3 - 2 * g0);
   const js = DOORS.ringWall, back = (D: readonly [number, number][][]) => wallOf(D[js]), front = (D: readonly [number, number][][]) => wallOf(D[J - 1 - js]);
-  const walls = g > 0 ? { backR: back(PR), backL: back(PL), frontR: front(PR), frontL: front(PL) } : null;
+  // (drawn out to one level rim, `oneRing` lays every section's wall itself: nothing to take on here)
+  const walls = g > 0 && !ring!.level ? { backR: back(PR), backL: back(PL), frontR: front(PR), frontL: front(PL) } : null;
   const endness = (j: number) => { const e = Math.min(1, Math.max(0, Math.max(js - j, j - (J - 1 - js)) / js)); return e * e * (3 - 2 * e); };
   const asWall = (q: [number, number][], wall: Wall | null, e: number) => (wall && e * g > 0 ? onWall(q, wall, e * g) : q);
+  // (for `oneRing`, each section round the loop: which door's it is -- 0 the right's .. 1 the left's, the bands between --
+  // and how near the fold at her opening's end it is: 1 at the middle of a band, none `ringWall` stations into a door)
+  const side: number[] = [], fold: number[] = [], Q = M / 2 + js;
+  const mark = (v: number, q: number) => { const e = Math.min(1, Math.max(0, 1 - q / Q)); side.push(v); fold.push(e * e * (3 - 2 * e)); };
   // (a band's sections between the doors' end sections: turned about her opening's end, half a turn from one door to the
   // other; how far along is shaped by the four joints -- most of the change across the slit and half way out to each side)
   const band = (j: number, from: Angles, to: Angles, sign: 1 | -1, wFrom: Wall | null, wTo: Wall | null) => {
     const a0 = stationOf(j, ends).along;
     for (let k = 1; k < M; k++) {
       const v = k / M, g = bandShare(v), mix = (x: number, y: number) => x + (y - x) * g, phi = Math.PI * v;
+      mark(sign > 0 ? v : 1 - v, Math.abs(k - M / 2));
       const a: Angles = { hinge: mix(from.hinge, to.hinge), inner: mix(from.inner, to.inner), mid: mix(from.mid, to.mid), outer: mix(from.outer, to.outer), long: mix(from.long ?? 1, to.long ?? 1) };
       // (round her opening's end in a flat curve -- out past it only `bandReach` as far as across -- so its edge carries the
       // doors' on round the end rather than bulging past it)
@@ -445,12 +464,68 @@ function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring =
       add(asWall(posed(j, a), wFrom && wTo ? mixWall(wFrom, wTo, v) : null, 1), (x, t) => [x * ux, t, a0 + x * un]);
     }
   };
-  for (let j = 0; j < J; j++) add(asWall(PR[j], walls && (j < J / 2 ? walls.backR : walls.frontR), endness(j)), (x, t) => [x, t, stationOf(j, ends).along]);
+  for (let j = 0; j < J; j++) { mark(0, M / 2 + Math.min(j, J - 1 - j)); add(asWall(PR[j], walls && (j < J / 2 ? walls.backR : walls.frontR), endness(j)), (x, t) => [x, t, stationOf(j, ends).along]); }
   band(J - 1, R[J - 1], L[J - 1], 1, walls?.frontR ?? null, walls?.frontL ?? null);
-  for (let j = J - 1; j >= 0; j--) add(asWall(PL[j], walls && (j < J / 2 ? walls.backL : walls.frontL), endness(j)), (x, t) => [-x, t, stationOf(j, ends).along]);
+  for (let j = J - 1; j >= 0; j--) { mark(1, M / 2 + Math.min(j, J - 1 - j)); add(asWall(PL[j], walls && (j < J / 2 ? walls.backL : walls.frontL), endness(j)), (x, t) => [-x, t, stationOf(j, ends).along]); }
   band(0, L[0], R[0], -1, walls?.backL ?? null, walls?.backR ?? null);
-  if (g > 0) roundRing(out, shares, g);
+  if (g > 0) {
+    roundRing(out, shares, g, ring!.roots);
+    if (ring!.level) oneRing(out, g0, wallOf(PR[(J - 1) / 2]), wallOf(PL[(J - 1) / 2]), side, fold);
+  }
   return out;
+}
+
+/** How her opening's edge is drawn as one ring, open (`doorLoop`): every section's wall drawn out to one level rim
+ * (`oneRing`: for doors that all take one pose) or each as long as it stands (pushed section by section, each off what
+ * passes); and whether her doors' feet are carried onto one oval with their lips (`roundRing`). */
+interface Ring { readonly level: boolean; readonly roots: boolean }
+
+/**
+ * HER OPENING ONE LEVEL RING, FOLDING AT ITS ENDS AS IT SHUTS (Joshua, 2026-11-11, with a sketch of it from underneath
+ * at 100, 50, 40 and 0: "Can we keep the door mechanics but not have those two flaps? Technically, those lower sides
+ * should raise when it opens at max to appear like a cylinder, but it doesn't… each side should open like it is, but, the
+ * lower skin sides should be the same height up so it looks like one ring. As it closes, those middle sides will start to
+ * fold on itself sinking down"). Her two doors open as they do; MEASURED before this, wide open, their middles stood
+ * 5.6 cm out of her and her opening's front and back ends 1.1 -- a 4.5 cm step, the two flaps.
+ *
+ * So, open (`g0`: 0 her lips together .. 1 a ring), every section round the loop -- each door's, and the bands round her
+ * opening's ends -- is drawn as the wall her doors have at their middles (`right`, `left`: as thick, bending the same
+ * way), stood on its own foot and reaching to one rim: where the lip that stands furthest out of her stands, on the oval
+ * her lips are carried onto (`roundRing`), its thickness square to that oval. The doors' middles are that wall already
+ * and stay as they open. The fold at each end comes up last (`fold`, by `DOORS.ringLag`) and so, shutting, sinks first:
+ * a dip in her rim's middle, then two peaks and a valley, then her two lips together.
+ */
+function oneRing(loop: { points: [number, number, number][]; root: [number, number, number] }[], g0: number, right: Wall, left: Wall, side: readonly number[], fold: readonly number[]): void {
+  const n = loop[0].points.length, tip = stationSection(0).lining + 1, C = loop.length, ease = (x: number) => { const v = Math.min(1, Math.max(0, x)); return v * v * (3 - 2 * v); };
+  // (her rim: where the lip furthest out of her stands -- her doors' middles')
+  let rimT = Infinity;
+  for (const sec of loop) rimT = Math.min(rimT, sec.points[tip][1]);
+  const tips = loop.map((sec) => sec.points[tip]);
+  loop.forEach((sec, c) => {
+    const k = ease(g0 * (1 + DOORS.ringLag) - DOORS.ringLag * fold[c]);
+    if (!(k > 0)) return;
+    const P = sec.points, a = [(P[0][0] + P[n - 1][0]) / 2, (P[0][1] + P[n - 1][1]) / 2, (P[0][2] + P[n - 1][2]) / 2], b = [P[tip][0], rimT, P[tip][2]];
+    // (outward at its lip, seen looking into her: square to her rim there -- the loop runs one way round, so the same turn
+    // from its neighbours' lips is outward all the way; her lips together, straight out from her middle)
+    const q0 = tips[(c + C - 1) % C], q1 = tips[(c + 1) % C];
+    let ex = q1[2] - q0[2], en = q0[0] - q1[0], el = Math.hypot(ex, en);
+    if (!(el > 1e-7)) { ex = b[0]; en = b[2]; el = Math.hypot(ex, en) || 1; }
+    ex /= el; en /= el;
+    // (its wall's line, foot to rim, and square to it toward her outside -- as a door's own section has them, across her
+    // and up her canal, with `outward` for across)
+    const ux = b[0] - a[0], ut = b[1] - a[1], un = b[2] - a[2], len = Math.hypot(ux, ut, un) || 1e-9, ue = (ux * ex + un * en) / len, uT = ut / len;
+    const nl = Math.hypot(uT, ue) || 1, Nx = (-uT * ex) / nl, Nt = ue / nl, Nn = (-uT * en) / nl, v = side[c];
+    const wall = (i: number): [number, number, number] => { const s = right.s[i] + (left.s[i] - right.s[i]) * v, d = right.d[i] + (left.d[i] - right.d[i]) * v; return [a[0] + s * ux + d * Nx, a[1] + s * ut + d * Nt, a[2] + s * un + d * Nn]; };
+    // (ITS FOOT KEPT WHERE IT IS, where it meets her skin and her canal: its lining from its lining's own foot and its skin
+    // from its skin's, each coming to the ring's wall over `ringFoot` of the way to her rim -- round her opening's ends her
+    // doors' feet are narrower than the wall, and the wall stood whole on them bulged into her canal there)
+    const w0 = wall(0), w1 = wall(n - 1), foot = [[P[0][0] - w0[0], P[0][1] - w0[1], P[0][2] - w0[2]], [P[n - 1][0] - w1[0], P[n - 1][1] - w1[1], P[n - 1][2] - w1[2]]];
+    sec.points = P.map((p, i): [number, number, number] => {
+      const w = wall(i), s = right.s[i] + (left.s[i] - right.s[i]) * v, f = foot[i < tip ? 0 : 1], h = 1 - ease(s / DOORS.ringFoot);
+      return [p[0] + (w[0] + f[0] * h - p[0]) * k, p[1] + (w[1] + f[1] * h - p[1]) * k, p[2] + (w[2] + f[2] * h - p[2]) * k];
+    });
+    sec.root = sec.points[n - 1];
+  });
 }
 
 /**
@@ -461,7 +536,7 @@ function doorLoop(R: readonly Angles[], L: readonly Angles[], ends: Ends, ring =
  * each point between as far as its share of the way from root to lip. Only ever outward, so off whatever passes; the
  * skin round them follows their roots.
  */
-function roundRing(loop: { points: [number, number, number][]; root: [number, number, number] }[], shares: readonly Float64Array[], g: number): void {
+function roundRing(loop: { points: [number, number, number][]; root: [number, number, number] }[], shares: readonly Float64Array[], g: number, roots = true): void {
   const n = loop[0].points.length, tip = stationSection(0).lining + 1;
   // (an oval round the points given, a quarter at a time -- across each way and along each way -- grown to take them all
   // in, and where each would go on it, straight out from its middle)
@@ -472,7 +547,8 @@ function roundRing(loop: { points: [number, number, number][]; root: [number, nu
     const k = Math.max(1, ...P.map((p) => Math.hypot(...norm(p))));
     return P.map((p) => { const [u, v] = norm(p), r = Math.hypot(u, v) || 1, s = k / r; return [p[0] * s - p[0], p[2] * s - p[2]]; });
   };
-  const lip = oval((c) => loop[c].points[tip]), root = oval((c) => loop[c].points[n - 1]);
+  // (her doors' feet with them, or left where they stand: `roots`)
+  const lip = oval((c) => loop[c].points[tip]), root = roots ? oval((c) => loop[c].points[n - 1]) : loop.map(() => [0, 0]);
   loop.forEach((sec, c) => {
     const pts = sec.points.map((p, i): [number, number, number] => {
       const s = shares[c][i], w = s * s * (3 - 2 * s);
@@ -559,7 +635,13 @@ export interface Outline {
 }
 export interface PassingOutlines { readonly right: readonly (Outline | null)[]; readonly left: readonly (Outline | null)[]; /** how far apart it pushes her opening's ends, each within its 12.5 cm */ readonly ends: Ends }
 /** Each section's angles, the right door's and the left's, front to back (degrees). */
-export interface PressedDoors { readonly right: readonly Angles[]; readonly left: readonly Angles[]; readonly ends?: Ends }
+export interface PressedDoors {
+  readonly right: readonly Angles[]; readonly left: readonly Angles[]; readonly ends?: Ends;
+  /** her opening's edge drawn as one level ring (`oneRing`): for doors that all take one pose -- `sharedDoors`, `sliderDoors`
+   * -- whose ends stand clear of what passes; not for doors pushed section by section, each kept off what passes where
+   * it stands (those keep their own lengths) */
+  readonly level?: boolean;
+}
 
 /**
  * A SLICE'S OWN OUTLINE, NOT A FILLED-IN ONE (Joshua, 2026-11-08, choosing it: the ring "tightens round the neck after the

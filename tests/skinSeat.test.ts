@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SEAT_SKIN, footAt, layBeyond, laySeatSkin, sleeveTube, tubeOut, type SkinBeyond, type SkinGrid } from '../src/actor/skinSeat';
+import { SEAT_ROUND, SEAT_SKIN, footAt, layBeyond, laySeatSkin, roundMove, roundOf, sleeveTube, tubeOut, type SkinBeyond, type SkinGrid } from '../src/actor/skinSeat';
 
 /** A sleeve round a canal that comes straight down (-y) from y = 0.10 to 0.04, then turns forward (+z) on a quarter of a
  * circle of 6 cm: `rows` rows of `cols` points, 5 cm round, its first row at its forward end (her doors' feet). */
@@ -26,11 +26,19 @@ describe('her skin stretched down to her doors (skinSeat)', () => {
   const S = sleeve(), tube = sleeveTube(S.points, S.cols)!;
 
   it('reads the tube from the sleeve: its middles, the way it runs, and its wall', () => {
-    expect(tube.rows).toBe(9);
+    // (finer than the sleeve: each stretch between two of its nine rows cut in `fine`)
+    const last = 8 * SEAT_SKIN.fine;
+    expect(tube.rows).toBe(last + 1);
     // (its first row, at her doors' feet, runs back into her: -z; its last straight up)
     expect(tube.axes[0][2]).toBeLessThan(-0.9);
-    expect(tube.axes[8][1]).toBeGreaterThan(0.99);
-    for (let b = 0; b < SEAT_SKIN.round; b += 9) expect(tube.radius[4 * SEAT_SKIN.round + b]).toBeCloseTo(0.05, 3);
+    expect(tube.axes[last][1]).toBeGreaterThan(0.99);
+    for (let b = 0; b < SEAT_SKIN.round; b += 9) expect(tube.radius[4 * SEAT_SKIN.fine * SEAT_SKIN.round + b]).toBeCloseTo(0.05, 3);
+    // and SMOOTHER: the worst corner between two of its pieces is less than half the worst between two of the sleeve's
+    // own rows (this sleeve's rows are 2 cm apart round a 6 cm bend: 18 degrees at each)
+    const worst = (P: readonly (readonly number[])[]) => { let m = 0; for (let k = 1; k + 1 < P.length; k++) { const u = [0, 1, 2].map((e) => P[k][e] - P[k - 1][e]), v = [0, 1, 2].map((e) => P[k + 1][e] - P[k][e]); m = Math.max(m, Math.acos(Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v))))); } return (m * 180) / Math.PI; };
+    const own = worst(Array.from({ length: 9 }, (_, k) => S.mid((k / 8) * ((0.06 * Math.PI) / 2 + 0.06))));
+    expect(own).toBeGreaterThan(15);
+    expect(worst(tube.centres)).toBeLessThan(own / 2);
     // (her doors' feet at her front and at her left)
     const front = footAt(tube, 0), left = footAt(tube, Math.PI / 2);
     expect(front[1]).toBeGreaterThan(0.02); expect(Math.abs(front[0])).toBeLessThan(1e-3);
@@ -174,5 +182,101 @@ describe('her skin stretched down to her doors (skinSeat)', () => {
   it('her skin beyond the area: clear of the tube, none of it moves', () => {
     const S2 = sheet(), far = Float32Array.from(S2.at, (x, i) => (i % 3 === 2 ? x - 0.2 : x));
     expect(layBeyond(S2.mesh, far, S2.side, tube, 1).every((x) => x === 0)).toBe(true);
+  });
+});
+
+/**
+ * A TUBE STRAIGHT UP (+y) from her doors' feet at y = 0, 5 cm round, 9 cm long; and her skin laid on it: up its wall
+ * (stood off it) to `rise`, then out along her own skin, which runs `tilt` radians up from square to the tube, to 12 cm
+ * from the wall, where it is held. `rings` points along each of 72 lines round it.
+ */
+function mound(rise = 0.04, tilt = 0, rings = 81): { tube: NonNullable<ReturnType<typeof sleeveTube>>; laid: Float32Array; held: Uint8Array; at: (line: number, k: number) => [number, number, number]; along: number[] } {
+  const rows = 10, cols = 24, r = 0.05, pts = new Float32Array(rows * cols * 3);
+  for (let k = 0; k < rows; k++) for (let j = 0; j < cols; j++) { const a = (j / cols) * Math.PI * 2, i = (k * cols + j) * 3; pts[i] = Math.sin(a) * r; pts[i + 1] = k * 0.01; pts[i + 2] = Math.cos(a) * r; }
+  const tube = sleeveTube(pts, cols)!, lines = 72, laid = new Float32Array(lines * rings * 3), held = new Uint8Array(lines * rings), along: number[] = [];
+  const far = 0.12, whole = rise + far, off = r + SEAT_SKIN.standOff;
+  for (let k = 0; k < rings; k++) along.push((k / (rings - 1)) * whole);
+  for (let l = 0; l < lines; l++) for (let k = 0; k < rings; k++) {
+    const a = (l / lines) * Math.PI * 2, s = along[k], out = s <= rise ? 0 : (s - rise) * Math.cos(tilt), up = s <= rise ? s : rise + (s - rise) * Math.sin(tilt), i = (l * rings + k) * 3;
+    laid[i] = Math.sin(a) * (off + out); laid[i + 1] = up; laid[i + 2] = Math.cos(a) * (off + out);
+    if (k === rings - 1) held[l * rings + k] = 1;
+  }
+  return { tube, laid, held, at: (l, k) => [laid[(l * rings + k) * 3], laid[(l * rings + k) * 3 + 1], laid[(l * rings + k) * 3 + 2]], along };
+}
+
+describe('the mound rounded into her (skinSeat roundOf, roundMove)', () => {
+  it('reads the corner all round: how far up the wall her skin leaves it, which way it runs, how far the curve reaches', () => {
+    const M = mound(0.04), R = roundOf(M.tube, M.laid, M.held);
+    for (let b = 0; b < SEAT_SKIN.round; b += 7) {
+      // (read from her skin just off the wall, between 4 mm and 12 mm out: within a few millimetres of the corner)
+      expect(Math.abs(R.rise[b] - 0.04)).toBeLessThan(0.004);
+      expect(R.out[b]).toBeGreaterThan(0.97); expect(Math.abs(R.up[b])).toBeLessThan(0.2);
+      expect(R.reach[b]).toBeCloseTo(SEAT_ROUND.reach * R.rise[b], 2);
+      expect(R.share[b]).toBeCloseTo(1, 3);
+    }
+  });
+
+  it('rounds the corner: her skin leaves her doors\' feet leaning out and comes down onto her own skin, with no fold', () => {
+    const M = mound(0.04), R = roundOf(M.tube, M.laid, M.held), mv = new Float64Array(3), line = 18;
+    const prof: [number, number][] = [];
+    for (let k = 0; k < M.along.length; k++) {
+      const p = M.at(line, k), moved = roundMove(M.tube, R, p[0], p[1], p[2], mv), q = moved ? [p[0] + mv[0], p[1] + mv[1], p[2] + mv[2]] : p;
+      prof.push([Math.hypot(q[0], q[2]) - 0.05, q[1]]);
+      // (its edge is held, and nothing past the curve's reach moves)
+      if (M.along[k] > 0.04 + SEAT_ROUND.reach * 0.044) expect(moved).toBe(false);
+    }
+    // her doors' feet stay; half way up the wall her skin already stands well out from it; the corner itself has come
+    // out and down
+    expect(prof[0][0]).toBeCloseTo(SEAT_SKIN.standOff, 4); expect(prof[0][1]).toBeCloseTo(0, 5);
+    const half = prof[M.along.findIndex((s) => s >= 0.02)], corner = prof[M.along.findIndex((s) => s >= 0.04)];
+    expect(half[0]).toBeGreaterThan(0.004);
+    expect(corner[0]).toBeGreaterThan(0.012); expect(corner[1]).toBeLessThan(0.037);
+    // one curve: further out all the way, never back down toward her doors, and no step between neighbours
+    for (let k = 1; k < prof.length; k++) {
+      expect(prof[k][0], `out at ${k}`).toBeGreaterThanOrEqual(prof[k - 1][0] - 1e-5);
+      expect(prof[k][1], `up at ${k}`).toBeGreaterThanOrEqual(prof[k - 1][1] - 1e-4);
+      expect(Math.hypot(prof[k][0] - prof[k - 1][0], prof[k][1] - prof[k - 1][1])).toBeLessThan(0.012);
+    }
+    // and it lands lying along her own skin: its last moved stretch runs out nearly square to the tube, as her skin does
+    const end = M.along.findIndex((s) => s >= 0.04 + SEAT_ROUND.reach * 0.04 * 0.85);
+    expect(Math.atan2(prof[end][1] - prof[end - 2][1], prof[end][0] - prof[end - 2][0])).toBeLessThan(0.35);
+  });
+
+  it('is a rule of the place: two skins that meet there still meet (the same point, the same move)', () => {
+    const M = mound(0.04), R = roundOf(M.tube, M.laid, M.held), a = new Float64Array(3), b = new Float64Array(3);
+    const p = M.at(3, 14);
+    expect(roundMove(M.tube, R, p[0], p[1], p[2], a)).toBe(true);
+    expect(roundMove(M.tube, R, p[0], p[1], p[2], b)).toBe(true);
+    expect(Array.from(a)).toEqual(Array.from(b));
+    // (and a point a hair from it moves a hair differently: no tear)
+    expect(roundMove(M.tube, R, p[0] + 1e-4, p[1], p[2] + 1e-4, b)).toBe(true);
+    expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])).toBeLessThan(3e-4);
+  });
+
+  it('leaves her alone where there is no corner: her skin leaving the wall at her doors\' feet, or running on up nearly along it', () => {
+    const flat = mound(0.0), R0 = roundOf(flat.tube, flat.laid, flat.held), mv = new Float64Array(3);
+    for (let b = 0; b < SEAT_SKIN.round; b += 5) expect(R0.share[b]).toBeLessThan(1e-3);
+    for (let k = 0; k < flat.along.length; k += 3) { const p = flat.at(5, k); expect(roundMove(flat.tube, R0, p[0], p[1], p[2], mv)).toBe(false); }
+    // (her back: her skin runs on up at 75 degrees -- the two runs are nearly one line, and no point leaves that line
+    // by more than a few millimetres, though it may slide along it)
+    const tilt = (75 * Math.PI) / 180, steep = mound(0.04, tilt), R1 = roundOf(steep.tube, steep.laid, steep.held);
+    let off = 0, most = 0;
+    for (let k = 0; k < steep.along.length; k++) {
+      const p = steep.at(5, k); if (!roundMove(steep.tube, R1, p[0], p[1], p[2], mv)) continue;
+      const out = Math.hypot(p[0] + mv[0], p[2] + mv[2]) - 0.05 - SEAT_SKIN.standOff, up = p[1] + mv[1];
+      // (how far from the two runs: the wall up to the corner, then her skin's line from it)
+      const s = Math.max(0, out * Math.cos(tilt) + (up - 0.04) * Math.sin(tilt)), toSkin = Math.hypot(out - s * Math.cos(tilt), up - 0.04 - s * Math.sin(tilt)), toWall = up <= 0.04 ? Math.abs(out) : Math.hypot(out, up - 0.04);
+      off = Math.max(off, Math.min(toSkin, toWall)); most = Math.max(most, Math.hypot(mv[0], mv[1], mv[2]));
+    }
+    expect(off).toBeLessThan(0.005);
+    expect(most).toBeLessThan(0.02);
+  });
+
+  it('comes down short of her skin\'s held edge', () => {
+    // (held 2 cm from the wall: the curve's reach is no more than `hold` of that)
+    const M = mound(0.04), held = new Uint8Array(M.held.length), rings = M.along.length;
+    for (let l = 0; l < 72; l++) for (let k = 0; k < rings; k++) if (M.along[k] >= 0.04 + 0.02) held[l * rings + k] = 1;
+    const R = roundOf(M.tube, M.laid, held);
+    for (let b = 0; b < SEAT_SKIN.round; b += 7) expect(R.reach[b]).toBeLessThanOrEqual(SEAT_ROUND.hold * 0.0235);
   });
 });
