@@ -123,33 +123,37 @@ export const CANAL_OPENING = Object.freeze({
  *
  * Her pubic arch is a narrow V: its point the lower edge of her symphysis, its sides the bones running down and back to
  * her sit bones (on her skeleton 8.2 cm long and 10.2 cm apart at their ends: 64 degrees between them, where a woman's is
- * more often 80 or over). A head's width of canal passes under it only where the V is that wide -- its middle about
- * 10 cm back from the symphysis along the arch's plane, just behind the line between her sit bones -- not at the middle
- * of the arch (6 cm back, where it is under 8 cm wide: the measured centre line's lower end, and her opening as it first
- * was, 2 cm behind the symphysis, were both inside the V -- her doors and her canal cut through its bones, and her baby
- * had 3.8 cm to jog forward to its way out).
+ * more often 80 or over). As it first was, her opening stood in that V, 2 cm behind her symphysis, and her doors and her
+ * canal cut through its bones.
  *
- * So her canal passes her arch there, square to its plane, and only below her bones turns forward to her opening
- * (`turnDeg`): her doors, which hang from its last `straight` metres, and the skin round them are wholly under her bones.
+ * Then it was taken round her arch: back behind her sit bones, where the V is a head wide, and from there forward on a
+ * tight curve to face ahead of her. No bone showed -- but her canal turned 139 degrees in all, and its end hung some
+ * 11 cm below her skin, in v2 a spout under her. Joshua, 2026-11-10: "does the real vagina and pubic bone actually bend
+ * out like that in real life? I think it does but not as much as you are pushing it outwards", and of his diagrams of a
+ * birth from the side: "it's pretty much straight out and not a sharp 90 degree bend... I believe less than 45".
+ *
+ * So: STRAIGHT DOWN THROUGH HER ARCH, then one lean forward (`turnDeg` in all, on `turnRadius`), her doors on its last
+ * centimetres -- `seatedCanal`. It passes her arch where a MOULDED head does (`mould`, Joshua's "squeeze up to 22%"),
+ * not where a round one would: 7.8 cm back along the arch's plane, not 10 -- her canal is narrower there, as a head is
+ * (`pinchOf`). Her opening stands under her own outlet, facing down and forward as a woman's does standing, and her
+ * doors, which are wider than her canal, hang below her bones (`footClear`).
+ *
+ * WHAT HER BONES STILL COST: with an arch of 64 degrees a head cannot use the room under her symphysis and is born
+ * further back and lower than under an arch of 90 (obstetrics' own rule: the narrower the arch, the more the perineum
+ * has to give). Her opening is as high as HER arch lets it be; higher is a wider arch -- her bones, and Joshua's call.
  */
 export const OPEN_SEAT = Object.freeze({
-  /** how far clear of her arch's bones her canal's wall passes, open, metres. GAME TUNING: on her skeleton a head's width of
-   * canal has 1.15 cm to spare between her arch's measured edge and her tailbone's tip where they are closest, and this
-   * and `tailClear` share it. */
+  /** how far clear of her arch's bones her canal's wall passes where it is not pinched, open, metres. GAME TUNING. */
   archClear: 0.003,
-  /** UNDER HER ARCH IT TURNS FORWARD (Joshua, 2026-11-10, with diagrams of a birth from the side: in each the head comes
-   * down, turns forward under the pubic bone and is born below it, facing up and out -- "it does appear to sit further
-   * down"). From where it passes her arch, going straight down as she stands, her canal turns forward on one curve of
-   * radius `turnRadius` -- below her bones, where nothing is in its way -- until it goes `turnDeg` forward of square to
-   * her arch's plane, and its last centimetres, where her doors hang, run straight on: her opening is below her pubic
-   * bone, facing forward as she stands. BIOLOGICAL SHAPE (the curve of Carus's last part: a head's extension under the
-   * symphysis); GAME TUNING how far and how tightly (checked against her skeleton's own bone mesh,
-   * scripts/probe-canal-bones.mts: her doors and her canal's wall clear of every bone). */
-  turnDeg: 60,
-  turnRadius: 0.06,
-  /** how far below her bones her doors' hinges stand at the least: half a door's thickness and the flesh over the bone,
-   * metres (what the turn tried against her bone mesh was held to). GAME TUNING. */
-  boneClear: 0.01,
+  /** how far forward of its line down through her arch her canal turns to her opening (degrees: all the turning it does),
+   * and the radius of that one curve (metres). BIOLOGICAL SHAPE (standing, a vagina runs down and forward, its mouth facing down and a
+   * little forward; Joshua: under 45 degrees); GAME TUNING the radius -- wide, so what comes down it bends gently. */
+  turnDeg: 40,
+  turnRadius: 0.02,
+  /** how far below her arch her doors' feet stand at the least, measured up her canal from them: half a door's thickness
+   * and the flesh over the bone, metres. GAME TUNING (checked against her skeleton's own bone mesh,
+   * scripts/probe-canal-bones.mts). */
+  footClear: 0.01,
   /** how far clear of her tailbone's tip her canal's wall passes, open, metres. GAME TUNING (see `archClear`; its tip is a
    * knob round the measured point: at 3 mm it stood through the canal's back wall). */
   tailClear: 0.008,
@@ -223,81 +227,50 @@ function archOf(bones: CanalBones, x: number): Arch | null {
   else for (let k = 0; k <= 24; k++) { const f = k / 24, ty = (a[1] + b[1]) / 2, tz = (a[2] + b[2]) / 2; pts.push([half * f, s[1] + (ty - s[1]) * f, s[2] + (tz - s[2]) * f]); }
   return { pts, need: CANAL_OPENING.diameterM / 2 + OPEN_SEAT.archClear };
 }
-/** The point of the arch's edge nearest a point on her midline: [how far out from her midline, y, z]. */
-function archNearest(p: readonly number[], A: Arch): P3 {
-  let best = A.pts[0], least = Infinity;
-  for (const q of A.pts) { const d = q[0] * q[0] + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2; if (d < least) { least = d; best = q; } }
-  return best;
-}
-function archDistance(p: readonly number[], A: Arch): number { const c = archNearest(p, A); return Math.hypot(c[0], p[1] - c[1], p[2] - c[2]); }
-/** A point on her midline moved, in her midline's plane, straight away from the arch's edge until it is `need` from it. */
-function offArch(p: P3, A: Arch): P3 {
-  let q = p;
-  for (let k = 0; k < 4; k++) {
-    const c = archNearest(q, A), dy = q[1] - c[1], dz = q[2] - c[2], l = Math.hypot(dy, dz);
-    if (Math.hypot(c[0], l) >= A.need || l < 1e-9) break;
-    const want = Math.sqrt(Math.max(0, A.need * A.need - c[0] * c[0]));
-    q = [q[0], c[1] + (dy / l) * want, c[2] + (dz / l) * want];
-  }
-  return q;
-}
 
 /**
- * HER CANAL SEATED UNDER HER ARCH (see OPEN_SEAT): its line, her opening first, up to `top`; her opening (`mouth`) and the
- * way up into her there (`t`, unit); and where it passes her arch's plane (`pass`). Null without her sit bones.
+ * HER CANAL'S LINE, SEATED (see OPEN_SEAT): from `top` (her fornix) STRAIGHT down through her arch -- to the place in her
+ * arch's plane, on her midline, nearest the line measured through her bony canal where a MOULDED head's width passes
+ * between her arch's two sides (`mould` of a head's width, `pinchArch` and `archClear` clear: what `pinchOf` narrows her
+ * canal to there, and a little over -- its line leans on past that place)
+ * -- then one curve forward (`turnDeg` in all, on `turnRadius`), and its last `straight` metres, where her doors hang,
+ * straight on to her opening. The curve begins at her arch, or as far below it as her doors' feet (the end of the curve)
+ * need to stand `footClear` below every point of her arch, measured up her canal from them: her doors and the skin round
+ * them are wholly under her bones, whichever way they swing.
  *
- * Down from `top` it follows her bony canal's measured centre line as far as that keeps a head's width of canal off her
- * arch and her tailbone, then passes behind her arch between them (its wall held off both all the way); from its rearmost
- * point -- where, as she stands, it is going straight down -- it turns forward on one curve (`turnRadius`) until it goes
- * the way her opening faces (`turnDeg` forward of square to her arch's plane), and its last `straight` metres, where her
- * doors hang, run straight on to her opening.
+ * In her midline at `x`; from her opening up, CANAL_OPENING.points points. Null without her arch. `pass`: where it
+ * crosses her arch's plane.
  */
 export function seatedCanal(bones: CanalBones, x: number, top: P3, straight = 0.03): { path: P3[]; mouth: P3; t: P3; pass: P3 } | null {
   const arch = archOf(bones, x), L = bones.landmarks, a = L?.tuberosityLeft, b = L?.tuberosityRight;
   if (!arch || !L || !a || !b) return null;
-  const s = L.symphysisBottom, ty = (a[1] + b[1]) / 2, tz = (a[2] + b[2]) / 2, run = Math.hypot(ty - s[1], tz - s[2]);
+  const O = OPEN_SEAT, sy = L.symphysisBottom[1], sz = L.symphysisBottom[2], ty = (a[1] + b[1]) / 2, tz = (a[2] + b[2]) / 2, run = Math.hypot(ty - sy, tz - sz);
   if (!(run > 1e-6)) return null;
-  // (her arch's plane, in her midline: `u` back along it from her symphysis, `n` up into her square to it)
-  const uy = (ty - s[1]) / run, uz = (tz - s[2]) / run, n: [number, number] = -uz >= 0 ? [-uz, uy] : [uz, -uy];
-  const at = (d: number, h: number): P3 => [x, s[1] + uy * d + n[0] * h, s[2] + uz * d + n[1] * h];
-  // (back along her arch's plane to the first place a head's width of canal clears her arch -- there, and a little either
-  // side of the plane)
-  let d = run * 0.4;
-  const clears = (q: number) => [-0.01, 0, 0.01, 0.02].every((h) => archDistance(at(q, h), arch) >= arch.need);
-  while (d < run * 3 && !clears(d)) d += 0.0005;
-  const pass = at(d, 0), N = CANAL_OPENING.points;
-  // ITS WAY DOWN TO HER ARCH: from below her arch's plane straight up through `pass`, onto the measured line (down only
-  // to where that turns forward into the arch's middle, its rearmost point, and only where it is clear) and up to `top`;
-  // eased, its wall kept off her arch and her tailbone (each in turn, twice, the arch's last -- between them there is
-  // room)
-  const tail = bones.tail ?? null, tailNeed = CANAL_OPENING.diameterM / 2 + OPEN_SEAT.tailClear;
-  const offTail = (p: P3): P3 => {
-    if (!tail) return p;
-    const dy = p[1] - tail[1], dz = p[2] - tail[2], l = Math.hypot(dy, dz);
-    return l >= tailNeed || l < 1e-9 ? p : [p[0], tail[1] + (dy / l) * tailNeed, tail[2] + (dz / l) * tailNeed];
-  };
-  const clear = (p: P3) => offArch(offTail(offArch(offTail(p), arch)), arch);
-  let axis = bones.axis.map((p): P3 => [x, p[1], p[2]]);
-  if (axis.length) {
-    const rear = axis.reduce((m, p) => (p[2] < m[2] ? p : m), axis[0]);
-    axis = axis.filter((p) => p[1] >= rear[1] && archDistance(p, arch) >= arch.need && (!tail || Math.hypot(p[1] - tail[1], p[2] - tail[2]) >= tailNeed));
-  }
-  const below = at(d, -0.05), on = at(d, 0.02);
-  axis = axis.filter((p) => p[1] > on[1] + 0.01 && p[1] < top[1] - 1e-6).sort((p, q) => p[1] - q[1]);
-  let down = resample([below, at(d, -0.02), on, ...axis, top], N);
-  const keep = Math.ceil((0.03 / Math.max(1e-9, lengthAlong(down))) * (N - 1)) + 1;
-  down = down.map((p, i) => (i <= keep || i === N - 1 ? p : clear(p)));
-  for (let k = 0; k < 6; k++) down = down.map((p, i) => (i <= keep || i === N - 1 ? p : clear([p[0], (down[i - 1][1] + 2 * p[1] + down[i + 1][1]) / 4, (down[i - 1][2] + 2 * p[2] + down[i + 1][2]) / 4])));
-  // UNDER HER ARCH IT TURNS FORWARD: from its rearmost point round one curve to the way her opening faces
-  let r = 0;
-  for (let i = 1; i < N; i++) if (down[i][2] < down[r][2]) r = i;
-  const O = OPEN_SEAT, lean = (O.turnDeg * Math.PI) / 180, rho = O.turnRadius, R = down[r];
-  const t: P3 = [0, uy * Math.sin(lean) + n[0] * Math.cos(lean), uz * Math.sin(lean) + n[1] * Math.cos(lean)];
-  const turn = Math.atan2(-t[2], t[1]), round = (f: number): P3 => [x, R[1] - rho * Math.sin(f), R[2] + rho * (1 - Math.cos(f))];
-  const foot = round(turn), mouth: P3 = [x, foot[1] - t[1] * straight, foot[2] - t[2] * straight];
-  const line: P3[] = [mouth, foot], steps = Math.max(4, Math.ceil((turn * rho) / 0.006));
-  for (let k = steps - 1; k >= 1; k--) line.push(round((turn * k) / steps));
-  for (let i = r; i < N; i++) line.push(down[i]);
+  // her arch's plane, in her midline: back along it from her symphysis, to the first place a moulded head's width has room
+  const uy = (ty - sy) / run, uz = (tz - sz) / run, need = (CANAL_OPENING.diameterM / 2) * O.mould + O.pinchArch + O.archClear;
+  const room = (d: number) => { const y = sy + uy * d, z = sz + uz * d; let least = Infinity; for (const p of arch.pts) least = Math.min(least, Math.hypot(p[0], p[1] - y, p[2] - z)); return least; };
+  let d = run * 0.3;
+  while (d < run * 3 && room(d) < need) d += 0.0005;
+  const pass: P3 = [x, sy + uy * d, sz + uz * d];
+  // the line down to it, and forward square to that line (toward her front)
+  let vy = pass[1] - top[1], vz = pass[2] - top[2];
+  const vl = Math.hypot(vy, vz);
+  if (!(vl > 0.01) || vy >= 0) return null;
+  vy /= vl; vz /= vl;
+  const fwd: [number, number] = -vy >= 0 ? [vz, -vy] : [-vz, vy];
+  const lean = (O.turnDeg * Math.PI) / 180, rho = O.turnRadius, N = CANAL_OPENING.points;
+  // (the way out of her at her opening, and `t` into her there)
+  const gy = vy * Math.cos(lean) + fwd[0] * Math.sin(lean), gz = vz * Math.cos(lean) + fwd[1] * Math.sin(lean), t: P3 = [0, -gy, -gz];
+  const round = (s: number, f: number): P3 => [x, pass[1] + vy * s + rho * (Math.sin(f) * vy + (1 - Math.cos(f)) * fwd[0]), pass[2] + vz * s + rho * (Math.sin(f) * vz + (1 - Math.cos(f)) * fwd[1])];
+  // her doors' feet under all of her arch: every point of it `footClear` and more up the canal from them
+  const under = (foot: P3) => arch.pts.every((p) => (p[1] - foot[1]) * t[1] + (p[2] - foot[2]) * t[2] >= O.footClear);
+  let s = 0;
+  while (s < 0.3 && !under(round(s, lean))) s += 0.001;
+  const foot = round(s, lean), mouth: P3 = [x, foot[1] + gy * straight, foot[2] + gz * straight];
+  const line: P3[] = [mouth, foot], steps = Math.max(4, Math.ceil((lean * rho) / 0.006));
+  for (let k = steps - 1; k >= 0; k--) line.push(round(s, (lean * k) / steps));
+  if (s > 1e-6) line.push(pass);
+  line.push([x, top[1], top[2]]);
   return { path: resample(line, N), mouth, t, pass };
 }
 

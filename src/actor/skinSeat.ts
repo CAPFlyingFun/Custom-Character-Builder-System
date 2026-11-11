@@ -24,9 +24,11 @@ import type { P3 } from './pelvisMeasure';
  * tube rather than straight out -- all of the way below the first, none of it beyond the second. And where the area's
  * own edge lies inside the tube (the tube comes out through her skin beyond it): how far on up the tube's wall that edge
  * is drawn (`tuck`, metres, for an edge `tuckDeep` and more inside the wall), from how far out its column (`tuckFrom`).
- * `doorSlabs`: into how many slices her doors' room (`before`) is cut to read how far out her doors stand in each.
+ * `doorSlabs`: into how many slices her doors' room (`before`) is cut to read how far out her doors stand in each, and
+ * `doorOff` how far her skin stands off them there (metres: more than off the tube -- her doors' own points are some way
+ * apart, and her skin lay in and out of them along a ragged line).
  */
-export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10 });
+export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10, doorOff: 0.004 });
 
 /** The tube her skin lies over: its rows' middles, the way it runs at each (toward her womb), each row's own "front"
  * (square to that and to `across`), and how far out its wall is at each of `SEAT_SKIN.round` places round it. */
@@ -129,7 +131,7 @@ export function sleeveTube(points: ArrayLike<number>, cols: number, across: P3 =
       let m = 0;
       for (let ds = -1; ds <= 1; ds++) { const q = sl + ds; if (q < 0 || q >= S) continue; for (let db = -spread; db <= spread; db++) m = Math.max(m, raw[q * N + ((b + db + N) % N)]); }
       // (at their feet, never less than the tube's own first row: her skin's rim is there)
-      doors[sl * N + b] = sl === 0 ? Math.max(m, radius[b]) : m;
+      doors[sl * N + b] = sl === 0 ? Math.max(m, radius[b]) : m > 0 ? m + SEAT_SKIN.doorOff - SEAT_SKIN.standOff : 0;
       doorsMost = Math.max(doorsMost, doors[sl * N + b]);
     }
     for (let e = 0; e < 3; e++) { box[e] -= Math.max(0, doorsMost - widest); box[3 + e] += Math.max(0, doorsMost - widest); }

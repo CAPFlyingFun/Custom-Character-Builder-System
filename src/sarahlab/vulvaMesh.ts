@@ -490,6 +490,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   let seat: { points: Float32Array; columns: number; share: number; version: number; doors?: Float32Array } | null = null, seatPoints = 0, seatMost = 0;
   const seatOn = () => skelOpening && !dressed && !!seat && seat.share > 0;
   let seatDbg: Record<string, unknown> = {};
+  let seatMs: number[] = [];
   /** GAME TUNING: her own skin behind the area (its backing) is not drawn where the area's skin has gone this far from it (metres) */
   const SEAT_BACK = 0.0005;
   const laidOpen = () => { shownOpen = openNow(); return skelOpening ? shownOpen * skelHole : shownOpen; };
@@ -2023,7 +2024,9 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       // (and all the way round: its last column comes back to its first, a whole turn on)
       const whole = (sm[M - 1] - sm[0]) * turn, scale = whole > 1e-3 ? (2 * Math.PI * (M - 1)) / M / whole : 1;
       for (let j = 0; j < M; j++) angle[j] = sm[0] + (sm[j] - sm[0]) * scale; }
+    const t1 = performance.now();
     const D = laySeatSkin({ rings: R + 1, cols: M, at, tau: tauG, angle }, tube, seat.share);
+    const t2 = performance.now();
     // her skin's own way out there now (for its light): across the grid, turned the way her skin faced
     const nG = new Float32Array(G * 3), a3 = new THREE.Vector3(), b3 = new THREE.Vector3();
     const node = (k: number, j: number, out: THREE.Vector3) => { const g = Math.max(0, Math.min(R, k)) * M + ((j + M) % M); return out.set(at[g * 3] + D[g * 3], at[g * 3 + 1] + D[g * 3 + 1], at[g * 3 + 2] + D[g * 3 + 2]); };
@@ -2056,7 +2059,9 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
         backVert[a] = 1; backVert[b] = 1; backVert[c] = 1; backTri.add(triKey(a, b, c));
       }
       (backGeom.index as THREE.BufferAttribute).needsUpdate = true; backGeom.setDrawRange(0, n2); backCount = n2 / 3;
-      trimEdge(); }
+      const t3 = performance.now();
+      trimEdge();
+      seatMs = [t1 - t0, t2 - t1, t3 - t2, performance.now() - t3]; }
     // (a probe's: where her skin's rim lay and went, how much of her skin is still inside the tube, and the tube's own)
     { let inside = 0, rimOff = 0; const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity], r0 = [Infinity, Infinity, Infinity], r1 = [-Infinity, -Infinity, -Infinity];
       for (let g = 0; g < G; g++) { if (base[g] < 0) continue; const x = at[g * 3] + D[g * 3], y = at[g * 3 + 1] + D[g * 3 + 1], z = at[g * 3 + 2] + D[g * 3 + 2]; if (g >= M && g < R * M && tubeOut(tube, x, y, z, 0)) inside++; [at[g * 3], at[g * 3 + 1], at[g * 3 + 2]].forEach((v, c) => { lo[c] = Math.min(lo[c], v); hi[c] = Math.max(hi[c], v); }); }
@@ -2077,7 +2082,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       seatV.applyMatrix4(seatU).toArray(pos, p * 3);
       seatN.transformDirection(seatU).toArray(nrm, p * 3);
     }
-    seatDbg.ms = +(performance.now() - t0).toFixed(1);
+    seatDbg.ms = +(performance.now() - t0).toFixed(1); seatDbg.parts = seatMs.map((x) => +x.toFixed(1));
   }
   // ---- THE SOFT CANAL (Joshua, 2026-11-02: "can we make the birth canal (and vagina opening) a hybrid soft body like
   // in real life so it doesn't cut through the skin, but it can actually change shape for a moment?"). Her baby's head,

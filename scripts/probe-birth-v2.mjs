@@ -58,6 +58,7 @@ try {
     log(t, JSON.stringify(report.at[t]));
     // (DETAIL=1: each joint of its back and legs in her canal, and how far off her canal's line, cm; NOSHOT=1: no pictures)
     if (process.env.DETAIL) log(t, 'in her canal', JSON.stringify(b?.bodyInCanal));
+    if (process.env.DETAIL) { const sk = (await hook('doorsSeat'))?.skinLaid; log(t, 'her skin over the seat', JSON.stringify(sk ? { points: sk.points, most: sk.most, share: sk.share, ms: sk.ms, parts: sk.parts, inside: sk.inside } : null)); }
     if (process.env.NOSHOT) continue;
     if (SKEL) {
       await hook('doorsAim', 80, 0.7, 0.25); await run(0.15); await shot(`t${String(t).padStart(3, '0')}-quarter.png`);
