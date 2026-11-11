@@ -43,6 +43,11 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - **A character appears dressed, all at once, in a game**; the Character Room
   may show her base body on its own while the rest loads (loading card).
 - **The room may be held upright** on a phone (this whole site is the room).
+- **Her skin is one colour with her own details on it** (Joshua, 2026-11-11: "no image texture, but then allow a
+  solid color for the outside skin and then we could add skin color... you can still body paint over the solid
+  color and save"; her face and the rest: "I would keep the details I have"). EVEN (`skinChoices.ts`, baked by
+  `scripts/evenSkin.mjs`) is the skin she wears unless another is chosen; what is drawn flat beside her skin (her
+  opening's doors) takes that colour. Looks are painted over it (PAINT SKIN), never baked light.
 - Every number is labelled MEASURED, BIOLOGICAL SHAPE or GAME TUNING.
 - No unrelated refactoring. Measure rather than assume: render and look.
 

@@ -9,7 +9,7 @@ import { bakeVulva, type VulvaBake } from './vulvaPatch';
 import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, SOFT_REF_ATTRIBUTE, UNITS_PER_METRE, patchJiggle, patchWombSoft, setPushExtra } from './softBody';
 import { birthAreaCentre } from './birthArea';
 import { sacRadius, type WombShape } from './baby';
-import { footAt, layBeyond, laySeatSkin, sleeveTube, tubeOut, type SkinBeyond } from '../actor/skinSeat';
+import { footAt, layBeyond, laySeatSkin, sleeveTube, tubeOut, tubePlace, type SkinBeyond } from '../actor/skinSeat';
 
 /**
  * GAME TUNING for the opening (Joshua's references, 2026-10-30: at crowning the whole area round the opening domes out
@@ -2100,35 +2100,54 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // with a stick out so it blends and not noticeable"). The push moves her vertices in her shader; her normals stayed her
   // rest shape's, so the mound her skin makes round her opening was lit as the flat skin it had been, and showed an edge
   // where it met the area's own skin, which is lit as it lies. So the piece's normals are worked out again from her
-  // triangles as pushed (each point's the sum of its triangles', which weighs them by their size; a seam's vertices one
-  // normal), `lit` of the way by how far the point went (GAME TUNING: none under 1 mm, all of it from 1 cm), and her own
-  // are put back when the piece is let go.
+  // triangles as her skin is laid (each point's the sum of its triangles', which weighs them by their size; a seam's
+  // vertices one normal), `lit` of the way by how far the point went (GAME TUNING: none under 1 mm, all of it from 1 cm),
+  // and her own are put back when the piece is let go.
+  //
+  // AS SHE IS POSED, NOT AS SHE IS BOUND (2026-11-11). They were worked out on her vertices where her file has them with
+  // the push added -- her shape BEFORE her bones turn it. Round her opening one corner of a triangle is her pelvis's and
+  // the next her thigh's, and with her thighs up and apart each corner's push has gone back through a different turn:
+  // that triangle, unposed, faces any way at all. So: each of her triangles as it lies posed and laid, in her pelvis's
+  // frame (where her skin was laid: `at` and its move), and each point's normal turned back through the inverse of its
+  // own bones' turn, which her skinning undoes -- as birthNormals.ts lays hers, and as the area's own skin is lit.
+  // Which side is out is ONE answer for the whole piece (her triangles are all wound the same way round): the side most
+  // of her own normals are on, posed; a point with nothing to say -- or not a number -- has no say.
   const BEYOND_LIT = Object.freeze([0.001, 0.01] as const);
   let beyondRestNormals: Float32Array | null = null, beyondLitOn = false, beyondLitVersion = -1;
-  const lightBeyond = (piece: NonNullable<typeof beyond>) => {
+  const lightBeyond = (piece: NonNullable<typeof beyond>, at: ArrayLike<number>, D: ArrayLike<number>, TB: Float64Array) => {
     const na = g.getAttribute('normal') as THREE.BufferAttribute | undefined;
     if (!na || !beyondPush) return;
-    const Nn = na.array as Float32Array, A = (g.getAttribute('position') as THREE.BufferAttribute).array as ArrayLike<number>, V = piece.verts, T = piece.tris, U = beyondPush, N = piece.mesh.count;
+    const Nn = na.array as Float32Array, V = piece.verts, T = piece.tris, N = piece.mesh.count;
     // (her own normals there, kept to put back: read when first lit, and again if another hand has written her normals
-    // since -- her build's sliders do)
+    // since -- her build's sliders do, and her birth poses' own shading)
     if (!beyondRestNormals || beyondRestNormals.length !== V.length * 3 || !beyondLitOn || na.version !== beyondLitVersion) { beyondRestNormals = new Float32Array(V.length * 3); for (let q = 0; q < V.length; q++) for (let c = 0; c < 3; c++) beyondRestNormals[q * 3 + c] = Nn[V[q] * 3 + c]; }
     const acc = new Float64Array(N * 3);
     for (let t = 0; t + 2 < T.length; t += 3) {
-      const a = T[t] * 3, b = T[t + 1] * 3, c = T[t + 2] * 3;
-      const ax = A[a] + U[a], ay = A[a + 1] + U[a + 1], az = A[a + 2] + U[a + 2];
-      const ux = A[b] + U[b] - ax, uy = A[b + 1] + U[b + 1] - ay, uz = A[b + 2] + U[b + 2] - az, vx = A[c] + U[c] - ax, vy = A[c + 1] + U[c + 1] - ay, vz = A[c + 2] + U[c + 2] - az;
+      // (her triangles all of whose corners are the piece's: where the others' corners stand posed is not known here,
+      // and the piece's own edge is held -- it has not moved, and keeps her own normals)
+      const a = piece.pointOf[key[T[t]]], b = piece.pointOf[key[T[t + 1]]], c = piece.pointOf[key[T[t + 2]]];
+      if (a < 0 || b < 0 || c < 0) continue;
+      const ax = at[a * 3] + D[a * 3], ay = at[a * 3 + 1] + D[a * 3 + 1], az = at[a * 3 + 2] + D[a * 3 + 2];
+      const ux = at[b * 3] + D[b * 3] - ax, uy = at[b * 3 + 1] + D[b * 3 + 1] - ay, uz = at[b * 3 + 2] + D[b * 3 + 2] - az, vx = at[c * 3] + D[c * 3] - ax, vy = at[c * 3 + 1] + D[c * 3 + 1] - ay, vz = at[c * 3 + 2] + D[c * 3 + 2] - az;
       const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      for (let e = 0; e < 3; e++) { const k = piece.pointOf[key[T[t + e]]]; if (k >= 0) { acc[k * 3] += nx; acc[k * 3 + 1] += ny; acc[k * 3 + 2] += nz; } }
+      for (const k of [a, b, c]) { acc[k * 3] += nx; acc[k * 3 + 1] += ny; acc[k * 3 + 2] += nz; }
     }
+    let agree = 0;
     for (let k = 0; k < N; k++) {
-      const v0 = piece.verts[piece.vertFrom[k]] * 3, far = Math.hypot(U[v0], U[v0 + 1], U[v0 + 2]) / perMetre, w = smooth(BEYOND_LIT[0], BEYOND_LIT[1], far);
-      const l = Math.hypot(acc[k * 3], acc[k * 3 + 1], acc[k * 3 + 2]);
+      const q = piece.vertFrom[k], e = k * 16, rx = beyondRestNormals[q * 3], ry = beyondRestNormals[q * 3 + 1], rz = beyondRestNormals[q * 3 + 2];
+      const side = Math.sign(acc[k * 3] * (TB[e] * rx + TB[e + 4] * ry + TB[e + 8] * rz) + acc[k * 3 + 1] * (TB[e + 1] * rx + TB[e + 5] * ry + TB[e + 9] * rz) + acc[k * 3 + 2] * (TB[e + 2] * rx + TB[e + 6] * ry + TB[e + 10] * rz));
+      if (side === 1 || side === -1) agree += side;
+    }
+    const out = agree >= 0 ? 1 : -1;
+    for (let k = 0; k < N; k++) {
+      const far = Math.hypot(D[k * 3], D[k * 3 + 1], D[k * 3 + 2]), w = smooth(BEYOND_LIT[0], BEYOND_LIT[1], far);
+      // (the triangles' sum, out, turned back through the point's own turn)
+      const el = seatU.fromArray(TB, k * 16).invert().elements, px = out * acc[k * 3], py = out * acc[k * 3 + 1], pz = out * acc[k * 3 + 2];
+      const lx = el[0] * px + el[4] * py + el[8] * pz, ly = el[1] * px + el[5] * py + el[9] * pz, lz = el[2] * px + el[6] * py + el[10] * pz, l = Math.hypot(lx, ly, lz);
       for (let q = piece.vertFrom[k]; q < piece.vertFrom[k + 1]; q++) {
         const i = V[q] * 3, rx = beyondRestNormals[q * 3], ry = beyondRestNormals[q * 3 + 1], rz = beyondRestNormals[q * 3 + 2];
         if (!(w > 0) || !(l > 1e-20)) { Nn[i] = rx; Nn[i + 1] = ry; Nn[i + 2] = rz; continue; }
-        // (the way her own normal faces decides which way the triangles' sum is out)
-        const sgn = acc[k * 3] * rx + acc[k * 3 + 1] * ry + acc[k * 3 + 2] * rz < 0 ? -1 : 1;
-        const mx = rx * (1 - w) + (sgn * acc[k * 3] / l) * w, my = ry * (1 - w) + (sgn * acc[k * 3 + 1] / l) * w, mz = rz * (1 - w) + (sgn * acc[k * 3 + 2] / l) * w, ml = Math.hypot(mx, my, mz) || 1;
+        const mx = rx * (1 - w) + (lx / l) * w, my = ry * (1 - w) + (ly / l) * w, mz = rz * (1 - w) + (lz / l) * w, ml = Math.hypot(mx, my, mz) || 1;
         Nn[i] = mx / ml; Nn[i + 1] = my / ml; Nn[i + 2] = mz / ml;
       }
     }
@@ -2190,12 +2209,21 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
           for (let q = piece.vertFrom[k]; q < piece.vertFrom[k + 1]; q++) { const i = piece.verts[q]; values[q * 3] = ux; values[q * 3 + 1] = uy; values[q * 3 + 2] = uz; beyondPush[i * 3] = ux; beyondPush[i * 3 + 1] = uy; beyondPush[i * 3 + 2] = uz; }
         }
         setPushExtra(body, piece.verts, values); beyondOn = true;
-        lightBeyond(piece);
+        lightBeyond(piece, at, DB, TB);
         sampleInto(lift, beyondPush, 3, bake.src, bake.bary, P);
         // (a probe's: her skin beyond the area down her middle -- where each point lay and where it lies, [y, z] metres)
         const midline: number[][] = [];
         for (let k = 0; k < N; k++) if (Math.abs(at[k * 3] - c0[0]) < 0.006) midline.push([+at[k * 3 + 1].toFixed(4), +at[k * 3 + 2].toFixed(4), +(at[k * 3 + 1] + DB[k * 3 + 1]).toFixed(4), +(at[k * 3 + 2] + DB[k * 3 + 2]).toFixed(4), piece.mesh.held[k]]);
-        beyondDbg = { points: N, held: piece.mesh.held.reduce((a, b) => a + b, 0), moved, mostCm: +(most * 100).toFixed(2), midline };
+        // (and all of it near the tube in the tube's own terms -- [place round it (degrees), up it and out beyond its wall
+        // where it lay, the same where it lies (mm), whether it is held])
+        const round: number[][] = [];
+        for (let k = 0; k < N; k++) {
+          const a0 = tubePlace(tube, at[k * 3], at[k * 3 + 1], at[k * 3 + 2]);
+          if (a0[1] - a0[3] > 0.1 || a0[0] > 0.16) continue;
+          const a1 = tubePlace(tube, at[k * 3] + DB[k * 3], at[k * 3 + 1] + DB[k * 3 + 1], at[k * 3 + 2] + DB[k * 3 + 2]);
+          round.push([Math.round((a0[2] * 180) / Math.PI), Math.round(a0[0] * 1000), Math.round((a0[1] - a0[3]) * 1000), Math.round(a1[0] * 1000), Math.round((a1[1] - a1[3]) * 1000), piece.mesh.held[k]]);
+        }
+        beyondDbg = { points: N, held: piece.mesh.held.reduce((a, b) => a + b, 0), moved, mostCm: +(most * 100).toFixed(2), midline, round };
       } else clearBeyond(); }
     const turned = (p: number, v: Float32Array, o: number, out: Float32Array | Float64Array | number[], oo: number) => {
       // (where the point stands: its own place and what her skin beyond the area lifts it by)
@@ -2256,7 +2284,8 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       a3.cross(b3); const l = a3.length();
       if (l > 1e-12) a3.multiplyScalar(1 / l); else a3.set(0, 0, 0);
       a3.toArray(nG, g * 3);
-      if (p >= 0 && Math.hypot(D[g * 3], D[g * 3 + 1], D[g * 3 + 2]) < 1e-4) agree += a3.dot(faced(p, nrm, p * 3, seatN));
+      // (a point with nothing to say -- or not a number -- has no say in which way the grid faces: birthNormals.ts)
+      if (p >= 0 && Math.hypot(D[g * 3], D[g * 3 + 1], D[g * 3 + 2]) < 1e-4) { const side = a3.dot(faced(p, nrm, p * 3, seatN)); if (Number.isFinite(side)) agree += side; }
     }
     const facing = agree >= 0 ? 1 : -1;
     const here = [0, 0, 0];
@@ -2306,7 +2335,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       // (and the two columns of it down her middle, behind her opening and in front of it: each ring where it lay and where
       // it lies, [y, z] metres)
       const column = (want: number) => { let best = 0, bd = Infinity; for (let j = 0; j < M; j++) { let d = angle[j] - want; d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI; if (Math.abs(d) < bd) { bd = Math.abs(d); best = j; } } const out: number[][] = []; for (let k = 0; k <= R; k++) { const q = k * M + best; if (base[q] >= 0) out.push([+at[q * 3 + 1].toFixed(4), +at[q * 3 + 2].toFixed(4), +(at[q * 3 + 1] + D[q * 3 + 1]).toFixed(4), +(at[q * 3 + 2] + D[q * 3 + 2]).toFixed(4)]); } return out; };
-      seatDbg = { columns: { back: column(Math.PI), front: column(0) }, across, longest: +longest.toFixed(4), backing: backCount, inside, rimOff: +rimOff.toFixed(4), skin: [f3(lo), f3(hi)], rim: [f3(r0), f3(r1)], tube: tube.centres.map(f3), foot: [f3(footAt(tube, 0)), f3(footAt(tube, Math.PI / 2)), f3(footAt(tube, Math.PI))], rings: R + 1, cols: M, share: seat.share, pelvis: body.skeleton.bones[pelvis]?.name, side: sideSign, angles: Array.from(angle).map((x) => +x.toFixed(2)), tauRing1: +tauG[M].toFixed(3), tauMid: +tauG[Math.round(R / 2) * M].toFixed(3) }; }
+      // (and twelve of its columns round her opening in the tube's own terms: each ring [up it and out beyond its wall
+      // where it lay, the same where it lies], mm)
+      const spokes = Array.from({ length: 12 }, (_, q) => { const want = (q * Math.PI) / 6; let best = 0, bd = Infinity; for (let j = 0; j < M; j++) { let d = angle[j] - want; d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI; if (Math.abs(d) < bd) { bd = Math.abs(d); best = j; } } const out: number[][] = []; for (let k = 0; k <= R; k++) { const g2 = k * M + best; if (base[g2] < 0) continue; const a0 = tubePlace(tube, at[g2 * 3], at[g2 * 3 + 1], at[g2 * 3 + 2]), a1 = tubePlace(tube, at[g2 * 3] + D[g2 * 3], at[g2 * 3 + 1] + D[g2 * 3 + 1], at[g2 * 3 + 2] + D[g2 * 3 + 2]); out.push([Math.round(a0[0] * 1000), Math.round((a0[1] - a0[3]) * 1000), Math.round(a1[0] * 1000), Math.round((a1[1] - a1[3]) * 1000)]); } return { deg: q * 30, rings: out }; });
+      seatDbg = { spokes, columns: { back: column(Math.PI), front: column(0) }, across, longest: +longest.toFixed(4), backing: backCount, inside, rimOff: +rimOff.toFixed(4), skin: [f3(lo), f3(hi)], rim: [f3(r0), f3(r1)], tube: tube.centres.map(f3), foot: [f3(footAt(tube, 0)), f3(footAt(tube, Math.PI / 2)), f3(footAt(tube, Math.PI))], rings: R + 1, cols: M, share: seat.share, pelvis: body.skeleton.bones[pelvis]?.name, side: sideSign, angles: Array.from(angle).map((x) => +x.toFixed(2)), tauRing1: +tauG[M].toFixed(3), tauMid: +tauG[Math.round(R / 2) * M].toFixed(3) }; }
     for (let p = 0; p < P; p++) {
       const g = bake.ring[p] * M + bake.column[p], far = Math.hypot(D[g * 3], D[g * 3 + 1], D[g * 3 + 2]);
       // (what her skin beyond the area lifts the point by, metres: its edge goes with her own vertices, all of the way)

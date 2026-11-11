@@ -2,7 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinGpuMb, skinLine, skinNote, skinStrengthLine, skinTextureLine } from '../src/sarahlab/skinChoices';
+import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinGpuMb, skinLine, skinNote, skinStrengthLine, skinTextureLine } from '../src/sarahlab/skinChoices';
 import { STUDIO_SECTIONS } from '../src/sarahlab/studioLayout';
 
 const PUBLIC = join(__dirname, '..', 'public');
@@ -11,6 +11,23 @@ describe("Sarah's skin choices (Joshua, 2026-10-24: switch between the enhanced 
   it('starts on the body file\'s own map, which downloads nothing', () => {
     expect(SKIN_CHOICES[0].id).toBe('original');
     expect(SKIN_CHOICES[0].path).toBeNull();
+  });
+
+  it('wears EVEN until another is chosen: one skin colour, her own details on it (Joshua, 2026-11-11)', async () => {
+    expect(DEFAULT_SKIN).toBe('even');
+    const even = SKIN_CHOICES.find((c) => c.id === 'even')!;
+    expect(even.path).toBe('models/skins/sarah-v2-skin-even-2048.webp');
+    expect(skinLine('even', null)).toBe('SKIN · EVEN · 2048');
+    // its one colour is the colour most of it is: half of its pixels within a few steps of it, each channel
+    const want = hexRgb(EVEN_SKIN_COLOUR), { data } = await sharp(join(PUBLIC, even.path!)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (let c = 0; c < 3; c++) {
+      const v: number[] = []; for (let i = c; i < data.length; i += 3 * 97) v.push(data[i]);
+      v.sort((a, b) => a - b);
+      expect(Math.abs(v[Math.floor(v.length / 2)] - want[c]), `channel ${c}`).toBeLessThanOrEqual(4);
+      // (and it is even: nine in ten of them within a tenth of it. MEASURED, red: 214 to 237 -- her map as it was,
+      // 182 to 238, more than twice as wide)
+      expect(v[Math.floor(v.length * 0.95)] - v[Math.floor(v.length * 0.05)], `channel ${c} spread`).toBeLessThan(want[c] * 0.2);
+    }
   });
 
   it('ships every candidate as a small WebP of the size it says, square like her atlas', async () => {

@@ -14,13 +14,21 @@
  * 85 MB of texture with its mipmaps, four times the others, for no difference anyone could see in the comparison
  * shots, so its line says so.
  *
+ * EVEN (Joshua, 2026-11-11: "maybe better anyway to do no image texture, but then allow a solid color for the outside
+ * skin and then we could add skin color... but you can still body paint over the solid color and save"; her face and the
+ * rest: "I would keep the details I have") is her own map with the light that was baked into it taken out: ONE SKIN
+ * COLOUR all over her, and her details -- her lips, brows and eyes, her nipples, her navel -- standing on it as they did
+ * (scripts/evenSkin.mjs, which says how a detail is told from baked light). What is drawn in one flat colour beside her
+ * skin -- her opening's doors -- can match a skin that is one colour, and never one that is a different tone every few
+ * centimetres. `EVEN_SKIN_COLOUR` is that colour.
+ *
  * An UPLOADED image (any picture from the phone, meant to be a painted copy of her atlas) joins the cycle as UPLOAD,
  * and PAINT paints on whichever is chosen (`skinPaint.ts`); SAVE hands back the painted PNG, which UPLOAD takes again.
  *
  * Pure: names, paths and lines, so a test can read them.
  */
 
-export type SkinId = 'original' | 'ai' | 'bazaart' | 'upscale' | 'upload';
+export type SkinId = 'original' | 'even' | 'ai' | 'bazaart' | 'upscale' | 'upload';
 
 export interface SkinChoice {
   readonly id: Exclude<SkinId, 'upload'>;
@@ -35,10 +43,24 @@ export interface SkinChoice {
 /** The order SKIN steps through them. */
 export const SKIN_CHOICES: readonly SkinChoice[] = Object.freeze([
   Object.freeze({ id: 'original', label: 'ORIGINAL', path: null, size: 2048, note: 'as approved' }),
+  Object.freeze({ id: 'even', label: 'EVEN', path: 'models/skins/sarah-v2-skin-even-2048.webp', size: 2048, note: 'one skin colour, her details kept' }),
   Object.freeze({ id: 'ai', label: 'AI 1254', path: 'models/skins/sarah-v2-skin-ai-1254.webp', size: 1254, note: 'ChatGPT, softest' }),
   Object.freeze({ id: 'bazaart', label: 'BAZAART', path: 'models/skins/sarah-v2-skin-bazaart-2048.webp', size: 2048, note: 'warmer, more contrast' }),
   Object.freeze({ id: 'upscale', label: '4K UPSCALE', path: 'models/skins/sarah-v2-skin-upscale-4096.webp', size: 4096, note: 'heavy on the GPU' }),
 ] as const);
+
+/**
+ * The skin she wears until another is chosen (Joshua, 2026-11-11, of one skin colour with her details kept: "Yeah... I
+ * would keep the details I have"): EVEN. A choice made with SKIN is kept, as before, and comes first.
+ */
+export const DEFAULT_SKIN: Exclude<SkinId, 'upload'> = 'even';
+
+/**
+ * EVEN's one skin colour (sRGB). MEASURED: her own map's mean over her skin that faces forward, knees to collarbones,
+ * weighed by its area on her (scripts/evenSkin.mjs prints it: 228, 181, 165) -- so from in front she is the colour she
+ * was. The map's mean over all of her is darker (216, 169, 152): her back and her undersides were baked in shade.
+ */
+export const EVEN_SKIN_COLOUR = '#e4b5a5';
 
 /**
  * The original map as a plain image too, for the brush: where the room draws her body from the KTX2 pilot

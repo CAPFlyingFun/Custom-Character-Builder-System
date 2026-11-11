@@ -25,7 +25,7 @@ import { SkinPose } from './skinPose';
 import { SkinContact, spreadTriangles } from './skinContact';
 import { JointLimits, type JointAngles } from '../actor/jointLimits';
 import { rangeDeg, type RangeLevel } from '../data/jointRange';
-import { SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
+import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
 import { SkinPainter, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
 import { ensureRest } from './fabricMaterial';
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
@@ -994,7 +994,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * (`OPENING_LOOKS`); her womb, and her skin opening round the doors, stay v2's. Off: v2's opening as it was.
    */
   let skeletonOpening = true;
-  let openingLook = 0;
+  // (her own skin's tone, no darker: Joshua, 2026-11-11, of her doors' darker tone against her skin: "let's match the
+  // opening to the skin and it looks weird" -- the last of OPENING_LOOKS; the three before it are his choices of the 9th)
+  let openingLook = 3;
   /** v2's own womb as last laid (baby.ts WombShape; null: not pregnant), for her organs to make room for */
   let v2Womb: WombShape | null = null;
   /** The treadmill's slope under STAND and WALK (`setSlope`). */
@@ -1087,6 +1089,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     { name: 'A · a shade darker, close in', tint: [0.9, 0.82, 0.8], reach: 0.025, lips: 0, skin: [0.88, 0.66, 0.58] },
     { name: 'B · darker and warmer, wider', tint: [0.84, 0.72, 0.7], reach: 0.04, lips: 0, skin: [0.88, 0.66, 0.58] },
     { name: "C · as B, with v2's rounded lips kept", tint: [0.84, 0.72, 0.7], reach: 0.04, lips: 1, skin: [0.88, 0.66, 0.58] },
+    { name: "D · her own skin's tone, no darker", tint: [1, 1, 1], reach: 0.025, lips: 0, skin: [0.88, 0.66, 0.58] },
   ] as const;
   /** The rig's own bones her organs hang from, bottom to top: her pelvis, her lumbar spine below and above L3, her chest. */
   const ORGAN_SPINE = ['Bone_001', 'Bone_004', 'Bone_003', 'Bone_002'] as const;
@@ -1287,7 +1290,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let paintMeta = '';
   function readSkin(): SkinId {
     const v = localStore()?.getItem(SKIN_KEY);
-    return SKIN_CHOICES.some((c) => c.id === v) ? (v as SkinId) : 'original';
+    return SKIN_CHOICES.some((c) => c.id === v) ? (v as SkinId) : DEFAULT_SKIN;
   }
   function bodyOf(): { readonly mesh: THREE.SkinnedMesh; readonly material: THREE.MeshStandardMaterial } | null {
     const mesh = skinned.find((m) => !!m.geometry.getAttribute('_cloth_cover'));
@@ -1325,6 +1328,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (b.material.map !== t) { b.material.map = t; b.material.needsUpdate = true; }
       skinWorn = id; skinState = 'ready';
       if (id !== 'upload') { try { localStore()?.setItem(SKIN_KEY, id); } catch { /* a private window: the choice is not kept */ } }
+      // (her doors' outsides take her skin's tone: the skin she wears now)
+      applyOpening();
       refresh();
     };
     if (skinId === 'original') { wear(own, 'original'); freeFetched(); return; }
@@ -6485,8 +6490,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // skeleton's canal has it)
     vulva?.setCanalTop(mine ? new THREE.Vector3(v2Pelvis.midpelvis.centre[0], v2Pelvis.midpelvis.centre[1], v2Pelvis.midpelvis.centre[2]) : null);
     if (organs && !organsGrowWomb) {
-      // (her skin's colour as it is seen, a screen's: so read)
-      organs.setDoorSkin(new THREE.Color().setRGB(look.skin[0] * look.tint[0], look.skin[1] * look.tint[1], look.skin[2] * look.tint[2], THREE.SRGBColorSpace), v2Seat.lining);
+      // (her skin's colour as it is seen, a screen's: so read -- and where her skin is ONE colour, skinChoices.ts EVEN,
+      // that colour itself: her doors' outsides are her skin carried down over them)
+      const tone = skinWorn === 'even' ? hexRgb(EVEN_SKIN_COLOUR).map((v) => v / 255) : look.skin;
+      organs.setDoorSkin(new THREE.Color().setRGB(tone[0] * look.tint[0], tone[1] * look.tint[1], tone[2] * look.tint[2], THREE.SRGBColorSpace), v2Seat.lining);
       organs.visible = (mine || xrayPct > 0) && !organsOff;
       // (behind her doors only her canal: her womb and bladder only while she is seen through)
       organs.innerShown = xrayPct > 0;
@@ -8359,6 +8366,39 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const keep = (bm.userData.ownMaterial ??= bm.material) as THREE.Material | THREE.Material[];
           bm.material = mode === 'own' ? keep : mode === 'plain' ? new THREE.MeshStandardMaterial({ color: 0xd9a58a, roughness: 0.6 }) : new THREE.MeshNormalMaterial();
           return true; },
+        // (a probe: HER SKIN'S TEXTURE -- her own, or one plain skin colour in its place, or a board of squares, 128 a side
+        // of her texture with every eighth line dark -- to tell a mark in her texture, and how far her texture is stretched
+        // where her skin has been moved, from one in her shape or her light (Joshua, 2026-11-11: "we have modified the mesh
+        // so much the original texture doesn't match anymore, or is it another issue?"). `colour`: the plain one (her own
+        // image's mean, MEASURED: sRGB 216, 169, 152); `bumps` false takes her bumps' map off too. The area round her
+        // opening follows her material: vulvaMesh.ts keepMat.)
+        skinTexture: (mode: 'own' | 'plain' | 'checker', colour = '#d8a998', bumps = true) => {
+          const bm = bodyOf()?.mesh; if (!bm) return false;
+          for (const m of (Array.isArray(bm.material) ? bm.material : [bm.material]) as THREE.MeshStandardMaterial[]) {
+            const keep = (m.userData.probeTexture ??= { map: m.map, normalMap: m.normalMap }) as { map: THREE.Texture | null; normalMap: THREE.Texture | null };
+            if (mode === 'own') { m.map = keep.map; m.normalMap = keep.normalMap; m.needsUpdate = true; continue; }
+            const c = document.createElement('canvas'), size = mode === 'plain' ? 4 : 2048, n = 128, q = size / n; c.width = c.height = size;
+            const g2 = c.getContext('2d')!;
+            g2.fillStyle = colour; g2.fillRect(0, 0, size, size);
+            if (mode === 'checker') {
+              g2.fillStyle = '#a8705a'; for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if ((x + y) % 2) g2.fillRect(x * q, y * q, q, q);
+              g2.fillStyle = '#3a3050'; for (let k = 0; k <= n; k += 8) { g2.fillRect(k * q - 1, 0, 3, size); g2.fillRect(0, k * q - 1, size, 3); }
+            }
+            const t = new THREE.CanvasTexture(c);
+            if (keep.map) { t.flipY = keep.map.flipY; t.wrapS = keep.map.wrapS; t.wrapT = keep.map.wrapT; t.channel = keep.map.channel; t.offset.copy(keep.map.offset); t.repeat.copy(keep.map.repeat); t.rotation = keep.map.rotation; t.center.copy(keep.map.center); }
+            t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true;
+            (m.userData.probeTextureMade as THREE.Texture | undefined)?.dispose(); m.userData.probeTextureMade = t;
+            m.map = t; m.normalMap = bumps ? keep.normalMap : null; m.needsUpdate = true;
+          }
+          // (her doors' outsides and her skin round them as her look has them -- or, plain, the one colour too, with no
+          // darker tone round her opening: what one solid skin colour would look like there)
+          applyOpening();
+          if (mode === 'plain' && organs && vulva) { organs.setDoorSkin(new THREE.Color(colour)); vulva.setSkeletonOpening(skeletonOpening && !organsGrowWomb, { lips: 0, tint: [1, 1, 1], reach: 0.025 }); }
+          vulva?.sync();
+          return true; },
+        // (a probe: how her skin is drawn -- which sides of it, whether her model is mirrored into the room, and whether her
+        // birth poses' own normals are on her)
+        skinFacts: () => { const b = bodyOf(); if (!b) return null; b.mesh.updateMatrixWorld(true); return { side: b.material.side, mirrored: b.mesh.matrixWorld.determinant() < 0, birthNormals: birthNormalsOn && !!birthNormals, watched: birthNormals?.watched ?? null, facing: birthNormals?.facing ?? null, pose, normalVersion: (b.mesh.geometry.getAttribute('normal') as THREE.BufferAttribute | undefined)?.version ?? null }; },
         // (P4: her hand held up palm forward in a shape -- fist, open, or one finger lifted from a fist)
         handShowLast: () => showLast,
         /** (a probe: her skin's triangles near her right hand turned over in the pose she stands in -- each against her rest

@@ -291,6 +291,10 @@ function tubeAt(t: SleeveTube, x: number, y: number, z: number, out: Float64Arra
   out[0] = bf < 0 ? bf * l : L[bk] + bf * l; out[1] = Math.sqrt(rx * rx + ry * ry + rz * rz); out[2] = angle;
   out[3] = bf < 0 ? doorWallAt(t, -bf * l, angle) : wallAt(t, bk, fc, angle);
 }
+const placed = new Float64Array(4);
+/** A point in the tube's own terms (a probe's reading): [metres up it from its first row, metres out from its middle
+ * line, its place round it (radians), how far out the tube's wall is there]. */
+export function tubePlace(t: SleeveTube, x: number, y: number, z: number): [number, number, number, number] { tubeAt(t, x, y, z, placed); return [placed[0], placed[1], placed[2], placed[3]]; }
 /** The point of the tube's wall `up` metres up it from its first row (under 0: of her doors' room beyond it) at a place
  * round it, stood `off` metres out from it: into `out`. */
 function wallPoint(t: SleeveTube, up: number, angle: number, off: number, out: Float64Array): void {

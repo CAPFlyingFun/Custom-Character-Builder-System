@@ -5,6 +5,7 @@
  *
  *     node scripts/probe-pick-opening.mjs      (NO_BUILD=1; POSE=apart; OPEN=100; AT=305:250,150:190; VIEW=yaw:pitch:dist)
  *
+ * NORMALS=1 also takes the look with her body drawn by the normals it is shaded with (view-normals.png).
  * STRAYS=1 also saves her body's own skin that stands inside the tube round her canal (the room's `seatStrays`) as
  * strays-<pose>-<open>.json.
  */
@@ -34,7 +35,7 @@ try {
   await page.waitForTimeout(6000);
   for (let k = 0; k < 12; k++) { const t = await page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? ''); if (/none/i.test(t)) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); }
   await page.waitForTimeout(6000);
-  await hook('opening', true, 1); await run(0.6);
+  await hook('opening', true, ...(process.env.LOOK !== undefined ? [Number(process.env.LOOK)] : [])); await run(0.6);
   if (process.env.SEAT) { await hook('doorsSeat', JSON.parse(process.env.SEAT)); await run(0.8); }
   await press(`sarahlab:${process.env.POSE ?? 'apart'}`); await run(2.5);
   await slide('sarahlab-birth-open', Number(process.env.OPEN ?? 100)); await run(1.6);
@@ -46,6 +47,8 @@ try {
     const [x, y] = at.split(':').map(Number), h = (await hook('pickAny', 200 + x - box.x, 150 + y - box.y, 5)) ?? [];
     log(at, h.map((q) => `${q.parent}/${q.mesh}#${q.group}${q.facing < 0 ? '(back)' : ''}@${q.cm}cm`).join('  >  ') || 'nothing');
   }
+  // (NORMALS=1: the same look with her body drawn by the normals it is shaded with -- toward the view is blue, away dark)
+  if (process.env.NORMALS) { await hook('normalSkin', true); await run(0.15); await page.screenshot({ path: path.join(SHOTS, 'view-normals.png'), clip: { x: 200, y: 150, width: 600, height: 600 }, timeout: 300_000 }); await hook('normalSkin', false); }
   if (process.env.STRAYS) {
     const s = (await hook('seatStrays', 0.001)) ?? [], leg = s.filter((q) => q[4]).length, piece = s.filter((q) => q[5]).length;
     writeFileSync(path.join(SHOTS, `strays-${process.env.POSE ?? 'apart'}-${process.env.OPEN ?? 100}.json`), JSON.stringify(s));

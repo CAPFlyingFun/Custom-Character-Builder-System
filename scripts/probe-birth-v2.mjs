@@ -43,7 +43,7 @@ try {
   // (MODEL=skeleton: the same birth on her bare skeleton, looked at from outside her along her canal and from her side)
   const SKEL = process.env.MODEL === 'skeleton';
   if (SKEL) { for (let k = 0; k < 8 && !(await page.evaluate(() => document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '')).startsWith('model skeleton'); k++) { await press('sarahlab:model'); await page.waitForFunction(() => /^model /.test(document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? ''), null, { timeout: 300_000 }); await page.waitForTimeout(5000); } }
-  else await hook('opening', MODE !== 'v2', 1);
+  else await hook('opening', MODE !== 'v2', ...(process.env.LOOK !== undefined ? [Number(process.env.LOOK)] : []));
   // (NAKED=1: her clothes off first -- OUTFIT pressed until it says none -- for a look at her from the side with nothing over it)
   if (process.env.NAKED) { for (let k = 0; k < 12; k++) { const t = await page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? ''); if (/none/i.test(t)) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); } await page.waitForTimeout(6000); }
   await press('sarahlab:recline'); await run(2.5);

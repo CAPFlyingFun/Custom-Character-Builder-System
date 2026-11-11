@@ -68,6 +68,10 @@ export interface BirthNormals {
   readonly openEdges: readonly number[];
   /** how many points the last compute had to push out of her own skin */
   readonly pierced: number;
+  /** (a probe's) the last compute's vote on which way her triangles face out: how many more of the band's points have
+   * her own normal on the triangles' side than not -- before her skin is smoothed (`first`) and after (`last`) -- and the
+   * side each vote chose (1: as her triangles are wound; -1: the other) */
+  readonly facing: { first: number; firstSide: number; last: number; lastSide: number };
   /** how much the turn back into her rest shape magnified a move (worst, and how many points past 3x) */
   readonly blow: { worst: number; over3: number };
   /** how many folds the last compute could not iron out */
@@ -135,6 +139,16 @@ export function createBirthNormals(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
   const used = new Set<number>(tris);
   for (const i of used) { const s = `${Math.round(pa.getX(i) * 1e4)},${Math.round(pa.getY(i) * 1e4)},${Math.round(pa.getZ(i) * 1e4)}`; let id = keyMap.get(s); if (id === undefined) { id = keyMap.size; keyMap.set(s, id); } key[i] = id; }
   const K = keyMap.size, posed = new Float32Array(n * 3), acc = new Float64Array(K * 3);
+  // A POINT NO TRIANGLE OF HERS HAS IS NOT WATCHED. Where her fingers are cut apart (actor/fingerSplit.ts: every triangle
+  // joining two fingers is taken out of what she is drawn with, and no point is taken away) some of her points are left
+  // with no triangle of hers at all -- and at rest her right hand hangs within the band's reach of her middle. Such a
+  // point has no surface: no key, no triangle's facing. Thirty of them were counted in the votes below on which way her
+  // triangles face out -- as not-a-number, which made the whole sum not-a-number, which `>= 0` reads as "no": so EVERY
+  // normal in the band was laid facing INTO her, in every birth pose. Her groin, her thighs and her lower belly were lit
+  // inside out -- dark where the light fell on them, bright underneath -- with a hard edge where the band ends, halfway
+  // up her belly (Joshua, 2026-11-11: it "looks weird... around the legs and halfway in the belly"; found by drawing
+  // her by her normals with this field on and off).
+  { let kept = 0; for (const i of watched) if (key[i] >= 0) watched[kept++] = i; watched.length = kept; }
   // each edge of the band (by point), and the triangles (offsets into `tris`) that have it
   const edgeTris = new Map<string, number[]>();
   for (let t = 0; t < tris.length; t += 3) for (let q = 0; q < 3; q++) { const a0 = key[tris[t + q]], b0 = key[tris[t + (q + 1) % 3]]; const e2 = a0 < b0 ? `${a0},${b0}` : `${b0},${a0}`; (edgeTris.get(e2) ?? edgeTris.set(e2, []).get(e2)!).push(t); }
@@ -174,12 +188,14 @@ export function createBirthNormals(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
   const S = mesh.skeleton.bones.map(() => new THREE.Matrix4()), tmp = new THREE.Matrix4(), Sv = new THREE.Matrix4(), Li = new THREE.Matrix3();
   const a = new THREE.Vector3(), b = new THREE.Vector3(), cc = new THREE.Vector3();
   /** her own normal at a point, as her skinning turns it (one component) */
+  const facingNow = { first: 0, firstSide: 1, last: 0, lastSide: 1 };
   const nrmPosed = (i: number, c: number, nrm: ArrayLike<number>) => { v.set(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2]).applyMatrix3(new THREE.Matrix3().setFromMatrix4(blend(i))); return v.getComponent(c); };
   const blend = (i: number) => { const el = Sv.elements; el.fill(0); for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w <= 0) continue; const se = S[si.getComponent(i, k)].elements; for (let e = 0; e < 16; e++) el[e] += w * se[e]; } return Sv; };
   return {
     watched: watched.length,
     openEdges,
     get pierced() { return pierced; },
+    get facing() { return { ...facingNow }; },
     get blow() { return { worst: +blowWorst.toFixed(2), over3: blowCount }; },
     get folded() { return folded; },
     get seamLeft() { return seamLeft; },
@@ -290,6 +306,7 @@ export function createBirthNormals(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
       let agree0 = 0;
       for (const i of watched) { const o = key[i] * 3; agree0 += Math.sign(kn[o] * nrmPosed(i, 0, nrm) + kn[o + 1] * nrmPosed(i, 1, nrm) + kn[o + 2] * nrmPosed(i, 2, nrm)); }
       const out0 = agree0 >= 0 ? 1 : -1;
+      facingNow.first = agree0; facingNow.firstSide = out0;
       // kept from passing through itself
       // KEPT FROM PASSING THROUGH ITSELF, one side giving way: her thigh's skin (mostly carried by a thigh bone) that has
       // gone in behind her buttock's or her mound's (mostly not) is laid back on that skin's surface -- the nearest of
@@ -607,6 +624,7 @@ export function createBirthNormals(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
       let agree = 0;
       for (const i of watched) { const o = key[i] * 3; agree += Math.sign(acc[o] * nrmPosed(i, 0, nrm) + acc[o + 1] * nrmPosed(i, 1, nrm) + acc[o + 2] * nrmPosed(i, 2, nrm)); }
       const wind = agree >= 0 ? 1 : -1;
+      facingNow.last = agree; facingNow.lastSide = wind;
       // and smoothed over her points a few times, so her coarse triangles do not show as facets
       const sm2 = new Float64Array(K * 3);
       for (let pass = 0; pass < 4; pass++) {

@@ -5,7 +5,8 @@
  * round. Into shots/opening-compare/, with report.json.
  *
  *     node scripts/probe-opening-compare.mjs      (NO_BUILD=1; POSES=recline,apart; OPENS=30,60,100; MODELS=v2,skeleton;
- *                                                  SEATS='[{"out":0.02,"restScale":1}]')
+ *                                                  SEATS='[{"out":0.02,"restScale":1}]'; VIEWS=name:yaw:pitch:dist,...;
+ *                                                  TEXES=plain,checker)
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -45,7 +46,7 @@ try {
         report[`${model}-${p}-${o}`] = { opening: g?.opening, doorSwing: g?.doorSwing, doorOpenCm: g?.doorOpenCm, doorAngles: g?.doorAngles, aim: await hook('doorsAim', DIST, 0, 0) };
         await run(0.15); await shot(`${model}-${p}-${o}-front.png`);
         if (model.startsWith('v2')) {
-          const laid = (await hook('doorsSeat'))?.skinLaid ?? null; report[`${model}-${p}-${o}`].skinLaid = laid; log(model, p, o, 'her skin laid over the seat', JSON.stringify(laid && { ...laid, angles: undefined, columns: undefined, tube: undefined, beyond: laid.beyond && { ...laid.beyond, midline: undefined } }));
+          const laid = (await hook('doorsSeat'))?.skinLaid ?? null; report[`${model}-${p}-${o}`].skinLaid = laid; log(model, p, o, 'her skin laid over the seat', JSON.stringify(laid && { ...laid, angles: undefined, columns: undefined, spokes: undefined, tube: undefined, beyond: laid.beyond && { ...laid.beyond, midline: undefined, round: undefined } }));
           // (her body's own skin still standing inside the tube round her canal: how many of her vertices, the deepest, cm)
           const strays = (await hook('seatStrays', 0.001)) ?? []; report[`${model}-${p}-${o}`].strays = { count: strays.length, legs: strays.filter((q) => q[4]).length, deepestCm: +(Math.max(0, ...strays.map((q) => q[3])) * 100).toFixed(2) }; log(model, p, o, 'her own skin inside the tube', JSON.stringify(report[`${model}-${p}-${o}`].strays));
         }
@@ -68,7 +69,12 @@ try {
         }
         await hook('doorsAim', DIST, QUARTER, 0.25); await run(0.15); await shot(`${model}-${p}-${o}-quarter.png`);
         // (VIEWS=name:yaw:pitch:distance,...: more looks at it, each turned from straight at her opening, radians)
-        for (const v of (process.env.VIEWS ?? '').split(',').filter(Boolean)) { const [name, yaw, pitch, dist] = v.split(':'); await hook('doorsAim', Number(dist ?? DIST), Number(yaw), Number(pitch)); await run(0.15); await shot(`${model}-${p}-${o}-${name}.png`); }
+        // (TEXES=plain,checker: each of those looks again with her skin's texture swapped -- the room's `skinTexture`: one
+        // plain colour, a board of squares -- to tell her texture from her shape)
+        for (const v of (process.env.VIEWS ?? '').split(',').filter(Boolean)) {
+          const [name, yaw, pitch, dist] = v.split(':'); await hook('doorsAim', Number(dist ?? DIST), Number(yaw), Number(pitch)); await run(0.15); await shot(`${model}-${p}-${o}-${name}.png`);
+          if (model.startsWith('v2')) { for (const tex of (process.env.TEXES ?? '').split(',').filter(Boolean)) { await hook('skinTexture', tex); await run(0.15); await shot(`${model}-${p}-${o}-${name}-${tex}.png`); } if (process.env.TEXES) { await hook('skinTexture', 'own'); await run(0.15); } }
+        }
         // (SOLO=1: her skin's own patch round her opening alone, her body hidden -- from the quarter, the front and her side)
         if (process.env.SOLO && model.startsWith('v2')) {
           await hook('vulvaSolo', true);
@@ -93,7 +99,7 @@ try {
     // (her clothes off: OUTFIT pressed until it says none)
     for (let k = 0; k < 12; k++) { const t = await page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? ''); if (/none/i.test(t)) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); }
     await page.waitForTimeout(6000);
-    report.v2 = await hook('opening', true, Number(process.env.LOOK ?? 1));
+    report.v2 = await hook('opening', true, ...(process.env.LOOK !== undefined ? [Number(process.env.LOOK)] : []));
     await run(0.6);
     // (SEATS: her doors' seat in v2 tried other ways, a JSON list for the hook `doorsSeat` -- each rendered as `v2-s<k>`)
     const seats = process.env.SEATS ? JSON.parse(process.env.SEATS) : null;
