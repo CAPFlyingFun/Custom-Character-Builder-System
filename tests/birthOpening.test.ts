@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BIRTH_OPENING, CANAL_OPENING, OPEN_SEAT, canalMouth, cervixAt, headPassage, openCanal, seatedCanal, tightest } from '../src/actor/birthCanal';
-import { BIRTH_HEAD, DOORS, ENDS_SHUT, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoorLine, rimOf, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
+import { BIRTH_HEAD, DOORS, ENDS_SHUT, passingLips, sliderLips, birthAngles, birthHead, doorFrame, doorMeshes, doorOpening, doorSection, foldAngles, followDoor, followEnds, passingOutlines, pressDoorLine, rimOf, swingDoors, type Angles, type Ends } from '../src/actor/birthDoors';
 import { CERVIX, layOrgans, lengthOf } from '../src/actor/pelvicOrgans';
 import { growWomb } from '../src/actor/pregnantWomb';
 
@@ -406,4 +406,40 @@ describe('her opening\'s doors', () => {
     expect(doorMeshes(frame, 0, 0, now).openM).toBeLessThan(0.005);
     expect(now.ends.front + now.ends.back).toBeCloseTo(DOORS.length, 3);
   }, 30_000); // (GAME TUNING: a long sweep, ~3 s here, past the 5 s default on the GitHub runner)
+});
+
+describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush with the skin")', () => {
+  const frame = doorFrame(laid.vagina.path), flat = DOORS.hingeUp - DOORS.thick;
+  // (how far a mesh stands out of her skin round it, along her canal, metres)
+  const out = (m: { points: Float32Array }) => { let lo = Infinity; for (let i = 0; i < m.points.length; i += 3) { const d = [0, 1, 2].map((k) => m.points[i + k] - frame.mouth[k]); lo = Math.min(lo, d[0] * frame.t[0] + d[1] * frame.t[1] + d[2] * frame.t[2]); } return flat - lo; };
+
+  it('shut, a slit flush with her skin; parting, as wide as the doors open, never more than 4 cm out of her', () => {
+    const shut = doorMeshes(frame, 0, 0, undefined, true);
+    expect(shut.openM).toBeLessThan(0.005);
+    expect(out(shut)).toBeLessThan(0.01);
+    // (MEASURED, the doors swung out on their hinges: 3.7 cm shut, 5.7 at 20%, 7.6 wide open)
+    expect(out(doorMeshes(frame, 0, 0, undefined, false))).toBeGreaterThan(0.03);
+    let last = 0;
+    for (const b of [0.2, 0.4, 0.5, 0.6, 0.8, 1]) {
+      const m = doorMeshes(frame, b, 0, undefined, true);
+      expect(m.points.every(Number.isFinite)).toBe(true);
+      expect(Math.max(...m.triangles)).toBeLessThan(m.points.length / 3);
+      expect(m.openM).toBeCloseTo(doorOpening(b), 3);
+      expect(m.openM).toBeGreaterThanOrEqual(last - 1e-6); last = m.openM;
+      expect(out(m)).toBeLessThan(0.04);
+    }
+  });
+
+  it('round what passes: each lip off it, never past its hinge; nothing there, shut', () => {
+    expect(sliderLips(0).every((x) => x <= DOORS.gap + 1e-9)).toBe(true);
+    // (a 6 cm ball at her skin)
+    const pts: number[] = [], r = 0.03;
+    for (let i = 0; i < 2000; i++) { const u = Math.acos(1 - (2 * (i + 0.5)) / 2000), v = i * 2.39996, x = r * Math.sin(u) * Math.cos(v), t = flat + r * Math.cos(u), n = r * Math.sin(u) * Math.sin(v); pts.push(...[0, 1, 2].map((k) => frame.mouth[k] + frame.x[k] * x + frame.t[k] * t + frame.n[k] * n)); }
+    const l = passingLips(frame, Float32Array.from(pts)), mid = (DOORS.stations - 1) / 2;
+    expect(l.right[mid]).toBeGreaterThan(r); expect(l.right[mid]).toBeLessThan(r + 0.01);
+    expect(l.left[mid]).toBeGreaterThan(r);
+    expect(l.right.every((x) => x <= CANAL_OPENING.diameterM / 2 + 1e-9)).toBe(true);
+    const none = passingLips(frame, Float32Array.from([0, -5, 0, 0, -5, 0.01, 0.01, -5, 0]));
+    expect(none.right.every((x) => x === DOORS.gap)).toBe(true);
+  });
 });

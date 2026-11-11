@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { BLADDER, layOrgans, narrowAt, organMeshes, subNarrow, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks, type WombRoom } from '../actor/pregnantWomb';
 import { openCanal, type CanalBones } from '../actor/birthCanal';
-import { DOORS, ENDS_SHUT, SKIN_RING_ROWS, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, outerSkin, passingOutlines, pressDoorLine, rimOf, fittedDoors, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
+import { DOORS, ENDS_SHUT, SKIN_RING_ROWS, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, followLips, outerSkin, passingLips, sliderLips, passingOutlines, pressDoorLine, rimOf, fittedDoors, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { DoorCloth } from '../actor/doorCloth';
 import { clothCompliance, clothDamping, clothFriction, clothGravityScale, clothMaxStretch, clothRestScale, clothStandOffMm, clothSubsteps } from './sarahLabTool';
 import { NP, NT, sacRadius, type WombShape } from './baby';
@@ -46,6 +46,8 @@ const DOOR_COLOURS = Object.freeze({ lining: 0xd88895, skin: 0xe9c3aa });
  * round its head (Joshua, 2026-11-08, choosing it: head and shoulders "squeeze up to 22% while inside the doors (like
  * moulding)"). GAME TUNING. */
 const SQUEEZE_SLAB = 0.1;
+/** Each station's lip, how far across from her middle (metres): the right's and the left's. */
+type Lips = { right: number[]; left: number[] };
 const SQUEEZE_OUT = 0.02;
 /** Her doors as cloth (`pressMode` 'cloth'): the tee's dials as Joshua set his Sarah's (2026-11-08, her saved
  * character: WEIGHT 25, CALM 100, FIT 100, CLOSE 100, STRETCH 50, GRIP 100, STEPS 43). GAME TUNING. */
@@ -142,7 +144,11 @@ export class PelvicOrgansView {
    * as it pushes them, front to back: where it holds each (`want`) and where each stands now (`now`) -- null once they
    * are all back where BIRTH OPENING has them (actor/birthDoors.ts `pressDoor`). */
   private passing: Float32Array | null = null;
-  private pressed: { want: { right: Angles[]; left: Angles[]; ends: Ends }; now: { right: Angles[]; left: Angles[]; ends: Ends } } | null = null;
+  private pressed: { want: { right: Angles[]; left: Angles[]; ends: Ends; lips?: Lips }; now: { right: Angles[]; left: Angles[]; ends: Ends; lips?: Lips } } | null = null;
+  /** HER OPENING AS LIPS (Joshua, 2026-11-11: "basically like two lips that touch… flush with the skin"; actor/birthDoors.ts
+   * `lipCorners`): her doors drawn as two lips at her skin that part into an oval, a low dome as they are pushed --
+   * rather than two long flaps swung out of her. GAME TUNING; probes may turn it off to compare. */
+  lips = true;
   private pressTick = 0;
   private openNow = 0;
   /** Her week (null: not pregnant) and each baby's weight, g; and her womb grown for them. */
@@ -544,6 +550,15 @@ export class PelvicOrgansView {
     } else { for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) P.want[side][j] = uniform; P.want.ends = ENDS_SHUT; }
     P.now.ends = followEnds(P.now.ends, P.want.ends, dt);
     let settled = !this.passing && P.now.ends.front === ENDS_SHUT.front && P.now.ends.back === ENDS_SHUT.back;
+    // (drawn as lips: each station's lips as far apart as what passes is wide at her skin -- or, with nothing passing,
+    // where BIRTH OPENING parts them -- following as her doors do)
+    if (this.lips) {
+      const slider = sliderLips(this.grown || this.opensFreely ? this.swing : 0);
+      P.want.lips = this.passing ? passingLips(this.doors.frame, this.passing, P.now.ends) : { right: slider, left: slider };
+      const was = P.now.lips ?? { right: slider, left: slider };
+      P.now.lips = { right: followLips(was.right, P.want.lips.right, dt), left: followLips(was.left, P.want.lips.left, dt) };
+      if (P.now.lips.right.some((x, j) => x !== P.want.lips!.right[j]) || P.now.lips.left.some((x, j) => x !== P.want.lips!.left[j])) settled = false;
+    }
     for (const side of ['right', 'left'] as const) for (let j = 0; j < J; j++) {
       const a = (P.now[side][j] = followDoor(P.now[side][j], P.want[side][j], dt)), w = P.want[side][j];
       if (a.hinge !== w.hinge || a.inner !== w.inner || a.mid !== w.mid || a.outer !== w.outer) settled = false;
@@ -575,7 +590,7 @@ export class PelvicOrgansView {
   private drawDoors(): void {
     if (Math.abs(this.swing - this.drawnSwing) < 1e-4 && Math.abs(this.fold - this.drawnFold) < 1e-4) return;
     this.drawnSwing = this.swing; this.drawnFold = this.fold;
-    const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now), g = this.doors.mesh.geometry;
+    const d = doorMeshes(this.doors.frame, this.swing, this.fold, this.pressed?.now, this.lips), g = this.doors.mesh.geometry;
     if (this.clothPoints && this.clothPoints.length === d.points.length) d.points.set(this.clothPoints);
     this.laidAngles = d.angles; this.openNow = d.openM;
     const colour = new Float32Array(d.lining.length * 3), lining = this.doorLining, skin = this.doorSkin;
