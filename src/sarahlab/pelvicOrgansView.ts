@@ -121,7 +121,7 @@ export class PelvicOrgansView {
   private doorPush = 0;
   /** Her opening's doors (actor/birthDoors.ts): hung in her rest frame from her pelvis, how far they stand open now (0..1). */
   private readonly bones: PelvisLandmarks & CanalBones;
-  private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial };
+  private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial; outerMaterial: THREE.MeshStandardMaterial };
   /** v2: the skin round her doors drawn as a sleeve round her canal, up into her (`skinSleeve`) */
   private sleeveOn = false;
   private underSkin = false;
@@ -190,12 +190,15 @@ export class PelvicOrgansView {
     { const frame = doorFrame(layOrgans(this.bones).vagina.path);
       const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0, side: THREE.DoubleSide });
       const skinMaterial = new THREE.MeshStandardMaterial({ color: DOOR_COLOURS.skin, roughness: 0.65, metalness: 0, side: THREE.DoubleSide });
+      // (the sleeve's OUTSIDE under her own skin, `sleeveUnderSkin`: her skin's tone, and set back in depth so that her own
+      // skin, which lies a millimetre and a half off it, is what is seen wherever the two are together)
+      const outerMaterial = new THREE.MeshStandardMaterial({ color: DOOR_COLOURS.skin, roughness: 0.65, metalness: 0, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 64 });
       const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material), s = outerSkin(frame), sg = new THREE.BufferGeometry();
       sg.setAttribute('position', new THREE.BufferAttribute(s.points, 3)); sg.setIndex(new THREE.BufferAttribute(s.triangles, 1)); sg.computeVertexNormals();
       const skin = new THREE.Mesh(sg, skinMaterial);
       mesh.name = 'organ:doors'; skin.name = 'organ:outerSkin'; mesh.frustumCulled = false; skin.frustumCulled = false;
       this.holder.add(mesh, skin);
-      this.doors = { frame, mesh, skin, material, skinMaterial }; }
+      this.doors = { frame, mesh, skin, material, skinMaterial, outerMaterial }; }
     this.drawDoors();
     this.group.name = 'pelvicOrgans';
     for (const name of ['uterus', 'vagina', 'bladder'] as const) this.materials.set(name, new THREE.MeshStandardMaterial({ color: COLOURS[name], roughness: 0.55, metalness: 0, transparent: name === 'bladder', opacity: name === 'bladder' ? 0.85 : 1 }));
@@ -428,9 +431,11 @@ export class PelvicOrgansView {
   get skinSleeve(): boolean { return this.sleeveOn; }
   /**
    * v2, her own skin laid over the sleeve (vulvaMesh.ts `setSeat`): the sleeve is then what shows of her INSIDE where
-   * her doors' ends part -- between her canal's end and her skin's rim -- so it is drawn from its inside only, in her
-   * canal's lining's colour. (Drawn both ways in her skin's tone it stood through her own skin wherever her skin's
-   * facets cut its curve, and showed skin-coloured between her doors, 2026-11-10.)
+   * her doors' ends part -- between her canal's end and her skin's rim -- so its inside is drawn in her canal's lining's
+   * colour. (Drawn both ways in her skin's tone it stood through her own skin wherever her skin's facets cut its curve,
+   * and showed skin-coloured between her doors, 2026-11-10.) Its OUTSIDE is drawn in her skin's tone, set back in depth
+   * behind her own skin: drawn from its inside alone, the room her skin keeps off her half-open doors showed straight
+   * through her -- a glassy band round her doors at 60% -- where now it shows skin.
    */
   set sleeveUnderSkin(on: boolean) { if (on !== this.underSkin) { this.underSkin = on; this.drawnSwing = -1; } }
   /** v2: the sleeve round her canal as it stands (null while it is not drawn as one, or her doors are not shown). */
@@ -596,7 +601,16 @@ export class PelvicOrgansView {
         side = out > 0 ? THREE.BackSide : THREE.FrontSide;
       }
       if (sm.side !== side) { sm.side = side; sm.needsUpdate = true; }
-      sm.color.copy(under ? this.doorLining : this.doorSkin); }
+      sm.color.copy(under ? this.doorLining : this.doorSkin);
+      // (and its outside, under her own skin: the same triangles drawn a second time, the other way round)
+      const om = this.doors.outerMaterial, out: THREE.Side = side === THREE.BackSide ? THREE.FrontSide : THREE.BackSide;
+      sg.clearGroups();
+      if (under && side !== THREE.DoubleSide) {
+        sg.addGroup(0, T.length, 0); sg.addGroup(0, T.length, 1);
+        if (om.side !== out) { om.side = out; om.needsUpdate = true; }
+        om.color.copy(this.doorSkin);
+        this.doors.skin.material = [sm, om];
+      } else this.doors.skin.material = sm; }
   }
 
   /** The skin round her doors (`skinRing`'s rows: its first her doors' feet, round her opening) drawn as a sleeve round her
@@ -655,7 +669,7 @@ export class PelvicOrgansView {
     this.organs = []; this.touching = [];
     for (const m of this.materials.values()) m.dispose();
     for (const m of [this.doors.mesh, this.doors.skin]) { m.removeFromParent(); m.geometry.dispose(); }
-    this.doors.material.dispose(); this.doors.skinMaterial.dispose();
+    this.doors.material.dispose(); this.doors.skinMaterial.dispose(); this.doors.outerMaterial.dispose();
     this.holder.removeFromParent(); this.group.removeFromParent();
   }
 }

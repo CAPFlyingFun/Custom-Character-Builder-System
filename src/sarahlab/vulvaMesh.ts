@@ -1972,8 +1972,8 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // slope from her tailbone to the back edge of her opening: "the green is the skin"). Her canal's back wall comes out
   // through her skin behind the area -- the cleft behind her perineum -- where her skin is her body's own and stayed as it
   // was. That piece of her (GAME TUNING `BEYOND`: this far either side of her middle; from `front` ahead of her opening's
-  // middle back to her tailbone's tip and her skin's thickness past it; from `below` under her opening to `above` over
-  // her tailbone's tip) is laid by actor/skinSeat.ts `layBeyond` -- put off the tube, the skin round that drawn after
+  // middle back to her tailbone's tip and `skin` past it; from `below` under her opening to `above` over her tailbone's
+  // tip) is laid by actor/skinSeat.ts `layBeyond` -- put off the tube, the skin round that drawn after
   // it, held at its edge -- and goes on her as a push over her belly's (softBody.ts setPushExtra: her vertices are not
   // touched). The area's edge is her own vertices and goes with them.
   //
@@ -1984,7 +1984,14 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // her doors). Her flesh there gives way to her opening as her perineum does: pressed aside, none of it taken away (his
   // rule of 2026-11-01 -- the area itself stops a centimetre short of her legs so that "it doesn't remove the actual
   // inside of the thighs" -- is about what is cut out and rebuilt, and stands: this cuts nothing).
-  const BEYOND = Object.freeze({ across: 0.13, front: 0.06, below: 0.12, above: 0.03, skin: 0.012 });
+  //
+  // FROM HIGH ON HER BACK, NOT FROM HER TAILBONE (Joshua, 2026-11-10 23:20, drawing her skin behind her opening in orange
+  // from 5 cm above her tailbone's tip down to the back edge of her opening in one line: "stretch and blend the skin so
+  // it doesn't look so weird with a stick out so it blends and not noticeable"). Held at her tailbone, all of the way her
+  // skin had to go was made up between there and her opening: a skirt that left her at a kink. So the piece reaches
+  // `above` over her tailbone's tip and `skin` behind it -- up the cleft over her sacrum -- and her skin there goes out
+  // a little with the rest, less and less up to where it is held.
+  const BEYOND = Object.freeze({ across: 0.13, front: 0.06, below: 0.12, above: 0.055, skin: 0.035 });
   let beyond: { mesh: SkinBeyond; rep: Uint32Array; vertFrom: Uint32Array; verts: Uint32Array } | null | undefined;
   /** her body's vertices' seat push (her geometry's units, three a vertex): what `laySeat` last laid beyond the area */
   let beyondPush: Float32Array | null = null, beyondOn = false, beyondDbg: Record<string, unknown> = {};
