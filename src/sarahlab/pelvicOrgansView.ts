@@ -535,7 +535,9 @@ export class PelvicOrgansView {
       f.t[0], f.t[1], f.t[2], -(f.t[0] * f.mouth[0] + f.t[1] * f.mouth[1] + f.t[2] * f.mouth[2]),
       f.n[0], f.n[1], f.n[2], -(f.n[0] * f.mouth[0] + f.n[1] * f.mouth[1] + f.n[2] * f.mouth[2]),
       0, 0, 0, 1);
-    m.copy(B).multiply(this.ringInv.copy(this.holder.matrixWorld).invert()).multiply(camera.matrixWorld);
+    // (as her doors are drawn: `scaledTo` of their size about her opening's mouth -- her own size shut, `restScale`)
+    const k = 1 / (this.scaledTo > 0 ? this.scaledTo : 1);
+    m.makeScale(k, k, k).multiply(B).multiply(this.ringInv.copy(this.holder.matrixWorld).invert()).multiply(camera.matrixWorld);
     const ends = this.pressed?.now.ends ?? ENDS_SHUT;
     shape.set(CANAL_OPENING.diameterM / 2, DOORS.hingeOut - RING_CUT.under, Math.max(ends.front, ends.back), DOORS.endWidth);
     t.set(RING_CUT.from, RING_CUT.to);
