@@ -413,7 +413,7 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
   // (how far a mesh stands out of her skin round it, along her canal, metres)
   const out = (m: { points: Float32Array }) => { let lo = Infinity; for (let i = 0; i < m.points.length; i += 3) { const d = [0, 1, 2].map((k) => m.points[i + k] - frame.mouth[k]); lo = Math.min(lo, d[0] * frame.t[0] + d[1] * frame.t[1] + d[2] * frame.t[2]); } return flat - lo; };
 
-  it('shut, a slit 2 mm apart, bowed out 3 cm at its middle; parting, as wide as the doors open, never more than 4 cm out of her', () => {
+  it('shut, a slit 2 mm apart, bowed out 3 cm at its middle; parting 0.1 cm a percent, never more than 4 cm out of her', () => {
     const shut = doorMeshes(frame, 0, 0, undefined, true);
     // (his "0% at 0.2cm"; bowed out 3 cm at its middle, his half dome, its lip standing a little past that)
     expect(shut.openM).toBeCloseTo(0.002, 4);
@@ -425,7 +425,8 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
       const m = doorMeshes(frame, b, 0, undefined, true);
       expect(m.points.every(Number.isFinite)).toBe(true);
       expect(Math.max(...m.triangles)).toBeLessThan(m.points.length / 3);
-      if (b >= 0.2) expect(m.openM).toBeCloseTo(doorOpening(b), 3);
+      // (his scale: 0.1 cm a percent)
+      expect(m.openM).toBeCloseTo(b * DOORS.acrossMost, 3);
       expect(m.openM).toBeGreaterThanOrEqual(last - 1e-6); last = m.openM;
       expect(out(m)).toBeLessThan(0.04);
     }

@@ -192,14 +192,15 @@ function lipCorners(r: number, k: number, f: number, x: number): [number, number
 /** Station `j`'s door as a lip, its lip `x` across from her middle (metres). */
 export const lipSection = (j: number, x: number): Section => { const st = stationOf(j); return section(st.f, st.w, x); };
 
-/** How far across from her middle each station's lip stands with BIRTH OPENING at `birth`: as far apart at her opening's
- * middle as the doors' own way of opening has them (`doorOpening`), the lips parting into an oval -- her opening's ends,
+/** How far across from her middle each station's lip stands with BIRTH OPENING at `birth`: 0.1 cm apart at her opening's
+ * middle for each 1% (10 cm wide open), the lips parting into an oval -- her opening's ends,
  * the corners of her mouth, staying where they are (Joshua: "the widest part stays in the same location"). */
 export function sliderLips(birth: number): number[] {
-  // (shut, her lips `lipsShut` apart each side of her middle; from 20% on as far as her doors open -- his "0% at 0.2cm,
-  // and leave the rest as is")
+  // (as far apart at her middle as BIRTH OPENING says, a tenth of a centimetre a percent -- Joshua, 2026-11-11: "since we
+  // have the width exactly 10cm, why not make each 1% 0.1cm?" -- and never nearer than `lipsShut` each side: his "0% at
+  // 0.2cm")
   const b = Math.min(1, Math.max(0, Number.isFinite(birth) ? birth : 0)), g = DOORS.lipsShut, J = DOORS.stations;
-  const o = doorOpening(b) / 2 - (DOORS.gap - g) * Math.max(0, 1 - b / 0.2);
+  const o = Math.max(g, (b * DOORS.acrossMost) / 2);
   return Array.from({ length: J }, (_, j) => { const u = -1 + (2 * j) / (J - 1); return g + Math.max(0, o - g) * Math.sqrt(Math.max(0, 1 - u * u)); });
 }
 
