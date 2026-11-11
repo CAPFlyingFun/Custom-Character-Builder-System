@@ -6441,6 +6441,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (in v2 the skin round her doors is her own, carried down to them: drawn as a sleeve round her canal, up into her
         // -- pelvicOrgansView.ts `skinSleeve`)
         organs.outerSkinShown = seat.ring && (seat.drawn || !seat.skin);
+        // (under her own skin it is what shows of her inside between her doors' ends: drawn from its inside, as her lining)
+        organs.sleeveUnderSkin = seat.ring && seat.skin;
         // (and her opening opens by BIRTH OPENING whether or not she is pregnant, as v2's own does)
         organs.opensFreely = true;
         organs.restScale = seat.restScale;
@@ -9133,6 +9135,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           }
           return { ...v2Seat, mouth: organs ? organs.mouthNow().at.toArray().map((x) => +(x / M).toFixed(4)) : null, skinLaid: vulva ? vulva.seatLaid : null };
         },
+        // her body's own skin that stands inside the tube round her canal as she is posed (vulvaMesh.ts `seatStrays`)
+        seatStrays: (deep?: number) => (vulva ? vulva.seatStrays(deep) : null),
         // her opening: the skeleton's doors (true) or v2's own (false), and which of OPENING_LOOKS her skin round it has
         opening: (on?: boolean, look?: number) => { if (on !== undefined) { skeletonOpening = on; if (on) layOrgansV2(false); } if (look !== undefined) openingLook = look; applyOpening(); applyLook(); refresh(); return { skeleton: skeletonOpening, look: openingLook, looks: OPENING_LOOKS.length, drawn: vulva?.skeletonOpening ?? false, doors: organs?.doorsShown ?? false, openM: organs?.doorOpenM ?? null, dressed: vulva?.dressed ?? null, skinOpen: vulva?.drawnOpen ?? null, bottomsOff: bottomsOff(), canalM: vulva?.canalPath()?.length ?? null }; },
         // where her opening is in her own skin at rest (her rest frame, metres): the middle of v2's opening's line
@@ -9278,7 +9282,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         garmentWire: (on: boolean) => { if (!garmentRoom) return false; (garmentRoom.cloth.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },
         // her particles now (world), and which piece each is of, for a probe drawing its own pictures
         garmentParticles: () => garmentRoom ? { positions: Array.from(garmentRoom.cloth.positions.subarray(0, garmentRoom.tailored.sewn.count * 3)), piece: Array.from(garmentRoom.tailored.sewn.particlePiece) } : null,
-        animate: (secondsToRun: number, step = 1 / 60) => { const n = Math.max(0, Math.round(secondsToRun / step)); for (let k = 0; k < n; k++) advance(step); return cloth?.stats() ?? null; },
+        // (and what her skin's layout over her seat is still waiting to lay, laid: a probe's picture is of her as she is)
+        animate: (secondsToRun: number, step = 1 / 60) => { const n = Math.max(0, Math.round(secondsToRun / step)); for (let k = 0; k < n; k++) advance(step); vulva?.settle(); return cloth?.stats() ?? null; },
         tears: (limit = 2) => cloth?.tears(limit) ?? null,
         // seated, the cloth stays on (the fitted tee does not stand in): to watch the cloth itself seated
         standIn: (on: boolean) => { seatedStandIn = on; },

@@ -200,6 +200,10 @@ export interface VulvaPatch {
   setSkeletonHole(share: number): void;
   /** how many of her skin's points the seat last moved, and how far the farthest went (metres) */
   readonly seatLaid: { points: number; most: number } & Record<string, unknown>;
+  /** A probe's: her body's own skin (what her body draws, not the area's) that stands inside the tube as she is posed, each
+   * vertex further in than `deep` metres: [x, y, z (her pelvis's rest frame, metres), how far in, 1 her leg's skin, 1 of the
+   * piece laid beyond the area, its index]. Null with no seat. */
+  seatStrays(deep?: number): number[][] | null;
   readonly skeletonOpening: boolean;
   /**
    * HER CANAL HELD BY HER BONE (Joshua, 2026-11-09: "use the existing womb and design we have in v2, but lock it to the real
@@ -217,6 +221,8 @@ export interface VulvaPatch {
   /** the area's thin outer band given back to the backing (on unless a probe turns it off); laid again by `relayOut` */
   trim: boolean;
   relayOut(): void;
+  /** Lays what is waiting to be laid now (her skin over her seat is laid again only so often as she opens: `sync`). */
+  settle(): boolean;
   debug(): Record<string, unknown>;
   /** a probe's check: the womb's wall as drawn now against her skin as drawn now -- how many of its points stand out of
    * her (and how far), and the bones the worst are carried by */
@@ -493,6 +499,11 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   const seatOn = () => skelOpening && !dressed && !!seat && seat.share > 0;
   let seatDbg: Record<string, unknown> = {};
   let seatMs: number[] = [];
+  /** GAME TUNING: her skin over her seat is laid again no sooner than this many times as long as laying it last took */
+  const SEAT_PACE = 3;
+  /** ...unless laying it took under this long (seconds: half a frame at 60 a second), when it is laid every frame */
+  const SEAT_QUICK = 0.008;
+  let seatWaiting = false, seatLaidAt = -Infinity, seatTook = 0;
   /** GAME TUNING: her own skin behind the area (its backing) is not drawn where the area's skin has gone this far from it (metres) */
   const SEAT_BACK = 0.0005;
   const laidOpen = () => { shownOpen = openNow(); return skelOpening ? shownOpen * skelHole : shownOpen; };
@@ -1690,7 +1701,8 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     if (VULVA_OPEN.sheet && !dressed) laySheet(pos, nrm, cm);
     // the canal hangs from the lips' edge as shaped (rolled in), so the two meet
     for (let j = 0; j < M; j++) for (let c = 0; c < 3; c++) rim[j * 3 + c] = pos[base[j] * 3 + c];
-    layBacking(); trimEdge();
+    // (on her seat the area's edge strips are cut once what is drawn behind them is settled: `laySeat`)
+    layBacking(); if (!seatOn()) trimEdge();
     // THE BALLOON: one skin from the opening's rim to the top of her womb (see VULVA_OPEN.bead)
     const C0 = vv.set(0, 0, 0);
     for (let j = 0; j < M; j++) C0.x += rim[j * 3] / M, C0.y += rim[j * 3 + 1] / M, C0.z += rim[j * 3 + 2] / M;
@@ -1956,15 +1968,23 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   const seatU = new THREE.Matrix4(), seatV = new THREE.Vector3(), seatN = new THREE.Vector3();
   /** each point's own turn into her pelvis's rest frame, as she is posed (16 numbers a point, laid again each time) */
   let seatTurns = new Float64Array(0);
-  // HER OWN SKIN BEHIND THE AREA GOES OUT WITH IT (Joshua, 2026-11-10, drawing her skin on a cut through her middle, one
+  // HER OWN SKIN ROUND THE AREA GOES OUT WITH IT (Joshua, 2026-11-10, drawing her skin on a cut through her middle, one
   // slope from her tailbone to the back edge of her opening: "the green is the skin"). Her canal's back wall comes out
   // through her skin behind the area -- the cleft behind her perineum -- where her skin is her body's own and stayed as it
-  // was. That piece of her (GAME TUNING `BEYOND`: this far either side of her middle; from `ahead` behind her opening's
+  // was. That piece of her (GAME TUNING `BEYOND`: this far either side of her middle; from `front` ahead of her opening's
   // middle back to her tailbone's tip and her skin's thickness past it; from `below` under her opening to `above` over
-  // her tailbone's tip; none of her legs' skin) is laid by actor/skinSeat.ts `layBeyond` -- put off the tube, the skin
-  // round that drawn after it, held at its edge -- and goes on her as a push over her belly's (softBody.ts setPushExtra:
-  // her vertices are not touched). The area's edge is her own vertices and goes with them.
-  const BEYOND = Object.freeze({ across: 0.1, ahead: 0.02, below: 0.08, above: 0.03, skin: 0.012 });
+  // her tailbone's tip) is laid by actor/skinSeat.ts `layBeyond` -- put off the tube, the skin round that drawn after
+  // it, held at its edge -- and goes on her as a push over her belly's (softBody.ts setPushExtra: her vertices are not
+  // touched). The area's edge is her own vertices and goes with them.
+  //
+  // ALL ROUND IT, HER LEGS' SKIN TOO. It was first the skin behind her opening alone and none of her legs' -- and beside
+  // her opening her own skin stood in the tube as it was: in LEGS APART at 100% two hundred of her vertices, half of them
+  // her thighs' at her groin, as far as 3.6 cm inside it, seen from below as grey scraps across her open canal; and the
+  // area's edge, which is those vertices, held the area's stretched skin back in the tube with them (a ragged brim over
+  // her doors). Her flesh there gives way to her opening as her perineum does: pressed aside, none of it taken away (his
+  // rule of 2026-11-01 -- the area itself stops a centimetre short of her legs so that "it doesn't remove the actual
+  // inside of the thighs" -- is about what is cut out and rebuilt, and stands: this cuts nothing).
+  const BEYOND = Object.freeze({ across: 0.13, front: 0.06, below: 0.12, above: 0.03, skin: 0.012 });
   let beyond: { mesh: SkinBeyond; rep: Uint32Array; vertFrom: Uint32Array; verts: Uint32Array } | null | undefined;
   /** her body's vertices' seat push (her geometry's units, three a vertex): what `laySeat` last laid beyond the area */
   let beyondPush: Float32Array | null = null, beyondOn = false, beyondDbg: Record<string, unknown> = {};
@@ -1975,10 +1995,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     for (let p = 0; p < P; p++) if (bake.ring[p] === 0) { for (let k = 0; k < 3; k++) { const w = bake.bary[p * 3 + k], q = bake.src[p * 3 + k]; my += w * rest[q * 3 + 1]; mz += w * rest[q * 3 + 2]; } mn++; }
     if (!mn) return null;
     my /= mn; mz /= mn;
-    const B = BEYOND, inBox = (i: number) => { const x = rest[i * 3], y = rest[i * 3 + 1], z = rest[i * 3 + 2]; return Math.abs(x) < B.across && z < mz - B.ahead && z > tail[2] - B.skin && y > my - B.below && y < tail[1] + B.above; };
+    const B = BEYOND, inBox = (i: number) => { const x = rest[i * 3], y = rest[i * 3 + 1], z = rest[i * 3 + 2]; return Math.abs(x) < B.across && z < mz + B.front && z > tail[2] - B.skin && y > my - B.below && y < tail[1] + B.above; };
     // (her skin as her body draws it outside the area: `keep`'s triangles; a seam's vertices one point)
     const K = bake.keep, id = new Int32Array(keyOf.size).fill(-1), keys: number[] = [];
-    for (let t = 0; t < K.length; t++) { const i = K[t], k = key[i]; if (id[k] < 0 && inBox(i) && !(legKeys && legKeys[k])) { id[k] = keys.length; keys.push(k); } }
+    for (let t = 0; t < K.length; t++) { const i = K[t], k = key[i]; if (id[k] < 0 && inBox(i)) { id[k] = keys.length; keys.push(k); } }
     if (keys.length < 8) return null;
     const N = keys.length, sets: Set<number>[] = keys.map(() => new Set<number>()), held = new Uint8Array(N);
     for (let t = 0; t + 2 < K.length; t += 3) {
@@ -2002,6 +2022,70 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     beyond = { mesh: { count: N, from, to, held }, rep, vertFrom, verts: Uint32Array.from(verts) };
     return beyond;
   };
+  /** each of her vertices the area's own triangles have (`at`), and the area's point nearest it on her rest shape (`point`) */
+  let backNear: { at: Uint32Array; point: Uint32Array } | null = null;
+  const backNearOf = () => {
+    if (backNear) return backNear;
+    const A = bake.area, seen = new Uint8Array(n), at: number[] = [];
+    for (let t = 0; t < A.length; t++) if (!seen[A[t]]) { seen[A[t]] = 1; at.push(A[t]); }
+    // (the area's points where they lie on her rest shape, in boxes 6 mm across)
+    const cell = 0.006, at3 = new Float32Array(P * 3), boxes = new Map<string, number[]>(), kk = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+    for (let p = 0; p < P; p++) {
+      for (let k = 0; k < 3; k++) { const w = bake.bary[p * 3 + k], q = bake.src[p * 3 + k]; for (let c = 0; c < 3; c++) at3[p * 3 + c] += w * rest[q * 3 + c]; }
+      const key3 = kk(at3[p * 3], at3[p * 3 + 1], at3[p * 3 + 2]); (boxes.get(key3) ?? boxes.set(key3, []).get(key3)!).push(p);
+    }
+    const point = new Uint32Array(at.length), NONE = 0xffffffff;
+    at.forEach((v, q) => {
+      const x = rest[v * 3], y = rest[v * 3 + 1], z = rest[v * 3 + 2], cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
+      let best = -1, bd = Infinity;
+      for (let reach = 1; reach <= 4 && best < 0; reach++) for (let a = -reach; a <= reach; a++) for (let b = -reach; b <= reach; b++) for (let c = -reach; c <= reach; c++) {
+        const l = boxes.get(`${cx + a},${cy + b},${cz + c}`); if (!l) continue;
+        for (const p of l) { const d = (at3[p * 3] - x) ** 2 + (at3[p * 3 + 1] - y) ** 2 + (at3[p * 3 + 2] - z) ** 2; if (d < bd) { bd = d; best = p; } }
+      }
+      point[q] = best < 0 ? NONE : best;
+    });
+    backNear = { at: Uint32Array.from(at), point };
+    return backNear;
+  };
+  /** Her bones' turns into her pelvis's rest frame as she is posed now (metres): each bone's, made the first time it is asked. */
+  const seatTurnOf = () => {
+    body.skeleton.update();
+    const one = [pelvis, 0, 0, 0], all = [1, 0, 0, 0];
+    const pelInv = blendT(one, all, 0, new THREE.Matrix4()).invert(), toRest = new THREE.Matrix4().multiplyMatrices(meshToRest, pelInv);
+    const boneTurn = new Map<number, Float64Array>();
+    return (b: number): Float64Array => {
+      let m = boneTurn.get(b);
+      if (!m) { m = Float64Array.from(seatU.multiplyMatrices(toRest, blendT([b, 0, 0, 0], all, 0, new THREE.Matrix4())).elements); boneTurn.set(b, m); }
+      return m;
+    };
+  };
+  /** A probe's (`seatStrays`): her body's own skin inside the tube as she is posed -- see the interface. */
+  function seatStrays(deep = 0.001): number[][] | null {
+    if (!seatOn() || !seat) return null;
+    const tube = sleeveTube(seat.points, seat.columns, [1, 0, 0], seat.doors);
+    readBodySkin();
+    if (!tube || !bodyI || !bodyW) return null;
+    const turnOf = seatTurnOf(), A = (g.getAttribute('position') as THREE.BufferAttribute).array as ArrayLike<number>, pu = pushOf(), U = pu ? (pu.array as ArrayLike<number>) : null;
+    const seen = new Uint8Array(n), piece = new Uint8Array(n), list: number[][] = [], T = new Float64Array(16), c0 = tube.centres[0];
+    if (beyond) for (let q = 0; q < beyond.verts.length; q++) piece[beyond.verts[q]] = 1;
+    for (let t = 0; t < bake.keep.length; t++) {
+      const v = bake.keep[t];
+      if (seen[v]) continue;
+      seen[v] = 1;
+      // (her skin within a hand of her opening, on her rest shape: the rest of her is not near it)
+      if (Math.abs(rest[v * 3] - c0[0]) > 0.2 || Math.abs(rest[v * 3 + 1] - c0[1]) > 0.25 || Math.abs(rest[v * 3 + 2] - c0[2]) > 0.25) continue;
+      T.fill(0); let sum = 0;
+      for (let c = 0; c < 4; c++) { const w = bodyW[v * 4 + c]; if (w <= 0) continue; sum += w; const m = turnOf(bodyI[v * 4 + c]); for (let e = 0; e < 16; e++) T[e] += w * m[e]; }
+      if (sum <= 0) T.set(turnOf(pelvis)); else if (Math.abs(sum - 1) > 1e-6) for (let e = 0; e < 16; e++) T[e] /= sum;
+      const x = A[v * 3] + (U ? U[v * 3] : 0), y = A[v * 3 + 1] + (U ? U[v * 3 + 1] : 0), z = A[v * 3 + 2] + (U ? U[v * 3 + 2] : 0);
+      const X = T[0] * x + T[4] * y + T[8] * z + T[12], Y = T[1] * x + T[5] * y + T[9] * z + T[13], Z = T[2] * x + T[6] * y + T[10] * z + T[14];
+      const out = tubeOut(tube, X, Y, Z, 0);
+      if (!out) continue;
+      const far = Math.hypot(out[0], out[1], out[2]);
+      if (far >= deep) list.push([+X.toFixed(4), +Y.toFixed(4), +Z.toFixed(4), +far.toFixed(4), legKeys?.[key[v]] ? 1 : 0, piece[v], v]);
+    }
+    return list;
+  }
   /** takes what was laid beyond the area off her */
   const clearBeyond = () => { if (beyondOn) { setPushExtra(body, null, null); beyondOn = false; beyondPush?.fill(0); beyondDbg = {}; } };
   function laySeat(pos: Float32Array, nrm: Float32Array): void {
@@ -2009,18 +2093,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     if (!seatOn() || !seat || !patchI || !patchW) { clearBeyond(); return; }
     const t0 = performance.now();
     const tube = sleeveTube(seat.points, seat.columns, [1, 0, 0], seat.doors);
-    if (!tube) { clearBeyond(); return; }
-    body.skeleton.update();
-    const one = [pelvis, 0, 0, 0], all = [1, 0, 0, 0];
-    const pelInv = blendT(one, all, 0, new THREE.Matrix4()).invert(), toRest = new THREE.Matrix4().multiplyMatrices(meshToRest, pelInv);
+    if (!tube) { clearBeyond(); trimEdge(); return; }
     // each bone's turn into that frame, once; each point's own is its bones' by its weights (they add: the turns are
     // straight-line ones and its weights come to one)
-    const boneTurn = new Map<number, Float64Array>();
-    const turnOf = (b: number): Float64Array => {
-      let m = boneTurn.get(b);
-      if (!m) { m = Float64Array.from(seatU.multiplyMatrices(toRest, blendT([b, 0, 0, 0], all, 0, new THREE.Matrix4())).elements); boneTurn.set(b, m); }
-      return m;
-    };
+    const turnOf = seatTurnOf();
     if (seatTurns.length !== P * 16) seatTurns = new Float64Array(P * 16);
     const TU = seatTurns; TU.fill(0);
     for (let p = 0; p < P; p++) {
@@ -2059,7 +2135,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
         }
         setPushExtra(body, piece.verts, values); beyondOn = true;
         sampleInto(lift, beyondPush, 3, bake.src, bake.bary, P);
-        beyondDbg = { points: N, held: piece.mesh.held.reduce((a, b) => a + b, 0), moved, mostCm: +(most * 100).toFixed(2) };
+        // (a probe's: her skin beyond the area down her middle -- where each point lay and where it lies, [y, z] metres)
+        const midline: number[][] = [];
+        for (let k = 0; k < N; k++) if (Math.abs(at[k * 3] - c0[0]) < 0.006) midline.push([+at[k * 3 + 1].toFixed(4), +at[k * 3 + 2].toFixed(4), +(at[k * 3 + 1] + DB[k * 3 + 1]).toFixed(4), +(at[k * 3 + 2] + DB[k * 3 + 2]).toFixed(4), piece.mesh.held[k]]);
+        beyondDbg = { points: N, held: piece.mesh.held.reduce((a, b) => a + b, 0), moved, mostCm: +(most * 100).toFixed(2), midline };
       } else clearBeyond(); }
     const turned = (p: number, v: Float32Array, o: number, out: Float32Array | Float64Array | number[], oo: number) => {
       // (where the point stands: its own place and what her skin beyond the area lifts it by)
@@ -2133,6 +2212,14 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
         if (D[g * 3] ** 2 + D[g * 3 + 1] ** 2 + D[g * 3 + 2] ** 2 < far2) continue;
         for (let t = 0; t < 3; t++) if (bake.bary[p * 3 + t] > 0) gone[bake.src[p * 3 + t]] = 1;
       }
+      // (EVERY ONE OF HER VERTICES THERE, by the area's point nearest it: her triangles are finer than the area's outer
+      // rings in places, and a cluster of them that no point of the area lies in was never told the skin over it had gone --
+      // it stayed, her old skin across her open canal in skin-coloured scraps, 2026-11-10)
+      { const near = backNearOf(); for (let q = 0; q < near.at.length; q++) { const p = near.point[q]; if (p >= P) continue; const g = bake.ring[p] * M + bake.column[p]; if (D[g * 3] ** 2 + D[g * 3 + 1] ** 2 + D[g * 3 + 2] ** 2 >= far2) gone[near.at[q]] = 1; } }
+      // (nor where her own skin beyond the area has gone out with it: the area's edge is those vertices of hers, and a
+      // triangle of the backing from one of them in to one that stayed stood on edge under it -- so there the area's own
+      // skin is drawn to its last strip, `trimEdge` finding no backing behind it)
+      if (beyondOn && beyondPush && beyond) { const V = beyond.verts, lim = (SEAT_BACK * perMetre) ** 2; for (let q = 0; q < V.length; q++) { const i = V[q]; if (i < gone.length && beyondPush[i * 3] ** 2 + beyondPush[i * 3 + 1] ** 2 + beyondPush[i * 3 + 2] ** 2 > lim) gone[i] = 1; } }
       let n2 = 0; const n0 = backCount * 3;
       backVert.fill(0); backTri.clear();
       for (let t = 0; t + 2 < n0; t += 3) {
@@ -2159,7 +2246,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
         if (tubeOut(tube, c[0], c[1], c[2], -0.002)) across++;
         for (const [a2, b2] of [[q[0], q[1]], [q[0], q[2]]]) longest = Math.max(longest, Math.hypot(at[a2 * 3] + D[a2 * 3] - at[b2 * 3] - D[b2 * 3], at[a2 * 3 + 1] + D[a2 * 3 + 1] - at[b2 * 3 + 1] - D[b2 * 3 + 1], at[a2 * 3 + 2] + D[a2 * 3 + 2] - at[b2 * 3 + 2] - D[b2 * 3 + 2]));
       }
-      seatDbg = { across, longest: +longest.toFixed(4), backing: backCount, inside, rimOff: +rimOff.toFixed(4), skin: [f3(lo), f3(hi)], rim: [f3(r0), f3(r1)], tube: tube.centres.map(f3), foot: [f3(footAt(tube, 0)), f3(footAt(tube, Math.PI / 2)), f3(footAt(tube, Math.PI))], rings: R + 1, cols: M, share: seat.share, pelvis: body.skeleton.bones[pelvis]?.name, side: sideSign, angles: Array.from(angle).map((x) => +x.toFixed(2)), tauRing1: +tauG[M].toFixed(3), tauMid: +tauG[Math.round(R / 2) * M].toFixed(3) }; }
+      // (and the two columns of it down her middle, behind her opening and in front of it: each ring where it lay and where
+      // it lies, [y, z] metres)
+      const column = (want: number) => { let best = 0, bd = Infinity; for (let j = 0; j < M; j++) { let d = angle[j] - want; d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI; if (Math.abs(d) < bd) { bd = Math.abs(d); best = j; } } const out: number[][] = []; for (let k = 0; k <= R; k++) { const q = k * M + best; if (base[q] >= 0) out.push([+at[q * 3 + 1].toFixed(4), +at[q * 3 + 2].toFixed(4), +(at[q * 3 + 1] + D[q * 3 + 1]).toFixed(4), +(at[q * 3 + 2] + D[q * 3 + 2]).toFixed(4)]); } return out; };
+      seatDbg = { columns: { back: column(Math.PI), front: column(0) }, across, longest: +longest.toFixed(4), backing: backCount, inside, rimOff: +rimOff.toFixed(4), skin: [f3(lo), f3(hi)], rim: [f3(r0), f3(r1)], tube: tube.centres.map(f3), foot: [f3(footAt(tube, 0)), f3(footAt(tube, Math.PI / 2)), f3(footAt(tube, Math.PI))], rings: R + 1, cols: M, share: seat.share, pelvis: body.skeleton.bones[pelvis]?.name, side: sideSign, angles: Array.from(angle).map((x) => +x.toFixed(2)), tauRing1: +tauG[M].toFixed(3), tauMid: +tauG[Math.round(R / 2) * M].toFixed(3) }; }
     for (let p = 0; p < P; p++) {
       const g = bake.ring[p] * M + bake.column[p], far = Math.hypot(D[g * 3], D[g * 3 + 1], D[g * 3 + 2]);
       if (far < 1e-6) continue;
@@ -2382,14 +2472,23 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     // (her weights handed new values -- her birth poses paint her own: 2026-11-02, Joshua: on a fresh load her womb showed
     // through her belly and her shirt until a pose was pressed, carried by the weights her skin had before they were painted)
     if (sw && bodyI && sw.version !== bodySkinVersion) openApplied = -1;
-    if (bp.version !== posVersion || openApplied !== open) {
+    // HOW OFTEN IT IS LAID AGAIN AS SHE OPENS ON HER SEAT: laying her skin over the tube is the room's dearest step
+    // (a fifteenth of a second and more on a phone), and it was laid every frame her opening moved. A new shape of hers, a
+    // new pose or new weights lay it at once; her opening moving on lays it again no sooner than `SEAT_PACE` times as
+    // long as laying it last took (a quarter of a second at the most), and once more when it stops (`settle`).
+    const forced = bp.version !== posVersion || openApplied === -1, wants = openApplied !== open || seatWaiting;
+    const paced = seatOn() && seatTook > SEAT_QUICK && performance.now() - seatLaidAt < Math.min(0.25, SEAT_PACE * seatTook) * 1000;
+    if (forced || (wants && !paced)) {
+      seatWaiting = false;
       posVersion = bp.version;
       sampleInto(restPos, bp.array, 3, bake.src, bake.bary, P);
       if (bn) {
         sampleInto(restNrm, bn.array, 3, bake.src, bake.bary, P);
         for (let p = 0; p < P; p++) { const l = Math.hypot(restNrm[p * 3], restNrm[p * 3 + 1], restNrm[p * 3 + 2]) || 1; restNrm[p * 3] /= l; restNrm[p * 3 + 1] /= l; restNrm[p * 3 + 2] /= l; }
       }
+      const t0 = performance.now();
       layOpen();
+      if (seatOn()) { seatLaidAt = performance.now(); seatTook = (seatLaidAt - t0) / 1000; }
       changed = true;
     }
     if (stretchDirty) { stretchDirty = false; changed = true; }
@@ -2428,6 +2527,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     pathSoft: true,
     mesh, tube, sheet, bake, sync, solo: false, backing: true, trim: true,
     relayOut() { openApplied = -1; sync(); },
+    settle() { if (seatWaiting || openApplied !== open) { openApplied = -1; return sync(); } return false; },
     resyncWeights() {
       const a = geom.getAttribute('skinIndex') as THREE.BufferAttribute | undefined, b = geom.getAttribute('skinWeight') as THREE.BufferAttribute | undefined;
       if (!a || !b) return;
@@ -2592,9 +2692,11 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       const was = seat;
       if (!next || !(next.share > 0)) { if (was && was.share > 0) { seat = null; openApplied = -1; } else seat = null; return; }
       if (was && was.version === next.version && Math.abs(was.share - next.share) < 1e-4 && was.points === next.points) return;
-      seat = next; openApplied = -1;
+      // (new: laid at once; moved on: when its pace allows)
+      seat = next; if (was && was.share > 0) seatWaiting = true; else openApplied = -1;
     },
     get seatLaid() { return { points: seatPoints, most: seatMost, ...seatDbg }; },
+    seatStrays,
     setWomb(w: WombShape | null, bone = -1) {
       if (w === womb && bone === wombBone) return;
       if (w !== womb) wombFitSkin.clear();

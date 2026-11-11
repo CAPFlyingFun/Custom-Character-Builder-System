@@ -44,7 +44,11 @@ try {
         const g = await hook('organs');
         report[`${model}-${p}-${o}`] = { opening: g?.opening, doorSwing: g?.doorSwing, doorOpenCm: g?.doorOpenCm, doorAngles: g?.doorAngles, aim: await hook('doorsAim', DIST, 0, 0) };
         await run(0.15); await shot(`${model}-${p}-${o}-front.png`);
-        if (model === 'v2') log(model, p, o, 'her skin laid over the seat', JSON.stringify((await hook('doorsSeat'))?.skinLaid ?? null));
+        if (model.startsWith('v2')) {
+          const laid = (await hook('doorsSeat'))?.skinLaid ?? null; report[`${model}-${p}-${o}`].skinLaid = laid; log(model, p, o, 'her skin laid over the seat', JSON.stringify(laid && { ...laid, angles: undefined, columns: undefined, tube: undefined, beyond: laid.beyond && { ...laid.beyond, midline: undefined } }));
+          // (her body's own skin still standing inside the tube round her canal: how many of her vertices, the deepest, cm)
+          const strays = (await hook('seatStrays', 0.001)) ?? []; report[`${model}-${p}-${o}`].strays = { count: strays.length, legs: strays.filter((q) => q[4]).length, deepestCm: +(Math.max(0, ...strays.map((q) => q[3])) * 100).toFixed(2) }; log(model, p, o, 'her own skin inside the tube', JSON.stringify(report[`${model}-${p}-${o}`].strays));
+        }
         // (PICK=step: which mesh is drawn at each place of that picture, every `step` pixels -- for a colour nobody can name)
         if (process.env.PICK) {
           const step = Number(process.env.PICK) || 30, box = await page.evaluate(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return { x: r.left, y: r.top }; });
@@ -66,9 +70,12 @@ try {
         // (VIEWS=name:yaw:pitch:distance,...: more looks at it, each turned from straight at her opening, radians)
         for (const v of (process.env.VIEWS ?? '').split(',').filter(Boolean)) { const [name, yaw, pitch, dist] = v.split(':'); await hook('doorsAim', Number(dist ?? DIST), Number(yaw), Number(pitch)); await run(0.15); await shot(`${model}-${p}-${o}-${name}.png`); }
         // (SOLO=1: her skin's own patch round her opening alone, her body hidden -- from the quarter, the front and her side)
-        if (process.env.SOLO && model === 'v2') {
+        if (process.env.SOLO && model.startsWith('v2')) {
           await hook('vulvaSolo', true);
-          for (const [name, yaw, pitch, dist] of [['quarter', QUARTER, 0.25, DIST], ['front', 0, 0, DIST], ['side', Math.PI / 2, 0, DIST * 1.5], ['below', 0, -1.2, DIST * 1.3]]) { await hook('doorsAim', dist, yaw, pitch); await run(0.15); await shot(`${model}-${p}-${o}-solo-${name}.png`); }
+          // (SOLO=2: and her doors and organs hidden too -- her skin's patch with nothing in it)
+          if (process.env.SOLO === '2') await hook('organsHidden', true);
+          for (const [name, yaw, pitch, dist] of [['quarter', QUARTER, 0.25, DIST], ['front', 0, 0, DIST], ['side', Math.PI / 2, 0, DIST * 1.5], ['below', 0, -1.2, DIST * 1.3], ['behind', Math.PI, 0.3, DIST * 1.3]]) { await hook('doorsAim', dist, yaw, pitch); await run(0.15); await shot(`${model}-${p}-${o}-solo-${name}.png`); }
+          if (process.env.SOLO === '2') await hook('organsHidden', false);
           await hook('vulvaSolo', false);
         }
         // (and from her side, further off: her opening against her whole pelvis)

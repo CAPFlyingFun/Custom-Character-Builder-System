@@ -124,6 +124,7 @@ export class PelvicOrgansView {
   private readonly doors: { frame: DoorFrame; mesh: THREE.Mesh; skin: THREE.Mesh; material: THREE.MeshStandardMaterial; skinMaterial: THREE.MeshStandardMaterial };
   /** v2: the skin round her doors drawn as a sleeve round her canal, up into her (`skinSleeve`) */
   private sleeveOn = false;
+  private underSkin = false;
   /** the sleeve as last drawn: its points (her rest frame, metres), how many round each of its rows (SKIN_RING_ROWS), and a count that
    * goes up each time it is drawn again -- for her own skin to be stretched over (vulvaMesh.ts `setSeat`) */
   private sleeveLaid: { points: Float32Array; columns: number; version: number; doors: Float32Array } | null = null;
@@ -425,6 +426,13 @@ export class PelvicOrgansView {
    */
   set skinSleeve(on: boolean) { if (on !== this.sleeveOn) { this.sleeveOn = on; this.drawnSwing = -1; } }
   get skinSleeve(): boolean { return this.sleeveOn; }
+  /**
+   * v2, her own skin laid over the sleeve (vulvaMesh.ts `setSeat`): the sleeve is then what shows of her INSIDE where
+   * her doors' ends part -- between her canal's end and her skin's rim -- so it is drawn from its inside only, in her
+   * canal's lining's colour. (Drawn both ways in her skin's tone it stood through her own skin wherever her skin's
+   * facets cut its curve, and showed skin-coloured between her doors, 2026-11-10.)
+   */
+  set sleeveUnderSkin(on: boolean) { if (on !== this.underSkin) { this.underSkin = on; this.drawnSwing = -1; } }
   /** v2: the sleeve round her canal as it stands (null while it is not drawn as one, or her doors are not shown). */
   get sleeve(): { points: Float32Array; columns: number; version: number; doors: Float32Array } | null { return this.sleeveOn && this.doors.mesh.visible ? this.sleeveLaid : null; }
   /** Her opening's mouth and the way out of her along her canal as they stand now (world units) -- a probe's view of it,
@@ -574,6 +582,21 @@ export class PelvicOrgansView {
     if (this.sleeveOn) this.toSleeve(d.skin.points);
     this.sleeveLaid = this.sleeveOn ? { points: d.skin.points, columns: d.skin.points.length / 3 / SKIN_RING_ROWS, version: ++this.sleeveVersion, doors: d.points } : null;
     sg.setAttribute('position', new THREE.BufferAttribute(d.skin.points, 3)); sg.setIndex(new THREE.BufferAttribute(d.skin.triangles, 1)); sg.computeVertexNormals();
+    // (under her own skin: from its inside only, as her lining -- which of its faces is its inside told from its first
+    // triangle up its wall: the one that looks at her canal's line)
+    { const sm = this.doors.skinMaterial, under = this.sleeveOn && this.underSkin, T = d.skin.triangles, Q = d.skin.points;
+      let side: THREE.Side = THREE.DoubleSide;
+      if (under && T.length >= 3) {
+        const C = Q.length / 3 / SKIN_RING_ROWS, mid = [0, 0, 0];
+        // (a triangle from the sleeve's upper rows, and the middle of the row it is in)
+        let t0 = 0; for (let t = 0; t + 2 < T.length; t += 3) if (Math.min(T[t], T[t + 1], T[t + 2]) >= 4 * C) { t0 = t; break; }
+        const row = Math.floor(T[t0] / C); for (let c = 0; c < C; c++) for (let e = 0; e < 3; e++) mid[e] += Q[(row * C + c) * 3 + e] / C;
+        const a = T[t0] * 3, b = T[t0 + 1] * 3, c2 = T[t0 + 2] * 3, ux = Q[b] - Q[a], uy = Q[b + 1] - Q[a + 1], uz = Q[b + 2] - Q[a + 2], vx = Q[c2] - Q[a], vy = Q[c2 + 1] - Q[a + 1], vz = Q[c2 + 2] - Q[a + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, out = nx * (Q[a] - mid[0]) + ny * (Q[a + 1] - mid[1]) + nz * (Q[a + 2] - mid[2]);
+        side = out > 0 ? THREE.BackSide : THREE.FrontSide;
+      }
+      if (sm.side !== side) { sm.side = side; sm.needsUpdate = true; }
+      sm.color.copy(under ? this.doorLining : this.doorSkin); }
   }
 
   /** The skin round her doors (`skinRing`'s rows: its first her doors' feet, round her opening) drawn as a sleeve round her
