@@ -7854,8 +7854,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     for (let i = 1; i < t.length; i++) if (a <= t[i][0]) { const [a0, v0] = t[i - 1], [a1, v1] = t[i]; want = v0 + ((v1 - v0) * (a - a0)) / (a1 - a0); break; }
     naturalNow = Math.max(0, Math.min(1, naturalNow + Math.max(-NATURAL_OPEN.perSecond * dt, Math.min(NATURAL_OPEN.perSecond * dt, want - naturalNow))));
     // (her skeleton's opening: her doors are shut until they are pushed, so her skin round them is not held open by her pose)
+    // (and her skin-made opening held by her skeleton the same: shut a tenth of a centimetre at 0% in every pose, opened by
+    // BIRTH OPENING on Joshua's scale -- 2026-11-11: "0.1cm for 0%, 0.15cm for 1%, 0.2cm for 2%, and from there, stays in sync")
     // (but through a birth it is, as v2's own: her baby's head is at her opening before it is pushed open)
-    vulva.setNatural(vulva.skeletonOpening && birthClock === null ? 0 : naturalNow);
+    const held = vulva.skeletonOpening || (skeletonOpening && !!organs && !organsGrowWomb);
+    vulva.setNatural(held && birthClock === null ? 0 : naturalNow);
   }
   function advance(dt: number): void {
       seconds += dt;
@@ -9214,6 +9217,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         seatStrays: (deep?: number) => (vulva ? vulva.seatStrays(deep) : null),
         // the mound her skin makes round her seated doors rounded into her, or left a collar (a probe sets one against
         // the other): laid again at once
+        // (her legs holding her opening narrower: off, it opens as wide as her own area lets it -- for looking)
+        legsHold: (on?: boolean) => { if (vulva && on !== undefined) vulva.legsHold = on; return vulva?.legsHold ?? null; },
         // (her opening made from her own skin, held by her skeleton -- or her skeleton's doors: `skinMadeOpening`)
         skinOpening: (on?: boolean) => { if (on !== undefined) { skinMadeOpening = on; applyOpening(); applyLook(); refresh(); } return skinMadeOpening; },
         // (her opening as lips on her own skin, or her skin laid down a sleeve to her doors as before)
