@@ -413,10 +413,11 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
   // (how far a mesh stands out of her skin round it, along her canal, metres)
   const out = (m: { points: Float32Array }) => { let lo = Infinity; for (let i = 0; i < m.points.length; i += 3) { const d = [0, 1, 2].map((k) => m.points[i + k] - frame.mouth[k]); lo = Math.min(lo, d[0] * frame.t[0] + d[1] * frame.t[1] + d[2] * frame.t[2]); } return flat - lo; };
 
-  it('shut, a slit flush with her skin; parting, as wide as the doors open, never more than 4 cm out of her', () => {
+  it('shut, a slit 2 mm apart, bowed out 3 cm at its middle; parting, as wide as the doors open, never more than 4 cm out of her', () => {
     const shut = doorMeshes(frame, 0, 0, undefined, true);
-    expect(shut.openM).toBeLessThan(0.005);
-    expect(out(shut)).toBeLessThan(0.01);
+    // (his "0% at 0.2cm"; bowed out 3 cm at its middle, his half dome, its lip standing a little past that)
+    expect(shut.openM).toBeCloseTo(0.002, 4);
+    expect(out(shut)).toBeGreaterThan(DOORS.lipsArch); expect(out(shut)).toBeLessThan(0.04);
     // (MEASURED, the doors swung out on their hinges: 3.7 cm shut, 5.7 at 20%, 7.6 wide open)
     expect(out(doorMeshes(frame, 0, 0, undefined, false))).toBeGreaterThan(0.03);
     let last = 0;
@@ -424,14 +425,14 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
       const m = doorMeshes(frame, b, 0, undefined, true);
       expect(m.points.every(Number.isFinite)).toBe(true);
       expect(Math.max(...m.triangles)).toBeLessThan(m.points.length / 3);
-      expect(m.openM).toBeCloseTo(doorOpening(b), 3);
+      if (b >= 0.2) expect(m.openM).toBeCloseTo(doorOpening(b), 3);
       expect(m.openM).toBeGreaterThanOrEqual(last - 1e-6); last = m.openM;
       expect(out(m)).toBeLessThan(0.04);
     }
   });
 
   it('round what passes: each lip off it, never past its hinge; nothing there, shut', () => {
-    expect(sliderLips(0).every((x) => x <= DOORS.gap + 1e-9)).toBe(true);
+    expect(sliderLips(0).every((x) => x <= DOORS.lipsShut + 1e-9)).toBe(true);
     // (a 6 cm ball at her skin)
     const pts: number[] = [], r = 0.03;
     for (let i = 0; i < 2000; i++) { const u = Math.acos(1 - (2 * (i + 0.5)) / 2000), v = i * 2.39996, x = r * Math.sin(u) * Math.cos(v), t = flat + r * Math.cos(u), n = r * Math.sin(u) * Math.sin(v); pts.push(...[0, 1, 2].map((k) => frame.mouth[k] + frame.x[k] * x + frame.t[k] * t + frame.n[k] * n)); }
@@ -440,6 +441,6 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
     expect(l.left[mid]).toBeGreaterThan(r);
     expect(l.right.every((x) => x <= CANAL_OPENING.diameterM / 2 + 1e-9)).toBe(true);
     const none = passingLips(frame, Float32Array.from([0, -5, 0, 0, -5, 0.01, 0.01, -5, 0]));
-    expect(none.right.every((x) => x === DOORS.gap)).toBe(true);
+    expect(none.right.every((x) => x === DOORS.lipsShut)).toBe(true);
   });
 });
