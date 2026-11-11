@@ -10,7 +10,8 @@
  *
  *     node scripts/probe-skin-opening.mjs      (NO_BUILD=1; POSES=recline,squat,apart; OPENS=0,1,2,5,10,25,50,75,100;
  *                                               VIEWS=under:0:-1.2:60; VIEWS_<pose>=...; SHOTOPENS=0,25,50,75,100;
- *                                               STYLE=skin|doors)
+ *                                               STYLE=skin|doors; HOOKS=[[name,...]]; VARIANTS=[{name,hooks}];
+ *                                               PICK_AT=[[x,y]])
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -57,27 +58,37 @@ try {
   await run(0.6);
   const POSES = (process.env.POSES ?? 'recline,squat,apart').split(',').filter(Boolean), OPENS = (process.env.OPENS ?? '0,1,2,5,10,25,50,75,100').split(',').filter(Boolean).map(Number);
   const VIEWS = (process.env.VIEWS ?? '').split(',').filter(Boolean), SHOTOPENS = (process.env.SHOTOPENS ?? '0,25,50,75,100').split(',').map(Number);
+  // (VARIANTS='[{"name":"a1","hooks":[["vulvaArea",{"band":0,"under":false}]]},...]': the whole set again for each, its
+  // switches thrown first -- its pictures and rows named for it)
+  const VARIANTS = JSON.parse(process.env.VARIANTS ?? '[{"name":"","hooks":[]}]');
+  for (const variant of VARIANTS) {
+  for (const [name, ...given] of variant.hooks ?? []) log('hook', variant.name, name, JSON.stringify(await hook(name, ...given)));
+  const tag = variant.name ? `${variant.name}-` : '';
   for (const p of POSES) {
     await press(`sarahlab:${p}`); await run(2.5);
     for (const o of OPENS) {
       await slide('sarahlab-birth-open', o); await run(1.6);
       const body = await hook('bodyAim', 52, 0, 0), v = await hook('vulvaAim', 52), d = v?.dbg?.rimSize;
-      const row = { pose: p, open: o, drawnOpen: v?.dbg?.open, aim: body && { out: body.out, yaw: body.yaw, pitch: body.pitch } };
+      const row = { variant: variant.name || undefined, pose: p, open: o, drawnOpen: v?.dbg?.open, aim: body && { out: body.out, yaw: body.yaw, pitch: body.pitch } };
       if (d) {
-        const r = d.roundness, c = r.centre, at = body.at.map((x) => x * 100), out = body.out, off = sub(c, at), up = dot(off, out);
+        // (in HER OWN centimetres: the room draws her `worldPerLocal * perMetre / 100` times her own size -- 1.11 -- so a
+        // length in the room is divided by that; her opening is laid in her own metres)
+        const her = d.worldPerLocal && d.perMetre ? 100 / (d.worldPerLocal * d.perMetre) : 1, h = (x) => (Number.isFinite(x) ? +(x * her).toFixed(2) : x);
+        const r = d.roundness, c = r.centre, at = body.at.map((x) => x * 100), out = body.out, off = sub(c, at), up = dot(off, out) * her;
         // (and what of her legs holds it narrower, when they do: across, along, out of her skin -- cm -- and which vertex)
-        Object.assign(row, { acrossCm: d.posedAcross, alongCm: d.posedAlong, rMinCm: r.rMin, rMaxCm: r.rMax, outOfPlaneCm: r.outOfPlane, jump: r.jump, bulgeM: d.bulge, heldToM: d.heldTo, blocker: d.heldTo ? d.blocker : undefined, legNear: d.legNear, sideReachCm: d.sideReachCm,
-          outCm: +up.toFixed(2), sideCm: +len(off.map((x, i) => x - out[i] * up)).toFixed(2), tiltDeg: +(Math.acos(Math.min(1, Math.abs(dot(r.normal, out)))) * 180 / Math.PI).toFixed(1), centreCm: c });
+        Object.assign(row, { herScale: +(1 / her).toFixed(4), acrossCm: h(d.posedAcross), alongCm: h(d.posedAlong), rMinCm: h(r.rMin), rMaxCm: h(r.rMax), outOfPlaneCm: h(r.outOfPlane), jump: r.jump, bulgeM: d.bulge, heldToM: d.heldTo, blocker: d.heldTo ? d.blocker : undefined, legNear: d.legNear, sideReachCm: d.sideReachCm, roundLast: d.roundDbg?.slice(-2), uScale: d.uScale, localAcrossCm: d.localAcrossCm, worldPerLocal: d.worldPerLocal, perMetre: d.perMetre,
+          outCm: +up.toFixed(2), sideCm: +(len(off.map((x, i) => x - out[i] * dot(off, out))) * her).toFixed(2), tiltDeg: +(Math.acos(Math.min(1, Math.abs(dot(r.normal, out)))) * 180 / Math.PI).toFixed(1), centreCm: c });
       }
       report.rows.push(row);
       log(JSON.stringify(row));
       // (VIEWS_<pose>: that pose's own looks, in place of VIEWS -- a SQUAT's opening faces her floor, and a look from under
       // it is from under the floor)
       const views = process.env[`VIEWS_${p}`] ? process.env[`VIEWS_${p}`].split(',').filter(Boolean) : VIEWS;
-      if (views.length && SHOTOPENS.includes(o)) for (const vw of views) { const [name, yaw, pitch, dist] = vw.split(':'); await hook('bodyAim', Number(dist ?? 52), Number(yaw), Number(pitch)); await run(0.15); await shot(`${p}-${o}-${name}.png`); }
+      if (views.length && SHOTOPENS.includes(o)) for (const vw of views) { const [name, yaw, pitch, dist] = vw.split(':'); await hook('bodyAim', Number(dist ?? 52), Number(yaw), Number(pitch)); await run(0.15); await shot(`${tag}${p}-${o}-${name}.png`); }
     }
     await slide('sarahlab-birth-open', 0); await run(1);
     await press('sarahlab:stand'); await run(1.5);
+  }
   }
   report.errors = errors;
   writeFileSync(path.join(SHOTS, 'report.json'), JSON.stringify(report, null, 1));

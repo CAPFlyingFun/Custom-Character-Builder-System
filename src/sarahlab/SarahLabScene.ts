@@ -661,6 +661,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let babyFrame: { bone: THREE.Bone; matrix: THREE.Matrix4; meshToRest: THREE.Matrix4 } | null = null;
   /** her vulva, rebuilt finer from her own skin to be able to open (vulvaMesh.ts) */
   let vulva: VulvaPatch | null = null;
+  /** her skin her vulva's area may take (a probe's, to try another): how far in from each leg opening on her torso's side
+   * her legs' skin is kept out (metres; less than 0, that far onto her leg's side), and whether the tops of her inner
+   * thighs under her vulva are kept out too (birthGap.ts) -- and her vulva made again with it */
+  const vulvaArea = { band: VULVA_OPEN.legMask, under: true };
+  let remakeVulva: (() => void) | null = null;
   /** a probe's change to the birth position's angles (humanBirth.ts `tweak`) */
   let birthTweak: Partial<BirthSpec> | null = null;
   /** room kept between her thighs as she is posed (birthRoom.ts): the watcher, whether it is on, what it was last worked out for */
@@ -2885,7 +2890,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     });
     buttons.baby = btn('SEE BABY', SARAH_LAB_ACTION.baby, () => { showBaby(!babyShown); refresh(); });
     // OPENING: her skeleton's doors at her opening, or v2's own as it was (until Joshua approves the new one)
-    buttons.opening = btn(openingLine(skeletonOpening), SARAH_LAB_ACTION.opening, () => { skeletonOpening = !skeletonOpening; if (skeletonOpening) layOrgansV2(false); applyOpening(); applyLook(); });
+    buttons.opening = btn(openingLine(skeletonOpening), SARAH_LAB_ACTION.opening, () => { skeletonOpening = !skeletonOpening; if (doorsOpening()) layOrgansV2(false); applyOpening(); applyLook(); });
     buttons.babies = btn('BABIES · ONE', SARAH_LAB_ACTION.babies, () => { if (birthClock !== null) birthControl('reset'); babyCount = (babyCount % 3) + 1; babyDirty = true; babyFitAt = -Infinity; applyLook(); refresh(); });
     buttons.babyLie = btn('LIE · AUTO', SARAH_LAB_ACTION.babyLie, () => { babyLie = LIE_MODES[(LIE_MODES.indexOf(babyLie) + 1) % LIE_MODES.length]; if (babyLie === 'random') babyLieSeed = Math.floor(Math.random() * 1e6) + 1; babyDirty = true; babyFitAt = -Infinity; refresh(); });
     // KICK: one of them kicks now (as BABY KICKS makes them on their own)
@@ -6498,8 +6503,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function doorsSeen(): boolean { return doorsOpening() && !!vulva && !organsGrowWomb && !vulva.dressed && vulva.drawnOpen > V2_DOORS.from; }
   function applyOpening(): void {
     const mine = doorsOpening() && !!organs && !organsGrowWomb && !!vulva, look = OPENING_LOOKS[openingLook % OPENING_LOOKS.length];
-    // (held by her skeleton either way: her doors' canal, or her skin's own canal with its top where her skeleton's is)
-    const held = skeletonOpening && !!organs && !organsGrowWomb && !!vulva;
+    // (held by her skeleton either way: her doors' canal, or her skin's own canal with its top where her skeleton's is --
+    // that measured, so her organs need not be laid for it)
+    const held = skeletonOpening && !organsGrowWomb && !!vulva && (skinMadeOpening || !!organs);
     vulva?.setSkeletonOpening(mine, { lips: look.lips, tint: look.tint, reach: look.reach });
     // (and her own canal -- what her baby comes down -- held by her bone: its top at the middle of her pelvis, where the
     // skeleton's canal has it)
@@ -7367,7 +7373,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; v2OrganBones = null; v2Womb = null; organsGrowWomb = false; abdomenFailed = false; thoraxFailed = false;
     skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
-    vulva?.dispose(); vulva = null;
+    vulva?.dispose(); vulva = null; remakeVulva = null;
     dropBabyHolder();
     ownFingers?.dispose(); ownFingers = null; withFingers = null; fingerFills?.dispose(); fingerFills = null;
     rig = null; measure = null; fingers = []; skinned = []; shaped = []; garments = []; hasBelly = false; anchors = null; legAnchors = null; navel = null; sidesAt = []; babyAt = []; chestAt = []; milkAt = []; groinAt = [];
@@ -7626,8 +7632,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             } catch (error) { console.error('[sarahlab] her skeleton could not be laid inside v2', error); skeletonV2 = null; release(skel); }
           });
         };
-        if (xrayPct > 0 || !sneakersShown()) skeletonV2Lay?.();
-        if (xrayPct > 0) layOrgansV2(); else if (skeletonOpening) layOrgansV2(false);
+        // (her sneakers not made yet -- they are made once she has loaded -- is not her sneakers off: read so, her skeleton was
+        // laid on every load, and it froze the room on Joshua's phone, 2026-11-11: "everything freezes and locks up")
+        if (xrayPct > 0 || !sneakersOn) skeletonV2Lay?.();
+        // (her pelvic organs laid now only for her skeleton's doors: her skin-made opening needs only where the middle of her
+        // pelvis is, measured -- src/data/pelvis/v2.json -- not her organs; under X-RAY they are laid as ever)
+        if (xrayPct > 0) layOrgansV2(); else if (doorsOpening()) layOrgansV2(false);
         babySkinAt = null; babyDepthOf = null;
         // her birth area shaped (birthArea.ts): a field on her body's shape, the same at every size
         if (babyFrame) {
@@ -7765,12 +7775,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               for (const m of (Array.isArray(bm!.material) ? bm!.material : [bm!.material])) patchBirthShade(m, birthShadeU);
             }
             // and the area rebuilt finer, from her own skin, to be able to open (vulvaMesh.ts)
-            vulva?.dispose();
-            // (her legs' skin, and 1 cm in from it, kept out of the area: VULVA_OPEN.legMask; and the tops of her inner
-            // thighs under her vulva, though her torso carries them: birthGap.ts)
-            const bw = birthWeights as BirthWeights | null, under = birthGapUnderMask(sb.fields.basePos, sb.fields.baseNrm!, babyFrame.meshToRest), legSkin = bw ? (i: number) => under[i] === 1 || bw.legDistance(i) > -VULVA_OPEN.legMask : undefined;
-            try { vulva = createVulvaPatch(bm!, sb.fields.basePos, babyFrame.meshToRest, measure?.joints.pelvis, measure ? [measure.joints.hipL, measure.joints.hipR, measure.joints.kneeL, measure.joints.kneeR] : [], legSkin); vulva?.setOpen(birthOpenPct / 100); vulva?.setBulge(birthBulgePct / 100); balloonWombKey = ''; layBalloonWomb(); } catch (error) { console.error('[sarahlab] her vulva could not be rebuilt; her own skin is drawn', error); vulva = null; }
-            applyOpening();
+            // (her legs' skin, and `vulvaArea.band` in from it, kept out of the area; and the tops of her inner thighs under
+            // her vulva, though her torso carries them: birthGap.ts)
+            const bw = birthWeights as BirthWeights | null, under = birthGapUnderMask(sb.fields.basePos, sb.fields.baseNrm!, babyFrame.meshToRest), frame = babyFrame, bmV = bm!, fieldsV = sb.fields;
+            remakeVulva = () => {
+              vulva?.dispose();
+              const legSkin = bw ? (i: number) => (vulvaArea.under && under[i] === 1) || bw.legDistance(i) > -vulvaArea.band : undefined;
+              try { vulva = createVulvaPatch(bmV, fieldsV.basePos, frame.meshToRest, measure?.joints.pelvis, measure ? [measure.joints.hipL, measure.joints.hipR, measure.joints.kneeL, measure.joints.kneeR] : [], legSkin); vulva?.setOpen(birthOpenPct / 100); vulva?.setBulge(birthBulgePct / 100); balloonWombKey = ''; layBalloonWomb(); } catch (error) { console.error('[sarahlab] her vulva could not be rebuilt; her own skin is drawn', error); vulva = null; }
+              applyOpening();
+            };
+            remakeVulva();
             try { birthNormals = createBirthNormals(bm!, babyFrame.meshToRest, herTris, measure ? [measure.joints.hipL, measure.joints.hipR] : [], (i) => birthWeights?.maskOf(i) ?? 0, undefined /* the crease planes dented her belly: off (2026-10-31) */, measure?.joints.pelvis, undefined, measure ? [measure.joints.hipL, measure.joints.hipR] : []); } catch (error) { console.error('[sarahlab] her birth-pose normals could not be made', error); birthNormals = null; }
             // each knee: where her thigh's skin hands over to her shin's (both carry it), in her rest frame
             try {
@@ -7857,7 +7871,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (and her skin-made opening held by her skeleton the same: shut a tenth of a centimetre at 0% in every pose, opened by
     // BIRTH OPENING on Joshua's scale -- 2026-11-11: "0.1cm for 0%, 0.15cm for 1%, 0.2cm for 2%, and from there, stays in sync")
     // (but through a birth it is, as v2's own: her baby's head is at her opening before it is pushed open)
-    const held = vulva.skeletonOpening || (skeletonOpening && !!organs && !organsGrowWomb);
+    const held = vulva.skeletonOpening || (skeletonOpening && !organsGrowWomb);
     vulva.setNatural(held && birthClock === null ? 0 : naturalNow);
   }
   function advance(dt: number): void {
@@ -9217,10 +9231,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         seatStrays: (deep?: number) => (vulva ? vulva.seatStrays(deep) : null),
         // the mound her skin makes round her seated doors rounded into her, or left a collar (a probe sets one against
         // the other): laid again at once
+        // (her vulva's area made again, taking another share of her skin: `vulvaArea`)
+        vulvaArea: (next?: Partial<typeof vulvaArea>) => { if (next) { Object.assign(vulvaArea, next); remakeVulva?.(); applyLook(); refresh(); } return { ...vulvaArea, made: !!vulva }; },
         // (her legs holding her opening narrower: off, it opens as wide as her own area lets it -- for looking)
         legsHold: (on?: boolean) => { if (vulva && on !== undefined) vulva.legsHold = on; return vulva?.legsHold ?? null; },
         // (her opening made from her own skin, held by her skeleton -- or her skeleton's doors: `skinMadeOpening`)
-        skinOpening: (on?: boolean) => { if (on !== undefined) { skinMadeOpening = on; applyOpening(); applyLook(); refresh(); } return skinMadeOpening; },
+        skinOpening: (on?: boolean) => { if (on !== undefined) { skinMadeOpening = on; if (doorsOpening()) layOrgansV2(false); applyOpening(); applyLook(); refresh(); } return skinMadeOpening; },
         // (her opening as lips on her own skin, or her skin laid down a sleeve to her doors as before)
         lipsOnSkin: (on?: boolean) => { if (on !== undefined) lipsOnSkin = on; return lipsOnSkin; },
         seatRound: (on?: boolean) => { if (vulva && on !== undefined) { vulva.round = on; vulva.relayOut(); } return vulva?.round ?? null; },

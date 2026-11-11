@@ -84,7 +84,7 @@ export const VULVA_OPEN = Object.freeze({
   /** her baby passing (`setPassing`): what of it within `passSlab` of her opening's plane is its outline there; each rim
    * point takes the farthest of it within `passSpanDeg` of its own way out, `passWall` outside it, evened round
    * `passEven` times (metres; GAME TUNING) */
-  passSlab: 0.012, passSpanDeg: 14, passWall: 0.003, passEven: 3, passStray: 1.6, passMouth: 0.05, passShift: 0.035, passShiftBody: 0.03, passShiftUp: 0.43, passFitQ: 0.98, passMostAlong: 0.12, passMostAcross: 0.1, passHeadQ: 0.5, passHeadFit: false, passHeadPast: 0.6, passReach: 0.1, passOval: 0.85, passBinDeg: 5, canalMostR: 0.05, passHeadReach: 1.7, passLeast: 0.015, bulgeFootM: 0.02,
+  passSlab: 0.012, passSpanDeg: 14, passWall: 0.003, passEven: 3, passStray: 1.6, passMouth: 0.05, passShift: 0.035, passShiftBody: 0.03, passShiftUp: 0.43, passFitQ: 0.98, passMostAlong: 0.125, passMostAcross: 0.1, passHeadQ: 0.5, passHeadFit: false, passHeadPast: 0.6, passReach: 0.1, passOval: 0.85, passBinDeg: 5, canalMostR: 0.05, passHeadReach: 1.7, passLeast: 0.015, bulgeFootM: 0.02,
   /** GAME TUNING: passes evening the opening's edge round its outline */
   edgeSmooth: 6,
   /** GAME TUNING: how much the bear trap's corners at its hinges are rounded (0 a sharp lens, 1 an oval) */
@@ -99,16 +99,15 @@ export const VULVA_OPEN = Object.freeze({
   /**
    * HER SKIN-MADE OPENING OPENED AS HER LIPS WERE (Joshua, 2026-11-11, the plan he approved -- "shape it into the same ring
    * and let it open the same way"): how wide across it is just open, metres (his scale: "0.1cm for 0%, 0.15cm for 1%, 0.2cm
-   * for 2%, and from there, stays in sync" -- a tenth of a centimetre a percent; shut, her own split as it lies); how far
-   * its ends, the corners of her split, stay where they are as it opens (`endsHeld`: 1 her split's own ends until it is
-   * as wide as they are apart, then the 10 cm circle -- "as it opens up, the widest part stays is the same location";
-   * 0 walking out to 10 cm long as it opens, as before); how level its rim is drawn wide open (`rimLevel`: 1 one plane
-   * all round -- as her doors' ring was, 2026-11-08: "from the side view, it's a even line");
+   * for 2%, and from there, stays in sync" -- a tenth of a centimetre a percent; shut, her own split as it lies; its
+   * ends, the corners of her split, stay where they are as it opens -- "as it opens up, the widest part stays is the
+   * same location" -- until it is at its most: `skinOpenShape`); how level its rim is drawn wide open (`rimLevel`: 1 one
+   * plane all round -- as her doors' ring was, 2026-11-08: "from the side view, it's a even line");
    * and the dome her skin makes round it at every opening, metres out at its middle, reached by `domeIn` open ("2cm
    * tall... keep it the same height from 0-100%"; even all round -- a birth's own push still leans to the bottom).
    * GAME TUNING.
    */
-  shutAcross: 0.001, endsHeld: 1, rimLevel: 1, dome: 0.02, domeIn: 0.05,
+  shutAcross: 0.001, rimLevel: 1, dome: 0.02, domeIn: 0.05,
   /**
    * THE LIPS (Joshua, 2026-10-31: "the vagina should look like the lips... you also have the mouth animated that can open
    * and close"): as her mouth is made -- her own skin, shaped round and opened, the inside painted where it shows. Each
@@ -137,6 +136,22 @@ export function skinDome(open: number, push: number): { height: number; lean: nu
   const V = VULVA_OPEN, o = Number.isFinite(open) ? open : 0, b = Number.isFinite(push) ? push : 0;
   const hb = b > 0 ? V.bulge * Math.pow(b, V.bulgeEase) : 0, hd = o > 0 ? V.dome * Math.min(1, o / V.domeIn) ** 2 * (3 - 2 * Math.min(1, o / V.domeIn)) : 0;
   return { height: Math.max(hb, hd), lean: hb > hd && hb > 0 ? V.bulgeLean * ((hb - hd) / hb) : 0 };
+}
+/**
+ * HER SKIN-MADE OPENING'S OVAL at `open` (0..1), along her split (metres, posed; + toward her front): her split reaching
+ * `front` ahead of its middle and `back` behind it, `halfAcross` the half of its width her legs let it have. AT ITS MOST
+ * 12.5 BY 10 CM, A SLIGHT OVAL (Joshua, 2026-11-11: "the max size should be 12.5cmx10cm… not a perfect circle, but more of
+ * a slight oval shaped" -- `passMostAlong` by `passMostAcross`, as her opening round her baby). Its top stays at her
+ * split's front end until the round of its width, about her split's middle moved forward `openForward` as it opens,
+ * reaches past it -- her pubic bone does not give; its length is her split's own until the oval of its width is longer,
+ * the more of it toward her perineum (2026-11-03, the same oval round her baby: "do the bottom (fixed top)"). So her
+ * split's ends hold until about two thirds open, and at 100% it is 12.5 cm long, 10 cm wide, its top 6 cm ahead of her
+ * split's middle. Returns its middle along her split, its half length and its half width.
+ */
+export function skinOpenShape(open: number, front: number, back: number, halfAcross: number): { centre: number; half: number; across: number } {
+  const V = VULVA_OPEN, o = Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0)), a = Math.max(1e-6, halfAcross), k = V.passMostAlong / V.passMostAcross;
+  const top = Math.max(front, V.openForward * o + a), along = Math.max(front + back, 2 * k * a);
+  return { centre: top - along / 2, half: along / 2, across: a };
 }
 
 export interface VulvaPatch {
@@ -767,6 +782,8 @@ void main() {
   let colMetres: Float32Array | null = null;
   /** the opening's width held back by her legs (metres across), or null when it is not */
   let heldTo: number | null = null, blocker: number[] = [], bulgeNow = 0, lipMax = 0, lipCount = 0, legsHold = true;
+  /** her opening's oval as last laid (`skinOpenShape`), for rounding her rim to it */
+  let ovalNow: { centre: number; half: number; across: number } | null = null;
   /** each rim column's share of the bulge (more at the bottom: VULVA_OPEN.bulgeLean), 1 with none */
   const bulgeLeanW = new Float32Array(M).fill(1);
   /** her skin near the area that her thighs carry now (vertices), worked out again when her weights change */
@@ -779,10 +796,13 @@ void main() {
     if (w && ix) for (let c = 0; c < 4; c++) { const k = thighBones.indexOf(ix.getComponent(i, c)); if (k < 0) continue; if (k % 2 === 0) tl += w.getComponent(i, c); else tr += w.getComponent(i, c); }
     return [+Math.max(tl, tr).toFixed(2), legKeys?.[key[i]] ? 1 : 0];
   };
+  /** her points the area is drawn in place of, inside it (not on its outline): they open with it, so never hold it */
+  let areaInside: Uint8Array | null = null;
   const findLegNear = () => {
     const w = g.getAttribute('skinWeight') as THREE.BufferAttribute | undefined, ix = g.getAttribute('skinIndex') as THREE.BufferAttribute | undefined;
     if (!w || !ix || !thighBones.length || w.version === legNearVersion) return;
     legNearVersion = w.version; legNear = [];
+    if (!areaInside) { areaInside = new Uint8Array(rest.length / 3); for (const v of bake.area) areaInside[v] = 1; for (const v of bake.keep) areaInside[v] = 0; }
     const cy = (restPos[base[0] * 3 + 1]), mid = new THREE.Vector3();
     void cy;
     { let jm0 = 0; for (let j = 0; j < M; j++) if (Math.abs(colQ[j]) < Math.abs(colQ[jm0])) jm0 = j; mid.fromArray(rest, bake.src[base[jm0] * 3] * 3); }
@@ -793,7 +813,7 @@ void main() {
       let tl = 0, tr = 0;
       for (let c = 0; c < 4; c++) { const b = ix.getComponent(i, c), k = thighBones.indexOf(b); if (k < 0) continue; if (k % 2 === 0) tl += w.getComponent(i, c); else tr += w.getComponent(i, c); }
       // (and her skin kept out of the area as a leg's, `legSkin`: the opening keeps off all of it)
-      if (Math.max(tl, tr) >= VULVA_OPEN.legWeight || legKeys?.[key[i]]) legNear.push(i);
+      if ((Math.max(tl, tr) >= VULVA_OPEN.legWeight || legKeys?.[key[i]]) && !areaInside[i]) legNear.push(i);
     }
   };
   const measureScale = () => {
@@ -1413,6 +1433,9 @@ void main() {
     }
     heldTo = Number.isFinite(room) && room < D / 2 ? room * 2 : null;
     const halfAcross = Math.min(D / 2, room);
+    // (its oval: `skinOpenShape`)
+    const shape = skinOpenShape(open, Lf, Lb, halfAcross);
+    ovalNow = shape;
     /** where along column j (metres from the split) its lip's edge now is */
     const edgeAt = (j: number) => {
       // A BEAR TRAP (Joshua, 2026-11-01: "think of it similar to a bear trap where open is the full 10cm in diameter and
@@ -1420,17 +1443,15 @@ void main() {
       // arcs through the hinges -- a lens, sharp at the hinges, a slit shut and a circle at 100% -- the hinges moving
       // apart only as far as a 10 cm circle needs (from her split's own length, `L`, to the opening's half width). The
       // corners at the hinges are softened by `hingeRound` (a share of the way to the oval through the same points).
-      // (the circle's middle moved forward as it opens, by `openForward` at the full opening -- Joshua, 2026-11-02: "the
-      // bottom end of the vagina area shouldn't be going that far back": round her split's own middle, its back reached
-      // twice as far back as her split does)
-      const front = colQ[j] >= 0, sh = VULVA_OPEN.openForward * open, L = Math.max(0, front ? Lf - sh : Lb + sh), a = Math.max(1e-6, halfAcross), c = Math.max(L, L + (0.05 - L) * open * (1 - VULVA_OPEN.endsHeld), a) * 1.0001;
+      // (its hinges at the ends of the oval `skinOpenShape` lays: her split's own ends until it is at its most, 12.5 by 10 cm)
+      const a = shape.across, c = shape.half * 1.0001;
       const Rl = (c * c + a * a) / (2 * a), hr = VULVA_OPEN.hingeRound;
       const halfAt = (sAbs: number) => {
         if (sAbs >= c) return 0;
         const lens = Math.max(0, Math.sqrt(Math.max(0, Rl * Rl - sAbs * sAbs)) - (Rl - a)), oval = a * Math.sqrt(Math.max(0, 1 - (sAbs / c) ** 2));
         return lens + (oval - lens) * hr;
       };
-      const rho = (k: number) => { const su = Math.abs(Math.abs(nodeS[k * M + j]) + (front ? -sh : sh)); if (su >= c) return 2; const w = halfAt(su); return w > 1e-9 ? Math.abs(nodeU[k * M + j]) / w : 2; };
+      const rho = (k: number) => { const su = Math.abs(nodeS[k * M + j] - shape.centre); if (su >= c) return 2; const w = halfAt(su); return w > 1e-9 ? Math.abs(nodeU[k * M + j]) / w : 2; };
       // the outermost crossing: a column that wanders out of the oval and back in (over her lips' rounds) is opened
       // to where it leaves it for good, so the edge does not catch on a lip
       let next = rho(R);
@@ -1628,8 +1649,17 @@ void main() {
           if (nP.lengthSq() < 1e-18) nP.copy(nO); nP.normalize();
           let mean = 0; const rr = new Float32Array(M);
           for (let j2 = 0; j2 < M; j2++) { d.fromArray(Pp, j2 * 3).sub(C); d.addScaledVector(nP, -d.dot(nP)); rr[j2] = d.length(); mean += rr[j2] / M; }
-          // (the target: a circle; held by her legs, its own outline evened round -- an oval with no notches)
+          // (the target: her oval as `skinOpenShape` lays it, round the rim's own middle, its length along her split as she is
+          // posed; held by her legs, its own outline evened round -- an oval with no notches)
           const target = new Float32Array(M).fill(mean);
+          if (ovalNow) {
+            let jb2 = 0, jf2 = 0; for (let j2 = 0; j2 < M; j2++) { if (colQ[j2] < colQ[jb2]) jb2 = j2; if (colQ[j2] > colQ[jf2]) jf2 = j2; }
+            const eA = new THREE.Vector3().fromArray(Pp, jf2 * 3).sub(new THREE.Vector3().fromArray(Pp, jb2 * 3)); eA.addScaledVector(nP, -eA.dot(nP));
+            if (eA.lengthSq() > 1e-18) {
+              eA.normalize(); const eX = new THREE.Vector3().crossVectors(nP, eA), ax = ovalNow.across * perMetre, ay = ovalNow.half * perMetre, q = new THREE.Vector3();
+              for (let j2 = 0; j2 < M; j2++) { q.fromArray(Pp, j2 * 3).sub(C); q.addScaledVector(nP, -q.dot(nP)); const r = q.length(); if (r < 1e-9) continue; const cx = q.dot(eX) / r, cy = q.dot(eA) / r; target[j2] = 1 / Math.sqrt((cx / ax) ** 2 + (cy / ay) ** 2); }
+            }
+          }
           let hugAt: Float32Array | null = null;
           // HER BABY PASSING THROUGH (Joshua, 2026-11-03: "in real birth, it shapes with the baby as it comes out... to
           // deform a little from the perfect circle... and allow it to stretch"; "follow the baby's body as it passes after
@@ -1749,9 +1779,11 @@ void main() {
               for (let j2 = 0; j2 < M; j2++) { outMost = Math.max(outMost, want[j2]); e.copy(ways[j2]).multiplyScalar(want[j2]).add(Bc).addScaledVector(aN, alongs[j2]); e.toArray(hugAt, j2 * 3); }
               // HER OPENING AT MOST AN OVAL `passMostAlong` LONG DOWN HER SLIT AND `passMostAcross` WIDE (Joshua, 2026-11-03:
               // "Keep the 12cm as that's realistic... how about making the opening a 12cm by 10cm so the slit is 12cm
-              // tall?"): its shoulders pass one above the other, down her slit. Its top where a `passMostAcross` circle round
-              // her rim's middle would have it -- her pubic bone does not give -- and the extra length all toward her perineum
-              // (Joshua, 2026-11-03: "do the bottom (fixed top)")
+              // tall?"; 2026-11-11, 12.5 by 10: "the max size should be 12.5cmx10cm… not a perfect circle, but more of a
+              // slight oval shaped" -- the same most as BIRTH OPENING's 100%, `skinOpenShape`): its shoulders pass one above
+              // the other, down her slit. Its top where a `passMostAcross` circle round her rim's middle would have it -- her
+              // pubic bone does not give -- and the extra length all toward her perineum (Joshua, 2026-11-03: "do the bottom
+              // (fixed top)")
               if (slitUp.lengthSq() > 0.5) {
                 const A1 = slitUp, A2 = new THREE.Vector3().crossVectors(aN, A1), ra = (VULVA_OPEN.passMostAlong / 2) * perMetre, rb = (VULVA_OPEN.passMostAcross / 2) * perMetre;
                 const Co = C.clone().addScaledVector(A1, rb - ra);
@@ -2827,7 +2859,9 @@ void main() {
         let off = 0; for (let j = 0; j < M; j++) { const d = ps[j].clone().sub(C); off = Math.max(off, Math.abs(d.dot(n))); }
         // (and where it is and which way it faces: its middle and the square to it, world)
         return { rMin: +Math.min(...r).toFixed(2), rMax: +Math.max(...r).toFixed(2), jump: +jump.toFixed(3), outOfPlane: +off.toFixed(2), centre: C.toArray().map((x) => +x.toFixed(3)), normal: n.toArray().map((x) => +x.toFixed(3)) }; })();
-      const rimSize = { roundness, roundDbg, restAcross: dm(jl, jr), restAlong: dm(jb, jf), posedAcross: wd(jl, jr), posedAlong: wd(jb, jf), heldTo, splitFB: splitDbg, legNear: legNear.length, blocker, sideReachCm: colMetres && jl >= 0 && jr >= 0 ? [+(colMetres[R * M + jl] * 100).toFixed(2), +(colMetres[R * M + jr] * 100).toFixed(2)] : null, bulge: bulgeNow, lipMaxMm: +(lipMax * 1000).toFixed(1), lipCount, uScale, edgeDistMaxMm: +(Math.max(...Array.from(edgeDist).filter((x) => x < 1)) * 1000).toFixed(1) };
+      // (and the same across in her own rest metres, as her posed mesh has it: what the opening is laid to, against the world)
+      const lp = (j: number) => mesh.getVertexPosition(base[j], new THREE.Vector3()), localAcrossCm = +(lp(jl).distanceTo(lp(jr)) / perMetre * 100).toFixed(2), worldPerLocal = +new THREE.Vector3().setFromMatrixScale(mesh.matrixWorld).x.toFixed(4);
+      const rimSize = { roundness, roundDbg, localAcrossCm, worldPerLocal, perMetre: +perMetre.toFixed(4), restAcross: dm(jl, jr), restAlong: dm(jb, jf), posedAcross: wd(jl, jr), posedAlong: wd(jb, jf), heldTo, splitFB: splitDbg, legNear: legNear.length, blocker, sideReachCm: colMetres && jl >= 0 && jr >= 0 ? [+(colMetres[R * M + jl] * 100).toFixed(2), +(colMetres[R * M + jr] * 100).toFixed(2)] : null, bulge: bulgeNow, lipMaxMm: +(lipMax * 1000).toFixed(1), lipCount, uScale, edgeDistMaxMm: +(Math.max(...Array.from(edgeDist).filter((x) => x < 1)) * 1000).toFixed(1) };
       const rimRest = new THREE.Vector3(); for (let j = 0; j < M; j++) rimRest.x += rim[j * 3] / M, rimRest.y += rim[j * 3 + 1] / M, rimRest.z += rim[j * 3 + 2] / M;
       rimRest.applyMatrix4(meshToRest);
       const lastW = new THREE.Vector3().fromArray(tubeWant, ((K - 1) * M) * 3).applyMatrix4(meshToRest), cx0 = new THREE.Vector3().fromArray(tubeWant, ((KB + KC + KX) * M) * 3).applyMatrix4(meshToRest);
@@ -2972,7 +3006,8 @@ void main() {
       sync();
     },
     // (the backing's geometry shares her own attributes: not disposed, or her own buffers would go with it)
-    dispose() { backing.removeFromParent(); backMat.dispose(); mesh.removeFromParent(); wireMesh?.removeFromParent(); tube.removeFromParent(); sheet.removeFromParent(); outer.removeFromParent(); outerGeom.dispose(); outerMat.dispose(); geom.dispose(); tubeGeom.dispose(); tubeMat.dispose(); wombMat.dispose(); rimMat.dispose(); sheetGeom.dispose(); sheetMat.dispose(); },
+    // (and her body drawn whole again, as it was before the area was cut from it -- unless something since drew it another way)
+    dispose() { if (body.userData.allIndices === keep) { body.userData.allIndices = full; g.setIndex(new THREE.BufferAttribute(Uint32Array.from(full), 1)); body.userData.coverMask = undefined; } backing.removeFromParent(); backMat.dispose(); mesh.removeFromParent(); wireMesh?.removeFromParent(); tube.removeFromParent(); sheet.removeFromParent(); outer.removeFromParent(); outerGeom.dispose(); outerMat.dispose(); geom.dispose(); tubeGeom.dispose(); tubeMat.dispose(); wombMat.dispose(); rimMat.dispose(); sheetGeom.dispose(); sheetMat.dispose(); },
   };
   sync();
   return api;
