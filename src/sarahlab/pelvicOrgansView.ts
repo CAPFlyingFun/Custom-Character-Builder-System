@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { BLADDER, layOrgans, narrowAt, organMeshes, subNarrow, subPath, wombAxis, wombHalf, along, lengthOf, type OrganLayout, type OrganMesh, type PelvisLandmarks } from '../actor/pelvicOrgans';
 import { WOMB_SHAPE, growWomb, pregnantLayout, wombSac, type PregnantWomb, type TorsoLandmarks, type WombRoom } from '../actor/pregnantWomb';
-import { openCanal, type CanalBones } from '../actor/birthCanal';
+import { CANAL_OPENING, openCanal, type CanalBones } from '../actor/birthCanal';
 import { DOORS, ENDS_SHUT, SKIN_RING_ROWS, birthAngles, doorFrame, doorMeshes, followDoor, followEnds, followLips, outerSkin, passingLips, sliderLips, passingOutlines, pressDoorLine, rimOf, fittedDoors, sharedDoors, sliderDoors, swingDoors, type Angles, type PassingOutlines, type DoorFrame, type Ends } from '../actor/birthDoors';
 import { DoorCloth } from '../actor/doorCloth';
 import { clothCompliance, clothDamping, clothFriction, clothGravityScale, clothMaxStretch, clothRestScale, clothStandOffMm, clothSubsteps } from './sarahLabTool';
@@ -50,6 +50,9 @@ const SQUEEZE_SLAB = 0.1;
 type Lips = { right: number[]; left: number[] };
 /** GAME TUNING: how far her doors' feet are raised into her at most (metres), over how many passes round her they are
  * evened, and what share of the way to where they are going they follow each frame (`setFootRise`). */
+/** GAME TUNING: her skin stops this far in under her doors' feet (metres), and the cut reaches from this far out of her
+ * past her canal's mouth to this far up it (`ringCut`). */
+const RING_CUT = Object.freeze({ under: 0.005, from: -0.04, to: 0.03 });
 const FOOT_RISE = Object.freeze({ most: 0.05, out: 0.02, even: 3, follow: 0.25 });
 const SQUEEZE_OUT = 0.02;
 /** Her doors as cloth (`pressMode` 'cloth'): the tee's dials as Joshua set his Sarah's (2026-11-08, her saved
@@ -516,6 +519,29 @@ export class PelvicOrgansView {
   private cloth: DoorCloth | null = null;
   private clothPoints: Float32Array | null = null;
   private clothOutlines: PassingOutlines | null = null;
+
+  /**
+   * WHERE HER DOORS' FEET STAND, FROM AN EYE (vulvaMesh.ts `setRingCut`: her skin stops under her lips): `m` from the eye's
+   * own frame to her opening's (x across, t up her canal, n along it; metres); `shape` their outline -- across at its
+   * middle (her canal's mouth, as her hinges are), how far past that her feet stand less `RING_CUT.under` (her skin goes
+   * on that far under them), half its length, the least share of across at its ends -- and `t` how far down and up her
+   * canal the cut reaches. False while her doors are not shown or not drawn as lips.
+   */
+  ringCut(camera: THREE.Camera, m: THREE.Matrix4, shape: THREE.Vector4, t: THREE.Vector2): boolean {
+    if (!this.lips || !this.doors.mesh.visible) return false;
+    this.holder.updateMatrixWorld(true);
+    const f = this.doors.frame, B = new THREE.Matrix4().set(
+      f.x[0], f.x[1], f.x[2], -(f.x[0] * f.mouth[0] + f.x[1] * f.mouth[1] + f.x[2] * f.mouth[2]),
+      f.t[0], f.t[1], f.t[2], -(f.t[0] * f.mouth[0] + f.t[1] * f.mouth[1] + f.t[2] * f.mouth[2]),
+      f.n[0], f.n[1], f.n[2], -(f.n[0] * f.mouth[0] + f.n[1] * f.mouth[1] + f.n[2] * f.mouth[2]),
+      0, 0, 0, 1);
+    m.copy(B).multiply(this.ringInv.copy(this.holder.matrixWorld).invert()).multiply(camera.matrixWorld);
+    const ends = this.pressed?.now.ends ?? ENDS_SHUT;
+    shape.set(CANAL_OPENING.diameterM / 2, DOORS.hingeOut - RING_CUT.under, Math.max(ends.front, ends.back), DOORS.endWidth);
+    t.set(RING_CUT.from, RING_CUT.to);
+    return true;
+  }
+  private readonly ringInv = new THREE.Matrix4();
 
   /** Her doors' feet raised into her, each section's (metres along her canal), as they are drawn now and where they go. */
   private footNow: Float32Array | null = null;

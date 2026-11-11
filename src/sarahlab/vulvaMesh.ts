@@ -198,6 +198,11 @@ export interface VulvaPatch {
    * own; `setSkeletonOpening`'s `hole`) -- barely open, her doors stand in her skin's own opening, which opens for them;
    * wider, her skin goes down to her doors instead (`setSeat`) and its own opening is let shut (SarahLabScene). */
   setSkeletonHole(share: number): void;
+  /** HER SKIN STOPS UNDER HER LIPS: each draw, where her doors' feet stand from its eye (`m`: from the eye's own frame to
+   * her opening's -- x across, t up her canal, n along her opening, metres), their outline (`shape`: across at the middle,
+   * how far in from that the cut stops, half its length, the least share of across at its ends) and how far down and up
+   * her canal the cut reaches (`t`); false: nothing cut. Null: never. */
+  setRingCut(get: ((camera: THREE.Camera, m: THREE.Matrix4, shape: THREE.Vector4, t: THREE.Vector2) => boolean) | null): void;
   /** how many of her skin's points the seat last moved, and how far the farthest went (metres) */
   readonly seatLaid: { points: number; most: number } & Record<string, unknown>;
   /** A probe's: her body's own skin (what her body draws, not the area's) that stands inside the tube as she is posed, each
@@ -408,6 +413,31 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     };
     backMat.customProgramCacheKey = function () { return `${key ? key.call(this) : ''}|vulvaBackInset`; }; }
   backMat.polygonOffset = true; backMat.polygonOffsetFactor = 2; backMat.polygonOffsetUnits = 6;
+  // HER SKIN STOPS UNDER HER LIPS (Joshua, 2026-11-11: "What if the skin goes and stops just under the ring… Can we
+  // consolidate anything and merge?"): the area's skin and her own behind it are not drawn inside her doors' feet --
+  // `setRingCut` hands each draw where they stand from its eye, and what lies inside them, a little in from their edge,
+  // is left out. Worked out where each point is drawn, so the area keeps its shape and the cut is her lips' own outline
+  // as she moves; nothing more carried per point (her own material is at the limit of that).
+  const ringU = { uRingOn: { value: 0 }, uRingM: { value: new THREE.Matrix4() }, uRing: { value: new THREE.Vector4() }, uRingT: { value: new THREE.Vector2() } };
+  for (const mat of [patchMat, backMat]) {
+    const prev = mat.onBeforeCompile, key = mat.customProgramCacheKey;
+    mat.onBeforeCompile = function (shader, renderer) {
+      prev.call(this, shader, renderer);
+      Object.assign(shader.uniforms, ringU);
+      shader.fragmentShader = shader.fragmentShader.replace('void main() {', `uniform float uRingOn; uniform mat4 uRingM; uniform vec4 uRing; uniform vec2 uRingT;
+void main() {
+  if (uRingOn > 0.5) {
+    vec3 q = (uRingM * vec4(-vViewPosition, 1.0)).xyz;
+    if (q.y > uRingT.x && q.y < uRingT.y && abs(q.z) < uRing.z) {
+      float u = clamp(abs(q.z) / uRing.z, 0.0, 1.0), w = max(uRing.w, pow(max(0.0, 1.0 - pow(u, 2.4)), 1.0 / 2.4));
+      if (abs(q.x) < uRing.x * w + uRing.y) discard;
+    }
+  }`);
+    };
+    mat.customProgramCacheKey = function () { return `${key ? key.call(this) : ''}|ringCut`; };
+  }
+  let ringCut: ((camera: THREE.Camera, m: THREE.Matrix4, shape: THREE.Vector4, t: THREE.Vector2) => boolean) | null = null;
+  const cutNow = (_r: unknown, _s: unknown, camera: THREE.Camera) => { ringU.uRingOn.value = ringCut && ringCut(camera, ringU.uRingM.value, ringU.uRing.value, ringU.uRingT.value) ? 1 : 0; };
   const keepMat = () => {
     for (const mat of [patchMat, dressedMat, backMat]) {
       const a = mat as unknown as Record<string, unknown>, b = bodyMat as unknown as Record<string, unknown>;
@@ -424,6 +454,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(P * 3).fill(1), 3));
   const mesh = new THREE.SkinnedMesh(geom, patchMat);
   mesh.name = 'sarahVulva';
+  mesh.onBeforeRender = cutNow as unknown as THREE.Object3D['onBeforeRender'];
   mesh.frustumCulled = false;
   mesh.castShadow = body.castShadow; mesh.receiveShadow = body.receiveShadow;
   mesh.position.copy(body.position); mesh.quaternion.copy(body.quaternion); mesh.scale.copy(body.scale);
@@ -452,6 +483,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   backing.morphTargetDictionary = body.morphTargetDictionary; backing.morphTargetInfluences = body.morphTargetInfluences;
   backing.bind(body.skeleton, body.bindMatrix);
   backing.frustumCulled = false;
+  backing.onBeforeRender = cutNow as unknown as THREE.Object3D['onBeforeRender'];
   body.parent?.add(backing);
 
   // ---- THE OPENING (Joshua's hoop, 2026-10-30): the split is the flattened end of a tube; opening it goes slit, oval,
@@ -2835,6 +2867,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       wombMat.visible = wombSeen || !skelOpening;
       painted = false; openApplied = -1; sync();
     },
+    setRingCut(get) { ringCut = get; },
     setSkeletonHole(share: number) {
       const h = Math.min(1, Math.max(0, Number.isFinite(share) ? share : 0));
       if (Math.abs(h - skelHole) < 1e-3) return;

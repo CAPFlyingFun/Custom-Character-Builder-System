@@ -284,6 +284,11 @@ const BIRTH_DOORS_FROM = 0.4;
  * about round it and tore, 15% and 30%, 2026-11-10). From there her skin goes down to her doors, and its own opening is
  * let shut again by `holeShut`.
  */
+/** HER OPENING AS LIPS ON HER OWN SKIN (Joshua, 2026-11-11: "What if the skin goes and stops just under the ring… Can we
+ * consolidate anything and merge?"): her skin's own opening open as she is and her lips (the doors) standing in it -- no
+ * sleeve round her canal, her skin not laid down to her doors' feet. GAME TUNING; a probe may turn it off to compare. */
+let lipsOnSkin = true;
+let ringCutSet = false;
 const SEAT_SKIN_OPENS = Object.freeze({ from: 0.3, to: 0.55, holeShut: 0.5 });
 /** GAME TUNING (v2 with her skeleton's opening): from how far down her baby's head is (the birth's `down`: 1 its head at
  * her opening, 2 all of it out) her canal and doors are held as open as they have been, and how fast they are let go
@@ -7887,17 +7892,23 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (v2: her doors open as her own skin's opening does -- BIRTH OPENING, her pose's, a birth's)
         if (!organsGrowWomb && vulva && skeletonOpening) {
           organs.setOpening(Math.max(vulva.drawnOpen, seatHeld)); const show = doorsSeen(); if (organs.doorsShown !== show) organs.doorsShown = show;
-          // (her own skin carried down to her doors: the skin round them a sleeve round her canal, up into her)
-          organs.skinSleeve = v2Seat.ring;
+          // (her own skin carried down to her doors: the skin round them a sleeve round her canal, up into her -- or, her
+          // opening as lips on her skin (`lipsOnSkin`), none: her skin stops under her lips)
+          organs.skinSleeve = v2Seat.ring && !lipsOnSkin;
+          if (lipsOnSkin && organs.outerSkinShown !== false) organs.outerSkinShown = false;
         }
         // (her doors' feet raised to where her own skin leaves the sleeve round them, as last laid, as far as her skin is
         // laid down to them: no wall of her own skin round her lips -- pelvicOrgansView.ts `setFootRise`)
-        if (vulva) { const t = Math.min(1, Math.max(0, (organs.opening - SEAT_SKIN_OPENS.from) / (SEAT_SKIN_OPENS.to - SEAT_SKIN_OPENS.from))); organs.setFootRise(vulva.seatRise, t * t * (3 - 2 * t)); }
+        if (vulva) { const t = Math.min(1, Math.max(0, (organs.opening - SEAT_SKIN_OPENS.from) / (SEAT_SKIN_OPENS.to - SEAT_SKIN_OPENS.from))); organs.setFootRise(lipsOnSkin ? null : vulva.seatRise, t * t * (3 - 2 * t)); }
         organs.update(dt);
         // (v2, her skeleton's opening: her own skin stretched down to her doors, over the sleeve round her canal as it now
         // stands -- none of it up to SEAT_SKIN_OPENS.from open, all of it by SEAT_SKIN_OPENS.to)
         if (vulva) {
-          const seated = !organsGrowWomb && skeletonOpening && vulva.skeletonOpening && v2Seat.ring && v2Seat.skin, sl = seated ? organs.sleeve : null;
+          const seated = !organsGrowWomb && skeletonOpening && vulva.skeletonOpening && v2Seat.ring && v2Seat.skin && !lipsOnSkin, sl = seated ? organs.sleeve : null;
+          // (her opening as lips on her skin: her skin's own opening left shut, as it lies, and cut where her lips stand --
+          // a little in under their feet: vulvaMesh.ts `setRingCut`)
+          if (lipsOnSkin && skeletonOpening && vulva.skeletonOpening) { vulva.setSkeletonHole(0); if (!ringCutSet) { const o = organs; vulva.setRingCut((cam, m, shape, t) => o.ringCut(cam, m, shape, t)); ringCutSet = true; } }
+          else if (ringCutSet) { vulva.setRingCut(null); ringCutSet = false; }
           const step = (a: number, b: number) => { const t = Math.min(1, Math.max(0, (organs!.opening - a) / (b - a))); return t * t * (3 - 2 * t); };
           vulva.setSeat(sl ? { points: sl.points, columns: sl.columns, version: sl.version, doors: sl.doors, share: step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.to), tail: v2Torso.landmarks.coccyx } : null);
           // (and her skin's own opening, which her doors stand in while she is barely open: let shut as her skin goes down)
@@ -9182,6 +9193,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         seatStrays: (deep?: number) => (vulva ? vulva.seatStrays(deep) : null),
         // the mound her skin makes round her seated doors rounded into her, or left a collar (a probe sets one against
         // the other): laid again at once
+        // (her opening as lips on her own skin, or her skin laid down a sleeve to her doors as before)
+        lipsOnSkin: (on?: boolean) => { if (on !== undefined) lipsOnSkin = on; return lipsOnSkin; },
         seatRound: (on?: boolean) => { if (vulva && on !== undefined) { vulva.round = on; vulva.relayOut(); } return vulva?.round ?? null; },
         // (a probe's look with the sleeve round her canal hidden: what of her opening's ring is her own skin, what the sleeve)
         sleeveShown: (on?: boolean) => { if (organs && on !== undefined) organs.outerSkinShown = on; return on ?? null; },
