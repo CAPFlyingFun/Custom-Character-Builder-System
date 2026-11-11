@@ -6,6 +6,7 @@
  *
  *     node scripts/probe-opening-compare.mjs      (NO_BUILD=1; POSES=recline,apart; OPENS=30,60,100; MODELS=v2,skeleton;
  *                                                  SEATS='[{"out":0.02,"restScale":1}]'; VIEWS=name:yaw:pitch:dist,...;
+ *                                                  FIXED=1: VIEWS aimed at a place fixed on her body (hook `bodyAim`);
  *                                                  TEXES=plain,checker)
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -74,7 +75,8 @@ try {
         // (TEXES=plain,checker: each of those looks again with her skin's texture swapped -- the room's `skinTexture`: one
         // plain colour, a board of squares -- to tell her texture from her shape)
         for (const v of (process.env.VIEWS ?? '').split(',').filter(Boolean)) {
-          const [name, yaw, pitch, dist] = v.split(':'); await hook('doorsAim', Number(dist ?? DIST), Number(yaw), Number(pitch)); await run(0.15); await shot(`${model}-${p}-${o}-${name}.png`);
+          // (FIXED=1: aimed at a place fixed on her body -- the hook `bodyAim` -- not at her opening as it moves)
+          const [name, yaw, pitch, dist] = v.split(':'); await hook(process.env.FIXED ? 'bodyAim' : 'doorsAim', Number(dist ?? DIST), Number(yaw), Number(pitch)); await run(0.15); await shot(`${model}-${p}-${o}-${name}.png`);
           if (model.startsWith('v2')) { for (const tex of (process.env.TEXES ?? '').split(',').filter(Boolean)) { await hook('skinTexture', tex); await run(0.15); await shot(`${model}-${p}-${o}-${name}-${tex}.png`); } if (process.env.TEXES) { await hook('skinTexture', 'own'); await run(0.15); } }
         }
         // (SOLO=1: her skin's own patch round her opening alone, her body hidden -- from the quarter, the front and her side)

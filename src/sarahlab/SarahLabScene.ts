@@ -9178,6 +9178,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           orbit.yaw = Math.atan2(m.out.x, m.out.z) + yawOff; orbit.pitch = Math.asin(Math.max(-1, Math.min(1, m.out.y))) + pitchOff; orbit.distance = distance; orbit.target.copy(m.at); turning = false; aimHeld = true;
           return { at: m.at.toArray().map((x) => +(x / M).toFixed(4)), out: m.out.toArray().map((x) => +x.toFixed(3)), yaw: +orbit.yaw.toFixed(3), pitch: +orbit.pitch.toFixed(3) };
         },
+        // AT A PLACE FIXED ON HER BODY, not her opening as it moves (a probe's: Joshua, 2026-11-11, "Something is not fixed at
+        // the same location"): her skin's opening as measured at rest, carried by her pelvis bone, looked at along the line
+        // from the middle of her pelvis out through it -- the same place and way however open she is
+        bodyAim: (distance: number, yawOff = 0, pitchOff = 0) => {
+          if (!v2OrganBones) return null;
+          const b = v2OrganBones.pelvis; b.bone.updateMatrixWorld(true);
+          const W = new THREE.Matrix4().multiplyMatrices(b.bone.matrixWorld, b.matrix), o = v2Pelvis.landmarks.opening, c = v2Pelvis.midpelvis.centre;
+          const at = new THREE.Vector3(o[0], o[1], o[2]).applyMatrix4(W), out = new THREE.Vector3(o[0] - c[0], o[1] - c[1], o[2] - c[2]).transformDirection(W);
+          orbit.yaw = Math.atan2(out.x, out.z) + yawOff; orbit.pitch = Math.asin(Math.max(-1, Math.min(1, out.y))) + pitchOff; orbit.distance = distance; orbit.target.copy(at); turning = false; aimHeld = true;
+          return { at: at.toArray().map((x) => +(x / M).toFixed(4)), out: out.toArray().map((x) => +x.toFixed(3)), yaw: +orbit.yaw.toFixed(3), pitch: +orbit.pitch.toFixed(3) };
+        },
         // her doors and the skin round them as drawn now (her pelvis's rest frame, metres), with her canal's line
         doorsDrawn: () => (organs ? { ...organs.doorsSeen(), path: organs.laid?.vagina.path ?? null, mouth: organs.mouthNow().at.toArray().map((x) => x / M) } : null),
         // her doors' seat in v2 tried another way (`v2Seat`): her pelvic organs laid again with it
