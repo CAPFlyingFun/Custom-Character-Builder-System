@@ -54,10 +54,13 @@ try {
     for (const p of POSES) {
       await press(`sarahlab:${p}`); await run(2.5);
       // (DEPTH=name: how far that worn mesh stands off her skin -- the hook `garmentDepth`)
-      if (process.env.DEPTH) { const dd = await hook('garmentDepth', process.env.DEPTH); log('depth', want, st.name ?? '', p, JSON.stringify(dd)); report[`${want}|${st.name ?? ''}|${p}`] = dd; }
+      // (DEPTH_MATERIAL=bikini, DEPTH_EXCLUDE=SarahV2Recovered: every drawn mesh of that material but those)
+      if (process.env.DEPTH) { const dd = await hook('garmentDepth', process.env.DEPTH, 2, process.env.DEPTH_MATERIAL ? { material: process.env.DEPTH_MATERIAL, exclude: process.env.DEPTH_EXCLUDE } : {}); log('depth', want, st.name ?? '', p, JSON.stringify(dd)); report[`${want}|${st.name ?? ''}|${p}`] = dd; }
       for (const v of VIEWS) {
-        const [name, yaw, pitch, dist, height] = v.split(':').map((x, i) => (i ? Number(x) : x));
-        await hook('look', yaw, pitch, dist, height, 0); await run(0.3);
+        // (height 'chest' or 'hips': held on her chest bone or between her hip joints, whatever her pose -- else a height)
+        const [name, yaw, pitch, dist, height] = v.split(':').map((x, i) => (i && i < 4 ? Number(x) : x));
+        if (height === 'chest') await hook('chestAim', yaw, pitch, dist); else if (height === 'hips') await hook('aim', yaw, pitch, dist); else await hook('look', yaw, pitch, dist, Number(height), 0);
+        await run(0.3);
         await shot(`o${k}${tag}-${p}-${name}.png`);
       }
     }

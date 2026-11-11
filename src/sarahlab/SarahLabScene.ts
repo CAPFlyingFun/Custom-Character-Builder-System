@@ -8787,6 +8787,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (aimPt) { orbit.yaw = yaw; orbit.pitch = pitch; orbit.distance = distance; orbit.target.copy(aimPt); turning = false; }
           return { lengthCm: +(len / M * 100).toFixed(1), vertices: N, straight: !!(babyRoot && babyStraight.get(babyRoot)), straightShown: !!(babyRoot && babyStraight.get(babyRoot)?.visible), rows };
         },
+        // (the view held on her chest -- the bone her chest's organs hang from -- turned `yaw` and `pitch` (world radians))
+        chestAim: (yaw: number, pitch: number, distance: number) => {
+          const c = v2OrganBones?.chest.bone; if (!c) return null; c.updateMatrixWorld(true);
+          orbit.yaw = yaw; orbit.pitch = pitch; orbit.distance = distance; c.getWorldPosition(orbit.target); turning = false; aimHeld = true;
+          return orbit.target.toArray().map((x) => +(x / M).toFixed(3));
+        },
         aim: (yaw: number, pitch: number, distance: number, dx = 0, dy = 0, dz = 0) => {
           const sk = model && findSkinnedMesh(model);
           if (!sk || !measure) return null;
@@ -9239,9 +9245,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         vulvaArea: (next?: Partial<typeof vulvaArea>) => { if (next) { Object.assign(vulvaArea, next); remakeVulva?.(); applyLook(); refresh(); } return { ...vulvaArea, made: !!vulva }; },
         // (how far a worn mesh -- by name, or its name's start -- stands off her skin, as she is posed: each of its points
         // against her nearest, along her skin's normal there (room units; less than 0 inside her), and the share inside)
-        garmentDepth: (name: string, cell = 2) => {
+        // (`opts.material`: every drawn mesh of that material instead, but those whose names start with `opts.exclude`)
+        garmentDepth: (name: string, cell = 2, opts: { material?: string; exclude?: string } = {}) => {
           const b = bodyOf()?.mesh; if (!b || !model) return null;
-          const ms: THREE.SkinnedMesh[] = []; model.traverse((n) => { const m = n as THREE.SkinnedMesh; if (m.isSkinnedMesh && m !== b && m.name.startsWith(name)) ms.push(m); });
+          const shown = (o: THREE.Object3D) => { for (let q: THREE.Object3D | null = o; q; q = q.parent) if (!q.visible) return false; return true; };
+          const matOf = (m: THREE.Mesh) => (Array.isArray(m.material) ? m.material[0] : m.material).name;
+          const ms: THREE.SkinnedMesh[] = []; model.traverse((n) => { const m = n as THREE.SkinnedMesh; if (!m.isSkinnedMesh || m === b) return; if (opts.material ? matOf(m) === opts.material && shown(m) && !(opts.exclude && m.name.startsWith(opts.exclude)) : m.name.startsWith(name)) ms.push(m); });
           if (!ms.length) return null;
           model.updateMatrixWorld(true);
           const pts: THREE.Vector3[] = [], v = new THREE.Vector3(), box = new THREE.Box3();
