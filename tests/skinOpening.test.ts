@@ -67,4 +67,10 @@ describe('her skin-made opening, opened on Joshua\'s scale', () => {
     expect(small.height).toBeCloseTo(0.02, 6);
     expect(small.lean).toBe(0);
   });
+  it('its skin reaches her groin creases (Joshua\'s #2): her legs kept out only from each leg opening itself, her inner thighs\' tops the opening\'s', () => {
+    expect(VULVA_OPEN.legMask).toBe(0);
+    expect(VULVA_OPEN.legUnder).toBe(false);
+    // (her legs\' rule still holds it off her legs beyond them)
+    expect(VULVA_OPEN.legClear).toBeGreaterThan(0);
+  });
 });

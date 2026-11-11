@@ -121,7 +121,7 @@ import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } fro
 import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PUBIC_PRESS, pubicPressWant, setPush, jiggleOf as jiggleOfMesh, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type SoftBellyWant } from './softBody';
-import { createVulvaPatch, VULVA_OPEN, type VulvaPatch } from './vulvaMesh';
+import { createVulvaPatch, VULVA_OPEN, VULVA_TRY, type VulvaPatch } from './vulvaMesh';
 import { BIRTH_THIGHS_FIELD, birthThighsField } from './birthThighs';
 import { BIRTH_SEAT_FIELD, birthSeatField } from './birthSeat';
 import { BIRTH_GAP_FIELD, birthGapField, birthGapInfo, birthGapUnderMask } from './birthGap';
@@ -664,7 +664,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** her skin her vulva's area may take (a probe's, to try another): how far in from each leg opening on her torso's side
    * her legs' skin is kept out (metres; less than 0, that far onto her leg's side), and whether the tops of her inner
    * thighs under her vulva are kept out too (birthGap.ts) -- and her vulva made again with it */
-  const vulvaArea = { band: VULVA_OPEN.legMask, under: true };
+  const vulvaArea: { band: number; under: boolean } = { band: VULVA_OPEN.legMask, under: VULVA_OPEN.legUnder };
   let remakeVulva: (() => void) | null = null;
   /** a probe's change to the birth position's angles (humanBirth.ts `tweak`) */
   let birthTweak: Partial<BirthSpec> | null = null;
@@ -7775,12 +7775,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               for (const m of (Array.isArray(bm!.material) ? bm!.material : [bm!.material])) patchBirthShade(m, birthShadeU);
             }
             // and the area rebuilt finer, from her own skin, to be able to open (vulvaMesh.ts)
-            // (her legs' skin, and `vulvaArea.band` in from it, kept out of the area; and the tops of her inner thighs under
-            // her vulva, though her torso carries them: birthGap.ts)
-            const bw = birthWeights as BirthWeights | null, under = birthGapUnderMask(sb.fields.basePos, sb.fields.baseNrm!, babyFrame.meshToRest), frame = babyFrame, bmV = bm!, fieldsV = sb.fields;
+            // (her legs' skin, and `vulvaArea.band` in from it, kept out of the area; and, while `vulvaArea.under`, the tops of
+            // her inner thighs under her vulva, though her torso carries them: birthGap.ts -- VULVA_OPEN.legMask, legUnder)
+            const bw = birthWeights as BirthWeights | null, frame = babyFrame, bmV = bm!, fieldsV = sb.fields;
+            let under: Uint8Array | null = null;
             remakeVulva = () => {
               vulva?.dispose();
-              const legSkin = bw ? (i: number) => (vulvaArea.under && under[i] === 1) || bw.legDistance(i) > -vulvaArea.band : undefined;
+              if (vulvaArea.under && !under) under = birthGapUnderMask(fieldsV.basePos, fieldsV.baseNrm!, frame.meshToRest);
+              const u = vulvaArea.under ? under : null, legSkin = bw ? (i: number) => (!!u && u[i] === 1) || bw.legDistance(i) > -vulvaArea.band : undefined;
               try { vulva = createVulvaPatch(bmV, fieldsV.basePos, frame.meshToRest, measure?.joints.pelvis, measure ? [measure.joints.hipL, measure.joints.hipR, measure.joints.kneeL, measure.joints.kneeR] : [], legSkin); vulva?.setOpen(birthOpenPct / 100); vulva?.setBulge(birthBulgePct / 100); balloonWombKey = ''; layBalloonWomb(); } catch (error) { console.error('[sarahlab] her vulva could not be rebuilt; her own skin is drawn', error); vulva = null; }
               applyOpening();
             };
@@ -9231,6 +9233,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         seatStrays: (deep?: number) => (vulva ? vulva.seatStrays(deep) : null),
         // the mound her skin makes round her seated doors rounded into her, or left a collar (a probe sets one against
         // the other): laid again at once
+        // (a probe's tries at a few of her opening's numbers, VULVA_TRY: laid again at once)
+        vulvaTry: (next?: Partial<typeof VULVA_TRY>) => { if (next) { Object.assign(VULVA_TRY, next); if (vulva) { vulva.relayOut(); vulva.sync(); } } return { ...VULVA_TRY }; },
         // (her vulva's area made again, taking another share of her skin: `vulvaArea`)
         vulvaArea: (next?: Partial<typeof vulvaArea>) => { if (next) { Object.assign(vulvaArea, next); remakeVulva?.(); applyLook(); refresh(); } return { ...vulvaArea, made: !!vulva }; },
         // (her legs holding her opening narrower: off, it opens as wide as her own area lets it -- for looking)
