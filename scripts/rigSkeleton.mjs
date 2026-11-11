@@ -320,6 +320,52 @@ for (let v = 0; v < n2; v++) {
   if (v < n) { outJ.set(JOINTS.subarray(v * 4, v * 4 + 4), v * 4); outW.set(WEIGHTS.subarray(v * 4, v * 4 + 4), v * 4); }
   else { outJ[v * 4] = dups[v - n][1]; outW[v * 4] = 1; }
 }
+// ---- HER PUBIC ARCH, A WOMAN'S (Joshua, 2026-11-10, of a birth drawn from the side -- the head passing right behind
+// the pubic bone and out under it -- and asked whether to give her skeleton a woman's arch so hers could: "Yeah! Go
+// ahead"). Meshy's skeleton has a man's: under her symphysis her two pubic rami run straight down and back to her sit
+// bones, 69 degrees apart (a narrow V; a woman's is a rounded arch of 90 and over). A term head cannot pass close under
+// an arch like that -- it would stand 3.4 cm below the bone before it had room -- so her canal had to be taken 8 cm back
+// behind it, and her opening hung under her instead of standing at her own skin.
+//
+// So the rami are swung apart, sideways only, to a woman's arch (BIOLOGICAL SHAPE: `fullDeg` between its two sides -- a
+// woman's is 90 and over, about what a thumb and forefinger make stretched apart -- and never narrower than a term
+// head's own width once it is that wide, `head`: 9.4 cm, the disc obstetrics tries an arch with). Along the arch's
+// plane from its point, each side's inner edge is carried out to that line where it stood inside it -- 1.7 cm at the
+// most, half way down -- with nothing at her symphysis itself (eased in over `ease`, so the joint is not split), and
+// from where it is a head wide evenly on to her sit bones, which go `sit` further out each (10.2 cm apart to 11.8: a
+// woman's are 10 to 12, and left where they were the swung rami met them at a kink). Tried first as the rounded outline of that disc a centimetre under her symphysis (the "waste
+// space of Morris"): it made the top of her arch flat, 120 degrees and more, her rami horns. What lies beside that
+// edge goes with it, less and less across her obturator openings to nothing at her hip
+// sockets (`beside`), and less and less above the arch's plane (`above`): her pelvis's inlet and midpelvis, which
+// measure a woman's (13.9 by 12.3 cm; 10.2 between her spines), are not touched.
+//
+// `apex`, `end` and `perD` are MEASURED on the build before this step (scripts/measurePelvis.ts, 2026-11-10: the point
+// of her arch's inner edge; its end at her sit bones, [y, z]; how far out the edge stood for each metre down the plane).
+// Sarah's space, metres.
+const ARCH = { apex: [0.0033, 0.8140, -0.0230], end: [0.7770, -0.0920], perD: 0.69, fullDeg: 94, head: 0.094, sit: 0.008, past: 0.03, ease: [0.005, 0.02], beside: [0.015, 0.045], above: [0.015, 0.04] };
+if (!process.env.NO_ARCH) {
+  const sm = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const uy0 = ARCH.end[0] - ARCH.apex[1], uz0 = ARCH.end[1] - ARCH.apex[2], ul = Math.hypot(uy0, uz0), uy = uy0 / ul, uz = uz0 / ul;
+  // (square to the arch's plane, up into her pelvis)
+  const ny = -uz >= 0 ? -uz : uz, nz = -uz >= 0 ? uy : -uy, slope = Math.tan((ARCH.fullDeg / 2) * Math.PI / 180);
+  // (from where it is a head wide, on out evenly to her sit bones, each `sit` further out than it was; and behind them
+  // back to nothing over `past`)
+  const dHead = ARCH.head / 2 / slope, wide = (d) => (d <= dHead ? slope * d : ARCH.head / 2 + ((ARCH.perD * ul + ARCH.sit - ARCH.head / 2) * (d - dHead)) / (ul - dHead));
+  const bow = (d) => (d <= 0 ? 0 : d <= ul ? Math.max(0, wide(d) - ARCH.perD * d) * sm(ARCH.ease[0], ARCH.ease[1], d) : ARCH.sit * (1 - sm(0, ARCH.past, d - ul)));
+  let moved = 0, most = 0;
+  for (let v = 0; v < n2; v++) {
+    // (her pelvis's own pieces: the bone that carries most of each point)
+    let best = 0; for (let k = 1; k < 4; k++) if (outW[v * 4 + k] > outW[v * 4 + best]) best = k;
+    if (outJ[v * 4 + best] !== B.pelvis) continue;
+    const x = outP[v * 3] - ARCH.apex[0], ry = outP[v * 3 + 1] - ARCH.apex[1], rz = outP[v * 3 + 2] - ARCH.apex[2];
+    const d = ry * uy + rz * uz, h = ry * ny + rz * nz, by = bow(d);
+    if (!(by > 0)) continue;
+    const go = by * (1 - sm(ARCH.beside[0], ARCH.beside[1], Math.abs(x) - ARCH.perD * d)) * (1 - sm(ARCH.above[0], ARCH.above[1], h));
+    if (go < 1e-6) continue;
+    outP[v * 3] += (x >= 0 ? 1 : -1) * go; moved++; most = Math.max(most, go);
+  }
+  log("her pubic arch, a woman's:", moved, 'points swung apart, the farthest', (most * 1000).toFixed(1), 'mm');
+}
 const world = place.map(toSarah);
 
 // ---- the file ----

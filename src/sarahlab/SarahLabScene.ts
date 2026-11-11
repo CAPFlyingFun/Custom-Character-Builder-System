@@ -699,6 +699,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** each baby's soft body (softBaby.ts); on (a probe can hold it off) */
   const softBabies = new WeakMap<THREE.Object3D, SoftBaby>();
   let babySoftOn = true;
+  // (a probe's: her organs not drawn, to look at her bare bones)
+  let organsOff = false;
   // (a probe's: her baby as one stiff length down her canal, as it was before 2026-11-10, to compare)
   let babyAlongOn = true;
   /** how far its body has been moved across to pass through the middle of her opening (birthPlace), eased */
@@ -6483,7 +6485,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (organs && !organsGrowWomb) {
       // (her skin's colour as it is seen, a screen's: so read)
       organs.setDoorSkin(new THREE.Color().setRGB(look.skin[0] * look.tint[0], look.skin[1] * look.tint[1], look.skin[2] * look.tint[2], THREE.SRGBColorSpace), v2Seat.lining);
-      organs.visible = mine || xrayPct > 0;
+      organs.visible = (mine || xrayPct > 0) && !organsOff;
       // (behind her doors only her canal: her womb and bladder only while she is seen through)
       organs.innerShown = xrayPct > 0;
       organs.doorsShown = mine && doorsSeen();
@@ -8608,6 +8610,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return m ? { stage: m.stage, placentaFor: +m.placentaFor.toFixed(2), separate: +m.separate.toFixed(3), down: +m.placentaDown.toFixed(3), bowl: +m.bowl.toFixed(3), afterbirth: +m.afterbirth.toFixed(3), contraction: +m.contraction.toFixed(2), placentaShown: !!pm?.visible, placentaMoved: pm ? !pm.matrixAutoUpdate : null, holderShown: !!babyHolder?.visible, seeBaby: babyShown, placentaAt: pm ? w.toArray().map((x) => +(x / M).toFixed(3)) : null, bowlShown: !!afterBowl?.visible, bowlAt: afterBowl ? bowlWorld.toArray().map((x) => +(x / M).toFixed(3)) : null, belly: +birthBellyShare.toFixed(3) } : null; },
         // (a probe's: its skin's share shown, 0 plain .. 1 its own)
         babySkin: () => +babySkin.skinShow.value.toFixed(3),
+        organsHidden: (on: boolean) => { organsOff = on; if (organs) organs.visible = !on && organs.visible; applyXray(); return organsOff; },
         babyAlong: (on?: boolean) => { if (on !== undefined) babyAlongOn = on; return babyAlongOn; },
         babySoft: (on?: boolean) => { if (on !== undefined) { babySoftOn = on; if (!on) setSqueeze(babySqueeze, null, M); } const r = babyRoots()[0], sb = r && softBabies.get(r); if (!sb) return { on: babySoftOn };
           return { on: babySoftOn, drive: +sb.drive.toFixed(3), ready: sb.ready, swing: +Math.max(...sb.vel.map((v) => v.length())).toFixed(3) }; },
