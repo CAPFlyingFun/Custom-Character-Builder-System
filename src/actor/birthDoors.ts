@@ -535,7 +535,7 @@ function lipMeshes(f: DoorFrame, birth: number, fold: number, pressed?: PressedD
   loop.forEach((sec, c) => { feet[c * 3] = sec.root[0]; feet[c * 3 + 1] = sec.root[1]; feet[c * 3 + 2] = sec.root[2]; });
   if (raised && raised.length === loop.length) loop.forEach((sec, c) => {
     const r = raised[c];
-    if (!(r > 0)) return;
+    if (!r) return;
     sec.points = sec.points.map(([x, t, a]): [number, number, number] => [x, t + r, a]);
     sec.root = sec.points[sec.points.length - 1];
   });

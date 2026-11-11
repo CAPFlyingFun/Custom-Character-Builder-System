@@ -9183,6 +9183,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // the mound her skin makes round her seated doors rounded into her, or left a collar (a probe sets one against
         // the other): laid again at once
         seatRound: (on?: boolean) => { if (vulva && on !== undefined) { vulva.round = on; vulva.relayOut(); } return vulva?.round ?? null; },
+        // (a probe's look with the sleeve round her canal hidden: what of her opening's ring is her own skin, what the sleeve)
+        sleeveShown: (on?: boolean) => { if (organs && on !== undefined) organs.outerSkinShown = on; return on ?? null; },
         // her opening: the skeleton's doors (true) or v2's own (false), and which of OPENING_LOOKS her skin round it has
         opening: (on?: boolean, look?: number) => { if (on !== undefined) { skeletonOpening = on; if (on) layOrgansV2(false); } if (look !== undefined) openingLook = look; applyOpening(); applyLook(); refresh(); return { skeleton: skeletonOpening, look: openingLook, looks: OPENING_LOOKS.length, drawn: vulva?.skeletonOpening ?? false, doors: organs?.doorsShown ?? false, openM: organs?.doorOpenM ?? null, dressed: vulva?.dressed ?? null, skinOpen: vulva?.drawnOpen ?? null, bottomsOff: bottomsOff(), canalM: vulva?.canalPath()?.length ?? null }; },
         // where her opening is in her own skin at rest (her rest frame, metres): the middle of v2's opening's line

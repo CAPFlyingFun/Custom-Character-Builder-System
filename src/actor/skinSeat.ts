@@ -572,7 +572,12 @@ export function layBeyond(mesh: SkinBeyond, at: ArrayLike<number>, side: ArrayLi
  * which way her skin runs from it in the plane through the tube's line (`out` from the wall, `up` the tube: a unit
  * way), how far along it the curve comes down (`reach`, metres) and how much of the rounding the place takes (`share`).
  */
-export interface SeatRound { readonly rise: Float32Array; readonly out: Float32Array; readonly up: Float32Array; readonly reach: Float32Array; readonly share: Float32Array }
+export interface SeatRound {
+  readonly rise: Float32Array; readonly out: Float32Array; readonly up: Float32Array; readonly reach: Float32Array; readonly share: Float32Array;
+  /** where her skin's own line meets the wall at each place, as it is -- under 0 below the tube's first row (her skin
+   * further out than her doors' feet there) -- evened round her; NaN where none was read */
+  readonly at: Float32Array;
+}
 
 /**
  * GAME TUNING: how far past the corner the curve comes down, of the corner's height (`reach`), at most (`most`, metres)
@@ -609,7 +614,7 @@ export function roundOf(t: SleeveTube, laid: ArrayLike<number>, held?: ArrayLike
   // where that line meets the wall. (The lowest of her skin just off the wall is not it: where her skin runs on up
   // steeply, that is already well up it.) Her skin's points are few where it is stretched: each place reads its own
   // and its two neighbours', 15 degrees of her.
-  const rise = new Float32Array(N), out = new Float32Array(N).fill(1), upW = new Float32Array(N), reach = new Float32Array(N), share = new Float32Array(N), room = new Float32Array(N).fill(Infinity);
+  const raw = new Float32Array(N).fill(NaN), rise = new Float32Array(N), out = new Float32Array(N).fill(1), upW = new Float32Array(N), reach = new Float32Array(N), share = new Float32Array(N), room = new Float32Array(N).fill(Infinity);
   for (let b = 0; b < N; b++) {
     let sn = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
     for (let q = 0; q < BANDS; q++) {
@@ -624,7 +629,7 @@ export function roundOf(t: SleeveTube, laid: ArrayLike<number>, held?: ArrayLike
     const slope = (sn * sxy - sx * sy) / den, at0 = (sy - slope * sx) / sn;
     // (never steeper up the tube than 80 degrees, nor down it than 30)
     const a = Math.min(1.4, Math.max(-0.52, Math.atan(slope)));
-    rise[b] = Math.max(0, at0); out[b] = Math.cos(a); upW[b] = Math.sin(a);
+    rise[b] = Math.max(0, at0); out[b] = Math.cos(a); upW[b] = Math.sin(a); raw[b] = at0;
   }
   if (held) for (let i = 0; i < n; i++) { const b = bin[i]; if (b < 0 || !held[i] || !(rise[b] > 0)) continue; const s = rho[i] * out[b] + (up[i] - rise[b]) * upW[b]; if (s > 0 && s < room[b]) room[b] = s; }
   for (let b = 0; b < N; b++) {
@@ -641,7 +646,9 @@ export function roundOf(t: SleeveTube, laid: ArrayLike<number>, held?: ArrayLike
     for (let b = 0; b < N; b++) for (let d = -E; d <= E; d++) { const q = (b + d + N) % N; ax[b] += out[q] * w[q]; ay[b] += upW[q] * w[q]; ar[b] += rise[q] * w[q]; al[b] += reach[q] * w[q]; aw[b] += w[q]; }
     for (let b = 0; b < N; b++) { if (!(aw[b] > 1e-6)) { rise[b] = 0; reach[b] = 0; out[b] = 1; upW[b] = 0; continue; } const l = Math.hypot(ax[b], ay[b]) || 1; out[b] = ax[b] / l; upW[b] = ay[b] / l; rise[b] = ar[b] / aw[b]; reach[b] = al[b] / aw[b]; } }
   ev(share);
-  return { rise, out, up: upW, reach, share };
+  const at = new Float32Array(N).fill(NaN);
+  for (let b = 0; b < N; b++) { let m = 0, c = 0; for (let d = -E; d <= E; d++) { const v = raw[(b + d + N) % N]; if (Number.isFinite(v)) { m += v; c++; } } if (c) at[b] = m / c; }
+  return { rise, out, up: upW, reach, share, at };
 }
 
 const rm = new Float64Array(4), rw0 = new Float64Array(3), rw1 = new Float64Array(3);
@@ -654,7 +661,8 @@ const rm = new Float64Array(4), rw0 = new Float64Array(3), rw1 = new Float64Arra
  */
 export function riseRing(t: SleeveTube, r: SeatRound): Float32Array {
   const N = SEAT_SKIN.round, out = new Float32Array(N * 3), p = new Float64Array(3);
-  for (let b = 0; b < N; b++) { wallPoint(t, r.rise[b] * Math.min(1, r.share[b]), (b / N) * TAU, 0, p); out[b * 3] = p[0]; out[b * 3 + 1] = p[1]; out[b * 3 + 2] = p[2]; }
+  // (as her skin's line meets the wall, under her doors' feet too -- not only where a corner was sure enough to round)
+  for (let b = 0; b < N; b++) { const a = r.at[b]; wallPoint(t, Number.isFinite(a) ? a : 0, (b / N) * TAU, 0, p); out[b * 3] = p[0]; out[b * 3 + 1] = p[1]; out[b * 3 + 2] = p[2]; }
   return out;
 }
 

@@ -50,7 +50,7 @@ const SQUEEZE_SLAB = 0.1;
 type Lips = { right: number[]; left: number[] };
 /** GAME TUNING: how far her doors' feet are raised into her at most (metres), over how many passes round her they are
  * evened, and what share of the way to where they are going they follow each frame (`setFootRise`). */
-const FOOT_RISE = Object.freeze({ most: 0.05, even: 3, follow: 0.25 });
+const FOOT_RISE = Object.freeze({ most: 0.05, out: 0.02, even: 3, follow: 0.25 });
 const SQUEEZE_OUT = 0.02;
 /** Her doors as cloth (`pressMode` 'cloth'): the tee's dials as Joshua set his Sarah's (2026-11-08, her saved
  * character: WEIGHT 25, CALM 100, FIT 100, CLOSE 100, STRETCH 50, GRIP 100, STEPS 43). GAME TUNING. */
@@ -552,7 +552,7 @@ export class PelvicOrgansView {
         let best = -1, bd = Infinity, sec = -1, sd = Infinity;
         for (let b = 0; b < N; b++) { let d = Math.abs(place[b * 2] - g); if (d > Math.PI) d = 2 * Math.PI - d; if (d < bd) { sec = best; sd = bd; best = b; bd = d; } else if (d < sd) { sec = b; sd = d; } }
         const w = sd + bd > 1e-9 ? sd / (sd + bd) : 1, t = sec >= 0 ? place[best * 2 + 1] * w + place[sec * 2 + 1] * (1 - w) : place[best * 2 + 1];
-        want[c] = Math.min(FOOT_RISE.most, Math.max(0, t - feet[c * 3 + 1])) * share;
+        want[c] = Math.min(FOOT_RISE.most, Math.max(-FOOT_RISE.out, t - feet[c * 3 + 1])) * share;
       }
       // (evened round her: her feet one smooth line)
       for (let pass = 0; pass < FOOT_RISE.even; pass++) { const w = want.slice(); for (let c = 0; c < C; c++) want[c] = (w[(c + C - 1) % C] + 2 * w[c] + w[(c + 1) % C]) / 4; }
@@ -696,7 +696,7 @@ export class PelvicOrgansView {
       const p = along(path, l), q = along(path, Math.min(long, l + 0.004)), b = along(path, Math.max(0, l - 0.004)), ty = q[1] - b[1], tz = q[2] - b[2], tl = Math.hypot(ty, tz) || 1, ny = tz / tl, nz = -ty / tl;
       for (let c = 0; c < C; c++) {
         const g = foot(c), i = (k * C + c) * 3, a = ia + (g[1] - ia) * wide;
-        if (raised && raised[c] > 0) {
+        if (raised && raised[c] !== 0) {
           const from = DOORS.hingeUp + raised[c], lc = from + (end - from) * sK, pc = along(path, Math.min(long, lc)), qc = along(path, Math.min(long, lc + 0.004)), bc = along(path, Math.max(0, lc - 0.004));
           const ty2 = qc[1] - bc[1], tz2 = qc[2] - bc[2], tl2 = Math.hypot(ty2, tz2) || 1;
           ring[i] = pc[0] + ix + (g[0] - ix) * wide; ring[i + 1] = pc[1] + (tz2 / tl2) * a; ring[i + 2] = pc[2] + (-ty2 / tl2) * a;
