@@ -1992,7 +1992,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // `above` over her tailbone's tip and `skin` behind it -- up the cleft over her sacrum -- and her skin there goes out
   // a little with the rest, less and less up to where it is held.
   const BEYOND = Object.freeze({ across: 0.13, front: 0.06, below: 0.12, above: 0.055, skin: 0.035 });
-  let beyond: { mesh: SkinBeyond; rep: Uint32Array; vertFrom: Uint32Array; verts: Uint32Array } | null | undefined;
+  let beyond: { mesh: SkinBeyond; rep: Uint32Array; vertFrom: Uint32Array; verts: Uint32Array; tris: Uint32Array; pointOf: Int32Array } | null | undefined;
   /** her body's vertices' seat push (her geometry's units, three a vertex): what `laySeat` last laid beyond the area */
   let beyondPush: Float32Array | null = null, beyondOn = false, beyondDbg: Record<string, unknown> = {};
   const beyondOf = (tail: readonly number[]) => {
@@ -2026,7 +2026,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     const vertFrom = new Uint32Array(N + 1), rep = new Uint32Array(N), verts: number[] = [];
     for (let k = 0; k < N; k++) { vertFrom[k] = verts.length; rep[k] = lists[k][0]; for (const i of lists[k]) verts.push(i); }
     vertFrom[N] = verts.length;
-    beyond = { mesh: { count: N, from, to, held }, rep, vertFrom, verts: Uint32Array.from(verts) };
+    // (and her triangles that touch the piece, for its light: `lightBeyond`)
+    const tris: number[] = [];
+    for (let t = 0; t + 2 < K.length; t += 3) if (id[key[K[t]]] >= 0 || id[key[K[t + 1]]] >= 0 || id[key[K[t + 2]]] >= 0) tris.push(K[t], K[t + 1], K[t + 2]);
+    beyond = { mesh: { count: N, from, to, held }, rep, vertFrom, verts: Uint32Array.from(verts), tris: Uint32Array.from(tris), pointOf: id };
     return beyond;
   };
   /** each of her vertices the area's own triangles have (`at`), and the area's point nearest it on her rest shape (`point`) */
@@ -2093,8 +2096,54 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
     }
     return list;
   }
+  // HER OWN SKIN'S LIGHT WHERE IT HAS GONE OUT (Joshua, 2026-11-10: "stretch and blend the skin so it doesn't look so weird
+  // with a stick out so it blends and not noticeable"). The push moves her vertices in her shader; her normals stayed her
+  // rest shape's, so the mound her skin makes round her opening was lit as the flat skin it had been, and showed an edge
+  // where it met the area's own skin, which is lit as it lies. So the piece's normals are worked out again from her
+  // triangles as pushed (each point's the sum of its triangles', which weighs them by their size; a seam's vertices one
+  // normal), `lit` of the way by how far the point went (GAME TUNING: none under 1 mm, all of it from 1 cm), and her own
+  // are put back when the piece is let go.
+  const BEYOND_LIT = Object.freeze([0.001, 0.01] as const);
+  let beyondRestNormals: Float32Array | null = null, beyondLitOn = false, beyondLitVersion = -1;
+  const lightBeyond = (piece: NonNullable<typeof beyond>) => {
+    const na = g.getAttribute('normal') as THREE.BufferAttribute | undefined;
+    if (!na || !beyondPush) return;
+    const Nn = na.array as Float32Array, A = (g.getAttribute('position') as THREE.BufferAttribute).array as ArrayLike<number>, V = piece.verts, T = piece.tris, U = beyondPush, N = piece.mesh.count;
+    // (her own normals there, kept to put back: read when first lit, and again if another hand has written her normals
+    // since -- her build's sliders do)
+    if (!beyondRestNormals || beyondRestNormals.length !== V.length * 3 || !beyondLitOn || na.version !== beyondLitVersion) { beyondRestNormals = new Float32Array(V.length * 3); for (let q = 0; q < V.length; q++) for (let c = 0; c < 3; c++) beyondRestNormals[q * 3 + c] = Nn[V[q] * 3 + c]; }
+    const acc = new Float64Array(N * 3);
+    for (let t = 0; t + 2 < T.length; t += 3) {
+      const a = T[t] * 3, b = T[t + 1] * 3, c = T[t + 2] * 3;
+      const ax = A[a] + U[a], ay = A[a + 1] + U[a + 1], az = A[a + 2] + U[a + 2];
+      const ux = A[b] + U[b] - ax, uy = A[b + 1] + U[b + 1] - ay, uz = A[b + 2] + U[b + 2] - az, vx = A[c] + U[c] - ax, vy = A[c + 1] + U[c + 1] - ay, vz = A[c + 2] + U[c + 2] - az;
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      for (let e = 0; e < 3; e++) { const k = piece.pointOf[key[T[t + e]]]; if (k >= 0) { acc[k * 3] += nx; acc[k * 3 + 1] += ny; acc[k * 3 + 2] += nz; } }
+    }
+    for (let k = 0; k < N; k++) {
+      const v0 = piece.verts[piece.vertFrom[k]] * 3, far = Math.hypot(U[v0], U[v0 + 1], U[v0 + 2]) / perMetre, w = smooth(BEYOND_LIT[0], BEYOND_LIT[1], far);
+      const l = Math.hypot(acc[k * 3], acc[k * 3 + 1], acc[k * 3 + 2]);
+      for (let q = piece.vertFrom[k]; q < piece.vertFrom[k + 1]; q++) {
+        const i = V[q] * 3, rx = beyondRestNormals[q * 3], ry = beyondRestNormals[q * 3 + 1], rz = beyondRestNormals[q * 3 + 2];
+        if (!(w > 0) || !(l > 1e-20)) { Nn[i] = rx; Nn[i + 1] = ry; Nn[i + 2] = rz; continue; }
+        // (the way her own normal faces decides which way the triangles' sum is out)
+        const sgn = acc[k * 3] * rx + acc[k * 3 + 1] * ry + acc[k * 3 + 2] * rz < 0 ? -1 : 1;
+        const mx = rx * (1 - w) + (sgn * acc[k * 3] / l) * w, my = ry * (1 - w) + (sgn * acc[k * 3 + 1] / l) * w, mz = rz * (1 - w) + (sgn * acc[k * 3 + 2] / l) * w, ml = Math.hypot(mx, my, mz) || 1;
+        Nn[i] = mx / ml; Nn[i + 1] = my / ml; Nn[i + 2] = mz / ml;
+      }
+    }
+    na.needsUpdate = true; beyondLitOn = true; beyondLitVersion = na.version;
+  };
+  /** her own normals back on the piece */
+  const unlightBeyond = () => {
+    if (!beyondLitOn || !beyond || !beyondRestNormals) return;
+    const na = g.getAttribute('normal') as THREE.BufferAttribute | undefined;
+    // (unless another hand has written them since: then they are already her own)
+    if (na && na.version === beyondLitVersion) { const Nn = na.array as Float32Array, V = beyond.verts; for (let q = 0; q < V.length; q++) for (let c = 0; c < 3; c++) Nn[V[q] * 3 + c] = beyondRestNormals[q * 3 + c]; na.needsUpdate = true; }
+    beyondLitOn = false;
+  };
   /** takes what was laid beyond the area off her */
-  const clearBeyond = () => { if (beyondOn) { setPushExtra(body, null, null); beyondOn = false; beyondPush?.fill(0); beyondDbg = {}; } };
+  const clearBeyond = () => { if (beyondOn) { setPushExtra(body, null, null); beyondOn = false; beyondPush?.fill(0); beyondDbg = {}; } unlightBeyond(); };
   function laySeat(pos: Float32Array, nrm: Float32Array): void {
     seatPoints = 0; seatMost = 0;
     if (!seatOn() || !seat || !patchI || !patchW) { clearBeyond(); return; }
@@ -2141,6 +2190,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
           for (let q = piece.vertFrom[k]; q < piece.vertFrom[k + 1]; q++) { const i = piece.verts[q]; values[q * 3] = ux; values[q * 3 + 1] = uy; values[q * 3 + 2] = uz; beyondPush[i * 3] = ux; beyondPush[i * 3 + 1] = uy; beyondPush[i * 3 + 2] = uz; }
         }
         setPushExtra(body, piece.verts, values); beyondOn = true;
+        lightBeyond(piece);
         sampleInto(lift, beyondPush, 3, bake.src, bake.bary, P);
         // (a probe's: her skin beyond the area down her middle -- where each point lay and where it lies, [y, z] metres)
         const midline: number[][] = [];
@@ -2259,13 +2309,19 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       seatDbg = { columns: { back: column(Math.PI), front: column(0) }, across, longest: +longest.toFixed(4), backing: backCount, inside, rimOff: +rimOff.toFixed(4), skin: [f3(lo), f3(hi)], rim: [f3(r0), f3(r1)], tube: tube.centres.map(f3), foot: [f3(footAt(tube, 0)), f3(footAt(tube, Math.PI / 2)), f3(footAt(tube, Math.PI))], rings: R + 1, cols: M, share: seat.share, pelvis: body.skeleton.bones[pelvis]?.name, side: sideSign, angles: Array.from(angle).map((x) => +x.toFixed(2)), tauRing1: +tauG[M].toFixed(3), tauMid: +tauG[Math.round(R / 2) * M].toFixed(3) }; }
     for (let p = 0; p < P; p++) {
       const g = bake.ring[p] * M + bake.column[p], far = Math.hypot(D[g * 3], D[g * 3 + 1], D[g * 3 + 2]);
-      if (far < 1e-6) continue;
+      // (what her skin beyond the area lifts the point by, metres: its edge goes with her own vertices, all of the way)
+      const up = Math.hypot(lift[p * 3], lift[p * 3 + 1], lift[p * 3 + 2]) / perMetre;
+      if (far < 1e-6 && up < 1e-6) continue;
       seatPoints++; seatMost = Math.max(seatMost, far);
       turned(p, pos, p * 3, here, 0); seatV.set(here[0] + D[g * 3], here[1] + D[g * 3 + 1], here[2] + D[g * 3 + 2]);
       faced(p, nrm, p * 3, seatN);
       seatU.fromArray(TU, p * 16);
-      // (its light: her skin's own where it has hardly moved, the grid's where it has gone a centimetre and more)
-      const w = smooth(0.001, 0.01, far);
+      // (its light: her skin's own where it has hardly moved, the grid's where it has gone a centimetre and more -- by
+      // its own move or by her skin beyond the area's, so the two are lit alike where they meet)
+      // (Where her skin lies FOLDED -- a pleat in front of her opening in SQUAT, a dark slit -- the grid's normal is still
+      // the one to keep: her skin is drawn from both sides, and given her own normal there the fold's far side was lit
+      // black over twice the room, 2026-11-11. The pleat itself is what has to go.)
+      const w = smooth(BEYOND_LIT[0], BEYOND_LIT[1], Math.max(far, up));
       seatN.multiplyScalar(1 - w).addScaledVector(a3.fromArray(nG, g * 3), w * facing).normalize();
       seatU.invert();
       seatV.applyMatrix4(seatU).toArray(pos, p * 3);
