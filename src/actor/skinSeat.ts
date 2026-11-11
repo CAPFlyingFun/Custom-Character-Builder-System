@@ -30,7 +30,12 @@ import type { P3 } from './pelvisMeasure';
  * two of the sleeve's rows is cut (see `sleeveTube`); `sockEven`: how many times her skin's places on the tube's wall are
  * evened with their neighbours' (see `laySeatSkin`).
  */
-export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10, doorOff: 0.004, fine: 3, sockEven: 30 });
+export const SEAT_SKIN = Object.freeze({ standOff: 0.0015, before: 0.05, passes: 10, even: 0.5, round: 72, ownSide: [0.35, 0.85] as readonly [number, number], tuck: 0.05, tuckDeep: 0.01, tuckFrom: 0.45, doorSlabs: 10, doorOff: 0.004, fine: 3, sockEven: 30,
+  /** GAME TUNING: her skin's sock laid where it reaches below the tube's first row -- in her doors' room, her lips -- is
+   * laid this far behind her doors' skin (metres), not in front of it: there it is all of the area's skin round her
+   * opening, pressed into the few millimetres between her doors' feet and her own skin, and it lay in folds in front of
+   * her lips -- a striped band round them (2026-11-11). Her lips are that skin now. */
+  tuckIn: 0.004 });
 
 /** The tube her skin lies over: its rows' middles, the way it runs at each (toward her womb), each row's own "front"
  * (square to that and to `across`), and how far out its wall is at each of `SEAT_SKIN.round` places round it. */
@@ -376,10 +381,12 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
   // (how far out each column is worked at all: to its last ring inside the tube and as many rings on as it is evened
   // times -- beyond that her skin lies as it did and nothing reaches it)
   const reach = new Int32Array(M);
+  let tucked: Uint8Array | null = null;
   { const tc = new Float64Array(4), w = new Float64Array(3), along = new Float64Array(K);
     // each of its points' own place in the tube's terms (how far up it, where round it), and the sock's: the points laid
     // on its wall, each one's place there
     const upO = new Float32Array(K * M), anO = new Float32Array(K * M), UP = new Float32Array(K * M), AN = new Float32Array(K * M), sock = new Uint8Array(K * M), lastOf = new Int32Array(M);
+    tucked = new Uint8Array(K * M);
     for (let j = 0; j < M; j++) {
       const to = footAt(tube, grid.angle[j]);
       for (let c = 0; c < 3; c++) D[j * 3 + c] = to[c] - grid.at[j * 3 + c];
@@ -424,7 +431,9 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
     }
     for (let q = M; q < K * M; q++) {
       if (!sock[q]) continue;
-      wallPoint(tube, UP[q], AN[q], SEAT_SKIN.standOff, w);
+      // (in her doors' room: behind her lips' skin, and left there -- `tuckIn`)
+      if (UP[q] < 0) tucked![q] = 1;
+      wallPoint(tube, UP[q], AN[q], UP[q] < 0 ? -SEAT_SKIN.tuckIn : SEAT_SKIN.standOff, w);
       for (let c = 0; c < 3; c++) D[q * 3 + c] = w[c] - grid.at[q * 3 + c];
     }
     // (a column is evened with its neighbours either side as well: it is worked as far out as the furthest of them)
@@ -436,6 +445,7 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
     // side of the tube's wall as the rest does, which is where her skin beyond it meets the tube)
     for (let j = 0; j < M; j++) for (let k = 1; k <= reach[j]; k++) {
       const i = (k * M + j) * 3;
+      if (tucked![k * M + j]) continue;
       if (pushOut(tube, grid.at[i] + D[i], grid.at[i + 1] + D[i + 1], grid.at[i + 2] + D[i + 2], SEAT_SKIN.standOff, grid.angle[j], pushed)) { D[i] += pushed[0]; D[i + 1] += pushed[1]; D[i + 2] += pushed[2]; }
     }
   };
@@ -444,6 +454,7 @@ export function laySeatSkin(grid: SkinGrid, tube: SleeveTube, share: number): Fl
     out();
     next.set(D);
     for (let j = 0; j < M; j++) for (let k = 1; k <= Math.min(reach[j], K - 2); k++) {
+      if (tucked![k * M + j]) continue;
       const i = (k * M + j) * 3, l = (k * M + ((j + M - 1) % M)) * 3, r = (k * M + ((j + 1) % M)) * 3, u = ((k - 1) * M + j) * 3, d = ((k + 1) * M + j) * 3;
       for (let c = 0; c < 3; c++) next[i + c] = D[i + c] * (1 - w) + ((D[l + c] + D[r + c] + D[u + c] + D[d + c]) / 4) * w;
     }
