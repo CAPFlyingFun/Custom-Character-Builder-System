@@ -107,6 +107,9 @@ export interface CanalBones {
   readonly outlet?: { readonly ring: readonly (readonly number[])[] };
   /** her tailbone's tip (src/data/torso/ `landmarks.coccyx`): her canal's wall keeps off it too */
   readonly tail?: readonly number[];
+  /** the hollow of her sacrum: the front of her sacrum and tailbone on her midline, her tailbone's tip first (the pelvis
+   * file's `sacrum.front`): open, her canal's back wall goes back to it (`backOf`) */
+  readonly sacrum?: { readonly front: readonly (readonly number[])[] };
 }
 
 /** How the canal opens. */
@@ -174,6 +177,15 @@ export const OPEN_SEAT = Object.freeze({
   pinchArch: 0.006,
   pinchTail: 0.008,
   mould: 0.78,
+  /** MORE ROOM BEHIND, TO HER SPINE (Joshua, 2026-11-10, drawing her canal's back wall on a cut through her middle --
+   * down the hollow of her sacrum, straight down past her tailbone, then forward to the back edge of her opening: "keep
+   * the front and middle alone, it's just there is a little bit more room to go back to the spine to give more space like
+   * the diagram I shared"). Open, her canal's back wall stands this far off the front of her sacrum and her tailbone,
+   * metres -- what is left of her rectum, pressed flat between them (GAME TUNING; her tailbone's `tailClear`) -- and
+   * below her tailbone goes on from the foremost of its lowest `spineKnob` metres (its tip is a knob that curves back
+   * under itself). */
+  spineClear: 0.008,
+  spineKnob: 0.02,
 });
 
 /** The way a head comes where her canal is not seated under her arch (laid from her own skin: v2 for now): from her
@@ -218,6 +230,75 @@ function pinchOf(way: readonly P3[], bones: CanalBones): { deep: number[]; wide:
     return k;
   };
   return { deep: ease(deep), wide: ease(wide) };
+}
+
+/**
+ * HER CANAL'S BACK WALL, TO HER SPINE (OPEN_SEAT.spineClear): how much deeper than its front half her open canal's back
+ * half is at each point of `way` -- 1 no deeper -- where its front half keeps `deep` of a head's half width there
+ * (`pinchOf`). Its back wall, in her midline: `spineClear` off the hollow of her sacrum and her tailbone's front, all the
+ * way down them; from her tailbone STRAIGHT DOWN as she stands; then forward on one curve that comes in to her canal's own
+ * wall where her doors hang (`straight` metres from her opening), running the way her canal runs there -- her pelvic
+ * floor, stretched from her tailbone to her opening round what passes. Each point's back half reaches to that wall,
+ * square to her canal's line there; never less deep than its front. All ones without her sacrum's hollow.
+ */
+export function backOf(way: readonly P3[], bones: CanalBones, deep: readonly number[], straight: number): number[] {
+  const front = bones.sacrum?.front, n = way.length, r = CANAL_OPENING.diameterM / 2, O = OPEN_SEAT, ones = way.map(() => 1);
+  if (!front || front.length < 4 || n < 3) return ones;
+  // where her doors hang: her canal's own back wall there, and the way out of her
+  const at = (s: number): { p: [number, number]; t: [number, number] } => {
+    let left = s;
+    for (let i = 0; i + 1 < n; i++) {
+      const l = Math.hypot(way[i + 1][1] - way[i][1], way[i + 1][2] - way[i][2]);
+      if (left <= l || i === n - 2) { const f = l > 0 ? left / l : 0; return { p: [way[i][1] + (way[i + 1][1] - way[i][1]) * f, way[i][2] + (way[i + 1][2] - way[i][2]) * f], t: [(way[i + 1][1] - way[i][1]) / (l || 1), (way[i + 1][2] - way[i][2]) / (l || 1)] }; }
+      left -= l;
+    }
+    return { p: [way[0][1], way[0][2]], t: [0, 1] };
+  };
+  // (square to a way up her canal `t`, toward her back)
+  const backward = (t: readonly [number, number]): [number, number] => (t[0] >= 0 ? [t[1], -t[0]] : [-t[1], t[0]]);
+  const foot = at(straight), fb = backward(foot.t), E: [number, number] = [foot.p[0] + fb[0] * r, foot.p[1] + fb[1] * r];
+  // the hollow, `spineClear` in front of the bone (square to it), from her promontory down to the foremost of her
+  // tailbone's lowest `spineKnob`
+  const H = front.map((q): [number, number] => [q[1], q[2]]);
+  let knob = 0;
+  for (let i = 1; i < H.length && H[i][0] <= H[0][0] + O.spineKnob; i++) if (H[i][1] > H[knob][1]) knob = i;
+  const wall: [number, number][] = [];
+  for (let i = H.length - 1; i >= knob; i--) {
+    const a = H[Math.min(H.length - 1, i + 1)], b = H[Math.max(knob, i - 1)], ty = b[0] - a[0], tz = b[1] - a[1], tl = Math.hypot(ty, tz) || 1;
+    // (down the bone is -y: its front, into her canal, is square to that toward her front)
+    const ny = tz / tl, nz = -ty / tl, sgn = nz >= 0 ? 1 : -1;
+    wall.push([H[i][0] + ny * sgn * O.spineClear, H[i][1] + nz * sgn * O.spineClear]);
+  }
+  const K = wall[wall.length - 1], g: [number, number] = [-foot.t[0], -foot.t[1]];
+  // straight down from there, then the curve in to `E` running the way out of her `g`: a circle that leaves the plumb
+  // line turning forward and comes in to E along g (its radius what E's distance in front of that line gives)
+  const lean = Math.atan2(g[1], -g[0]), ahead = E[1] - K[1];
+  if (lean > 0.02 && ahead > 1e-4) {
+    const R = ahead / (1 - Math.cos(lean)), ya = E[0] + R * Math.sin(lean);
+    if (ya < K[0]) { wall.push([ya, K[1]]); for (let k = 1; k <= 16; k++) { const f = (lean * k) / 16; wall.push([ya - R * Math.sin(f), K[1] + R * (1 - Math.cos(f))]); } }
+    else for (let k = 1; k <= 16; k++) { const f = k / 16; wall.push([K[0] + (E[0] - K[0]) * f, K[1] + (E[1] - K[1]) * f]); }
+  } else wall.push(E);
+  // each point of her canal's line: square to it toward her back, as far as that wall
+  const out: number[] = [];
+  let s = 0;
+  for (let i = 0; i < n; i++) {
+    if (i) s += Math.hypot(way[i][1] - way[i - 1][1], way[i][2] - way[i - 1][2]);
+    const a = way[Math.max(0, i - 1)], b = way[Math.min(n - 1, i + 1)], l = Math.hypot(b[1] - a[1], b[2] - a[2]) || 1, nb = backward([(b[1] - a[1]) / l, (b[2] - a[2]) / l]);
+    const half = r * (deep[i] ?? 1);
+    let reach = Infinity;
+    if (s > straight - 1e-9) for (let k = 0; k + 1 < wall.length; k++) {
+      const p = wall[k], q = wall[k + 1], ey = q[0] - p[0], ez = q[1] - p[1], den = nb[0] * ez - nb[1] * ey;
+      if (Math.abs(den) < 1e-12) continue;
+      const wy = p[0] - way[i][1], wz = p[1] - way[i][2], t = (wy * ez - wz * ey) / den, u = (wy * nb[1] - wz * nb[0]) / den;
+      if (t > 0 && u >= -1e-9 && u <= 1 + 1e-9 && t < reach) reach = t;
+    }
+    out.push(Number.isFinite(reach) ? Math.max(half, reach) : half);
+  }
+  // (its depth behind eased along it, in metres, so its back wall runs smoothly where its front is pinched; never less
+  // deep than its front)
+  let h = out;
+  for (let pass = 0; pass < 2; pass++) h = h.map((v, i) => (i === 0 || i === n - 1 ? v : (h[i - 1] + 2 * v + h[i + 1]) / 4));
+  return h.map((v, i) => Math.max(1, v / (r * (deep[i] ?? 1))));
 }
 
 /** Her pubic arch as her canal's wall must clear it: its inner edge's points, each [how far out from her midline, y, z]
@@ -304,7 +385,7 @@ export function canalMouth(canal: readonly P3[], reach: number): { mouth: P3; t:
  * (the bony canal's curved centre line, the curve of Carus). Its first `straight` metres -- where the doors hang
  * (actor/birthDoors.ts) -- keep going the way it went as laid, so the doors and the tube stay one opening.
  */
-export function openCanal(laid: { readonly path: readonly P3[]; readonly width: number; readonly depth: number }, bones: CanalBones, open: number, straight = 0.03): { path: P3[]; width: number; depth: number; narrow?: number[]; narrowAcross?: number[] } {
+export function openCanal(laid: { readonly path: readonly P3[]; readonly width: number; readonly depth: number }, bones: CanalBones, open: number, straight = 0.03): { path: P3[]; width: number; depth: number; narrow?: number[]; narrowAcross?: number[]; back?: number[] } {
   const o = smooth(Math.min(1, Math.max(0, Number.isFinite(open) ? open : 0)));
   const n = CANAL_OPENING.points, top = laid.path[laid.path.length - 1], { mouth, t } = canalMouth(laid.path, straight);
   // the way a head comes: her canal's line seated under her arch (`seatedCanal`) wherever her bones give one. Laid from
@@ -320,7 +401,10 @@ export function openCanal(laid: { readonly path: readonly P3[]; readonly width: 
   // (and where her bones pinch it, narrower as it opens: `narrow`, the share of its depth it keeps at even steps along
   // it, and `narrowAcross`, of its width)
   const pinch = seated && o > 0 ? pinchOf(way, bones) : null, eased = (k: number[]) => k.map((v) => 1 - (1 - v) * o);
-  return { path, width: laid.width + (d - laid.width) * o, depth: laid.depth + (d - laid.depth) * o, ...(pinch ? { narrow: eased(pinch.deep), narrowAcross: eased(pinch.wide) } : {}) };
+  // (and behind, as it opens, it goes back to her spine: `back`, how much deeper its back half is than its front, at the
+  // same steps)
+  const back = pinch && bones.sacrum ? backOf(way, bones, pinch.deep, straight) : null;
+  return { path, width: laid.width + (d - laid.width) * o, depth: laid.depth + (d - laid.depth) * o, ...(pinch ? { narrow: eased(pinch.deep), narrowAcross: eased(pinch.wide) } : {}), ...(back ? { back: eased(back) } : {}) };
 }
 
 const lengthAlong = (path: readonly P3[]) => path.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - path[i - 1][0], p[1] - path[i - 1][1], p[2] - path[i - 1][2]) : 0), 0);

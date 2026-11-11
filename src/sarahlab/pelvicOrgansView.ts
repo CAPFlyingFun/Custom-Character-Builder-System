@@ -308,7 +308,7 @@ export class PelvicOrgansView {
     { const f = doorFrame(layout.vagina.path), g = this.doors.frame;
       if (Math.hypot(f.mouth[1] - g.mouth[1], f.mouth[2] - g.mouth[2]) > 1e-6 || Math.hypot(f.t[1] - g.t[1], f.t[2] - g.t[2]) > 1e-6) { this.doors.frame = f; this.drawnSwing = -1; this.scaledTo = -1; this.pressed = null; } }
     if (!this.openLength) this.openLength = lengthOf(openCanal(laid.vagina, this.bones, 1, DOORS.hingeUp).path);
-    const canal = layout.vagina, canalLong = lengthOf(canal.path), drawn: OrganLayout = { ...layout, vagina: { ...canal, path: subPath(canal.path, DOORS.hingeUp, canalLong), narrow: subNarrow(canal.narrow, DOORS.hingeUp, canalLong, canalLong), narrowAcross: subNarrow(canal.narrowAcross, DOORS.hingeUp, canalLong, canalLong) } }, meshes = organMeshes(drawn);
+    const canal = layout.vagina, canalLong = lengthOf(canal.path), drawn: OrganLayout = { ...layout, vagina: { ...canal, path: subPath(canal.path, DOORS.hingeUp, canalLong), narrow: subNarrow(canal.narrow, DOORS.hingeUp, canalLong, canalLong), narrowAcross: subNarrow(canal.narrowAcross, DOORS.hingeUp, canalLong, canalLong), back: subNarrow(canal.back, DOORS.hingeUp, canalLong, canalLong) } }, meshes = organMeshes(drawn);
     if (this.grown && this.room) makeRoom(meshes.uterus.points, this.grown, this.room);
     this.layout = layout; this.last = null;
     // (pregnant, her womb is seen through: what it holds is inside)

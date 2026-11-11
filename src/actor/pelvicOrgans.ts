@@ -38,6 +38,8 @@ export interface PelvisLandmarks {
   readonly outlet?: { readonly ring: readonly (readonly number[])[] };
   /** her tailbone's tip (src/data/torso/ `landmarks.coccyx`), which her canal's wall keeps off */
   readonly tail?: readonly number[];
+  /** the hollow of her sacrum (the pelvis file's `sacrum.front`): open, her canal's back wall goes back to it */
+  readonly sacrum?: { readonly front: readonly (readonly number[])[] };
   readonly midpelvis: { readonly centre: readonly number[] };
   readonly inlet: { readonly centre: readonly number[] };
 }
@@ -80,8 +82,10 @@ export const ORGAN_PLACE = Object.freeze({
 export interface OrganLayout {
   /** The canal, its opening to its top, along its centre line (rest metres). */
   /** `narrow`, `narrowAcross`: the share of its depth, and of its width, it keeps at even steps along its path, where her
-   * bones pinch it open (actor/birthCanal.ts OPEN_SEAT); without them, all of it all along */
-  readonly vagina: { readonly path: readonly P3[]; readonly width: number; readonly depth: number; readonly narrow?: readonly number[]; readonly narrowAcross?: readonly number[] };
+   * bones pinch it open (actor/birthCanal.ts OPEN_SEAT); without them, all of it all along. `back`: how much deeper its
+   * back half is than its front, at the same steps, where it goes back to her spine as it opens (`backOf`); without it,
+   * no deeper */
+  readonly vagina: { readonly path: readonly P3[]; readonly width: number; readonly depth: number; readonly narrow?: readonly number[]; readonly narrowAcross?: readonly number[]; readonly back?: readonly number[] };
   /** The womb's centre line, external os to fundus, and how far along it the cervix ends (the internal os), metres. */
   readonly uterus: {
     readonly path: readonly P3[]; readonly cervixEnds: number; readonly length: number; readonly anteversionDeg: number;
@@ -213,32 +217,33 @@ export interface OrganMesh { readonly points: Float32Array; readonly triangles: 
  * ring stands square to the line there, or to `axis(t)` if given (rings kept parallel down a line that is moved
  * sideways -- a womb leaning on her spine -- cannot cross one another).
  */
-export function sweep(path: readonly P3[], half: (t: number) => readonly [number, number], ring = 24, caps = 6, axis?: (t: number) => P3): OrganMesh {
+export function sweep(path: readonly P3[], half: (t: number) => readonly [number, number, number?], ring = 24, caps = 6, axis?: (t: number) => P3): OrganMesh {
   const total = lengthOf(path), pts: number[] = [], tris: number[] = [];
   // the rings: along the line, then rounding each end to a point
-  const stations: { at: P3; tan: P3; a: number; b: number }[] = [];
+  // (`c`: its back half's depth, where that is not its front's -- two half ovals that meet at its sides)
+  const stations: { at: P3; tan: P3; a: number; b: number; c: number }[] = [];
   let s = 0;
   const tanAt = (k: number): P3 => { const a = path[Math.max(0, k - 1)], b = path[Math.min(path.length - 1, k + 1)], d = dist(a, b) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d, (b[2] - a[2]) / d]; };
   for (let k = 0; k < path.length; k++) {
     if (k) s += dist(path[k - 1], path[k]);
-    const t = total > 0 ? s / total : 0, [a, b] = half(t);
-    stations.push({ at: path[k], tan: axis ? axis(t) : tanAt(k), a, b });
+    const t = total > 0 ? s / total : 0, [a, b, c] = half(t);
+    stations.push({ at: path[k], tan: axis ? axis(t) : tanAt(k), a, b, c: c ?? b });
   }
   const end = (st: (typeof stations)[number], dir: 1 | -1) => {
     const out: typeof stations = [];
     for (let c = 1; c <= caps; c++) {
       const th = (c / caps) * (Math.PI / 2), k = Math.cos(th), push = Math.sin(th) * Math.min(st.a, st.b) * dir;
-      out.push({ at: [st.at[0] + st.tan[0] * push, st.at[1] + st.tan[1] * push, st.at[2] + st.tan[2] * push], tan: st.tan, a: st.a * Math.max(k, 1e-3), b: st.b * Math.max(k, 1e-3) });
+      out.push({ at: [st.at[0] + st.tan[0] * push, st.at[1] + st.tan[1] * push, st.at[2] + st.tan[2] * push], tan: st.tan, a: st.a * Math.max(k, 1e-3), b: st.b * Math.max(k, 1e-3), c: st.c * Math.max(k, 1e-3) });
     }
     return out;
   };
   const all = [...end(stations[0], -1).reverse(), ...stations, ...end(stations[stations.length - 1], 1)];
   for (const st of all) {
-    // across her (+x), and her midline's plane's other way: tan x across
+    // across her (+x), and her midline's plane's other way: tan x across -- toward her back, for a line that runs up her
     const across: P3 = [1, 0, 0], nrm: P3 = [st.tan[1] * across[2] - st.tan[2] * across[1], st.tan[2] * across[0] - st.tan[0] * across[2], st.tan[0] * across[1] - st.tan[1] * across[0]];
-    const nl = Math.hypot(...nrm) || 1;
+    const nl = Math.hypot(...nrm) || 1, backIs = nrm[2] <= 0 ? 1 : -1;
     for (let r = 0; r < ring; r++) {
-      const th = (2 * Math.PI * r) / ring, ca = Math.cos(th) * st.a, sb = Math.sin(th) * st.b;
+      const th = (2 * Math.PI * r) / ring, ca = Math.cos(th) * st.a, sn = Math.sin(th), sb = sn * (sn * backIs > 0 ? st.c : st.b);
       pts.push(st.at[0] + across[0] * ca + (nrm[0] / nl) * sb, st.at[1] + across[1] * ca + (nrm[1] / nl) * sb, st.at[2] + across[2] * ca + (nrm[2] / nl) * sb);
     }
   }
@@ -281,7 +286,7 @@ export function organMeshes(layout: OrganLayout): { uterus: OrganMesh; vagina: O
   const from = Math.min(...half(0)), to = u.length - Math.min(...half(1)), inner = subPath(u.path, from, to), axis = wombAxis(u);
   const remap = (t: number) => (from + t * (to - from)) / u.length;
   return {
-    vagina: sweep(v.path, (t) => [(v.width / 2) * narrowAt(v.narrowAcross, t), (v.depth / 2) * narrowAt(v.narrow, t)], 20, 4),
+    vagina: sweep(v.path, (t) => { const b = (v.depth / 2) * narrowAt(v.narrow, t); return [(v.width / 2) * narrowAt(v.narrowAcross, t), b, b * narrowAt(v.back, t)]; }, 20, 4),
     uterus: sweep(inner, (t) => half(remap(t)), u.halves ? 36 : 28, 7, u.axes ? (t) => axis(remap(t)) : undefined),
     bladder: ellipsoid(b.centre, b.radii),
   };

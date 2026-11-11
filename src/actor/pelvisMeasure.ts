@@ -24,6 +24,9 @@
  *    .tuberAbove), is the intertuberous diameter (normal 10-12 cm); the outlet's plane is the one through their middle.
  *  - THE AXIS: the canal's own curved path from the inlet to the outlet: the arc about the symphysis its measured
  *    centres lie on.
+ *  - THE HOLLOW OF HER SACRUM: the front of her sacrum and her tailbone on her midline, from her tailbone's tip up to her
+ *    promontory -- the canal's back wall, the bone a head comes down along (Joshua, 2026-11-10, drawing it on a cut
+ *    through her middle: "there is a little bit more room to go back to the spine").
  *
  * Her bind frame (as `scripts/measureContacts.ts`'s rest frame): metres, +y up, +z her front, +x across her. Pure: plain
  * arrays in and out, no three, so the room, the measuring script and the tests all run the same code.
@@ -59,6 +62,9 @@ export const PELVIS_MEASURE = Object.freeze({
   /** ...whose inner faces are read this high above their lowest, at their depth, metres (the tuberosity is a long ridge:
    * higher up and further forward its faces come together as the ischial rami run to the symphysis). */
   tuberAbove: 0.003,
+  /** The hollow of her sacrum is read on her midline no further behind the symphysis's back face than this, metres (her
+   * sacrum's own back face and her spine's processes are further). */
+  hollowReach: 0.2,
 });
 
 export interface PelvisPlane {
@@ -93,6 +99,9 @@ export interface PelvisMeasure {
   /** Its radius about the symphysis's centre (the curve of Carus as the arc it nearly is): the mean of the planes' centres
    * found between the symphysis and the sacrum, metres. */
   readonly arcRadius: number;
+  /** The hollow of her sacrum: the front of her sacrum and tailbone on her midline, every `slice` of height from her
+   * tailbone's tip (the first) up to her promontory (bind metres): the first bone a level line back from her canal meets. */
+  readonly sacrum: { readonly front: readonly P3[] };
 }
 
 export class PelvisMeasureError extends Error {}
@@ -252,12 +261,25 @@ export function measurePelvis(points: ArrayLike<number>, triangles: ArrayLike<nu
   // it runs smoothly from the planes centred between the bone to those below the sacrum, centred on the arc
   const arcRadius = found.reduce((x, y) => x + y, 0) / found.length;
   const axis = planes.slice(inletAt, outAt + 1).map((p) => add(add(centre, [1, 0, 0], centreX - centre[0]), p.along, arcRadius));
+  // the hollow of her sacrum: her midline cut through the mesh's triangles (u her front, v up), and at each height from
+  // her promontory down a level line back from behind her symphysis to the first bone it meets -- to the lowest that
+  // meets any: her tailbone's tip
+  const hollow: P3[] = [];
+  { const cut = cutPelvis(points, triangles, [centreX, 0, 0], [0, 1, 0], [1, 0, 0], [0, 0, 1]), from = backZ - T.behind;
+    let lowest = Infinity;
+    for (let k = 1; k < cut.length; k += 2) if (cut[k - 1] < from) lowest = Math.min(lowest, cut[k]);
+    for (let y = prom[1]; y >= lowest - 1e-9; y -= T.slice) {
+      const t = rayToCut(cut, from, y, -1, 0);
+      if (t < T.hollowReach) hollow.push([centreX, y, from - t]);
+    }
+    hollow.reverse(); }
+  if (hollow.length < 4) throw new PelvisMeasureError('the hollow of her sacrum was not found on her midline');
   return {
     symphysis: { top: [centreX, topY, front.find((p) => p[1] === topY)![2]], bottom: [centreX, bottomY, front.find((p) => p[1] === bottomY)![2]], centre, back: symP },
     promontory: prom, obstetricConjugate: conj, planes,
     inlet: { plane: inletAt, transverse: planes[inletAt].widest, ap: planes[inletAt].ap! },
     midpelvis: { plane: midAt, interspinous: planes[midAt].narrowest },
     outlet: { plane: outAt, intertuberous, tuberosities: [tl, tr] },
-    axis, arcRadius,
+    axis, arcRadius, sacrum: { front: hollow },
   };
 }

@@ -22,8 +22,9 @@ const { pos } = await restOfRig(rig);
 const pelvis = read('src/data/pelvis/skeleton.json'), torso = read('src/data/torso/skeleton.json');
 const bones = { ...pelvis, tail: torso.landmarks.coccyx };
 const laid = layOrgans(bones), open = openCanal(laid.vagina, bones, 1, DOORS.hingeUp), path: number[][] = open.path.map((p) => [...p]);
-/** her canal's half-sizes (across her, front to back) `t` of the way up it: narrower front to back where her bones pinch it */
-const half = (t: number): [number, number] => [(open.width / 2) * narrowAt(open.narrowAcross, t), (open.depth / 2) * narrowAt(open.narrow, t)];
+/** her canal's half-sizes (across her, front to back, and front to back behind its line) `t` of the way up it: narrower
+ * front to back where her bones pinch it, deeper behind where it goes back to her spine */
+const half = (t: number): [number, number, number] => { const d = (open.depth / 2) * narrowAt(open.narrow, t); return [(open.width / 2) * narrowAt(open.narrowAcross, t), d, d * narrowAt(open.back, t)]; };
 /** how far a point is outside her canal's wall (under 0: inside it), and how far along it (0 its opening .. 1 its top):
  * its wall an ellipse round its line, as wide as it is across her and as deep as it is there front to back */
 const off = (q: number[]) => {
@@ -34,8 +35,10 @@ const off = (q: number[]) => {
     const k = Math.min(1, Math.max(0, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1] + (q[2] - a[2]) * ab[2]) / l2));
     // (past its ends a point is not in it)
     if ((i === 0 && k <= 0) || (i + 2 >= path.length && k >= 1)) { s += l; continue; }
-    const t = (s + l * k) / total, [hw, hd] = half(t);
+    const t = (s + l * k) / total, [hw, hf, hb] = half(t);
     const lat = q[0] - a[0] - ab[0] * k, dy = q[1] - a[1] - ab[1] * k, dz = q[2] - a[2] - ab[2] * k, ap = Math.hypot(dy, dz), rad = Math.hypot(lat, ap) || 1e-9;
+    // (behind its line -- square to it, toward her back -- its back half's depth)
+    const hd = dy * ab[2] - dz * ab[1] > 0 === ab[1] >= 0 ? hb : hf;
     // (the ellipse's radius the way the point lies from its line)
     const wall = (hw * hd) / Math.hypot((hd * lat) / rad, (hw * ap) / rad), d = rad - wall;
     if (d < best) { best = d; at = t; }
@@ -53,7 +56,7 @@ for (let i = 0; i < pos.length; i += 3) {
   if (o.d < 0) { inside++; if (o.d < deepest.d) deepest = { d: o.d, at: o.at, q }; }
 }
 const cm = (x: number) => +(x * 100).toFixed(2);
-console.log('her canal open:', path.length, 'points,', cm(path.reduce((s2, p, i) => (i ? s2 + Math.hypot(p[1] - path[i - 1][1], p[2] - path[i - 1][2]) : 0), 0)), 'cm; its opening', path[0].map(cm), 'cm; narrowest front to back', cm(open.depth * Math.min(...(open.narrow ?? [1]))), 'cm, across', cm(open.width * Math.min(...(open.narrowAcross ?? [1]))), 'cm');
+console.log('her canal open:', path.length, 'points,', cm(path.reduce((s2, p, i) => (i ? s2 + Math.hypot(p[1] - path[i - 1][1], p[2] - path[i - 1][2]) : 0), 0)), 'cm; its opening', path[0].map(cm), 'cm; narrowest front to back', cm(open.depth * Math.min(...(open.narrow ?? [1]))), 'cm, across', cm(open.width * Math.min(...(open.narrowAcross ?? [1]))), 'cm; behind its line at the most', cm((open.depth / 2) * Math.max(...(open.back ?? [1]).map((b, i) => b * (open.narrow?.[i] ?? 1)))), 'cm');
 console.log('bone points inside its wall:', inside, inside ? `deepest ${cm(-deepest.d)} cm in, ${Math.round(deepest.at * 100)}% of the way up it, at ${deepest.q.map(cm)} cm` : '');
 // (by height band: the least room between a bone point and her canal's wall)
 for (let y = 0.70; y < 0.90; y += 0.02) {

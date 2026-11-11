@@ -62,6 +62,22 @@ describe('her skeleton\'s pelvis, saved as data', () => {
     expect(p.landmarks.tuberosityLeft[1]).toBeLessThan(p.landmarks.symphysisBottom[1]);
     expect(Math.sign(p.landmarks.tuberosityLeft[0] - c[0])).toBe(-Math.sign(p.landmarks.tuberosityRight[0] - c[0]));
   });
+  it('has the hollow of her sacrum: her sacrum\'s and tailbone\'s front on her midline, from her tailbone\'s tip up to her promontory', () => {
+    const p = saved('skeleton'), f = p.sacrum.front, torso = JSON.parse(readFileSync(new URL('../src/data/torso/skeleton.json', import.meta.url), 'utf8')) as { landmarks: { coccyx: number[] } };
+    expect(f.length).toBeGreaterThan(20);
+    // (her tailbone's tip first -- within 5 mm of where her torso's file has it -- and up from there, a slice at a time)
+    expect(Math.hypot(f[0][1] - torso.landmarks.coccyx[1], f[0][2] - torso.landmarks.coccyx[2])).toBeLessThan(0.005);
+    for (let k = 1; k < f.length; k++) { expect(f[k][1]).toBeGreaterThan(f[k - 1][1]); expect(f[k][1] - f[k - 1][1]).toBeLessThan(0.006); expect(f[k][0]).toBeCloseTo(f[0][0], 9); }
+    // (to her promontory, the hollow's top: its last point is it, and well in front of her tailbone -- the hollow leans)
+    const top = f[f.length - 1], prom = p.landmarks.promontory;
+    expect(Math.hypot(top[1] - prom[1], top[2] - prom[2])).toBeLessThan(0.004);
+    expect(top[2] - f[0][2]).toBeGreaterThan(0.05);
+    // (all of it well behind her symphysis's back face, and a hollow: between its ends it lies behind the straight line
+    // joining them)
+    for (const q of f) expect(q[2]).toBeLessThan(p.landmarks.symphysisBack[2] - 0.04);
+    const mid = f[Math.floor(f.length / 2)], k = (mid[1] - f[0][1]) / (top[1] - f[0][1]);
+    expect(mid[2]).toBeLessThan(f[0][2] + (top[2] - f[0][2]) * k);
+  });
   it('is what measuring her file again gives', async () => {
     for (const rig of PELVIS_RIGS) expect((await measurePelvisRig(rig)).saved).toEqual(saved(rig.name));
   }, 120_000);

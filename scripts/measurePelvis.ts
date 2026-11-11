@@ -39,6 +39,9 @@ export interface SavedPelvis {
   /** The canal's curved centre line, inlet to outlet: rest metres, and the same from her pelvis joint. */
   readonly axis: number[][];
   readonly axisFromJoint: number[][];
+  /** The hollow of her sacrum: the front of her sacrum and tailbone on her midline, her tailbone's tip first, up to her
+   * promontory (rest metres). MEASURED on her skeleton: her canal's back wall. */
+  readonly sacrum: { readonly front: number[][] };
 }
 
 const r = (x: number, k = 1e5) => Math.round(x * k) / k;
@@ -66,6 +69,7 @@ export async function measurePelvisRig(rig: { name: string; model: string; metre
     landmarks: { symphysisTop: pt(m.symphysis.top), symphysisBottom: pt(m.symphysis.bottom), symphysisCentre: pt(m.symphysis.centre), symphysisBack: pt(m.symphysis.back), promontory: pt(m.promontory), tuberosityLeft: pt(m.outlet.tuberosities[0]), tuberosityRight: pt(m.outlet.tuberosities[1]) },
     inlet: plane(m.inlet.plane), midpelvis: plane(m.midpelvis.plane), outlet: plane(m.outlet.plane),
     axis: m.axis.map(pt), axisFromJoint: m.axis.map((p) => pt([p[0] - joint[0], p[1] - joint[1], p[2] - joint[2]])),
+    sacrum: { front: m.sacrum.front.map(pt) },
   };
   return { saved, measure: m };
 }

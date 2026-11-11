@@ -163,6 +163,46 @@ describe("her opening's seat under her pubic arch (Joshua, 2026-11-10: \"if you 
     expect(Math.abs(p[0][0] - p[n - 1][0])).toBeLessThan(1e-6);
   });
 
+  it('open, its back wall goes back to her spine: off the hollow of her sacrum and her tailbone, straight down below it, in to her doors; its line and its front as they were (Joshua: "keep the front and middle alone... a little bit more room to go back to the spine")', () => {
+    const back = open.back!, p = open.path, n = p.length, r = CANAL_OPENING.diameterM / 2, hollow = (pelvis as unknown as { sacrum: { front: number[][] } }).sacrum.front;
+    expect(back).toBeDefined(); expect(back.length).toBe(n);
+    // (its line and its front half are what they are without her sacrum's hollow)
+    const { sacrum: _none, ...bare } = bones as typeof bones & { sacrum?: unknown }, plain = openCanal(laid.vagina, bare as typeof bones, 1, DOORS.hingeUp);
+    void _none;
+    expect(plain.back).toBeUndefined();
+    plain.path.forEach((q, i) => q.forEach((v, c) => expect(v).toBeCloseTo(p[i][c], 12)));
+    plain.narrow!.forEach((v, i) => expect(v).toBeCloseTo(open.narrow![i], 12));
+    // (never less deep behind than in front; no deeper where her doors hang; over a centimetre deeper at its deepest)
+    let along = 0;
+    const wall: number[][] = [];
+    p.forEach((q, i) => {
+      if (i) along += Math.hypot(q[1] - p[i - 1][1], q[2] - p[i - 1][2]);
+      expect(back[i]).toBeGreaterThanOrEqual(1);
+      if (along < DOORS.hingeUp - 0.007) expect(back[i]).toBeCloseTo(1, 6);
+      const a = p[Math.max(0, i - 1)], b = p[Math.min(n - 1, i + 1)], l = Math.hypot(b[1] - a[1], b[2] - a[2]), ty = (b[1] - a[1]) / l, tz = (b[2] - a[2]) / l, nb = ty >= 0 ? [tz, -ty] : [-tz, ty], h = r * open.narrow![i] * back[i];
+      wall.push([q[1] + nb[0] * h, q[2] + nb[1] * h, h]);
+    });
+    expect(Math.max(...wall.map((w) => w[2]))).toBeGreaterThan(r + 0.01);
+    // (off her bone all the way: no point of it nearer the hollow's line than 5 mm -- spineClear is 8 -- and level with
+    // her tailbone and her sacrum it lies along them, within 4 mm of spineClear off them)
+    const off = (w: number[]) => { let best = Infinity; for (let k = 0; k + 1 < hollow.length; k++) { const a = hollow[k], b = hollow[k + 1], ey = b[1] - a[1], ez = b[2] - a[2], f = Math.min(1, Math.max(0, ((w[0] - a[1]) * ey + (w[1] - a[2]) * ez) / (ey * ey + ez * ez))); best = Math.min(best, Math.hypot(w[0] - a[1] - ey * f, w[1] - a[2] - ez * f)); } return best; };
+    const tip = hollow[0];
+    let beside = 0;
+    for (const w of wall) {
+      expect(off(w)).toBeGreaterThan(0.005);
+      if (w[0] > tip[1] + 0.005) { beside++; expect(Math.abs(off(w) - OPEN_SEAT.spineClear)).toBeLessThan(0.004); }
+    }
+    expect(beside).toBeGreaterThan(3);
+    // (below her tailbone it comes STRAIGHT DOWN as she stands before it turns forward: for 2 cm below her tailbone's tip
+    // its wall keeps within 3 mm of plumb, and nowhere further back than there)
+    const plumb = wall.filter((w) => w[0] < tip[1] && w[0] > tip[1] - 0.02), rear = Math.min(...wall.map((w) => w[1]));
+    expect(plumb.length).toBeGreaterThan(1);
+    for (const w of plumb) expect(w[1] - rear).toBeLessThan(0.003);
+    // (and comes in to her canal's own wall where her doors hang, running forward all the way down from there)
+    const below = wall.filter((w) => w[0] < tip[1] - 0.02);
+    for (let k = 1; k < below.length; k++) expect(below[k - 1][1]).toBeGreaterThan(below[k][1] - 1e-6);
+  });
+
   it('under a narrow arch, which a head passes further back than her fornix is from the bone: straight to where it passes, then round, no corner', () => {
     // (her own bones, her arch's two sides and her sit bones drawn in to 70% of their width: a man's V)
     const mid = rings.landmarks.symphysisBottom[0], pinchX = (q: readonly number[]) => [mid + (q[0] - mid) * 0.7, q[1], q[2]];
