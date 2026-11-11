@@ -181,7 +181,7 @@ function section(f = 1, w = 1, lips?: number): Section {
  * its lip -- the rim of her opening, at her skin. `k` how thick it is; `f` its share of a middle's (thinner to its ends).
  */
 function lipCorners(r: number, k: number, f: number, x: number): [number, number][] {
-  const D = DOORS, h = D.hingeUp, xl = Math.min(r, Math.max(D.lipsShut, x)), e0 = r > D.lipsShut ? (xl - D.lipsShut) / (r - D.lipsShut) : 1, e = e0 * e0 * (3 - 2 * e0);
+  const D = DOORS, h = D.hingeUp, xl = Math.min(r, Math.max(0, x)), e0 = r > D.lipsShut ? Math.max(0, (xl - D.lipsShut) / (r - D.lipsShut)) : 1, e = e0 * e0 * (3 - 2 * e0);
   // (the lip's lining's lowest: so its skin, round its end, stands `lipsOut` past her skin's level)
   const lipT = h - D.thick - D.lipsOut * f + k / 2;
   const shut: [number, number][] = [[r, h], [xl + 0.55 * (r - xl), h - 0.15 * k], [xl + 0.2 * (r - xl), h - 0.45 * k], [xl, h - 0.8 * k], [xl, lipT]];
