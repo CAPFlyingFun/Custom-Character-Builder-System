@@ -89,10 +89,10 @@ export const DOORS = Object.freeze({
    * "Let's try 2cm tall… at 100% open, we need to keep it the same height from 0-100%"): how far out of her her lips
    * stand at her opening's middle, each door arched up to its lip from its hinge -- a low half dome, nothing at her
    * doors' feet, its top always her lips however far apart they are. (Her lip's own roundness stands about 0.6 cm
-   * past it: MEASURED her opening's middle 2.0 to 2.3 cm out of her from shut to wide open with this.) And shut, how far apart her lips stand, each from her middle (his "0% at 0.2cm"). GAME
+   * past it: MEASURED her opening's middle 2.0 to 2.3 cm out of her from shut to wide open with this.) And shut, how far apart her lips stand, each from her middle (his "0.1cm for 0%"). GAME
    * TUNING. */
   lipsArch: 0.014,
-  lipsShut: 0.001,
+  lipsShut: 0.0005,
   lipsClear: 0.003,
   /** how tall each band of a slice of what passes is, up the canal (`outlineOf`). GAME TUNING (fine enough for its neck,
    * coarse enough that each has a few of its points). */
@@ -161,8 +161,13 @@ function section(f = 1, w = 1, lips?: number): Section {
   // (its folds at its own corners -- between them it is straight -- so it bends at its four joints and nowhere else)
   const folds = corner.map((k) => along[k]) as [number, number, number];
   // her skin: the lining's points moved out by the door's thickness, square to it (toward her outside); the root's to the hinge
+  // (a lip's skin from its lining's way over the length of its own thickness either side, not its next points': round the
+  // short slit at its lip, square to each point it folded back over itself -- a dark crease along each lip, 2026-11-11)
+  const span = lips === undefined ? 0 : 1.5 * k, atL: number[] = [0];
+  for (let i = 1; i < lining.length; i++) atL.push(atL[i - 1] + Math.hypot(lining[i][0] - lining[i - 1][0], lining[i][1] - lining[i - 1][1]));
+  const reach = (i: number, d: number) => { let j = i; if (d < 0) { while (j > 0 && atL[i] - atL[j] < -d) j--; } else { while (j < lining.length - 1 && atL[j] - atL[i] < d) j++; } return lining[j]; };
   const skin = lining.map(([x, t], i): [number, number] => {
-    const p = lining[Math.max(0, i - 1)], q = lining[Math.min(lining.length - 1, i + 1)], tx = q[0] - p[0], tt = q[1] - p[1], l = Math.hypot(tx, tt) || 1;
+    const p = span ? reach(i, -span) : lining[Math.max(0, i - 1)], q = span ? reach(i, span) : lining[Math.min(lining.length - 1, i + 1)], tx = q[0] - p[0], tt = q[1] - p[1], l = Math.hypot(tx, tt) || 1;
     return i === 0 ? [R + D.hingeOut, h - D.thick] : [x - (tt / l) * k, t + (tx / l) * k];
   });
   const last = lining[lining.length - 1], end = skin[skin.length - 1], mid: [number, number] = [(last[0] + end[0]) / 2, (last[1] + end[1]) / 2];
@@ -197,10 +202,10 @@ export const lipSection = (j: number, x: number): Section => { const st = statio
  * the corners of her mouth, staying where they are (Joshua: "the widest part stays in the same location"). */
 export function sliderLips(birth: number): number[] {
   // (as far apart at her middle as BIRTH OPENING says, a tenth of a centimetre a percent -- Joshua, 2026-11-11: "since we
-  // have the width exactly 10cm, why not make each 1% 0.1cm?" -- and never nearer than `lipsShut` each side: his "0% at
-  // 0.2cm")
+  // have the width exactly 10cm, why not make each 1% 0.1cm?" -- and below 2% his own: "0.1cm for 0%, 0.15cm for 1%,
+  // 0.2cm for 2%, and from there, stays in sync"; `lipsShut` each side shut)
   const b = Math.min(1, Math.max(0, Number.isFinite(birth) ? birth : 0)), g = DOORS.lipsShut, J = DOORS.stations;
-  const o = Math.max(g, (b * DOORS.acrossMost) / 2);
+  const o = (b < 0.02 ? 2 * g + (b / 0.02) * (0.02 * DOORS.acrossMost - 2 * g) : b * DOORS.acrossMost) / 2;
   return Array.from({ length: J }, (_, j) => { const u = -1 + (2 * j) / (J - 1); return g + Math.max(0, o - g) * Math.sqrt(Math.max(0, 1 - u * u)); });
 }
 

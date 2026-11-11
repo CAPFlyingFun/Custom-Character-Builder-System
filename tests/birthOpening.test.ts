@@ -413,10 +413,12 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
   // (how far a mesh stands out of her skin round it, along her canal, metres)
   const out = (m: { points: Float32Array }) => { let lo = Infinity; for (let i = 0; i < m.points.length; i += 3) { const d = [0, 1, 2].map((k) => m.points[i + k] - frame.mouth[k]); lo = Math.min(lo, d[0] * frame.t[0] + d[1] * frame.t[1] + d[2] * frame.t[2]); } return flat - lo; };
 
-  it('shut, a slit 2 mm apart, bowed out 3 cm at its middle; parting 0.1 cm a percent, never more than 4 cm out of her', () => {
+  it('shut, a slit 1 mm apart, bowed out 3 cm at its middle; parting 0.1 cm a percent, never more than 4 cm out of her', () => {
     const shut = doorMeshes(frame, 0, 0, undefined, true);
     // (his "0% at 0.2cm"; bowed out 3 cm at its middle, his half dome, its lip standing a little past that)
-    expect(shut.openM).toBeCloseTo(0.002, 4);
+    // (his scale below 2%, between her lips' linings at her opening's middle: 0.1 cm shut, 0.15 at 1%, 0.2 at 2%)
+    const mid = (DOORS.stations - 1) / 2;
+    expect(2 * sliderLips(0)[mid]).toBeCloseTo(0.001, 6); expect(2 * sliderLips(0.01)[mid]).toBeCloseTo(0.0015, 6); expect(2 * sliderLips(0.02)[mid]).toBeCloseTo(0.002, 6);
     expect(out(shut)).toBeGreaterThan(DOORS.lipsArch); expect(out(shut)).toBeLessThan(0.04);
     // (MEASURED, the doors swung out on their hinges: 3.7 cm shut, 5.7 at 20%, 7.6 wide open)
     expect(out(doorMeshes(frame, 0, 0, undefined, false))).toBeGreaterThan(0.03);
@@ -425,8 +427,8 @@ describe('her opening as lips (Joshua, 2026-11-11: "two lips that touch… flush
       const m = doorMeshes(frame, b, 0, undefined, true);
       expect(m.points.every(Number.isFinite)).toBe(true);
       expect(Math.max(...m.triangles)).toBeLessThan(m.points.length / 3);
-      // (his scale: 0.1 cm a percent)
-      expect(m.openM).toBeCloseTo(b * DOORS.acrossMost, 3);
+      // (his scale: 0.1 cm a percent, between her lips' linings)
+      expect(2 * sliderLips(b)[(DOORS.stations - 1) / 2]).toBeCloseTo(b * DOORS.acrossMost, 6);
       expect(m.openM).toBeGreaterThanOrEqual(last - 1e-6); last = m.openM;
       expect(out(m)).toBeLessThan(0.04);
     }
