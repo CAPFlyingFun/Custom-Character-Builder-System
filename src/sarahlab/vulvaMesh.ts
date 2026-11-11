@@ -16,7 +16,7 @@ import { footAt, layBeyond, laySeatSkin, roundMove, roundOf, riseRing, sleeveTub
  * several centimetres, so the opening stands level with her thighs or in front of them, not sunk between them).
  */
 /** a probe's tries at a few of VULVA_OPEN's numbers, before one is settled on (empty: VULVA_OPEN's own) */
-export const VULVA_TRY: { backDepth?: number; backMargin?: number; domeReach?: number; rimEven?: number } = {};
+export const VULVA_TRY: { backDepth?: number; backMargin?: number; domeReach?: number; rimEven?: number; dome?: number; domeFoot?: number } = {};
 
 export const VULVA_OPEN = Object.freeze({
   /**
@@ -117,9 +117,11 @@ export const VULVA_OPEN = Object.freeze({
    * GAME TUNING.
    */
   shutAcross: 0.001, rimLevel: 1, dome: 0.02, domeIn: 0.05,
-  /** GAME TUNING: how far out round the opening its dome reaches before it is gone (metres past its rim) -- the birth's own
-   * push reaches `bulgeReach` */
-  domeReach: 0.06,
+  /** GAME TUNING: how far out round the opening its dome reaches before it is gone (metres past its rim), and how far in from
+   * the area's own outer edge it is eased onto her skin (`domeFoot`) -- the birth's own push reaches `bulgeReach`, eased
+   * by `bulgeFootM` (measured 2026-11-11: reaching 6 cm, it lifted her groin creases -- now her opening's own skin -- into
+   * bumps on her outline in RECLINE; 3.5 cm and eased from 4.5 cm in, they are gone, its middle still 2 cm out) */
+  domeReach: 0.035, domeFoot: 0.045,
   /** GAME TUNING: her own skin behind the area is drawn only further than this from the opening's plane (metres, in or out),
    * or further round it than `backMargin` past its outline (measured 2026-11-11: at 5 cm it showed through below her opening
    * at its most, 12.5 cm long, as a torn grey band; at 9 cm it does not) */
@@ -160,7 +162,8 @@ export function skinOpenAcross(open: number): number {
  * and how much of it leans to her bottom (the push's own lean, as much as the push is the more). */
 export function skinDome(open: number, push: number): { height: number; lean: number } {
   const V = VULVA_OPEN, o = Number.isFinite(open) ? open : 0, b = Number.isFinite(push) ? push : 0;
-  const hb = b > 0 ? V.bulge * Math.pow(b, V.bulgeEase) : 0, hd = o > 0 ? V.dome * Math.min(1, o / V.domeIn) ** 2 * (3 - 2 * Math.min(1, o / V.domeIn)) : 0;
+  const dome = VULVA_TRY.dome ?? V.dome;
+  const hb = b > 0 ? V.bulge * Math.pow(b, V.bulgeEase) : 0, hd = o > 0 ? dome * Math.min(1, o / V.domeIn) ** 2 * (3 - 2 * Math.min(1, o / V.domeIn)) : 0;
   return { height: Math.max(hb, hd), lean: hb > hd && hb > 0 ? V.bulgeLean * ((hb - hd) / hb) : 0 };
 }
 /**
@@ -1622,7 +1625,8 @@ void main() {
       let r0 = 0; for (let j = 0; j < M; j++) if (base[j] >= 0) r0 += inPlane(base[j]) / Math.max(1, nb);
       // (the dome's own reach; a birth's push its own, as much as the push is the more -- its lean says how much)
       const dr = VULVA_TRY.domeReach ?? VULVA_OPEN.domeReach, pushShare = VULVA_OPEN.bulgeLean > 0 ? domeLean / VULVA_OPEN.bulgeLean : 0;
-      const reach = (dr + (VULVA_OPEN.bulgeReach - dr) * pushShare) * perMetre, footW = VULVA_OPEN.bulgeFootM * perMetre, dEdge = edgeDistances();
+      const df = VULVA_TRY.domeFoot ?? VULVA_OPEN.domeFoot;
+      const reach = (dr + (VULVA_OPEN.bulgeReach - dr) * pushShare) * perMetre, footW = (df + (VULVA_OPEN.bulgeFootM - df) * pushShare) * perMetre, dEdge = edgeDistances();
       // MORE AT THE BOTTOM THAN THE TOP (Joshua, 2026-11-03: "a slight bottom bulge... 70% more bottom half... 30% top
       // half"): her perineum gives and bulges, her pubic bone above does not. The same dome, `1 - bulgeLean` of it at the
       // top of its reach, `1 + bulgeLean` at the bottom, straight between -- 30% in its top half, 70% in its bottom
