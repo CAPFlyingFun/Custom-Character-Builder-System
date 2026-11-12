@@ -76,7 +76,7 @@ try {
         const her = d.worldPerLocal && d.perMetre ? 100 / (d.worldPerLocal * d.perMetre) : 1, h = (x) => (Number.isFinite(x) ? +(x * her).toFixed(2) : x);
         const r = d.roundness, c = r.centre, at = body.at.map((x) => x * 100), out = body.out, off = sub(c, at), up = dot(off, out) * her;
         // (and what of her legs holds it narrower, when they do: across, along, out of her skin -- cm -- and which vertex)
-        Object.assign(row, { herScale: +(1 / her).toFixed(4), acrossCm: h(d.posedAcross), alongCm: h(d.posedAlong), rMinCm: h(r.rMin), rMaxCm: h(r.rMax), outOfPlaneCm: h(r.outOfPlane), jump: r.jump, bulgeM: d.bulge, heldToM: d.heldTo, blocker: d.heldTo ? d.blocker : undefined, legNear: d.legNear, sideReachCm: d.sideReachCm, roundLast: d.roundDbg?.slice(-2), gaps: r.gaps, rimPoints: r.points, uScale: d.uScale, localAcrossCm: d.localAcrossCm, worldPerLocal: d.worldPerLocal, perMetre: d.perMetre,
+        Object.assign(row, { herScale: +(1 / her).toFixed(4), acrossCm: h(d.posedAcross), alongCm: h(d.posedAlong), rMinCm: h(r.rMin), rMaxCm: h(r.rMax), outOfPlaneCm: h(r.outOfPlane), jump: r.jump, bulgeM: d.bulge, domeDbg: d.domeDbg, rimAlongOut: d.rimAlongOut, heldToM: d.heldTo, blocker: d.heldTo ? d.blocker : undefined, legNear: d.legNear, sideReachCm: d.sideReachCm, roundLast: d.roundDbg?.slice(-2), gaps: r.gaps, rimPoints: r.points, uScale: d.uScale, localAcrossCm: d.localAcrossCm, worldPerLocal: d.worldPerLocal, perMetre: d.perMetre,
           outCm: +up.toFixed(2), sideCm: +(len(off.map((x, i) => x - out[i] * dot(off, out))) * her).toFixed(2), tiltDeg: +(Math.acos(Math.min(1, Math.abs(dot(r.normal, out)))) * 180 / Math.PI).toFixed(1), centreCm: c });
       }
       report.rows.push(row);

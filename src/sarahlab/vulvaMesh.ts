@@ -815,6 +815,8 @@ void main() {
   let ovalNow: { centre: number; half: number; across: number } | null = null;
   /** each rim column's share of the bulge (more at the bottom: VULVA_OPEN.bulgeLean), 1 with none */
   const bulgeLeanW = new Float32Array(M).fill(1);
+  /** (a probe's) what the dome last moved: how many points, the most (her mesh's units), the rim along `nO` after it */
+  let domeDbg: { moved: number; most: number; rimBefore: number; H: number; seat: boolean } = { moved: 0, most: 0, rimBefore: 0, H: 0, seat: false };
   /** her skin near the area that her thighs carry now (vertices), worked out again when her weights change */
   let legNear: number[] = [], legNearVersion = -1;
   /** (for looking: why a point of her skin is her leg's -- the most a thigh carries of it, and 1 if it is her legs' skin
@@ -1611,6 +1613,7 @@ void main() {
     // (and HER DOME, at every opening: `dome` out at its middle, even all round -- the birth's push, where it is the more,
     // still leaning to her bottom as much as it is the more)
     const { height: Hh, lean: domeLean } = skinDome(seatOn() ? 0 : open, bAmt);
+    domeDbg = { moved: 0, most: 0, rimBefore: 0, H: Hh, seat: seatOn() };
     if (Hh > 0) {
       const H = Hh, out = nO;
       // A DOME ROUND THE OPENING, smooth over her skin (2026-11-02: laid column by column, each scaled to its own
@@ -1638,10 +1641,19 @@ void main() {
       for (let p = 0; p < P; p++) {
         const t = Math.min(1, Math.max(0, (inPlane(p) - r0) / reach)), upness = Math.min(1, Math.max(-1, ((pos[p * 3] - Cb.x) * upB.x + (pos[p * 3 + 1] - Cb.y) * upB.y + (pos[p * 3 + 2] - Cb.z) * upB.z) / Math.max(1e-9, span)));
         const dome = Math.pow(1 - t * t, 1.5) * (1 - domeLean * upness);
-        const h = H * perMetre * dome * smooth(VULVA_OPEN.edgeTrim * perMetre, VULVA_OPEN.edgeTrim * perMetre + footW, dEdge[p]);
+        // (and FROM HER RIM TO THE AREA'S EDGE: all of it at the rim, none at the edge, eased between. Opened wide her rim
+        // comes within the dome's foot of the area's edge, where the foot eased it to nothing: the skin round it rose and
+        // her opening stayed where it was, sunk in a crater -- "the birth bulge offset seemed to go inside instead of
+        // outside and didn't actually offset outwards" (Joshua, 2026-11-12; MEASURED: her rim 0.0 cm out at a 2 or a 5 cm
+        // bulge). So the rim always carries the whole of it, and her skin falls away from it to the area's edge)
+        const fromRim = Math.max(0, inPlane(p) - r0), toEdge = Math.max(0, dEdge[p] - VULVA_OPEN.edgeTrim * perMetre), span2 = fromRim + toEdge;
+        const rimToEdge = span2 > 1e-12 ? toEdge / span2 : 1, rimShare = rimToEdge * rimToEdge * (3 - 2 * rimToEdge);
+        const h = H * perMetre * Math.max(dome * smooth(VULVA_OPEN.edgeTrim * perMetre, VULVA_OPEN.edgeTrim * perMetre + footW, dEdge[p]), rimShare * (1 - domeLean * upness));
         if (h <= 0) continue;
         pos[p * 3] += out.x * h; pos[p * 3 + 1] += out.y * h; pos[p * 3 + 2] += out.z * h;
+        domeDbg.moved++; if (h > domeDbg.most) domeDbg.most = h;
       }
+      for (let j = 0; j < M; j++) if (base[j] >= 0) domeDbg.rimBefore += (pos[base[j] * 3] * out.x + pos[base[j] * 3 + 1] * out.y + pos[base[j] * 3 + 2] * out.z) / M;
     }
     bulgeNow = Hh;
     // THE RIM MADE ROUND AS SHE IS POSED, last of all (after the lips and the bulge: done before them, they undid it)
@@ -2966,7 +2978,7 @@ void main() {
         return { rMin: +Math.min(...r).toFixed(2), rMax: +Math.max(...r).toFixed(2), jump: +jump.toFixed(3), outOfPlane: +off.toFixed(2), centre: C.toArray().map((x) => +x.toFixed(3)), normal: n.toArray().map((x) => +x.toFixed(3)), gaps, points: M }; })();
       // (and the same across in her own rest metres, as her posed mesh has it: what the opening is laid to, against the world)
       const lp = (j: number) => mesh.getVertexPosition(base[j], new THREE.Vector3()), localAcrossCm = +(lp(jl).distanceTo(lp(jr)) / perMetre * 100).toFixed(2), worldPerLocal = +new THREE.Vector3().setFromMatrixScale(mesh.matrixWorld).x.toFixed(4);
-      const rimSize = { roundness, roundDbg, localAcrossCm, worldPerLocal, perMetre: +perMetre.toFixed(4), restAcross: dm(jl, jr), restAlong: dm(jb, jf), posedAcross: wd(jl, jr), posedAlong: wd(jb, jf), heldTo, splitFB: splitDbg, legNear: legNear.length, blocker, sideReachCm: colMetres && jl >= 0 && jr >= 0 ? [+(colMetres[R * M + jl] * 100).toFixed(2), +(colMetres[R * M + jr] * 100).toFixed(2)] : null, bulge: bulgeNow, lipMaxMm: +(lipMax * 1000).toFixed(1), lipCount, uScale, edgeDistMaxMm: +(Math.max(...Array.from(edgeDist).filter((x) => x < 1)) * 1000).toFixed(1) };
+      const rimSize = { roundness, roundDbg, localAcrossCm, worldPerLocal, perMetre: +perMetre.toFixed(4), restAcross: dm(jl, jr), restAlong: dm(jb, jf), posedAcross: wd(jl, jr), posedAlong: wd(jb, jf), heldTo, splitFB: splitDbg, legNear: legNear.length, blocker, sideReachCm: colMetres && jl >= 0 && jr >= 0 ? [+(colMetres[R * M + jl] * 100).toFixed(2), +(colMetres[R * M + jr] * 100).toFixed(2)] : null, bulge: bulgeNow, domeDbg, rimAlongOut: (() => { let a = 0; for (let j = 0; j < M; j++) a += (pos[base[j] * 3] * nO.x + pos[base[j] * 3 + 1] * nO.y + pos[base[j] * 3 + 2] * nO.z) / M; return a; })(), lipMaxMm: +(lipMax * 1000).toFixed(1), lipCount, uScale, edgeDistMaxMm: +(Math.max(...Array.from(edgeDist).filter((x) => x < 1)) * 1000).toFixed(1) };
       const rimRest = new THREE.Vector3(); for (let j = 0; j < M; j++) rimRest.x += rim[j * 3] / M, rimRest.y += rim[j * 3 + 1] / M, rimRest.z += rim[j * 3 + 2] / M;
       rimRest.applyMatrix4(meshToRest);
       const lastW = new THREE.Vector3().fromArray(tubeWant, ((K - 1) * M) * 3).applyMatrix4(meshToRest), cx0 = new THREE.Vector3().fromArray(tubeWant, ((KB + KC + KX) * M) * 3).applyMatrix4(meshToRest);
