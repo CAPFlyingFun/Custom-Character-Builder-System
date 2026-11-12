@@ -794,7 +794,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     return true;
   }
   /** a probe's choices for her bikini bottom made from her skin (`skinShellRemake`): its offset and weights' reach, metres */
-  let bottomShellTry: { offset?: number; weightReach?: number; bridgeRounds?: number; noShapes?: boolean; noSprings?: boolean } = {};
+  let bottomShellTry: { offset?: number; weightReach?: number; bridgeRounds?: number; noShapes?: boolean; noSprings?: boolean; noTurn?: boolean } = {};
   /** Her bikini bottom from her skin, made now if it has not been (null when it cannot be: another body, no outline). */
   function ensureBottomShell(): SkinShell | null {
     if (bottomShell || bottomShellTried) return bottomShell;
@@ -9334,8 +9334,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // against her nearest, along her skin's normal there (room units; less than 0 inside her), and the share inside)
         // (`opts.material`: every drawn mesh of that material instead, but those whose names start with `opts.exclude`)
         // her bikini bottom made from her skin made again with a probe's choices (centimetres; rounds of its robe)
-        skinShellRemake: (next: { offsetCm?: number; reachCm?: number; robe?: number; noShapes?: boolean; noSprings?: boolean } = {}) => {
-          bottomShellTry = { ...(next.offsetCm !== undefined ? { offset: next.offsetCm / 100 } : {}), ...(next.reachCm !== undefined ? { weightReach: next.reachCm / 100 } : {}), ...(next.robe !== undefined ? { bridgeRounds: next.robe } : {}), noShapes: next.noShapes, noSprings: next.noSprings };
+        skinShellRemake: (next: { offsetCm?: number; reachCm?: number; robe?: number; noShapes?: boolean; noSprings?: boolean; noTurn?: boolean } = {}) => {
+          bottomShellTry = { ...(next.offsetCm !== undefined ? { offset: next.offsetCm / 100 } : {}), ...(next.reachCm !== undefined ? { weightReach: next.reachCm / 100 } : {}), ...(next.robe !== undefined ? { bridgeRounds: next.robe } : {}), noShapes: next.noShapes, noSprings: next.noSprings, noTurn: next.noTurn };
           bottomShell?.dispose(); bottomShell = null; bottomShellTried = false;
           applyLook();
           return bottomShell ? (bottomShell as SkinShell).debug() : null;

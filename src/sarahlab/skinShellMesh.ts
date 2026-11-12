@@ -38,6 +38,8 @@ export interface SkinShellOptions {
   /** (a probe's) carry none of her motion shapes, or none of her springs */
   readonly noShapes?: boolean;
   readonly noSprings?: boolean;
+  /** (a probe's) carry a shape's move of her skin but not its turn */
+  readonly noTurn?: boolean;
 }
 
 export interface SkinShell {
@@ -101,6 +103,9 @@ function sampleJiggle(out: Float32Array, jig: THREE.BufferAttribute | THREE.Inte
   }
 }
 
+/** GAME TUNING: how long her shape must rest before its robe is worked out again (as her crease's: bodyCrease.ts). */
+export const ROBE_SETTLE_MS = 150;
+
 /** Cut the garment from `body`'s skin and lay it on her. Null when its outline takes in none of her. */
 export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions): SkinShell | null {
   const g = body.geometry as THREE.BufferGeometry;
@@ -127,10 +132,34 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
   // the robe, worked out once on her as she is now and carried with her after
   const rounds = opts.bridgeRounds ?? SKIN_SHELL.bridgeRounds;
   let lift: Float32Array | null = rounds > 0 ? bridgeLift(bake, skin, dir, lay().offset, rounds) : null;
+  // ...kept as each face vertex's HEIGHT along her directions smoothed over the garment and its SLIDE across them, and
+  // laid on her directions as they are now: in a birth position her groin's directions are worked out again
+  // (birthNormals.ts, and her inner thighs and seat drawn in: birthThighs.ts, birthSeat.ts), and raised along them
+  // point by point the garment creased down her crotch; raised along them smoothed, as when it was made, it does not
+  // (2026-11-11: made in SQUAT it was smooth there, made standing and laid in SQUAT it creased)
+  const FC = bake.faceCount;
+  let robeH: Float32Array | null = null, robeT: Float32Array | null = null;
+  const keepRobe = () => {
+    if (!lift) { robeH = robeT = null; return; }
+    const D0 = smoothDirections(bake, dir, SKIN_SHELL.bridgeSmooth), off = lay().offset;
+    robeH = new Float32Array(FC); robeT = new Float32Array(FC * 3);
+    for (let v = 0; v < FC; v++) {
+      const lx = dir[v * 3] * off + lift[v * 3], ly = dir[v * 3 + 1] * off + lift[v * 3 + 1], lz = dir[v * 3 + 2] * off + lift[v * 3 + 2];
+      const h = lx * D0[v * 3] + ly * D0[v * 3 + 1] + lz * D0[v * 3 + 2];
+      robeH[v] = h; robeT[v * 3] = lx - D0[v * 3] * h; robeT[v * 3 + 1] = ly - D0[v * 3 + 1] * h; robeT[v * 3 + 2] = lz - D0[v * 3 + 2] * h;
+    }
+  };
+  keepRobe();
+  const liftNow = (): Float32Array | null => {
+    if (!robeH || !robeT) return null;
+    const Dn = smoothDirections(bake, dir, SKIN_SHELL.bridgeSmooth), off = lay().offset, out = new Float32Array(FC * 3);
+    for (let v = 0; v < FC; v++) for (let c = 0; c < 3; c++) out[v * 3 + c] = Dn[v * 3 + c] * robeH[v] + robeT[v * 3 + c] - dir[v * 3 + c] * off;
+    return out;
+  };
 
   const geom = new THREE.BufferGeometry();
   const pos = new Float32Array(P * 3), nrm = new Float32Array(P * 3);
-  layShell(bake, skin, dir, lift, lay(), pos, nrm);
+  layShell(bake, skin, dir, liftNow(), lay(), pos, nrm);
   geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geom.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   // its fabric's pattern laid from its shape as made
@@ -241,7 +270,7 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
       const out = new Float32Array(P * 3); sampleAttr(out, mp[k], 3, bake.src, bake.bary, P);
       const n = mn?.[k];
       let nOut: Float32Array | null = null;
-      if (n) {
+      if (n && !opts.noTurn) {
         nOut = new Float32Array(P * 3); sampleAttr(nOut, n, 3, bake.src, bake.bary, P);
         for (let i = 0; i < P * 3; i++) turned[i] = dir[i] + nOut[i];
         normalizeEach(turned);
@@ -284,9 +313,9 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
   mesh.onBeforeRender = () => { copyInfluences(); };
   body.parent?.add(mesh);
 
-  let posVersion = bp.version, nrmVersion = bn.version, lays = 1;
+  let posVersion = bp.version, nrmVersion = bn.version, lays = 1, robeStale = false, shapeAt = 0;
   const relay = () => {
-    layShell(bake, skin, dir, lift, lay(), pos, nrm);
+    layShell(bake, skin, dir, liftNow(), lay(), pos, nrm);
     (geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (geom.getAttribute('normal') as THREE.BufferAttribute).needsUpdate = true;
     lays++;
@@ -301,6 +330,15 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
       if (bp.version !== posVersion || bn.version !== nrmVersion) {
         posVersion = bp.version; nrmVersion = bn.version;
         readSkin(); relay(); changed = true;
+        robeStale = rounds > 0; shapeAt = performance.now();
+      }
+      // HER NEW SHAPE'S ROBE: laid at once with the robe it had, and once her shape has rested (`ROBE_SETTLE_MS`), its robe
+      // worked out again on her as she is -- in a birth position her crotch is drawn flat and open (birthGap.ts,
+      // birthThighs.ts, birthSeat.ts), and the robe that spanned her standing, laid there, stood up in a crease down
+      // her middle (2026-11-11: made in SQUAT it was smooth, made standing it creased there)
+      if (robeStale && performance.now() - shapeAt >= ROBE_SETTLE_MS) {
+        robeStale = false;
+        lift = bridgeLift(bake, skin, dir, lay().offset, rounds); keepRobe(); relay(); changed = true;
       }
       if (sw && sw.version !== weightsVersion) { readWeights(); (geom.getAttribute('skinWeight') as THREE.BufferAttribute).needsUpdate = true; (geom.getAttribute('skinIndex') as THREE.BufferAttribute).needsUpdate = true; changed = true; }
       const bpush = pushOf();
@@ -315,6 +353,7 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
       if (!(metres > 0) || metres === offsetM) return;
       offsetM = metres;
       lift = rounds > 0 ? bridgeLift(bake, skin, dir, lay().offset, rounds) : null;
+      keepRobe();
       relay(); readShapes();
       if (keep.length) { mesh.morphTargetDictionary = names(); mesh.morphTargetInfluences = influences; copyInfluences(); }
       // (the GPU keeps a geometry's motion shapes until it is told they are new: dropped, they are sent again)
