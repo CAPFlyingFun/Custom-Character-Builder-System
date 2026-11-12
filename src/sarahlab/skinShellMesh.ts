@@ -16,6 +16,12 @@
  *
  * Nothing of hers is changed: her body file, her points, her draw (her skin is never hidden under clothes on v2,
  * sarahLabTool.ts bodyNeverHidden) -- the garment is only drawn over her.
+ *
+ * ANOTHER GARMENT THE SAME WAY: a field over her vertices, metres, positive where it covers her -- traced from a model,
+ * as the bikini bottom's (`bikiniBottomStencil.ts`, `scripts/traceBikiniBottom.mjs`), or drawn by a coverage template
+ * (`paintTemplates.ts` coverage; its 0.5 line is the edge) -- and `createSkinShell(body, { field, indices, material,
+ * name })`, `sync()` each frame it is drawn. Its strings or ties, narrower than her skin's triangles where they run, come
+ * from a model or the strap builder (`strapMesh.ts`), not from her skin.
  */
 import * as THREE from 'three';
 import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, UNITS_PER_METRE } from './softBody';
