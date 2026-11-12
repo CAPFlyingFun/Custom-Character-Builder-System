@@ -689,6 +689,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let briefData: { positions: Float32Array; normals: Float32Array | null; index: Uint32Array; material: THREE.Material } | null = null;
   let clothBrief: ClothBrief | null = null, clothBriefTried = false, clothBriefPose = '';
   /** its painted edge as a Strip (BIKINI_BOTTOM_SOURCE 'paint': paintedEdge.ts), made with it */
+  /** Whether the painted bikini bottom wears its edge as a Strip: off (Joshua, 2026-11-12: "try without any offset and do
+   *  directly on the skin" -- the paint alone, while he paints its exact shape himself). paintedEdge.ts kept. */
+  const PAINTED_EDGE_ON = false;
   let paintedEdge: PaintedEdge | null = null, paintedEdgeHidden = false, cordsHidden = false;
   /**
    * GAME TUNING: where the painted bikini bottom's modelled cords begin, metres either side of her middle. The paint's
@@ -870,7 +873,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       clothBrief = new ClothBrief(body, bake, tris, briefData.material, M, clothBriefTry.restScale !== undefined ? { restScale: clothBriefTry.restScale } : {});
       clothBrief.mesh.userData.madeInMs = Math.round(performance.now() - t0);
       three.add(clothBrief.mesh);
-      if (BIKINI_BOTTOM_SOURCE === 'paint') {
+      if (BIKINI_BOTTOM_SOURCE === 'paint' && PAINTED_EDGE_ON) {
         // the painted edge, a Strip along the paint's outline up to where the cords take over (Joshua, 2026-11-12: "add an
         // offset by making it thicker like Under Build as a Strip"), in the bikini's own colour
         const runs = outlineRuns(base.basePos, tris, bikiniBottomField(count) ?? [], GEOMETRY_PER_METRE, CORDS_FROM_M * GEOMETRY_PER_METRE);
