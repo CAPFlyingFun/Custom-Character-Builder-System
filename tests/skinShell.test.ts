@@ -150,7 +150,7 @@ describe('the robe: a garment spans the hollows her skin folds into', () => {
     expect(bottom).toBeGreaterThan(0.9 * depth);
     expect(lowest).toBeGreaterThan(offset - 0.001);
     expect(flat).toBeLessThan(0.001);
-    // and the edge of the garment stays where it was cut
-    for (let v = 0; v < bake.faceCount; v++) if (bake.edge[v]) expect(Math.hypot(lift[v * 3], lift[v * 3 + 1], lift[v * 3 + 2])).toBe(0);
+    // and the edge of the garment stays where it was cut, at its height (it only turns with the smoothed directions)
+    for (let v = 0; v < bake.faceCount; v++) if (bake.edge[v]) expect(Math.hypot(...[0, 1, 2].map((c) => dir[v * 3 + c] * offset + lift[v * 3 + c]))).toBeCloseTo(offset, 6);
   });
 });

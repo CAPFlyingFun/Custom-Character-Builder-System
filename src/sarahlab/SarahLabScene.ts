@@ -758,23 +758,39 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * area is drawn with her own material, its lips lying as her skin does (vulvaMesh.ts setDressed).
    */
   /**
-   * THE MODELLED BRIEF CUT DOWN TO ITS SIDE TIES: its triangles past where its fabric ends (MEASURED: the scan's
-   * `TIE_FROM` 0.44 times the scale it was fitted to her at, `PLACE_V2` 0.43 -- scripts/fitMeshyBikini.mjs,
-   * scripts/sarahV2Bikini.mjs -- metres either side of her middle). The fabric itself is her skin's (bottomShell).
+   * THE MODELLED BRIEF CUT DOWN TO ITS STRINGS AND TIES: its triangles further than 12.5 cm either side of her middle
+   * (GAME TUNING, `STRINGS.only` in scripts/traceBikiniBottom.mjs: where its panels have narrowed into strings). Its
+   * panels are her skin's (bottomShell); its strings, a centimetre wide over the coarse skin of her hips, could not be
+   * cut from it, and its ties never could.
    */
-  function cutBriefToTies(m: THREE.SkinnedMesh): boolean {
+  function cutBriefToStrings(m: THREE.SkinnedMesh): boolean {
     const g = m.geometry, idx = g.index, p = g.getAttribute('position');
     if (!idx || !p) return false;
     let lo = Infinity, hi = -Infinity;
     for (let k = 0; k < idx.count; k++) { const x = p.getX(idx.getX(k)); lo = Math.min(lo, x); hi = Math.max(hi, x); }
-    const mid = (lo + hi) / 2, from = 0.44 * 0.43 * GEOMETRY_PER_METRE, keep: number[] = [];
+    const mid = (lo + hi) / 2, from = 0.125 * GEOMETRY_PER_METRE, keep: number[] = [];
     for (let k = 0; k + 2 < idx.count; k += 3) {
       const a = idx.getX(k), b = idx.getX(k + 1), c = idx.getX(k + 2);
       if (Math.abs((p.getX(a) + p.getX(b) + p.getX(c)) / 3 - mid) > from) keep.push(a, b, c);
     }
     if (!keep.length) return false;
-    g.setIndex(keep);
-    m.userData.briefTies = true;
+    // ...as a geometry of only the vertices they use: drawn whole, the brief's 31,749 vertices and every one of her motion
+    // shapes on them would have gone to the GPU (about 19 MB) for some 2,000 in use (review, 2026-11-11)
+    const remap = new Map<number, number>(), used: number[] = [];
+    for (const v of keep) if (!remap.has(v)) { remap.set(v, used.length); used.push(v); }
+    const copy = (a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): THREE.BufferAttribute => {
+      const n = a.itemSize, out = new (a.array.constructor as new (n: number) => THREE.TypedArray)(used.length * n);
+      for (let i = 0; i < used.length; i++) for (let k = 0; k < n; k++) out[i * n + k] = a.getComponent(used[i], k) as number;
+      return new THREE.BufferAttribute(out, n, a.normalized);
+    };
+    const small = new THREE.BufferGeometry();
+    for (const [name, a] of Object.entries(g.attributes)) small.setAttribute(name, copy(a));
+    for (const name of ['position', 'normal', 'color'] as const) { const list = g.morphAttributes[name]; if (list) small.morphAttributes[name] = list.map(copy); }
+    small.morphTargetsRelative = g.morphTargetsRelative;
+    small.setIndex(keep.map((v) => remap.get(v)!));
+    small.userData = { ...g.userData };
+    m.geometry = small; g.dispose();
+    m.userData.briefStrings = true;
     return true;
   }
   /** Her bikini bottom from her skin, made now if it has not been (null when it cannot be: another body, no outline). */
@@ -790,7 +806,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const indices = new Uint32Array(all.length + (area?.length ?? 0));
     indices.set(all); if (area) indices.set(area, all.length);
     const t0 = performance.now();
-    bottomShell = createSkinShell(body, { field, indices, material: mat, name: 'sarahSkinBikiniBottom' });
+    // (a garment that cannot be made leaves her in the strings, never stops her room)
+    try { bottomShell = createSkinShell(body, { field, indices, material: mat, name: 'sarahSkinBikiniBottom' }); }
+    catch (e) { console.warn('[sarahlab] her bikini bottom could not be made from her skin', e); bottomShell = null; }
     if (bottomShell) bottomShell.mesh.userData.madeInMs = Math.round(performance.now() - t0);
     return bottomShell;
   }
@@ -801,7 +819,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   function vulvaKeepNow(): number { return bottomShell?.mesh.visible ? 0 : fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP; }
   function vulvaDressed(view: string): boolean {
-    if (bottomsOff() || view !== 'all') return false;
+    if (bottomsOff()) return false;
+    // (her bikini bottom made from her skin drawn over her -- the editor's bikini view too -- clears her skin shut)
+    if (bottomShell?.mesh.visible) return true;
+    if (view !== 'all') return false;
     return lowerCovered() || skinned.some((m) => m.visible && m.userData.recoveredLeggings);
   }
   /**
@@ -7484,7 +7505,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             const v = new THREE.Vector3(); let max = -Infinity;
             for (const i of m.geometry.index.array) { m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld); max = Math.max(max, v.y); }
             if (max < 110) {
-              if (BIKINI_BOTTOM_FROM_SKIN && cutBriefToTies(m)) briefTies = m;
+              if (BIKINI_BOTTOM_FROM_SKIN && cutBriefToStrings(m)) briefTies = m;
               else m.userData.replacedByRecovered = true;
             }
           }

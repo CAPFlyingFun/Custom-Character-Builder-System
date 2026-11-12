@@ -109,13 +109,22 @@ export const SMOOTH = Object.freeze({ rounds: 6, within: 0.015, blend: 0.5 });
  */
 export const CLEFT = Object.freeze({ x: 0.035, dy: 0.003 });
 /**
- * Step 5c, THE SIDE STRINGS: the narrow bands that join each panel to its tie are about one of her vertices wide, too
- * narrow for an edge to be cut along (the smoothing takes them, and the rays break them into dashes). So each string is
- * found as a line -- the middle of what the rays met past `from` either side of her middle, front and back apart,
- * 4 mm at a time (`bin`), smoothed -- carried on `past` the tie's start to end under its knot, and given a band
- * `half` either side of that line. GAME TUNING (metres): a band 1 cm wide.
+ * Step 5c, WHERE THE PANELS BECOME STRINGS: the narrow bands that join each panel to its tie are about one of her
+ * vertices wide, and her skin over her hips is coarse there (her triangles' edges 6 mm, a tenth of them 15 mm or more:
+ * MEASURED), too coarse for a band a centimetre wide to be cut from it -- cut, it came out in broken pieces (2026-11-11).
+ * So the strings are the modelled brief's own, drawn from her body file past `only` either side of her middle
+ * (SarahLabScene `cutBriefToStrings`, the same number), and here past `only` her skin is bare. Short of it, each
+ * panel's corner is drawn out toward its string: the string found as a line -- the middle of what the rays met past
+ * `from`, front and back apart, 4 mm at a time (`bin`), smoothed -- and a band `half` either side of it taken in, so the
+ * corner narrows into the string instead of ending ragged. GAME TUNING (metres).
  */
-export const STRINGS = Object.freeze({ from: 0.1, bin: 0.004, past: 0.008, half: 0.005, smooth: 3 });
+export const STRINGS = Object.freeze({ from: 0.1, bin: 0.004, past: 0.015, half: 0.006, smooth: 3, only: 0.125 });
+/**
+ * Step 5d, HOLES: bare skin the fabric closes round on every side (her navel would be one, were it under it; here the
+ * last of her cleft's floor and her lips' folds) is the fabric's. A bare piece is a hole when none of it reaches skin
+ * far outside the outline (unstored), and it is smaller than `most` points. GAME TUNING.
+ */
+export const HOLES = Object.freeze({ most: 2000 });
 /** GAME TUNING: stored in half-millimetre steps, at most `MAX_Q` of them either way (60 x 0.5 mm = `FAR_M`), as byte `ZERO_BYTE + q`. */
 export const STEP_M = 0.0005, MAX_Q = 60, ZERO_BYTE = 128;
 /** GAME TUNING (layout only): base64 characters per line of the generated module, as in leotardStencil.ts. */
@@ -439,12 +448,37 @@ function addStrings(field, at, covered, count) {
           const t = Math.max(0, Math.min(1, ((at[p * 3] - q0[0]) * ex + (at[p * 3 + 1] - q0[1]) * ey + (at[p * 3 + 2] - q0[2]) * ez) / l2));
           best = Math.min(best, Math.hypot(at[p * 3] - q0[0] - t * ex, at[p * 3 + 1] - q0[1] - t * ey, at[p * 3 + 2] - q0[2] - t * ez));
         }
+        // past `only` the modelled brief's own string is drawn: her skin is bare there; short of it, whichever of the
+        // band and the panel reaches further
         const f = STRINGS.half - best;
-        if (f > -FAR_M && (Number.isNaN(field[p]) || f > field[p])) field[p] = f;
+        if (u >= STRINGS.only) { if (!Number.isNaN(field[p]) && field[p] > -STEP_M) field[p] = -Math.max(STEP_M, Math.min(FAR_M, u - STRINGS.only + STEP_M)); }
+        else if (f > -FAR_M && (Number.isNaN(field[p]) || f > field[p])) field[p] = f;
       }
     }
   }
   return lines;
+}
+
+/** Step 5d: bare pieces closed in by the fabric taken in (+ one step); returns how many points. */
+function fillHoles(field, graph, count) {
+  const seen = new Uint8Array(count), stack = [];
+  let filled = 0;
+  for (let p = 0; p < count; p += 1) {
+    if (seen[p] || Number.isNaN(field[p]) || field[p] > 0) continue;
+    const piece = []; let open = false;
+    seen[p] = 1; stack.push(p);
+    while (stack.length) {
+      const q = stack.pop(); piece.push(q);
+      for (let j = graph.start[q]; j < graph.start[q + 1]; j += 1) {
+        const w = graph.to[j];
+        if (Number.isNaN(field[w])) { open = true; continue; }
+        if (field[w] > 0 || seen[w]) continue;
+        seen[w] = 1; stack.push(w);
+      }
+    }
+    if (!open && piece.length < HOLES.most) { for (const q of piece) field[q] = STEP_M; filled += piece.length; }
+  }
+  return filled;
 }
 
 /**
@@ -599,7 +633,8 @@ export async function traceBikiniBottom(bodyFile = BODY_GLB, outFile = OUT_TS, {
   for (let p = 0; p < count; p += 1) if (covered[p]) { zLo = Math.min(zLo, at[p * 3 + 2]); zHi = Math.max(zHi, at[p * 3 + 2]); }
   const filled = fillCleft(field, at, count, (zLo + zHi) / 2);
   const strings = addStrings(field, at, covered, count);
-  log(`cleft: ${filled} points between the fabric either side taken in; strings: ${strings.map((s) => `${s.side > 0 ? 'left' : 'right'} ${s.front ? 'front' : 'back'} ${s.line.length} points from |x| ${Math.abs(s.line[0][0]).toFixed(3)} to ${Math.abs(s.line[s.line.length - 1][0]).toFixed(3)} m`).join('; ')}`);
+  const holesFilled = fillHoles(field, graph, count);
+  log(`cleft: ${filled} points between the fabric either side taken in; holes: ${holesFilled} points taken in; strings: ${strings.map((s) => `${s.side > 0 ? 'left' : 'right'} ${s.front ? 'front' : 'back'} ${s.line.length} points from |x| ${Math.abs(s.line[0][0]).toFixed(3)} to ${Math.abs(s.line[s.line.length - 1][0]).toFixed(3)} m`).join('; ')}`);
 
   // ── the report: what the rays found (covered), and what the smoothed field says (inside) ──
   /** Of the points `keep` marks: their vertices, on her left (+x) and right, and how far out (|x|) they reach on her front and back. */

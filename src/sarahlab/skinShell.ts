@@ -34,12 +34,19 @@ export const SKIN_SHELL = Object.freeze({
   /** the hem: rings from the face's edge down to her skin, how far it rounds out past the cut (a share of the offset),
    *  and how far off her skin its foot stands (just clear of her, never in her) */
   hemRings: 4, hemBulge: 0.35, hemFoot: 0.0004,
-  /** the robe: rounds of outward-only smoothing, and how far toward its neighbours' middle a point moves each round */
-  bridgeRounds: 200, bridgeStep: 0.5, bridgeSmooth: 8,
+  /** the robe: rounds of rising, how far toward its neighbours' height a point rises each round, rounds of smoothing
+   *  her directions it rises along (20: on a fold 3 cm deep and 1.2 cm across, 8 left 130 of its triangles turned over
+   *  and 20 left 10), and rounds of sliding raised points across the span to untangle it (on her: 1,028 of the bikini
+   *  bottom's 8,598 triangles turned over raised straight up, 29 untangled -- tests/bikiniBottomShell.test.ts) */
+  bridgeRounds: 200, bridgeStep: 0.5, bridgeSmooth: 20, bridgeUntangle: 60,
+  /** its bone weights smoothed over it, its edges held to her skin's: rounds, and how far toward its neighbours' mean
+   *  each round goes (skinShellMesh.ts: so it spans the lines where her skin's weights part, as fabric does) */
+  weightRounds: 24, weightStep: 0.5,
   /** a field this close to 0 counts as just outside (no sliver triangles along the edge), metres */
   snap: 0.0002,
-  /** pieces of the cut with fewer points than this are specks, dropped */
-  minPiece: 40,
+  /** pieces of the cut with fewer points than this are specks, dropped (a scrap of 54 a string left behind was kept at
+   *  40 and drawn as a patch floating on her seat: 2026-11-11 review) */
+  minPiece: 100,
   /** her seams' copies of one point are within this of each other, metres (far below her spacing, far above noise) */
   weld: 0.00002,
 });
@@ -287,16 +294,62 @@ export function normalizeEach(v: Float32Array): void {
  * Raised along her own directions, the two walls of a fold narrower than twice the offset cross each other (each wall's
  * direction points at the other), and nothing smoothed from there comes untangled. So the span is raised along her
  * directions SMOOTHED over the garment (`smooth` rounds of each vertex's and its neighbours' average): across a fold they
- * cancel to point out of it, and on her open skin they are hers. Then it is smoothed outward only: a vertex moves `step`
- * of the way to its neighbours' middle when that middle is out from her (along the smoothed direction), never in, until
- * no point lies below its neighbours -- a span across the fold; the garment's edge stays where the cut put it. Returns
- * the moves from the plain places, three numbers a face vertex.
+ * cancel to point out of it, and on her open skin they are hers. Each vertex then only RISES along that direction, never
+ * sideways (moved toward its neighbours' middle, the walls of a fold slid past each other and folded the garment over --
+ * it showed as a torn line down her crotch with her legs apart, 2026-11-11): a round raises it `step` of the way to the
+ * height of its neighbours' middle, measured along its direction from her skin, whenever that is higher -- until no
+ * point lies below its neighbours, a span across the fold. The garment's edge stays where the cut put it. Returns the
+ * moves from the plain places, three numbers a face vertex.
  */
-export function bridgeLift(bake: SkinShellBake, skin: Float32Array, dir: Float32Array, offset: number, rounds: number = SKIN_SHELL.bridgeRounds, step: number = SKIN_SHELL.bridgeStep, smooth: number = SKIN_SHELL.bridgeSmooth): Float32Array {
-  const F = bake.faceCount, X = new Float32Array(F * 3), Y = new Float32Array(F * 3);
-  // her directions smoothed over the garment
-  const D = dir.slice(0, F * 3), E = new Float32Array(F * 3);
-  for (let r = 0; r < smooth; r++) {
+export function bridgeLift(bake: SkinShellBake, skin: Float32Array, dir: Float32Array, offset: number, rounds: number = SKIN_SHELL.bridgeRounds, step: number = SKIN_SHELL.bridgeStep, smooth: number = SKIN_SHELL.bridgeSmooth, untangle: number = SKIN_SHELL.bridgeUntangle): Float32Array {
+  const F = bake.faceCount, D = smoothDirections(bake, dir, smooth);
+  // each vertex's height off her skin along its smoothed direction, raised only
+  let h = new Float32Array(F).fill(offset), g = new Float32Array(F);
+  for (let r = 0; r < rounds; r++) {
+    for (let v = 0; v < F; v++) {
+      const s = bake.nbrStart[v], e = bake.nbrStart[v + 1];
+      g[v] = h[v];
+      if (bake.edge[v] || e === s) continue;
+      let mx = 0, my = 0, mz = 0;
+      for (let k = s; k < e; k++) { const w = bake.nbr[k]; mx += skin[w * 3] + D[w * 3] * h[w]; my += skin[w * 3 + 1] + D[w * 3 + 1] * h[w]; mz += skin[w * 3 + 2] + D[w * 3 + 2] * h[w]; }
+      const inv = 1 / (e - s), want = (mx * inv - skin[v * 3]) * D[v * 3] + (my * inv - skin[v * 3 + 1]) * D[v * 3 + 1] + (mz * inv - skin[v * 3 + 2]) * D[v * 3 + 2];
+      if (want > h[v]) g[v] = h[v] + step * (want - h[v]);
+    }
+    [h, g] = [g, h];
+  }
+  const X = new Float32Array(F * 3), Y = new Float32Array(F * 3);
+  for (let v = 0; v < F; v++) for (let c = 0; c < 3; c++) X[v * 3 + c] = skin[v * 3 + c] + D[v * 3 + c] * h[v];
+  // UNTANGLED across the span: raised straight up off a fold whose walls lean over it, a wall's triangles land on the span
+  // turned over (2026-11-11: dark specks down the middle of her gusset, with the material drawing both sides). Where it
+  // was raised, each vertex slides across the span (square to its direction, never up or down it) toward its neighbours'
+  // middle, so the walls' triangles spread out over it the right way up; where it was not, it stays.
+  const raised = (v: number) => h[v] > offset + 0.05 * offset;
+  for (let r = 0; r < untangle; r++) {
+    Y.set(X);
+    for (let v = 0; v < F; v++) {
+      const s = bake.nbrStart[v], e = bake.nbrStart[v + 1];
+      if (bake.edge[v] || e === s || !raised(v)) continue;
+      let mx = 0, my = 0, mz = 0;
+      for (let k = s; k < e; k++) { const w = bake.nbr[k]; mx += X[w * 3]; my += X[w * 3 + 1]; mz += X[w * 3 + 2]; }
+      const inv = 1 / (e - s);
+      let dx = mx * inv - X[v * 3], dy = my * inv - X[v * 3 + 1], dz = mz * inv - X[v * 3 + 2];
+      const up = dx * D[v * 3] + dy * D[v * 3 + 1] + dz * D[v * 3 + 2];
+      dx -= up * D[v * 3]; dy -= up * D[v * 3 + 1]; dz -= up * D[v * 3 + 2];
+      Y[v * 3] += step * dx; Y[v * 3 + 1] += step * dy; Y[v * 3 + 2] += step * dz;
+    }
+    X.set(Y);
+  }
+  // the moves from the plain places (her skin raised `offset` along her own direction)
+  for (let v = 0; v < F; v++) for (let c = 0; c < 3; c++) X[v * 3 + c] -= skin[v * 3 + c] + dir[v * 3 + c] * offset;
+  return X;
+}
+
+/** Her directions (`dir`, the face's first) averaged with their neighbours' `rounds` times over the garment, unit length:
+ *  what the robe rises along, its edge too (laid along her own there, its edge in a crease turned over the face beside
+ *  it: 290 of the 295 triangles left turned over, 2026-11-11). */
+export function smoothDirections(bake: SkinShellBake, dir: Float32Array, rounds: number): Float32Array {
+  const F = bake.faceCount, D = dir.slice(0, F * 3), E = new Float32Array(F * 3);
+  for (let r = 0; r < rounds; r++) {
     for (let v = 0; v < F; v++) {
       let x = D[v * 3], y = D[v * 3 + 1], z = D[v * 3 + 2];
       for (let k = bake.nbrStart[v]; k < bake.nbrStart[v + 1]; k++) { const w = bake.nbr[k]; x += D[w * 3]; y += D[w * 3 + 1]; z += D[w * 3 + 2]; }
@@ -304,23 +357,7 @@ export function bridgeLift(bake: SkinShellBake, skin: Float32Array, dir: Float32
     }
     D.set(E);
   }
-  for (let v = 0; v < F; v++) for (let c = 0; c < 3; c++) X[v * 3 + c] = skin[v * 3 + c] + D[v * 3 + c] * offset;
-  for (let r = 0; r < rounds; r++) {
-    for (let v = 0; v < F; v++) {
-      const s = bake.nbrStart[v], e = bake.nbrStart[v + 1];
-      Y[v * 3] = X[v * 3]; Y[v * 3 + 1] = X[v * 3 + 1]; Y[v * 3 + 2] = X[v * 3 + 2];
-      if (bake.edge[v] || e === s) continue;
-      let mx = 0, my = 0, mz = 0;
-      for (let k = s; k < e; k++) { const w = bake.nbr[k]; mx += X[w * 3]; my += X[w * 3 + 1]; mz += X[w * 3 + 2]; }
-      const inv = 1 / (e - s), dx = mx * inv - X[v * 3], dy = my * inv - X[v * 3 + 1], dz = mz * inv - X[v * 3 + 2];
-      if (dx * D[v * 3] + dy * D[v * 3 + 1] + dz * D[v * 3 + 2] <= 0) continue;
-      Y[v * 3] += step * dx; Y[v * 3 + 1] += step * dy; Y[v * 3 + 2] += step * dz;
-    }
-    X.set(Y);
-  }
-  // the edge keeps its plain place (raised along her own direction, as the hem below it is)
-  for (let v = 0; v < F; v++) for (let c = 0; c < 3; c++) X[v * 3 + c] = bake.edge[v] ? 0 : X[v * 3 + c] - (skin[v * 3 + c] + dir[v * 3 + c] * offset);
-  return X;
+  return D;
 }
 
 export interface ShellLay {
