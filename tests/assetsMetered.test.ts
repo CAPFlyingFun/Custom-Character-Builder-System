@@ -153,7 +153,8 @@ describe('the room opens with only what she has on', () => {
     for (let i = PAINTED_DEFAULT_OUTFIT, n = 0; n < OUTFITS.length; n++) { i = nextOutfit(i, slim); seen.push(i); }
     // the big modelled shirts and leggings are kept but not offered (Joshua, 2026-10-22): bikini, none, the light tee and
     // the painted ones (the light tee is the one outfit with both a garment and paint)
-    expect([...new Set(seen)].sort((a, b) => a - b)).toEqual([2, 4, ...OUTFITS.map((o, i) => (o.paint ? i : -1)).filter((i) => i >= 0)]);
+    // (the bikini's bottom is painted now: it is among the painted ones as well -- Joshua, 2026-11-12)
+    expect([...new Set(seen)].sort((a, b) => a - b)).toEqual([...new Set([2, 4, ...OUTFITS.map((o, i) => (o.paint ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b));
     expect(seen).toContain(SARAH_DEFAULT_OUTFIT);
   });
 

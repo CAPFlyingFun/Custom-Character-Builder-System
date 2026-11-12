@@ -480,13 +480,16 @@ export type RecoveredPart = 'leggings' | 'leggings-low' | 'bottom' | 'relaxed-hi
  * pubic bone" -- and is worn again only with this off.
  */
 /**
- * WHICH BIKINI BOTTOM SHE WEARS: 'cloth', the modelled brief in her body file as it was designed, moved by the room's
+ * WHICH BIKINI BOTTOM SHE WEARS: 'paint', its front, gusset and back painted on her to the modelled brief's own outline,
+ * its strings, knots and bows the modelled ones, held on her 3 mm off her skin (Joshua, 2026-11-12: "Do the painted main
+ * bottoms, but keep the cords": the cloth's crumpling where her birth shaping squeezes her could not happen to paint);
+ * 'cloth', the modelled brief in her body file as it was designed, moved by the room's
  * cloth (Joshua, 2026-11-11: "MESHY model bottom with stretchy as a cloth sim, but not alter the shape or design of it…";
  * `clothBrief.ts`); 'skin', the one made from her skin to the brief's outline (above; kept for any garment made that
  * way); 'recovered', the recovered file. Neither of the first two fetches anything.
  */
-export type BikiniBottomSource = 'cloth' | 'skin' | 'recovered';
-export const BIKINI_BOTTOM_SOURCE = 'cloth' as BikiniBottomSource;
+export type BikiniBottomSource = 'paint' | 'cloth' | 'skin' | 'recovered';
+export const BIKINI_BOTTOM_SOURCE = 'paint' as BikiniBottomSource;
 export const BIKINI_BOTTOM_FROM_SKIN = BIKINI_BOTTOM_SOURCE === 'skin';
 const PART_OF: Partial<Record<Garment, RecoveredPart>> = {
   leggings: 'leggings', leggingsLow: 'leggings-low', ...(BIKINI_BOTTOM_SOURCE === 'recovered' ? { bikini: 'bottom' as const } : {}),
@@ -564,7 +567,8 @@ export interface BuiltInOutfit { readonly name: string; readonly garments: reado
 export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'tee + leggings', garments: ['shirtAthletic', 'leggings'] },
   { name: 'top + low leggings', garments: ['shirtAthletic', 'leggingsLow'] },
-  { name: 'bikini', garments: ['bikini'] },
+  // (its bottom painted, in the top's own green: the bikini material's colour, MEASURED from her file, in sRGB)
+  { name: 'bikini', garments: ['bikini'], ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { paint: [{ template: 'bikiniBottom', fabric: { family: 'athletic' as const, colour: 11, tint: '#658b61' } }] } : {}) },
   { name: 'swimsuit', garments: ['swimsuit'] },
   { name: 'none', garments: [] },
   { name: 'spandex + high leggings', garments: ['shirtSpandexHigh', 'leggings'] },

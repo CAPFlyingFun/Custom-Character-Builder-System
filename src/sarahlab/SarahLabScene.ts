@@ -688,6 +688,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let briefData: { positions: Float32Array; normals: Float32Array | null; index: Uint32Array; material: THREE.Material } | null = null;
   let clothBrief: ClothBrief | null = null, clothBriefTried = false, clothBriefPose = '';
   /** a probe's choices for it (`clothBriefRemake`): the hold across its panels' middles */
+  /** MEASURED (bikiniBottomStencil.ts): the painted bikini bottom's outline reaches 12.5 cm either side of her middle; its cords begin there. */
+  const CORDS_FROM_M = 0.125;
   let clothBriefTry: { holdMiddle?: number; holdEdge?: number; holdFree?: number; restScale?: number } = {};
   /** a probe's change to the birth position's angles (humanBirth.ts `tweak`) */
   let birthTweak: Partial<BirthSpec> | null = null;
@@ -853,7 +855,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const bake = bakeBriefCloth({
         brief: { positions: briefData.positions, index: briefData.index, normals: briefData.normals ?? undefined },
         cloth, skin: { positions: base.basePos, index: tris, normals: base.baseNrm ?? g.getAttribute('normal').array }, unitsPerMetre: GEOMETRY_PER_METRE,
-        field: bikiniBottomField(count), ...clothBriefTry,
+        field: bikiniBottomField(count),
+        // painted, only its cords are drawn, held on her all along (CORDS_FROM: where the paint's outline ends)
+        ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { cordsFrom: CORDS_FROM_M, holdMiddle: 1, holdEdge: 1, holdFree: 2 } : {}), ...clothBriefTry,
       });
       model.updateMatrixWorld(true);
       clothBrief = new ClothBrief(body, bake, tris, briefData.material, M, clothBriefTry.restScale !== undefined ? { restScale: clothBriefTry.restScale } : {});
@@ -7565,7 +7569,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             const v = new THREE.Vector3(); let max = -Infinity;
             for (const i of m.geometry.index.array) { m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld); max = Math.max(max, v.y); }
             if (max < 110) {
-              if (BIKINI_BOTTOM_SOURCE === 'cloth' && (briefData = takeBrief(m))) briefOut.push(m);
+              if ((BIKINI_BOTTOM_SOURCE === 'cloth' || BIKINI_BOTTOM_SOURCE === 'paint') && (briefData = takeBrief(m))) briefOut.push(m);
               else if (BIKINI_BOTTOM_FROM_SKIN && cutBriefToStrings(m)) briefTies = m;
               else m.userData.replacedByRecovered = true;
             }
@@ -9405,7 +9409,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // + outside, measured to her nearest skin point along her normal there), and a number of frames run for it
         clothBriefRemake: (next: { holdMiddle?: number; holdEdge?: number; holdFree?: number; restScale?: number } = {}) => { clothBriefTry = next; clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; applyLook(); return !!clothBrief; },
         clothBrief: (frames = 0, dt = 1 / 60) => {
-          if (BIKINI_BOTTOM_SOURCE === 'cloth' && recovered && model) ensureClothBrief();
+          if ((BIKINI_BOTTOM_SOURCE === 'cloth' || BIKINI_BOTTOM_SOURCE === 'paint') && recovered && model) ensureClothBrief();
           if (!clothBrief || !model) return { made: false, tried: clothBriefTried, data: !!briefData };
           for (let k = 0; k < frames; k++) { model.updateMatrixWorld(true); clothBrief.frame(dt); }
           const b = bodyOf()?.mesh, P = clothBrief.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;

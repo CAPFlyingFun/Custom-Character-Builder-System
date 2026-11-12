@@ -15,6 +15,7 @@
  */
 import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
+import { bikiniBottomField } from './bikiniBottomStencil';
 
 export interface CoverageParams {
   /**
@@ -73,6 +74,12 @@ export interface CoverageParams {
    * line traced onto her skin decides (`leotardStencil.ts`), where her body is the one it was traced on.
    * Null: the openings are where `legEnd` says.
    */
+  /**
+   * A cut traced from a modelled garment instead of the lines above: 'bikiniBottom', her Meshy bikini bottom's front,
+   * gusset and back, painted to the brief's own outline (Joshua, 2026-11-12: "Do the painted main bottoms, but keep the
+   * cords": `bikiniBottomStencil.ts`; its strings, knots and bows stay modelled).
+   */
+  readonly outline?: 'bikiniBottom';
   readonly legCut: { readonly crotch: number; readonly side: number; readonly sideBack: number; readonly gusset: number; readonly gussetFront: number; readonly traced?: boolean; readonly backSpan: number } | null;
   /**
    * A shirt's LENGTH (Joshua, 2026-10-22: "make the shirt length adjustable from knee-length up to just above the
@@ -363,6 +370,8 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // (Joshua, 2026-10-23: "the swimsuit has no bottom covering the crotch and underside like the Leotard"): cut straight
   // across the tops of her thighs instead, it left her crotch bare
   ['swimsuit', 'One-piece swimsuit', 'Other', { ...upper(-1, -1, LINES.neckScoop, -1, { strapIn: 0.98, strap: 0.47, neckBack: 0.86, armhole: LINES.armhole }), ...FULL, legEnd: 0.4, legCut: ONE_PIECE_CUT }, 'swimsuit'],
+  // her Meshy bikini bottom, painted to the modelled brief's own outline (`outline`)
+  ['bikiniBottom', 'Bikini bottom', 'Other', lower(NO_RISE, 0, { outline: 'bikiniBottom' })],
   ['stockings', 'Thigh-high stockings', 'Other', lower(NO_RISE, 1.0, { legStart: 0.22, feet: true })],
   ['socksKnee', 'Knee-high socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.58, feet: true })],
   ['socks', 'Crew socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.86, feet: true })],
@@ -463,6 +472,11 @@ const soft = (x: number) => (x <= -EDGE ? 0 : x >= EDGE ? 1 : (x + EDGE) / (2 * 
  * notches (Joshua, 2026-10-22: "the sleeve has a small tear in it"). The edge itself is still drawn crisp, at the line.
  */
 export const SLEEVE_EDGE = 0.08;
+/**
+ * GAME TUNING: a traced outline's ramp, metres either side of the line on her (wider than her triangles at the hips, 6
+ * to 15 mm, so the half-way line is the outline across them, not their own edges -- as EDGE).
+ */
+export const OUTLINE_EDGE_M = 0.015;
 const softSleeve = (x: number) => Math.max(0, Math.min(1, (x + SLEEVE_EDGE) / (2 * SLEEVE_EDGE)));
 /**
  * A front opening's edge (a U, a V, a scoop) has a wide ramp too, in trunk heights (about 4 cm either side on her):
@@ -515,6 +529,13 @@ export function insideCorner(u: number, v: number, r: number): number {
 /** The coverage of `p` at every vertex of the map, 0 to 1. */
 export function coverage(map: BodyMap, p: CoverageParams): Float32Array {
   const n = map.region.length, out = new Float32Array(n);
+  if (p.outline === 'bikiniBottom') {
+    // how far in from the brief's outline each point of her is (metres), a straight ramp either side of it: the paint's
+    // crisp edge falls on the outline itself (see EDGE); none where her body is not the one it was traced on
+    const field = bikiniBottomField(n);
+    if (field) for (let v = 0; v < n; v++) out[v] = Math.max(0, Math.min(1, 0.5 + field[v] / (2 * OUTLINE_EDGE_M)));
+    return out;
+  }
   const stencil = p.legCut?.traced ? leotardFrontStencil(n) : null;
   for (let v = 0; v < n; v++) {
     const id = BODY_REGIONS[map.region[v] - 1]?.id ?? '';

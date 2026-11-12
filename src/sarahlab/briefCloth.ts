@@ -65,6 +65,9 @@ export interface BriefClothInput {
   /** (a probe's) in place of BRIEF_CLOTH.holdEdge and holdFree */
   readonly holdEdge?: number;
   readonly holdFree?: number;
+  /** Draw only its cords: the triangles further than this from her middle (metres) -- its strings, knots and bows,
+   *  where its panels are painted on her (BIKINI_BOTTOM_SOURCE 'paint'). Absent: all of it. */
+  readonly cordsFrom?: number;
 }
 
 export interface BriefClothBake {
@@ -171,7 +174,13 @@ export function bakeBriefCloth(input: BriefClothInput): BriefClothBake {
   // THE BRIEF AS DRAWN: its used vertices, renumbered
   const nB = Math.floor(BP.length / 3), renum = new Int32Array(nB).fill(-1), src: number[] = [];
   for (let i = 0; i < BI.length; i++) { const v = BI[i]; if (renum[v] < 0) { renum[v] = src.length; src.push(v); } }
-  const V = src.length, source = Uint32Array.from(src), index = Uint32Array.from(BI, (v) => renum[v]);
+  const V = src.length, source = Uint32Array.from(src);
+  let index = Uint32Array.from(BI, (v) => renum[v]);
+  if (input.cordsFrom !== undefined) {
+    const from = input.cordsFrom * U, keep: number[] = [];
+    for (let t = 0; t < BI.length; t += 3) if (Math.abs((BP[BI[t] * 3] + BP[BI[t + 1] * 3] + BP[BI[t + 2] * 3]) / 3 - mid) > from) keep.push(renum[BI[t]], renum[BI[t + 1]], renum[BI[t + 2]]);
+    index = Uint32Array.from(keep);
+  }
   const rest = new Float32Array(V * 3);
   for (let i = 0; i < V; i++) for (let k = 0; k < 3; k++) rest[i * 3 + k] = BP[src[i] * 3 + k];
   let restNormal = new Float32Array(V * 3);
