@@ -43,6 +43,8 @@ try {
     for (let n = 0; n < 24; n++) { t = await outfitText(); if (t.includes(want) && !t.includes('…')) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); }
     log('outfit', JSON.stringify(t));
     await page.waitForTimeout(5000);
+    // (LOG_HOOKS='skinShell,...': each hook's answer, once the outfit is on)
+    for (const h of (process.env.LOG_HOOKS ?? '').split(',').filter(Boolean)) log('hook', h, JSON.stringify(await hook(h)));
     // (STATES='[{"name":"b0","press":["sarahlab:size:0"],"hooks":[["birthArea",false]]},...]': each look again with the
     // room changed first -- its pictures named for it)
     const STATES = JSON.parse(process.env.STATES ?? '[{"name":""}]');

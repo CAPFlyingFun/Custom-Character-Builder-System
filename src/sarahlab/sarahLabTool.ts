@@ -472,8 +472,16 @@ export type Garment = (typeof GARMENTS)[number] | (typeof RECOVERED_SHIRTS)[numb
  * the 128 MB she waited for. The shirt files are one in memory at a time; the rest stay once fetched.
  */
 export type RecoveredPart = 'leggings' | 'leggings-low' | 'bottom' | 'relaxed-high' | 'relaxed-low' | 'spandex-high' | 'spandex-low' | 'spandex-lite';
+/**
+ * THE BIKINI BOTTOM IS MADE FROM HER SKIN (Joshua, 2026-11-11: "duplicating the body's skin that adjusts as it
+ * duplicates the same body sizes in real time with an offset like 5mm, and we just match the same outline/shape";
+ * `skinShellMesh.ts`, its outline `bikiniBottomStencil.ts`): nothing is fetched for it. The recovered bottom
+ * (`models/sarah-v2-bottom.glb`, fitted once in TRADDOMIUM) was found under her skin on the new body -- "hidden in the
+ * pubic bone" -- and is worn again only with this off.
+ */
+export const BIKINI_BOTTOM_FROM_SKIN = true;
 const PART_OF: Partial<Record<Garment, RecoveredPart>> = {
-  leggings: 'leggings', leggingsLow: 'leggings-low', bikini: 'bottom',
+  leggings: 'leggings', leggingsLow: 'leggings-low', ...(BIKINI_BOTTOM_FROM_SKIN ? {} : { bikini: 'bottom' as const }),
   shirtRelaxedHigh: 'relaxed-high', shirtRelaxedLow: 'relaxed-low', shirtSpandexHigh: 'spandex-high', shirtSpandexLow: 'spandex-low',
   shirtSpandexLite: 'spandex-lite',
 };

@@ -339,8 +339,12 @@ import {
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
+  BIKINI_BOTTOM_FROM_SKIN,
 } from './sarahLabTool';
 import { blendJointTurns, sitEase, stepSit } from './poseBlend';
+import { createSkinShell, type SkinShell } from './skinShellMesh';
+import { bikiniBottomField } from './bikiniBottomStencil';
+import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
 
 const M = UNITS_PER_METRE;
 /** What the story bake leaves out (`bakeForStory`): her vulva's own parts, inside her and under what she wears. */
@@ -666,6 +670,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * thighs under her vulva are kept out too (birthGap.ts) -- and her vulva made again with it */
   const vulvaArea: { band: number; under: boolean } = { band: VULVA_OPEN.legMask, under: VULVA_OPEN.legUnder };
   let remakeVulva: (() => void) | null = null;
+  /**
+   * HER BIKINI BOTTOM, MADE FROM HER SKIN (Joshua, 2026-11-11; skinShellMesh.ts, BIKINI_BOTTOM_FROM_SKIN): cut from her
+   * skin along the modelled brief's outline (bikiniBottomStencil.ts) and raised off it, made the first time she wears it;
+   * the modelled brief in her file is drawn only as its side ties -- the strings and bows past the fabric's sides -- and
+   * the garment is drawn when they are
+   */
+  let bottomShell: SkinShell | null = null, bottomShellTried = false, briefTies: THREE.SkinnedMesh | null = null;
   /** a probe's change to the birth position's angles (humanBirth.ts `tweak`) */
   let birthTweak: Partial<BirthSpec> | null = null;
   /** room kept between her thighs as she is posed (birthRoom.ts): the watcher, whether it is on, what it was last worked out for */
@@ -746,6 +757,49 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * her leggings"): a bottom worn and shown -- painted on her or modelled -- outside a birth position. Then her rebuilt
    * area is drawn with her own material, its lips lying as her skin does (vulvaMesh.ts setDressed).
    */
+  /**
+   * THE MODELLED BRIEF CUT DOWN TO ITS SIDE TIES: its triangles past where its fabric ends (MEASURED: the scan's
+   * `TIE_FROM` 0.44 times the scale it was fitted to her at, `PLACE_V2` 0.43 -- scripts/fitMeshyBikini.mjs,
+   * scripts/sarahV2Bikini.mjs -- metres either side of her middle). The fabric itself is her skin's (bottomShell).
+   */
+  function cutBriefToTies(m: THREE.SkinnedMesh): boolean {
+    const g = m.geometry, idx = g.index, p = g.getAttribute('position');
+    if (!idx || !p) return false;
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < idx.count; k++) { const x = p.getX(idx.getX(k)); lo = Math.min(lo, x); hi = Math.max(hi, x); }
+    const mid = (lo + hi) / 2, from = 0.44 * 0.43 * GEOMETRY_PER_METRE, keep: number[] = [];
+    for (let k = 0; k + 2 < idx.count; k += 3) {
+      const a = idx.getX(k), b = idx.getX(k + 1), c = idx.getX(k + 2);
+      if (Math.abs((p.getX(a) + p.getX(b) + p.getX(c)) / 3 - mid) > from) keep.push(a, b, c);
+    }
+    if (!keep.length) return false;
+    g.setIndex(keep);
+    m.userData.briefTies = true;
+    return true;
+  }
+  /** Her bikini bottom from her skin, made now if it has not been (null when it cannot be: another body, no outline). */
+  function ensureBottomShell(): SkinShell | null {
+    if (bottomShell || bottomShellTried) return bottomShell;
+    const b = bodyOf(), mat = briefTies?.material;
+    if (!b || !mat || Array.isArray(mat)) return null;
+    bottomShellTried = true;
+    const body = b.mesh, field = bikiniBottomField(body.geometry.getAttribute('position').count);
+    if (!field) return null;
+    // all of her skin's triangles there: her opening's area is drawn by its own patch, its triangles hers all the same
+    const all = (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array ?? [], area = vulva?.bake.area;
+    const indices = new Uint32Array(all.length + (area?.length ?? 0));
+    indices.set(all); if (area) indices.set(area, all.length);
+    const t0 = performance.now();
+    bottomShell = createSkinShell(body, { field, indices, material: mat, name: 'sarahSkinBikiniBottom' });
+    if (bottomShell) bottomShell.mesh.userData.madeInMs = Math.round(performance.now() - t0);
+    return bottomShell;
+  }
+  /**
+   * How much of her lips' shape shows through what she wears (VULVA DETAIL): under her bikini bottom made from her skin,
+   * none -- it stands off her skin as her skin is, and her lips' own shape, through it, stood out through its gusset
+   * (2026-11-11, seen from under her) -- otherwise the fabric panel's.
+   */
+  function vulvaKeepNow(): number { return bottomShell?.mesh.visible ? 0 : fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP; }
   function vulvaDressed(view: string): boolean {
     if (bottomsOff() || view !== 'all') return false;
     return lowerCovered() || skinned.some((m) => m.visible && m.userData.recoveredLeggings);
@@ -2117,8 +2171,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         }
       }
     }
+    // her bikini bottom made from her skin: made the first time she wears it, and drawn when its ties are (they follow
+    // every rule a garment does: the outfit, the editor's view, her bottoms off in a birth)
+    if (BIKINI_BOTTOM_FROM_SKIN && recovered && shownNow('bikini')) ensureBottomShell();
+    if (bottomShell) { bottomShell.mesh.visible = !!briefTies?.visible && !!model?.visible; if (bottomShell.mesh.visible) bottomShell.sync(); }
     // her rebuilt birth area drawn as her own skin under what she wears (painted leggings and all), bare where she is not
-    vulva?.setDressedLips(fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP);
+    vulva?.setDressedLips(vulvaKeepNow());
     vulva?.setDressed(vulvaDressed(view));
     if (organs && !organsGrowWomb) organs.doorsShown = doorsSeen();
     layBalloonWomb();
@@ -7374,6 +7432,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
     vulva?.dispose(); vulva = null; remakeVulva = null;
+    bottomShell?.dispose(); bottomShell = null; bottomShellTried = false; briefTies = null;
     dropBabyHolder();
     ownFingers?.dispose(); ownFingers = null; withFingers = null; fingerFills?.dispose(); fingerFills = null;
     rig = null; measure = null; fingers = []; skinned = []; shaped = []; garments = []; hasBelly = false; anchors = null; legAnchors = null; navel = null; sidesAt = []; babyAt = []; chestAt = []; milkAt = []; groinAt = [];
@@ -7424,7 +7483,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (name === 'bikini' && m.geometry.index) {
             const v = new THREE.Vector3(); let max = -Infinity;
             for (const i of m.geometry.index.array) { m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld); max = Math.max(max, v.y); }
-            if (max < 110) m.userData.replacedByRecovered = true;
+            if (max < 110) {
+              if (BIKINI_BOTTOM_FROM_SKIN && cutBriefToTies(m)) briefTies = m;
+              else m.userData.replacedByRecovered = true;
+            }
           }
         });
       } else {
@@ -7893,8 +7955,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       naturalOpening(dt);
       keepBirthRoom();
       // VULVA DETAIL through clothes, as the fabric panel has it now (nothing is done unless it changed)
-      vulva?.setDressedLips(fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP);
+      vulva?.setDressedLips(vulvaKeepNow());
       vulva?.sync();
+      // (her bikini bottom laid again on her if her shape changed: nothing is done unless it did)
+      if (bottomShell?.mesh.visible) bottomShell.sync();
       stepBirth(dt);
       // her hands to her baby once it lies on her, or back to her knees (BABY_HANDS.seconds either way); into her arms
       // and out of them (BABY_CRADLE.seconds) -- one thing at a time: her hands on it before she lifts it, and it laid back
@@ -9246,6 +9310,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (how far a worn mesh -- by name, or its name's start -- stands off her skin, as she is posed: each of its points
         // against her nearest, along her skin's normal there (room units; less than 0 inside her), and the share inside)
         // (`opts.material`: every drawn mesh of that material instead, but those whose names start with `opts.exclude`)
+        // her bikini bottom made from her skin (skinShellMesh.ts): what it is, and (`cm`) how far off her it stands
+        skinShell: (cm?: number) => {
+          if (BIKINI_BOTTOM_FROM_SKIN && recovered) ensureBottomShell();
+          if (!bottomShell) return { made: false, tried: bottomShellTried, ties: !!briefTies };
+          if (cm !== undefined) bottomShell.setOffset(cm / 100);
+          return { made: true, visible: bottomShell.mesh.visible, ties: !!briefTies, tiesVisible: briefTies?.visible ?? null, madeInMs: bottomShell.mesh.userData.madeInMs, ...bottomShell.debug() };
+        },
         garmentDepth: (name: string, cell = 2, opts: { material?: string; exclude?: string } = {}) => {
           const b = bodyOf()?.mesh; if (!b || !model) return null;
           const shown = (o: THREE.Object3D) => { for (let q: THREE.Object3D | null = o; q; q = q.parent) if (!q.visible) return false; return true; };

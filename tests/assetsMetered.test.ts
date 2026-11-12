@@ -124,7 +124,8 @@ describe('the room opens with only what she has on', () => {
   it('fetches each outfit its own files and no others, the small ones first', () => {
     expect(recoveredPartsFor(wornGarments(0, all))).toEqual(['leggings', 'relaxed-high']);
     expect(recoveredPartsFor(wornGarments(1, all))).toEqual(['leggings-low', 'relaxed-low']);
-    expect(recoveredPartsFor(wornGarments(2, all))).toEqual(['bottom']);
+    // (the bikini's bottom is made from her skin: nothing fetched -- skinShellMesh.ts)
+    expect(recoveredPartsFor(wornGarments(2, all))).toEqual([]);
     expect(recoveredPartsFor(wornGarments(3, all))).toEqual([]);
     expect(recoveredPartsFor(wornGarments(4, all))).toEqual([]);
     expect(recoveredPartsFor(wornGarments(5, all))).toEqual(['leggings', 'spandex-high']);
