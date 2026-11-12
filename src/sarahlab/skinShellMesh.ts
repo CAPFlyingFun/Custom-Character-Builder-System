@@ -19,7 +19,7 @@
  */
 import * as THREE from 'three';
 import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, UNITS_PER_METRE } from './softBody';
-import { SKIN_SHELL, bakeSkinShell, bridgeLift, heightsOf, layShell, normalizeEach, sampleSkin, type ShellLay, type SkinShellBake } from './skinShell';
+import { SKIN_SHELL, bakeSkinShell, bridgeLift, heightsOf, layShell, normalizeEach, sampleSkin, smoothDirections, type ShellLay, type SkinShellBake } from './skinShell';
 
 export interface SkinShellOptions {
   /** per vertex of hers: the garment's outline field, METRES, positive inside it */
@@ -33,6 +33,11 @@ export interface SkinShellOptions {
   readonly offset?: number;
   /** rounds of the robe (SKIN_SHELL.bridgeRounds; 0 for none) */
   readonly bridgeRounds?: number;
+  /** how far round each point its bone weights are averaged, metres (SKIN_SHELL.weightReach) */
+  readonly weightReach?: number;
+  /** (a probe's) carry none of her motion shapes, or none of her springs */
+  readonly noShapes?: boolean;
+  readonly noSprings?: boolean;
 }
 
 export interface SkinShell {
@@ -87,8 +92,11 @@ function sampleJiggle(out: Float32Array, jig: THREE.BufferAttribute | THREE.Inte
     out[p * 3] = belly;
     const left = tl + cl, right = tr + cr;
     if (left <= 0 && right <= 0) { out[p * 3 + 1] = bl; out[p * 3 + 2] = br; continue; }
-    // (her legs and her breasts never share a vertex of hers: a leg wins where the blend has both, as it is packed)
-    const off = right > left ? OFF : 0, t = right > left ? tr : tl, cc = right > left ? cr : cl;
+    // (her legs and her breasts never share a vertex of hers: a leg wins where the blend has both, as it is packed.) A
+    // vertex carries one leg; where both legs carry it (down the middle of her crotch) it carries the one weighing more
+    // by only what it weighs MORE -- nothing on her middle, growing either side -- so the two halves of the garment do not
+    // swing apart along her middle (they creased it there in SQUAT, each half on its own thigh's spring)
+    const r = right > left, off = r ? OFF : 0, t = Math.max(0, r ? tr - tl : tl - tr), cc = Math.max(0, r ? cr - cl : cl - cr);
     out[p * 3 + 1] = -(t + off); out[p * 3 + 2] = -(cc + off);
   }
 }
@@ -129,40 +137,61 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
   geom.setAttribute('fabricRest', new THREE.BufferAttribute(pos.slice(), 3));
   geom.setAttribute('fabricRestNormal', new THREE.BufferAttribute(nrm.slice(), 3));
 
-  // her bones: the three vertices' weights summed where each vertex lies -- then SMOOTHED over the garment, its edges
-  // held to her skin's own (`SKIN_SHELL.weightRounds`): the Sims 4 makers' "smooth skirt weights across both legs". Her
-  // skin's weights change sharply where her body folds or parts -- down the middle of her crotch each lip is its own
-  // side's -- and a garment given them exactly creased and tore along that line as her legs parted (2026-11-11, RECLINE
-  // and SQUAT, seen from under her: its triangles there turned over). Fabric spans those lines; so its weights flow
-  // between its edges, which stay on her skin where they lie. The four strongest kept.
+  // her bones: the three vertices' weights summed where each vertex lies, the four strongest kept -- her skin's own, so
+  // in every pose it is exactly where her skin is, its offset off it. They may be SMOOTHED over the garment
+  // (`SKIN_SHELL.weightReach`, the Sims 4 makers' "smooth skirt weights across both legs": each vertex the average of the
+  // garment's weights that far round it, by distance over her, fully once that far in from its edge and not at all at
+  // its edge), but on her they are not: smoothed 2 cm, her skin rose through the front of it in SQUAT by more than half
+  // a millimetre, and with her springs it creased down her crotch; her own, neither (2026-11-11, rendered both ways).
   const si = g.getAttribute('skinIndex') as THREE.BufferAttribute | undefined, sw = g.getAttribute('skinWeight') as THREE.BufferAttribute | undefined;
   const outI = new Uint16Array(P * 4), outW = new Float32Array(P * 4);
   let weightsVersion = -1;
+  // (worked out once, on her as she is when it is made: who is near whom, and how far each is in from the edge)
+  const reach = opts.weightReach ?? SKIN_SHELL.weightReach, smoothing = reach > 0;
+  const F = bake.faceCount, R = Math.max(1e-3, reach) * U, sigma2 = (R / 2) ** 2;
+  const inFrom = new Float32Array(F).fill(Infinity);
+  if (smoothing) {
+    // over the garment from its edge (each step as long as it is on her)
+    for (let v = 0; v < F; v++) if (bake.edge[v]) inFrom[v] = 0;
+    // (a few sweeps of relaxation: the garment is small, and this need not be exact)
+    for (let sweep = 0; sweep < 64; sweep++) {
+      let changed = false;
+      for (let v = 0; v < F; v++) for (let k = bake.nbrStart[v]; k < bake.nbrStart[v + 1]; k++) {
+        const w = bake.nbr[k], d = inFrom[w] + Math.hypot(skin[v * 3] - skin[w * 3], skin[v * 3 + 1] - skin[w * 3 + 1], skin[v * 3 + 2] - skin[w * 3 + 2]);
+        if (d < inFrom[v]) { inFrom[v] = d; changed = true; }
+      }
+      if (!changed) break;
+    }
+  }
+  // (who is near whom: a grid of the garment's points, `R` a cell; the neighbours found again each time it is read)
+  const cell = R, grid = new Map<string, number[]>(), cellOf = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  if (smoothing) for (let v = 0; v < F; v++) { const k = cellOf(skin[v * 3], skin[v * 3 + 1], skin[v * 3 + 2]); const l = grid.get(k); if (l) l.push(v); else grid.set(k, [v]); }
   const readWeights = () => {
     if (!si || !sw) return;
     weightsVersion = sw.version;
-    const I = floatsOf(si), W = floatsOf(sw), F = bake.faceCount;
-    // the bones it uses, numbered densely, and each face vertex's weight on each
+    const I = floatsOf(si), W = floatsOf(sw);
+    // the bones it uses, numbered densely, and each face vertex's weight on each, as her skin has it there
     const slot = new Map<number, number>(), bones: number[] = [];
     for (let p = 0; p < F; p++) for (let k = 0; k < 3; k++) { const s = bake.src[p * 3 + k]; if (bake.bary[p * 3 + k] <= 0) continue; for (let j = 0; j < 4; j++) if (W[s * 4 + j] > 0 && !slot.has(I[s * 4 + j])) { slot.set(I[s * 4 + j], bones.length); bones.push(I[s * 4 + j]); } }
-    const B = bones.length;
-    let A = new Float32Array(F * B), Z = new Float32Array(F * B);
+    const B = bones.length, own = new Float32Array(F * B), A = new Float32Array(F * B);
     for (let p = 0; p < F; p++) for (let k = 0; k < 3; k++) {
       const s = bake.src[p * 3 + k], b = bake.bary[p * 3 + k];
       if (b <= 0) continue;
-      for (let j = 0; j < 4; j++) { const w = W[s * 4 + j]; if (w > 0) A[p * B + slot.get(I[s * 4 + j])!] += b * w; }
+      for (let j = 0; j < 4; j++) { const w = W[s * 4 + j]; if (w > 0) own[p * B + slot.get(I[s * 4 + j])!] += b * w; }
     }
-    for (let r = 0; r < SKIN_SHELL.weightRounds; r++) {
-      for (let p = 0; p < F; p++) {
-        const s0 = bake.nbrStart[p], e0 = bake.nbrStart[p + 1];
-        if (bake.edge[p] || e0 === s0) { for (let q = 0; q < B; q++) Z[p * B + q] = A[p * B + q]; continue; }
-        const k = SKIN_SHELL.weightStep / (e0 - s0);
-        for (let q = 0; q < B; q++) {
-          let m = 0; for (let j = s0; j < e0; j++) m += A[bake.nbr[j] * B + q];
-          Z[p * B + q] = (1 - SKIN_SHELL.weightStep) * A[p * B + q] + k * m;
-        }
+    const m = new Float64Array(B);
+    for (let p = 0; p < F; p++) {
+      const t = Math.min(1, inFrom[p] / R), share = smoothing ? t * t * (3 - 2 * t) : 0;
+      if (share <= 0) { for (let q = 0; q < B; q++) A[p * B + q] = own[p * B + q]; continue; }
+      m.fill(0); let sum = 0;
+      const cx = Math.floor(skin[p * 3] / cell), cy = Math.floor(skin[p * 3 + 1] / cell), cz = Math.floor(skin[p * 3 + 2] / cell);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) for (const w of grid.get(`${cx + a},${cy + b},${cz + c}`) ?? []) {
+        const d2 = (skin[p * 3] - skin[w * 3]) ** 2 + (skin[p * 3 + 1] - skin[w * 3 + 1]) ** 2 + (skin[p * 3 + 2] - skin[w * 3 + 2]) ** 2;
+        if (d2 > R * R) continue;
+        const g2 = Math.exp(-d2 / (2 * sigma2)); sum += g2;
+        for (let q = 0; q < B; q++) m[q] += g2 * own[w * B + q];
       }
-      [A, Z] = [Z, A];
+      for (let q = 0; q < B; q++) A[p * B + q] = own[p * B + q] + share * ((sum > 0 ? m[q] / sum : own[p * B + q]) - own[p * B + q]);
     }
     outI.fill(0); outW.fill(0);
     const order = Array.from({ length: B }, (_, q) => q);
@@ -181,7 +210,7 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
   // her springs: the belly's and breasts' follow weights (her legs' ride the breasts' channels coded negative -- a blend
   // of them is no weight, so the garment keeps none of those) and her baby's push
   const jig = g.getAttribute(JIGGLE_ATTRIBUTE) as THREE.BufferAttribute | undefined;
-  if (jig) { const j = new Float32Array(P * 3); sampleJiggle(j, jig, bake.src, bake.bary, P); geom.setAttribute(JIGGLE_ATTRIBUTE, new THREE.BufferAttribute(j, 3)); }
+  if (jig && !opts.noSprings) { const j = new Float32Array(P * 3); sampleJiggle(j, jig, bake.src, bake.bary, P); geom.setAttribute(JIGGLE_ATTRIBUTE, new THREE.BufferAttribute(j, 3)); }
   const push = new Float32Array(P * 3);
   let pushVersion = -1;
   const pushOf = () => g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined;
@@ -195,16 +224,34 @@ export function createSkinShell(body: THREE.SkinnedMesh, opts: SkinShellOptions)
   const influences: number[] = [];
   const readShapes = () => {
     heightsOf(bake, dir, lift, lay(), heights);
-    const mp = g.morphAttributes.position, mn = g.morphAttributes.normal;
+    const mp = opts.noShapes ? undefined : g.morphAttributes.position, mn = g.morphAttributes.normal;
     if (!mp?.length) return;
-    const tmp = new Float32Array(P * 3), pos2: THREE.BufferAttribute[] = [], nrm2: THREE.BufferAttribute[] = [];
+    const F = bake.faceCount, pos2: THREE.BufferAttribute[] = [], nrm2: THREE.BufferAttribute[] = [];
+    // THE TURN OF HER SKIN A SHAPE GIVES, carried at its height off her: her skin's direction under each vertex with the
+    // shape's turn added, SMOOTHED over the garment as the robe's directions are (`smoothDirections`), less those -- not
+    // her turn at each vertex alone, which along the middle of her crotch differs from one side of her seam to the other
+    // and creased the garment there at 200% in SQUAT (2026-11-11). Each face vertex's height is measured along the
+    // robe's direction from her skin, as it was laid.
+    const D0 = smoothDirections(bake, dir, SKIN_SHELL.bridgeSmooth), along = new Float32Array(P);
+    for (let v = 0; v < F; v++) along[v] = (pos[v * 3] - skin[v * 3]) * D0[v * 3] + (pos[v * 3 + 1] - skin[v * 3 + 1]) * D0[v * 3 + 1] + (pos[v * 3 + 2] - skin[v * 3 + 2]) * D0[v * 3 + 2];
     keep = [];
     const moves = (a: Float32Array, eps: number) => { for (let i = 0; i < a.length; i++) if (Math.abs(a[i]) > eps) return true; return false; };
+    const turned = new Float32Array(P * 3);
     for (let k = 0; k < mp.length; k++) {
       const out = new Float32Array(P * 3); sampleAttr(out, mp[k], 3, bake.src, bake.bary, P);
       const n = mn?.[k];
       let nOut: Float32Array | null = null;
-      if (n) { nOut = new Float32Array(P * 3); sampleAttr(nOut, n, 3, bake.src, bake.bary, P); tmp.set(nOut); for (let p = 0; p < P; p++) for (let c = 0; c < 3; c++) out[p * 3 + c] += heights[p] * tmp[p * 3 + c]; }
+      if (n) {
+        nOut = new Float32Array(P * 3); sampleAttr(nOut, n, 3, bake.src, bake.bary, P);
+        for (let i = 0; i < P * 3; i++) turned[i] = dir[i] + nOut[i];
+        normalizeEach(turned);
+        const Dm = smoothDirections(bake, turned, SKIN_SHELL.bridgeSmooth);
+        for (let p = 0; p < P; p++) {
+          // (a hem vertex turns as the face's edge it rolls down from, at its own height)
+          const f = p < F ? p : bake.hemOf[p], h = p < F ? along[p] : heights[p];
+          for (let c = 0; c < 3; c++) { const t = Dm[f * 3 + c] - D0[f * 3 + c]; out[p * 3 + c] += h * t; nOut[p * 3 + c] = t; }
+        }
+      }
       if (!moves(out, 1e-7 * U) && !(nOut && moves(nOut, 1e-4))) continue;
       keep.push(k); pos2.push(new THREE.BufferAttribute(out, 3));
       if (nOut) nrm2.push(new THREE.BufferAttribute(nOut, 3));

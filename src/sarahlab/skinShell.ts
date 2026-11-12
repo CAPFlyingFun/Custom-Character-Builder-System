@@ -29,8 +29,11 @@
 
 /** GAME TUNING, every number (lengths in metres; the caller turns them into its own units). */
 export const SKIN_SHELL = Object.freeze({
-  /** how far the fabric's outer face stands off her skin (Joshua: "an offset like 5mm") */
-  offset: 0.005,
+  /** how far the fabric's outer face stands off her skin (Joshua: "an offset like 5mm"). 3 mm: at 5 mm the gusset
+   *  creased down the middle of her crotch in SQUAT and RECLINE (her skin there folds tighter than 5 mm round, and a copy
+   *  of it raised further crosses itself) and read as a thick, padded fabric; at 3 mm neither (2026-11-11, both rendered
+   *  in every pose). The room's `skinShell(cm)` hook tries others. */
+  offset: 0.003,
   /** the hem: rings from the face's edge down to her skin, how far it rounds out past the cut (a share of the offset),
    *  and how far off her skin its foot stands (just clear of her, never in her) */
   hemRings: 4, hemBulge: 0.35, hemFoot: 0.0004,
@@ -39,9 +42,10 @@ export const SKIN_SHELL = Object.freeze({
    *  and 20 left 10), and rounds of sliding raised points across the span to untangle it (on her: 1,028 of the bikini
    *  bottom's 8,598 triangles turned over raised straight up, 29 untangled -- tests/bikiniBottomShell.test.ts) */
   bridgeRounds: 200, bridgeStep: 0.5, bridgeSmooth: 20, bridgeUntangle: 60,
-  /** its bone weights smoothed over it, its edges held to her skin's: rounds, and how far toward its neighbours' mean
-   *  each round goes (skinShellMesh.ts: so it spans the lines where her skin's weights part, as fabric does) */
-  weightRounds: 24, weightStep: 0.5,
+  /** its bone weights averaged over this far round each point, metres, from none at its edge to all of it this far in
+   *  (skinShellMesh.ts); 0, her skin's own: smoothed, her skin rose through it in SQUAT and, with her springs, it
+   *  creased down her crotch (2026-11-11) */
+  weightReach: 0,
   /** a field this close to 0 counts as just outside (no sliver triangles along the edge), metres */
   snap: 0.0002,
   /** pieces of the cut with fewer points than this are specks, dropped (a scrap of 54 a string left behind was kept at

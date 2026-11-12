@@ -793,6 +793,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     m.userData.briefStrings = true;
     return true;
   }
+  /** a probe's choices for her bikini bottom made from her skin (`skinShellRemake`): its offset and weights' reach, metres */
+  let bottomShellTry: { offset?: number; weightReach?: number; bridgeRounds?: number; noShapes?: boolean; noSprings?: boolean } = {};
   /** Her bikini bottom from her skin, made now if it has not been (null when it cannot be: another body, no outline). */
   function ensureBottomShell(): SkinShell | null {
     if (bottomShell || bottomShellTried) return bottomShell;
@@ -807,7 +809,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     indices.set(all); if (area) indices.set(area, all.length);
     const t0 = performance.now();
     // (a garment that cannot be made leaves her in the strings, never stops her room)
-    try { bottomShell = createSkinShell(body, { field, indices, material: mat, name: 'sarahSkinBikiniBottom' }); }
+    try { bottomShell = createSkinShell(body, { field, indices, material: mat, name: 'sarahSkinBikiniBottom', ...bottomShellTry }); }
     catch (e) { console.warn('[sarahlab] her bikini bottom could not be made from her skin', e); bottomShell = null; }
     if (bottomShell) bottomShell.mesh.userData.madeInMs = Math.round(performance.now() - t0);
     return bottomShell;
@@ -9331,6 +9333,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (how far a worn mesh -- by name, or its name's start -- stands off her skin, as she is posed: each of its points
         // against her nearest, along her skin's normal there (room units; less than 0 inside her), and the share inside)
         // (`opts.material`: every drawn mesh of that material instead, but those whose names start with `opts.exclude`)
+        // her bikini bottom made from her skin made again with a probe's choices (centimetres; rounds of its robe)
+        skinShellRemake: (next: { offsetCm?: number; reachCm?: number; robe?: number; noShapes?: boolean; noSprings?: boolean } = {}) => {
+          bottomShellTry = { ...(next.offsetCm !== undefined ? { offset: next.offsetCm / 100 } : {}), ...(next.reachCm !== undefined ? { weightReach: next.reachCm / 100 } : {}), ...(next.robe !== undefined ? { bridgeRounds: next.robe } : {}), noShapes: next.noShapes, noSprings: next.noSprings };
+          bottomShell?.dispose(); bottomShell = null; bottomShellTried = false;
+          applyLook();
+          return bottomShell ? (bottomShell as SkinShell).debug() : null;
+        },
         // her bikini bottom made from her skin (skinShellMesh.ts): what it is, and (`cm`) how far off her it stands
         skinShell: (cm?: number) => {
           if (BIKINI_BOTTOM_FROM_SKIN && recovered) ensureBottomShell();
