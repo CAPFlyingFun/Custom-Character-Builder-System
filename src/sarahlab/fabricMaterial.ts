@@ -38,19 +38,13 @@ export interface FabricLayer {
    * per vertex cannot carry a 5 mm edging cleanly; and anything that rides her points (a value per vertex, her UVs) rides
    * the slides her room shapes give them along her skin (`skinSlip.ts`), which bend a line at every big triangle. So the
    * garment is a block of cells in space round her (`texture`: one value a cell, linear data), and each pixel of her
-   * skin looks itself up in it at its own place on her rest skin with her points' slip taken off: `scale` and `offset`
-   * turn that place (her mesh's own units, as `fabricRest`) into the block's 0..1. The layer shows where the field is
-   * above `level` (0..1). One field at a time: every such layer on a material reads the same one.
+   * skin looks itself up in it at its own place on her skin with her points' slip taken off: `scale` and `offset` turn
+   * that place (her mesh's own units, `fabricRest` and `fabricSlip` together) into the block's 0..1. A garment designed
+   * in a POSE (`designPose.ts`: her bikini bottom, with her legs apart) is looked up at her skin's place in that pose:
+   * each vertex's carry to it is laid in `fabricSlip` with its slip. The layer shows where the field is above `level`
+   * (0..1). One field at a time: every such layer on a material reads the same one.
    */
-  readonly field?: {
-    readonly texture: THREE.Data3DTexture; readonly level: number; readonly scale: readonly [number, number, number]; readonly offset: readonly [number, number, number];
-    /**
-     * The garment's strap between her legs, which hangs on her pelvis (`paintTemplates.StrapHold`): within its part of
-     * her the field is also held inside a V about her middle, worked out from where her bones have carried each pixel's
-     * point as seen from her pelvis (`setFabricPelvis` gives the shader that view each frame). Null: none.
-     */
-    readonly strap?: { readonly mid: number; readonly half: number; readonly blend: number; readonly front: { readonly z: number; readonly fromY: number; readonly slope: number }; readonly back: { readonly z: number; readonly fromY: number; readonly slope: number }; readonly zoneA: readonly [number, number, number]; readonly zoneB: readonly [number, number, number]; readonly zoneInner: number; readonly zoneOuter: number; readonly perUnit: number } | null;
-  } | null;
+  readonly field?: { readonly texture: THREE.Data3DTexture; readonly level: number; readonly scale: readonly [number, number, number]; readonly offset: readonly [number, number, number] } | null;
 }
 
 interface Patched { readonly uniforms: Record<string, THREE.IUniform>; readonly layers: number; readonly masked: boolean }
@@ -74,13 +68,6 @@ function patch(material: THREE.Material, layers: number, masked: boolean): Patch
   const uniforms: Record<string, THREE.IUniform> = {
     fabricShowRegions: { value: 0 }, fabricHangLayer: { value: -1 }, fabricUnderLayer: { value: -1 },
     fabricFieldMap: { value: null }, fabricFieldScale: { value: new THREE.Vector3(1, 1, 1) }, fabricFieldOffset: { value: new THREE.Vector3() },
-    // the strap that hangs on her pelvis: (her middle, its half width, a unit on the field's scale, how gradually its
-    // front and back come in); its front and its back (where along her each begins, the height it opens from, its
-    // slope); the line under her crotch it holds round, and how far (wholly, at all); and her skin as seen from her
-    // pelvis at rest. Half width 0: no strap.
-    fabricStrap: { value: new THREE.Vector4(0, 0, 0, 1) }, fabricStrapFront: { value: new THREE.Vector3() }, fabricStrapBack: { value: new THREE.Vector3() },
-    fabricStrapA: { value: new THREE.Vector3() }, fabricStrapB: { value: new THREE.Vector3(0, 0, 1) }, fabricStrapZone: { value: new THREE.Vector2(0, 1) },
-    fabricPelvisRest: { value: new THREE.Matrix4() },
   };
   for (let i = 0; i < layers; i++) {
     uniforms[`fabricFieldOn${i}`] = { value: 0 };
@@ -107,12 +94,10 @@ function patch(material: THREE.Material, layers: number, masked: boolean): Patch
         'attribute float fabricUnder;', 'varying float vFabricUnder;',
         // detail through paint (bodyDetail.ts): her nipples' and navel's surface detail, taken back under paint only
         'attribute vec4 fabricDetail;', 'attribute vec4 fabricDetailN;', 'varying float vFabricDetailKeep;',
-        // her points' slip (skinSlip.ts): how far this point's rest place is from where a designed garment's field is
-        // looked up for it (zero until a designed garment is worn)
+        // how far this point's rest place is from where a designed garment's field is looked up for it: its slip
+        // (skinSlip.ts), and its carry to the pose the garment was designed in (designPose.ts). Zero until a designed
+        // garment is worn
         'attribute vec3 fabricSlip;', 'varying vec3 vFabricSlip;',
-        // how far her bones have carried this point from where it stood before them, seen from her pelvis as it stood
-        // at rest: what a strap that hangs on her pelvis does NOT follow (`FabricLayer.field.strap`)
-        'uniform mat4 fabricPelvisRest;', 'varying vec3 vFabricCarried;',
         ...idx.flatMap((i) => [`uniform float fabricOn${i};`, `uniform float fabricNippleKeep${i};`, `uniform float fabricNavelKeep${i};`])] : []),
       shader.vertexShader,
     ].join('\n');
@@ -130,9 +115,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean): Patch
       // only where a nipple is softened: elsewhere her normal goes on exactly as given, so a normal written to be summed
       // with her morphs' (bodyCrease.ts, under her breasts) is not made unit before they are added
       if (fabricSoften > 0.0) objectNormal = normalize(objectNormal - fabricDetailN.xyz * fabricSoften);` : '';
-    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>${soften}`)
-      // (before her bones: her shapes, morphs and springs are all in `transformed` by here, so they are no part of it)
-      .replace('#include <skinning_vertex>', 'vec3 fabricBeforeBones = transformed;\n#include <skinning_vertex>\n#ifdef USE_SKINNING\nvFabricCarried = (fabricPelvisRest * vec4(transformed, 1.0)).xyz - fabricBeforeBones;\n#else\nvFabricCarried = vec3(0.0);\n#endif');
+    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>${soften}`);
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\nvFabricPos = fabricRest;\nvFabricNrm = fabricRestNormal;${mask}${masked ? '\ntransformed -= fabricDetail.xyz * fabricSoften;\nvFabricDetailKeep = clamp(fabricDetail.w * (1.0 - fabricHideNipple / max(fabricCovered, 1e-3)) + fabricDetailN.w * (1.0 - fabricHideNavel / max(fabricCovered, 1e-3)), 0.0, 1.0);' : ''}`);
     const sample = (i: number) => `
       if (fabricOn${i} > 0.5) {
@@ -154,24 +137,13 @@ function patch(material: THREE.Material, layers: number, masked: boolean): Patch
       }`;
     shader.fragmentShader = [
       'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;', ...(masked ? ['varying vec3 vFabricMask;', 'varying vec4 vFabricTint;', 'uniform float fabricShowRegions;', 'varying float vFabricDetailKeep;', 'varying float vFabricHang;', 'uniform float fabricHangLayer;', 'varying float vFabricUnder;', 'uniform float fabricUnderLayer;',
-        'varying vec3 vFabricSlip;', 'varying vec3 vFabricCarried;', 'uniform highp sampler3D fabricFieldMap;', 'uniform vec3 fabricFieldScale;', 'uniform vec3 fabricFieldOffset;', ...idx.flatMap((i) => [`uniform float fabricFieldOn${i};`, `uniform float fabricFieldLevel${i};`]),
-        'uniform vec4 fabricStrap;', 'uniform vec3 fabricStrapFront;', 'uniform vec3 fabricStrapBack;', 'uniform vec3 fabricStrapA;', 'uniform vec3 fabricStrapB;', 'uniform vec2 fabricStrapZone;',
-        // a designed garment's field at this pixel's own place on her rest skin, her points' slip taken off; nothing
-        // outside its block. And its strap's hold (`paintTemplates.strapHeld` is this rule in the open): round her
-        // crotch the garment is also kept inside a V that stands on her pelvis, wherever her bones carry her skin
+        'varying vec3 vFabricSlip;', 'uniform highp sampler3D fabricFieldMap;', 'uniform vec3 fabricFieldScale;', 'uniform vec3 fabricFieldOffset;', ...idx.flatMap((i) => [`uniform float fabricFieldOn${i};`, `uniform float fabricFieldLevel${i};`]),
+        // a designed garment's field at this pixel's own place on her skin (where the garment was designed: her rest
+        // place, her points' slip taken off and their carry to the garment's pose added); nothing outside its block
         `float fabricFieldAt() {
-          vec3 q = vFabricPos + vFabricSlip, c = q * fabricFieldScale + fabricFieldOffset;
+          vec3 c = (vFabricPos + vFabricSlip) * fabricFieldScale + fabricFieldOffset;
           if (!(all(greaterThan(c, vec3(0.0))) && all(lessThan(c, vec3(1.0))))) return 0.0;
-          float v = textureLod(fabricFieldMap, c, 0.0).r;
-          if (fabricStrap.y > 0.0) {
-            vec3 ab = fabricStrapA - fabricStrapB, hung = q + vFabricCarried;
-            float free = 1.0 - smoothstep(fabricStrapZone.x, fabricStrapZone.y, distance(q, fabricStrapB + ab * clamp(dot(q - fabricStrapB, ab) / dot(ab, ab), 0.0, 1.0)));
-            float front = smoothstep(fabricStrapFront.x - fabricStrap.w, fabricStrapFront.x + fabricStrap.w, q.z), back = 1.0 - smoothstep(fabricStrapBack.x - fabricStrap.w, fabricStrapBack.x + fabricStrap.w, q.z);
-            float wide = fabricStrap.y + front * fabricStrapFront.z * max(hung.y - fabricStrapFront.y, 0.0) + back * fabricStrapBack.z * max(hung.y - fabricStrapBack.y, 0.0);
-            float side = 0.5 + (wide - abs(hung.x - fabricStrap.x)) * fabricStrap.z;
-            v = mix(v, min(v, side), free);
-          }
-          return v;
+          return textureLod(fabricFieldMap, c, 0.0).r;
         }`,
         // where the paint's ramp crosses one half, antialiased over about a pixel
         'float fabricEdge(float m) { float w = max(fwidth(m) * 0.75, 0.002); return smoothstep(0.5 - w, 0.5 + w, m); }'] : []),
@@ -192,7 +164,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean): Patch
       ${masked ? 'if (fabricShowRegions > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vFabricTint.rgb, 0.78 * vFabricTint.a);' : ''}
     }`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : ''}-v14`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : ''}-v15`; };
   material.needsUpdate = true;
   const entry = { uniforms, layers, masked };
   patched.set(material, entry);
@@ -217,10 +189,6 @@ export function setFabricLayer(mesh: THREE.Mesh, material: THREE.Material, index
     uniforms.fabricFieldMap.value = field.texture;
     (uniforms.fabricFieldScale.value as THREE.Vector3).fromArray(field.scale);
     (uniforms.fabricFieldOffset.value as THREE.Vector3).fromArray(field.offset);
-    const s = field.strap ?? null;
-    (uniforms.fabricStrap.value as THREE.Vector4).set(s?.mid ?? 0, s?.half ?? 0, s?.perUnit ?? 0, Math.max(s?.blend ?? 1, 1e-6));
-    if (s) { (uniforms.fabricStrapFront.value as THREE.Vector3).set(s.front.z, s.front.fromY, s.front.slope); (uniforms.fabricStrapBack.value as THREE.Vector3).set(s.back.z, s.back.fromY, s.back.slope); }
-    if (s) { (uniforms.fabricStrapA.value as THREE.Vector3).fromArray(s.zoneA); (uniforms.fabricStrapB.value as THREE.Vector3).fromArray(s.zoneB); (uniforms.fabricStrapZone.value as THREE.Vector2).set(s.zoneInner, s.zoneOuter); }
   }
   uniforms[`fabricOn${index}`].value = on ? 1 : 0;
   uniforms[`fabricMap${index}`].value = layer?.texture ?? null;
@@ -301,18 +269,6 @@ export function fieldCells(pixels: ArrayLike<number>, width: number, height: num
     for (let y = 0; y < ny; y++) { const row = ((oy + y) * width + ox) * 4, to = (z * ny + y) * nx; for (let x = 0; x < nx; x++) cells[to + x] = pixels[row + x * 4]; }
   }
   return cells;
-}
-/**
- * Her skin as seen from her pelvis at rest, for a strap that hangs on it (`FabricLayer.field.strap`): what takes a point
- * of the skinned mesh (its own space, after her bones) back to where it would stand had only her pelvis bone moved it.
- * Given each frame while a designed garment with a strap is worn; her bones' world matrices must be current.
- */
-export function setFabricPelvis(mesh: THREE.SkinnedMesh, material: THREE.Material, pelvis: THREE.Bone): void {
-  const p = patched.get(material), at = mesh.skeleton.bones.indexOf(pelvis);
-  if (!p || at < 0) return;
-  // a point bound wholly to her pelvis is drawn at bindMatrixInverse * (pelvis.matrixWorld * its inverse bind) * bindMatrix * point
-  const m = p.uniforms.fabricPelvisRest.value as THREE.Matrix4;
-  m.multiplyMatrices(pelvis.matrixWorld, mesh.skeleton.boneInverses[at]).invert().premultiply(mesh.bindMatrixInverse).multiply(mesh.bindMatrix);
 }
 /** Whether any paint layer of a material is drawn from a designed garment's field now. */
 export function fabricFieldWorn(material: THREE.Material): boolean {

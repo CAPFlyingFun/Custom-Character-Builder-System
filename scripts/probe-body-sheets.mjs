@@ -18,10 +18,13 @@
  * line. Each panel has a small magenta square outside each of its corners: a copy of the sheet that comes back another
  * size is put back by them.
  *
+ * OUTFIT (default none: her plain body) puts an outfit on her instead, by its name in the room's OUTFIT button: the same
+ * sheets with a garment on, to lay his drawing over what was built from it.
+ *
  * The numbers under the views are GAME TUNING (what of her each shows); the rest is MEASURED by the room.
  *
  *     node scripts/probe-body-sheets.mjs   (NO_BUILD=1; SET=turn|under|both; SIZES=0,80,140,200; POSES=tpose,stand;
- *                                           UNDER_SIZES=100; UNDER_POSES=apart,squat,recline; OUT=body-sheets)
+ *                                           UNDER_SIZES=100; UNDER_POSES=apart,squat,recline; OUTFIT=none; OUT=body-sheets)
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -34,6 +37,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = path.join(ROOT, 'shots', process.env.OUT ?? 'body-sheets');
 const log = (...a) => console.log('[sheets]', ...a);
 const SET = process.env.SET ?? 'turn';
+const OUTFIT = process.env.OUTFIT ?? 'none';
+/** What her sheets are called by, and titled: her plain body, or the outfit she has on. */
+const WEARING = OUTFIT === 'none' ? 'plain' : OUTFIT.replace(/[^a-z0-9]+/gi, '-'), WEARING_TITLE = OUTFIT === 'none' ? 'plain body' : OUTFIT;
 const SIZES = (process.env.SIZES ?? '0,80,140,200').split(',').map(Number);
 const POSES = (process.env.POSES ?? 'tpose,stand').split(',');
 const UNDER_SIZES = (process.env.UNDER_SIZES ?? '100').split(',').map(Number);
@@ -86,9 +92,10 @@ try {
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
   await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
-  // her plain body: OUTFIT pressed until it reads none (the dressing settled), her hair and her sneakers off
+  // her plain body, or the outfit asked for: OUTFIT pressed until it reads so (the dressing settled); her hair and her sneakers off
   let outfit = '';
-  for (let n = 0; n < 24; n++) { outfit = await text('sarahlab:outfit'); if (outfit.includes('none') && !outfit.includes('…')) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); }
+  for (let n = 0; n < 24; n++) { outfit = await text('sarahlab:outfit'); if (outfit.includes(OUTFIT) && !outfit.includes('…')) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); }
+  if (!outfit.includes(OUTFIT)) throw new Error(`the room has no outfit ${OUTFIT}`);
   for (const a of ['sarahlab:hair', 'sarahlab:sneakers']) if ((await text(a)).includes('ON')) { await press(a); await page.waitForTimeout(1500); }
   log('outfit', JSON.stringify(outfit), JSON.stringify(await text('sarahlab:hair')), JSON.stringify(await text('sarahlab:sneakers')));
   await page.waitForTimeout(4000);
@@ -146,14 +153,15 @@ try {
     const arms = await page.evaluate((deg) => { const input = document.querySelector('[data-field="sarahlab-arms"]')?.nextElementSibling; if (!(input instanceof HTMLInputElement)) return null; input.value = String(deg); input.dispatchEvent(new Event('input', { bubbles: true })); return Number(input.value); }, POSE_ARMS[pose] ?? 0);
     await hook('bump', size); await run(3);
     log('pose', pose, 'arms', arms, 'bump', await hook('bump'));
-    const posed = await page.evaluate(() => globalThis.__sarahLabCloth.bodyPoints('posed'));
+    // (her body is the same under an outfit: the plain run's is the one kept)
+    const posed = OUTFIT === 'none' ? await page.evaluate(() => globalThis.__sarahLabCloth.bodyPoints('posed')) : null;
     if (posed) writeFileSync(path.join(SHOTS, `posed-${pose}-${size}.f32`), Buffer.from(posed, 'base64'));
   }
 
   if (SET === 'under' || SET === 'both') for (const pose of UNDER_POSES) for (const size of UNDER_SIZES) {
     await stand(pose, size);
     const p = await panel({ ...UNDER, wide: Math.round((UNDER.wide * 1000) / UNDER_MM), tall: Math.round((UNDER.tall * 1000) / UNDER_MM), mm: UNDER_MM });
-    await sheet(`sarah-v2-plain-${pose}-belly-${String(size).padStart(3, '0')}-under45`, `Sarah v2 · plain body · belly ${size}% · ${POSE_LABEL[pose] ?? pose} · from underneath at 45° · 1 pixel = ${UNDER_MM} mm`, pose, size, [[UNDER, p]]);
+    await sheet(`sarah-v2-${WEARING}-${pose}-belly-${String(size).padStart(3, '0')}-under45`, `Sarah v2 · ${WEARING_TITLE} · belly ${size}% · ${POSE_LABEL[pose] ?? pose} · from underneath at 45° · 1 pixel = ${UNDER_MM} mm`, pose, size, [[UNDER, p]]);
   }
   if (SET === 'turn' || SET === 'both') for (const pose of POSES) for (const size of SIZES) {
     await stand(pose, size);
@@ -162,7 +170,7 @@ try {
       const right = [Math.cos(v.yaw), 0, -Math.sin(v.yaw)], half = v.half[pose] ?? v.half.stand;
       views.push([v, await panel({ yaw: v.yaw, centre: [right[0] * v.across, (TOP + BOTTOM) / 2, right[2] * v.across], wide: Math.round((2 * half * 1000) / TURN_MM), tall: Math.round(((TOP - BOTTOM) * 1000) / TURN_MM), mm: TURN_MM })]);
     }
-    await sheet(`sarah-v2-plain-${pose}-belly-${String(size).padStart(3, '0')}`, `Sarah v2 · plain body · belly ${size}% · ${POSE_LABEL[pose] ?? pose} · 1 pixel = ${TURN_MM} mm`, pose, size, views);
+    await sheet(`sarah-v2-${WEARING}-${pose}-belly-${String(size).padStart(3, '0')}`, `Sarah v2 · ${WEARING_TITLE} · belly ${size}% · ${POSE_LABEL[pose] ?? pose} · 1 pixel = ${TURN_MM} mm`, pose, size, views);
   }
   if (errors.length) log('page errors', errors.slice(-5).join(' | '));
 } finally { await browser.close(); server.httpServer.close(); }

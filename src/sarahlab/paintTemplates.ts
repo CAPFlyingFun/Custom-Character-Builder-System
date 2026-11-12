@@ -16,7 +16,7 @@
 import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
-import { ATHLETIC_BOTTOM, athleticBottomField } from './athleticBottomStencil';
+import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
 
 export interface CoverageParams {
   /**
@@ -539,7 +539,7 @@ export function insideCorner(u: number, v: number, r: number): number {
 
 /**
  * A designed garment's field, as the room lays it: its picture (`path`), its block (`dims` cells, slices `cols` across
- * the picture), and what turns a place on her rest skin in her mesh's own units into the block's 0..1 (`scale`, `offset`).
+ * the picture), and what turns a place on her skin in her mesh's own units into the block's 0..1 (`scale`, `offset`).
  */
 export interface DesignedField {
   readonly path: string;
@@ -547,63 +547,32 @@ export interface DesignedField {
   readonly cols: number;
   readonly scale: readonly [number, number, number];
   readonly offset: readonly [number, number, number];
-  /** the block's corners in her mesh's own units (her points in and round it are the ones whose slip is kept, `skinSlip.ts`), and how many of those units make a metre */
+  /** the block's corners in her mesh's own units, and how many of those units make a metre */
   readonly lo: readonly [number, number, number];
   readonly hi: readonly [number, number, number];
   readonly unitsPerMetre: number;
   /**
-   * The garment's strap between her legs, which hangs on her pelvis and does not ride her skin (`athleticBottomStencil.ts`
-   * says why): its V and the part of her it holds, in her mesh's own units (slopes are plain numbers), and `perUnit`,
-   * what one unit of distance is on the field's 0..1 scale. Null for a garment with none.
+   * The pose the garment was designed in (`designPose.ts`: her legs apart): each of her vertices' carry from its rest
+   * place to its place in that pose (three numbers a vertex, her mesh's own units; none for a vertex far from the
+   * block), where the field is looked up for it. Null: the garment is designed on her rest skin.
    */
-  readonly strap: StrapHold | null;
-}
-export interface StrapHold {
-  /** her pelvis bone's name */
-  readonly bone: string;
-  /** her middle, the strap's half width under her crotch, and over what distance along her (z) its front and back come in */
-  readonly mid: number; readonly half: number; readonly blend: number;
-  /** in front of `z` (behind it, for the back) the hold opens upward from the height `fromY` by `slope` */
-  readonly front: { readonly z: number; readonly fromY: number; readonly slope: number };
-  readonly back: { readonly z: number; readonly fromY: number; readonly slope: number };
-  readonly zoneA: readonly [number, number, number]; readonly zoneB: readonly [number, number, number];
-  readonly zoneInner: number; readonly zoneOuter: number;
-  readonly perUnit: number;
+  readonly carry: Float32Array | null;
 }
 
 /**
- * A field's value (0..1, one half on the outline) at a pixel of her skin, with the strap's hold taken: `at` is the
- * pixel's own place on her rest skin (slip-free), `hung` where her bones have carried it, seen from her pelvis as it
- * stood at rest (both her mesh's own units). Within the strap's part of her the garment is also held inside its V
- * about her middle; elsewhere the value is untouched. `fabricMaterial.ts`'s shader does exactly this for each pixel:
- * this is the same rule in the open, for tests and probes.
- */
-export function strapHeld(value: number, at: readonly [number, number, number], hung: readonly [number, number, number], s: StrapHold): number {
-  const step = (lo: number, hi: number, x: number) => { const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo))); return t * t * (3 - 2 * t); };
-  const ab = [s.zoneA[0] - s.zoneB[0], s.zoneA[1] - s.zoneB[1], s.zoneA[2] - s.zoneB[2]];
-  const t = Math.min(1, Math.max(0, ((at[0] - s.zoneB[0]) * ab[0] + (at[1] - s.zoneB[1]) * ab[1] + (at[2] - s.zoneB[2]) * ab[2]) / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2])));
-  const d = Math.hypot(at[0] - s.zoneB[0] - ab[0] * t, at[1] - s.zoneB[1] - ab[1] * t, at[2] - s.zoneB[2] - ab[2] * t);
-  const free = 1 - step(s.zoneInner, s.zoneOuter, d);
-  const front = step(s.front.z - s.blend, s.front.z + s.blend, at[2]), back = 1 - step(s.back.z - s.blend, s.back.z + s.blend, at[2]);
-  const half = s.half + front * s.front.slope * Math.max(hung[1] - s.front.fromY, 0) + back * s.back.slope * Math.max(hung[1] - s.back.fromY, 0);
-  const side = 0.5 + (half - Math.abs(hung[0] - s.mid)) * s.perUnit;
-  return value + (Math.min(value, side) - value) * free;
-}
-
-/**
- * A designed garment's FIELD (`athleticBottomStencil.ts`: the garment as a block of cells in space round her hips, 0..1
- * for -range..+range metres from its outline, one half on it) and where this layer's line is on that scale -- its
- * edging's outer side or inner side. Null for any other template, or for a body it was not designed on (`vertexCount`).
+ * A designed garment's FIELD (`athleticBottomStencil.ts`: the garment as a block of cells in space round her hips with
+ * her legs apart, 0..1 for -range..+range metres from its outline, one half on it) and where this layer's line is on
+ * that scale -- its edging's outer side or inner side. Null for any other template, or for a body it was not designed
+ * on (`vertexCount`).
  */
 export function designedField(p: Pick<CoverageParams, 'outline' | 'outlineLine'>, vertexCount: number): { readonly field: DesignedField; readonly level: number } | null {
   if (p.outline !== 'athleticBottom' || vertexCount !== ATHLETIC_BOTTOM.vertices) return null;
   const f = ATHLETIC_BOTTOM.field, inset = p.outlineLine === 'edge' ? 0 : ATHLETIC_BOTTOM.band;
-  return { field: athleticField ?? (athleticField = layField(f, ATHLETIC_BOTTOM.strap)), level: 0.5 + inset / (2 * f.range) };
+  return { field: athleticField ?? (athleticField = layField(f, athleticBottomCarry())), level: 0.5 + inset / (2 * f.range) };
 }
 let athleticField: DesignedField | null = null;
 /** A generated field's numbers (metres, her rest frame) as the room uses them (her mesh's own units, and 0..1 of its block). */
-function layField(f: { readonly path: string; readonly dims: readonly [number, number, number]; readonly lo: readonly [number, number, number]; readonly voxel: number; readonly range: number; readonly cols: number; readonly toMetres: { readonly scale: number; readonly offset: readonly [number, number, number] } }, strap: (Omit<StrapHold, 'perUnit'>) | null): DesignedField {
-  const units = (p: readonly [number, number, number]) => [0, 1, 2].map((i) => (p[i] - f.toMetres.offset[i]) / f.toMetres.scale) as unknown as [number, number, number], s = f.toMetres.scale;
+function layField(f: { readonly path: string; readonly dims: readonly [number, number, number]; readonly lo: readonly [number, number, number]; readonly voxel: number; readonly range: number; readonly cols: number; readonly toMetres: { readonly scale: number; readonly offset: readonly [number, number, number] } }, carry: Float32Array | null): DesignedField {
   const k = [0, 1, 2] as const, size = k.map((i) => f.dims[i] * f.voxel);
   // metres = units * s + o, and 0..1 = (metres - lo) / size
   return {
@@ -613,13 +582,8 @@ function layField(f: { readonly path: string; readonly dims: readonly [number, n
     lo: k.map((i) => (f.lo[i] - f.toMetres.offset[i]) / f.toMetres.scale) as unknown as [number, number, number],
     hi: k.map((i) => (f.lo[i] + size[i] - f.toMetres.offset[i]) / f.toMetres.scale) as unknown as [number, number, number],
     unitsPerMetre: 1 / f.toMetres.scale,
-    strap: strap && {
-      bone: strap.bone, mid: (strap.mid - f.toMetres.offset[0]) / s, half: strap.half / s, blend: strap.blend / s,
-      front: { z: (strap.front.z - f.toMetres.offset[2]) / s, fromY: (strap.front.fromY - f.toMetres.offset[1]) / s, slope: strap.front.slope },
-      back: { z: (strap.back.z - f.toMetres.offset[2]) / s, fromY: (strap.back.fromY - f.toMetres.offset[1]) / s, slope: strap.back.slope },
-      zoneA: units(strap.zoneA), zoneB: units(strap.zoneB), zoneInner: strap.zoneInner / s, zoneOuter: strap.zoneOuter / s,
-      perUnit: s / (2 * f.range),
-    },
+    // (a carry is a difference of places: her mesh's units are metres over one scale, with no turn)
+    carry: carry && Float32Array.from(carry, (c) => c / f.toMetres.scale),
   };
 }
 

@@ -9522,23 +9522,42 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (a probe's) which of her paint layers are drawn from a designed garment's mask (fabricMaterial.ts), and her UVs for it
         // (a probe's) her skin's points as base64 Float32 triples: 'local' as her shapes leave them before her bones move
         // them (model units), 'rest' as her fabric is laid by (fabricRest), 'posed' as drawn (metres, the room's frame)
-        bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'hung' | 'slip') => {
+        bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
           const b = bodyOf()?.mesh; if (!b) return null;
           const g = b.geometry, n = g.getAttribute('position').count, out = new Float32Array(n * 3), v = new THREE.Vector3();
           if (kind === 'posed') { b.updateMatrixWorld(true); b.skeleton?.update(); for (let i = 0; i < n; i++) { b.getVertexPosition(i, v); b.localToWorld(v); out[i * 3] = v.x / M; out[i * 3 + 1] = v.y / M; out[i * 3 + 2] = v.z / M; } }
-          // ('hung': as drawn, but seen from her pelvis bone as it stood at rest -- where each point is for something that
-          // hangs on her pelvis and does not ride her skin; model units)
-          else if (kind === 'hung') {
-            b.updateMatrixWorld(true); b.skeleton.update();
-            const pelvis = new THREE.Matrix4().multiplyMatrices(b.skeleton.bones[0].matrixWorld, b.skeleton.boneInverses[0]);
-            const U = new THREE.Matrix4().copy(b.bindMatrixInverse).multiply(pelvis.invert()).multiply(b.bindMatrix);
-            for (let i = 0; i < n; i++) { b.getVertexPosition(i, v); v.applyMatrix4(U); out[i * 3] = v.x; out[i * 3 + 1] = v.y; out[i * 3 + 2] = v.z; }
-          }
           // ('shaped': her shapes and her morphs, before her bones move her -- model units)
           else if (kind === 'shaped') { for (let i = 0; i < n; i++) { THREE.Mesh.prototype.getVertexPosition.call(b, i, v); out[i * 3] = v.x; out[i * 3 + 1] = v.y; out[i * 3 + 2] = v.z; } }
           else { const a = g.getAttribute(kind === 'rest' ? 'fabricRest' : kind === 'slip' ? 'fabricSlip' : 'position') as THREE.BufferAttribute | undefined; if (!a) return null; for (let i = 0; i < n; i++) { out[i * 3] = a.getX(i); out[i * 3 + 1] = a.getY(i); out[i * 3 + 2] = a.getZ(i); } }
           const bytes = new Uint8Array(out.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
           return btoa(s);
+        },
+        // (a probe's) HER PLACES IN THE POSE SHE IS IN NOW, as a designed garment keeps them (designPose.ts, measured by
+        // scripts/probe-legs-apart.mjs): each vertex's carry from its rest place to where the room draws it, seen from
+        // her pelvis bone (`pelvis`, by name) as it stood at rest, settled against her slip as it is laid now -- so a
+        // designed garment must be on. Her mesh's own units, in steps of `step`, as base64 Float32 triples (`data`); none
+        // for a vertex whose place, at rest and as drawn, is outside the box `lo`..`hi` (those units too). And `off`: how
+        // far the room's own look-up with that carry is from where each vertex was drawn (the worst, and 99 in 100).
+        poseCarry: (pelvis: string, lo: number[], hi: number[], step: number) => {
+          const b = bodyOf()?.mesh, bone = b?.skeleton?.bones.find((x) => x.name === pelvis), rest = b?.geometry.getAttribute('fabricRest') as THREE.BufferAttribute | undefined;
+          if (!b || !bone || !rest || !fabric) return null;
+          b.updateMatrixWorld(true); b.skeleton.update();
+          // a point bound wholly to her pelvis is drawn at bindMatrixInverse * (pelvis.matrixWorld * its inverse bind) *
+          // bindMatrix * point: `back` undoes all of that (her bind matrix is not her mesh's place in the room now, so
+          // the three do not come apart)
+          const back = new THREE.Matrix4().multiplyMatrices(bone.matrixWorld, b.skeleton.boneInverses[b.skeleton.bones.indexOf(bone)]).premultiply(b.bindMatrixInverse).multiply(b.bindMatrix).invert();
+          const n = rest.count, drawn = new Float32Array(n * 3), v = new THREE.Vector3();
+          const inBox = (x: number, y: number, z: number) => x > lo[0] && x < hi[0] && y > lo[1] && y < hi[1] && z > lo[2] && z < hi[2];
+          for (let i = 0; i < n; i++) {
+            b.getVertexPosition(i, v); v.applyMatrix4(back);
+            const x = rest.getX(i), y = rest.getY(i), z = rest.getZ(i);
+            if (!inBox(x, y, z) && !inBox(v.x, v.y, v.z)) continue;
+            drawn[i * 3] = v.x - x; drawn[i * 3 + 1] = v.y - y; drawn[i * 3 + 2] = v.z - z;
+          }
+          const got = fabric.poseCarry(drawn, step);
+          if (!got) return null;
+          const bytes = new Uint8Array(got.carry.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          return { data: btoa(s), off: got.off };
         },
         // (a probe's) the area of her skin made again round her opening (vulvaMesh.ts), one of its attributes as base64
         // Float32 (its points before her bones, or what it carries of her skin's fabric attributes), and its triangles

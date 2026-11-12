@@ -58,14 +58,20 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 
 ## Garments painted on her skin
 
-- A designed garment is an OUTLINE laid on her rest skin (`scripts/designAthleticBottom.mjs`) and kept as a FIELD
-  in space round her (`public/models/paint/*-field.png`), looked up for each pixel at its own place on her rest skin
+- A designed garment is an OUTLINE laid on her skin (`scripts/designAthleticBottom.mjs`) and kept as a FIELD in space
+  round her (`public/models/paint/*-field.png`), looked up for each pixel at its own place on her skin
   (`fabricMaterial.ts`). Not a value per vertex and not a mask in her UV layout: both drew jagged in the room
   (MEASURED 2026-11-12 -- her shapes slide her skin's points along her skin by up to 15 mm beside an outline).
-- That slide is taken off before the look-up: her points' SLIP (`skinSlip.ts`), worked out over ALL of her skin's
-  triangles, the area under her opening's patch among them (`fabricPanel.ts`'s `skinTriangles`).
-- Between her legs a garment's strap hangs on her pelvis, not on her skin (`STRAP` in the design script).
-- A drawing sheet's marks are carried back to her skin by its corner squares and `sheets.json` (the sheets' script).
+- It is laid, and looked up, on her skin IN THE POSE HE DREW IT IN: her legs apart (`designPose.ts`). At rest her
+  crotch and the folds of her thighs are creases a field cannot tell the two sides of, and a line laid there drew
+  kinked whenever her legs opened (MEASURED 2026-11-12). Her legs-apart places are MEASURED from the room
+  (`scripts/probe-legs-apart.mjs` writes `scripts/data/sarah-v2-legs-apart.bin`): after anything changes how the room
+  draws LEGS APART, measure again, then run the design script, then build.
+- Her shapes' slide is taken off before the look-up: her points' SLIP (`skinSlip.ts`), worked out over ALL of her
+  skin's triangles, the area under her opening's patch among them (`fabricPanel.ts`'s `skinTriangles`), and taken
+  through the pose's turn of her skin.
+- A drawing sheet's marks are carried back to her skin by its corner squares and `sheets.json` (the sheets' script),
+  each to its pixel's own place on her legs-apart skin, as the room looks that pixel up.
 
 ## Verification
 

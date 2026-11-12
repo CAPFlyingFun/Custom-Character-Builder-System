@@ -31,7 +31,8 @@ import {
   fabricFamily, opacityOf, swatchRect, tileUnits, trimPick, type FabricChoice, type FabricFamilyId, type FabricLayout,
   type FabricPick, type OutfitConfig, type PaintTool,
 } from './fabricLibrary';
-import { ensureRest, fabricFieldWorn, fabricSlip, fieldCells, setDetailKeep, setFabricLayer, setFabricPelvis, setHang, setRegionOverlay, setUnder, type FabricLayer } from './fabricMaterial';
+import { ensureRest, fabricFieldWorn, fabricSlip, fieldCells, setDetailKeep, setFabricLayer, setHang, setRegionOverlay, setUnder, type FabricLayer } from './fabricMaterial';
+import { layCarried, poseTurns, settleCarry } from './designPose';
 import { makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
 import { PUSH_ATTRIBUTE } from './softBody';
 import type { DetailKeep } from './bodyDetail';
@@ -190,6 +191,17 @@ export interface FabricPanel {
   reshaped(): void;
   /** (a probe's) Her points' slip as it is kept for the designed garment she wears, or null with none: how many of her points, how many slips worked out, which morphs carry one, and the longest slip laid (her mesh's own units). */
   slipState(): { readonly points: number; readonly vertices: number; readonly solved: number; readonly morphs: readonly number[]; readonly longest: number } | null;
+  /** (a probe's) That slip itself, three numbers a vertex of her body (her mesh's own units; none outside the garment's reach), before her carry to the garment's pose is laid with it: the SAME array each call, read-only. Null with no designed garment on. */
+  slipNow(): Float32Array | null;
+  /**
+   * (a probe's) The carry a designed garment keeps for the pose she is in now (`designPose.settleCarry`), measured
+   * against her slip as it is laid: `drawn` is each vertex's place as the room draws it (seen from her pelvis as it stood
+   * at rest) less its rest place, three numbers a vertex in her mesh's own units, none for a vertex left out; `step` the
+   * step it is stored in (those units). With it, how far the room's own look-up then is from where each vertex was drawn
+   * (`off`: the worst of them, and what 99 in 100 are within; those units). Null with no designed garment on (her slip
+   * is only kept with one).
+   */
+  poseCarry(drawn: Float32Array, step: number): { readonly carry: Float32Array; readonly off: { readonly worst: number; readonly most: number } } | null;
   /** A painted shirt's LENGTH, 0 just above her crotch to 1 just above her knee (Joshua, 2026-10-22). */
   setShirtLength(length: number): void;
   shirtLength(): number;
@@ -257,7 +269,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   /** Designed garments' fields by path, and their fetches (`fieldFor`). */
   const fields = new Map<string, THREE.Data3DTexture>(), fieldLoads = new Map<string, Promise<void>>();
   /** Her points' slip, kept while she wears a designed garment (`laySlip`). */
-  let slip: { readonly mesh: THREE.Mesh; readonly path: string; readonly driver: SlipDriver; readonly points: number; readonly vertices: Uint32Array; readonly shaped: { version: number }; shapedSeen: number; solvedAt: number; pending: boolean } | null = null;
+  let slip: { readonly mesh: THREE.Mesh; readonly path: string; readonly driver: SlipDriver; readonly points: number; readonly vertices: Uint32Array; readonly shaped: { version: number }; shapedSeen: number; solvedAt: number; pending: boolean; readonly plain: Float32Array; readonly carry: Float32Array | null; readonly turn: Float32Array | null; readonly unitsPerMetre: number } | null = null;
   let target: Target = { kind: 'layer', index: 0 };
   let space: EditorSpace = 'design', paintView: PaintView = 'layer', isolated = false, active = true;
   let tool: PaintTool = 'brush', brushCm: number = BRUSH_RANGE_CM.initial;
@@ -854,8 +866,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const t = templates[i], d = t ? designedField(t.params, body.geometry.getAttribute('position').count) : null;
     if (!d) return null;
     const f = d.field, have = fields.get(f.path);
-    // (its strap hangs on her pelvis bone: with no such bone there is nothing to hang it on, and it rides her skin)
-    if (have) return { texture: have, level: d.level, scale: f.scale, offset: f.offset, strap: f.strap && pelvisOf(body, f.strap.bone) ? f.strap : null };
+    if (have) return { texture: have, level: d.level, scale: f.scale, offset: f.offset };
     if (!fieldLoads.has(f.path)) fieldLoads.set(f.path, hooks.loadImage(f.path).then((image) => {
       if (!image || disposed) return;
       // its picture read back as numbers (its slices lie side by side), and laid as one block: linear data, blended
@@ -876,11 +887,13 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     }));
     return null;
   }
-  const pelvisOf = (body: THREE.SkinnedMesh, name: string) => body.skeleton?.bones.find((b) => b.name === name) ?? null;
   /**
    * HER POINTS' SLIP, kept up to date while a designed garment is drawn from its field (`skinSlip.ts`): her shapes'
    * slip worked out again when her rest shape changes (at most once every `SLIP_SHAPE_MS` while a control is dragged,
-   * and once more when it stops), her morphs' added by their weights. Nothing is done with no designed garment on.
+   * and once more when it stops), her morphs' added by their weights. And, for a garment designed in a pose
+   * (`designPose.ts`: her bikini bottom, with her legs apart), each vertex's CARRY to that pose laid with it, its slip
+   * taken through the pose's turn there: what the shader adds to a pixel's rest place to look the garment up.
+   * Nothing is done with no designed garment on.
    */
   function laySlip(): void {
     const body = hooks.body();
@@ -890,16 +903,26 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     let worn: DesignedField | null = null;
     for (let i = 0; i < PAINT_LAYER_COUNT && !worn; i++) { const t = templates[i], d = t ? designedField(t.params, body.geometry.getAttribute('position').count) : null; if (d && fields.has(d.field.path)) worn = d.field; }
     if (!worn) return;
-    // her skin as seen from her pelvis, for the garment's strap (her bones are where this frame has put them)
-    const pelvis = worn.strap ? pelvisOf(body, worn.strap.bone) : null;
-    if (pelvis) setFabricPelvis(body, material, pelvis);
     const g = body.geometry as THREE.BufferGeometry, target = fabricSlip(body, hooks.rest(body));
     if (!slip || slip.mesh !== body || slip.path !== worn.path) {
       const rest = g.getAttribute('fabricRest') as THREE.BufferAttribute, pos = g.getAttribute('position') as THREE.BufferAttribute, index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array;
       // (her rest shape as plain numbers in her mesh's own units, as her shape fields leave it: a body without them is left alone)
       if (!index || !(pos.array instanceof Float32Array) || pos.normalized) return;
-      const { lo, hi } = worn, pad = SLIP_MARGIN_M * worn.unitsPerMetre, morphs = g.morphTargetsRelative ? g.morphAttributes.position ?? [] : [];
-      const solver = makeSkinSlip(rest.array, index, (x, y, z) => x >= lo[0] - pad && x <= hi[0] + pad && y >= lo[1] - pad && y <= hi[1] + pad && z >= lo[2] - pad && z <= hi[2] + pad);
+      const pad = SLIP_MARGIN_M * worn.unitsPerMetre, morphs = g.morphTargetsRelative ? g.morphAttributes.position ?? [] : [];
+      const carry = worn.carry && worn.carry.length === pos.count * 3 ? worn.carry : null;
+      // her points in the garment's reach: those whose place where the garment is looked up -- in its pose -- is in its
+      // block or within the margin of it. Their rest places' own box is the region her slip is worked out in.
+      let lo: number[] = worn.lo.map((v) => v - pad), hi: number[] = worn.hi.map((v) => v + pad);
+      if (carry) {
+        const R = rest.array, from = lo, to = hi;
+        lo = [Infinity, Infinity, Infinity]; hi = [-Infinity, -Infinity, -Infinity];
+        for (let v = 0; v < pos.count; v++) {
+          const x = R[v * 3] + carry[v * 3], y = R[v * 3 + 1] + carry[v * 3 + 1], z = R[v * 3 + 2] + carry[v * 3 + 2];
+          if (x < from[0] || x > to[0] || y < from[1] || y > to[1] || z < from[2] || z > to[2]) continue;
+          for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], R[v * 3 + k]); hi[k] = Math.max(hi[k], R[v * 3 + k]); }
+        }
+      }
+      const solver = makeSkinSlip(rest.array, index, (x, y, z) => x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2]);
       // (`shaped.version` is stepped when her shapes' slip is to be worked out again: the driver reads it)
       const shaped = { version: 0 };
       // (her belly's push for her baby is laid on her shapes point by point in the shader: softBody.ts)
@@ -908,14 +931,16 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         rest: rest.array, shaped: pos.array, pushed: pushed()?.array ?? null, shapedVersion: shaped.version, weights: body.morphTargetInfluences ?? [],
         morph: (k, v, out) => { const a = morphs[k]; if (a) { out[0] = a.getX(v); out[1] = a.getY(v); out[2] = a.getZ(v); } else { out[0] = 0; out[1] = 0; out[2] = 0; } },
       }));
-      slip = { mesh: body, path: worn.path, driver, points: solver.points, vertices: solver.vertices, shaped, shapedSeen: -1, solvedAt: -Infinity, pending: true };
+      slip = { mesh: body, path: worn.path, driver, points: solver.points, vertices: solver.vertices, shaped, shapedSeen: -1, solvedAt: -Infinity, pending: true, plain: new Float32Array(pos.count * 3), carry, turn: carry && poseTurns(rest.array, index, carry, worn.unitsPerMetre), unitsPerMetre: worn.unitsPerMetre };
     }
     const pos = g.getAttribute('position') as THREE.BufferAttribute, now = performance.now();
     // (her shapes or her belly's push changed: both are written whole, and each write steps its version)
     const seen = pos.version * 65536 + ((g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined)?.version ?? 0);
     if (seen !== slip.shapedSeen) { slip.shapedSeen = seen; slip.pending = true; }
     if (slip.pending && now - slip.solvedAt >= SLIP_SHAPE_MS) { slip.shaped.version++; slip.pending = false; slip.solvedAt = now; }
-    if (slip.driver.update(target.array as Float32Array)) target.needsUpdate = true;
+    if (!slip.driver.update(slip.plain)) return;
+    if (slip.carry && slip.turn) layCarried(target.array as Float32Array, slip.carry, slip.turn, slip.plain); else (target.array as Float32Array).set(slip.plain);
+    target.needsUpdate = true;
   }
   const cached = (pick: FabricPick | null, which: 'plain' | 'trim') => (pick ? swatches.get(swatchKey(pick, which)) ?? null : null);
   function layerFor(mesh: THREE.Mesh, c: FabricChoice, pick: FabricPick | null, which: 'plain' | 'trim') {
@@ -1193,10 +1218,21 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     slipState() {
       const body = hooks.body();
       if (!slip || slip.mesh !== body) return null;
-      const a = (body.geometry as THREE.BufferGeometry).getAttribute('fabricSlip') as THREE.BufferAttribute | undefined;
       let longest = 0;
-      if (a) for (const v of slip.vertices) longest = Math.max(longest, Math.hypot(a.getX(v), a.getY(v), a.getZ(v)));
+      for (const v of slip.vertices) longest = Math.max(longest, Math.hypot(slip.plain[v * 3], slip.plain[v * 3 + 1], slip.plain[v * 3 + 2]));
       return { points: slip.points, vertices: slip.vertices.length, solved: slip.driver.stats.solved, morphs: slip.driver.stats.morphs.slice(), longest };
+    },
+    slipNow() { return slip && slip.mesh === hooks.body() ? slip.plain : null; },
+    poseCarry(drawn, step) {
+      const body = hooks.body();
+      if (!body || !slip || slip.mesh !== body) return null;
+      const g = body.geometry as THREE.BufferGeometry, rest = g.getAttribute('fabricRest') as THREE.BufferAttribute, index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array;
+      if (!index) return null;
+      const carry = settleCarry(rest.array, index, drawn, slip.plain, step, slip.unitsPerMetre);
+      const back = layCarried(new Float32Array(carry.length), carry, poseTurns(rest.array, index, carry, slip.unitsPerMetre), slip.plain), off: number[] = [];
+      for (let i = 0; i < carry.length; i += 3) if (drawn[i] !== 0 || drawn[i + 1] !== 0 || drawn[i + 2] !== 0) off.push(Math.hypot(back[i] - drawn[i], back[i + 1] - drawn[i + 1], back[i + 2] - drawn[i + 2]));
+      off.sort((a, b) => a - b);
+      return { carry, off: { worst: off[off.length - 1] ?? 0, most: off[Math.floor(off.length * 0.99)] ?? 0 } };
     },
     reshaped() { bridge?.reshape(); drape?.reshape(); },
     setShirtLength,

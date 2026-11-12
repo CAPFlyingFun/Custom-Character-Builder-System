@@ -11,11 +11,13 @@
  *     is (its outline) and where its FILL begins (`BAND` inside the outline: between the two is the edging) -- each
  *     chosen so that, blended straight across each of her triangles, its zero falls where the true line crosses that
  *     triangle's sides (step 7). The paint's per-vertex coverage, and what is drawn until the field is in.
+ *     And each vertex's CARRY to her legs-apart skin (below), for every vertex in or near the field's block.
  *   - `public/models/paint/sarah-v2-athletic-bottom-field.png`: the same garment as a FIELD IN SPACE round her hips
- *     (step 8): a block of `FIELD_VOXEL_M` cells in her rest frame, each holding how far that place is inside the outline
- *     (+) or outside (-), `FIELD_RANGE_M` either way mapped onto 0..255 (128 on the line), its slices laid side by side in
- *     one grey picture. The room looks each pixel of her skin up in it at that pixel's own place on her rest skin
- *     (`fabricMaterial.ts`), so the line is drawn at the field's resolution whatever her triangles are.
+ *     (step 8): a block of `FIELD_VOXEL_M` cells round her skin WITH HER LEGS APART, each holding how far that place is
+ *     inside the outline (+) or outside (-), `FIELD_RANGE_M` either way mapped onto 0..255 (128 on the line), its slices
+ *     laid side by side in one grey picture. The room looks each pixel of her skin up in it at that pixel's own place
+ *     on her legs-apart skin (`fabricMaterial.ts`), so the line is drawn at the field's resolution whatever her
+ *     triangles are.
  *
  * WHY A FIELD, AND NOT A VALUE PER VERTEX OR A MASK IN HER UV LAYOUT (MEASURED, 2026-11-12): her skin over her hips is
  * in triangles up to 37 mm across, far wider than a 5 mm edging, so no value per vertex draws that edging cleanly. A mask
@@ -29,14 +31,16 @@
  *
  * The steps:
  *   1. HER SKIN, at rest, in metres (+y up, +z her front, +x her left), as `traceBikiniBottom.mjs` reads it; the copies of
- *      a vertex split along a texture seam welded into one point; each point's normal; her arms left out of the design's
- *      ray picks and nearest-point searches (her hands hang beside her hips).
+ *      a vertex split along a texture seam welded into one point; her arms left out of the design's ray picks and
+ *      nearest-point searches (her hands hang beside her hips). And HER SKIN WITH HER LEGS APART: each point's rest
+ *      place and its carry (`POSE_BIN`, below). Everything from step 2's curves on is worked out on that skin.
  *   2. THE OUTLINE as three closed curves on her skin: the waistband round her, and the two leg openings. Each is laid
- *      through CONTROL POINTS (below; her left side, mirrored across her middle for her right): a point seen from in
- *      front or behind (the first skin a ray from that side meets at that x and height), or the skin nearest a guide
- *      point where no view sees it well (round her hips, under her crotch). A smooth curve (centripetal Catmull-Rom)
- *      runs through them, sampled every `STEP_M`, and is laid onto her skin (each sample moved to the nearest point of
- *      her skin, smoothed a little and laid again, `SETTLE` times).
+ *      through CONTROL POINTS (below; her left side, mirrored across her middle for her right): a point of her REST
+ *      skin seen from in front or behind (the first skin a ray from that side meets at that x and height), or her rest
+ *      skin nearest a guide point where no view sees it well (round her hips) -- each then carried to the same place on
+ *      her legs-apart skin -- or, for the lines he drew with her legs apart, her legs-apart skin nearest a guide point
+ *      there. A smooth curve (centripetal Catmull-Rom) runs through them, sampled every `STEP_M`, and is laid onto her
+ *      legs-apart skin (each sample moved to its nearest point, smoothed a little and laid again, `SETTLE` times).
  *   3. INSIDE: from a point on her mons, her skin is walked edge by edge without crossing a curve (an edge is crossed
  *      where a curve meets it in the plane of her skin there); what is reached is the garment. Her points within
  *      `BARRIER_M` of a curve are not walked, and every point within `FIELD_WALL_M` of one takes its side from that
@@ -57,7 +61,7 @@
  *
  *   node scripts/designAthleticBottom.mjs        (from the repo root)
  */
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -78,9 +82,10 @@ export const BAND_M = 0.005;
 /**
  * THE DESIGN (her rest, metres; x out from her middle to her left), as Joshua drew it on a mannequin of her build
  * (2026-11-12, his blue lines: "Here is the updated look"; "do the more triangle look not my rounded shape"): a small
- * TRIANGLE over her mons; a thin BAND from each of its top corners along the fold under her bump to her hip; and a V
- * across her seat -- two WINGS from her hips to a point at the foot of her cleft, their top edge arched over each
- * cheek with a notch at her middle. No panel at her sides: the band alone.
+ * PANEL over her mons, a funnel running in to the strap between her legs; a thin BAND from each of its top corners
+ * along the fold under her bump to her hip; and a V across her seat -- two WINGS from her hips to a point at the foot
+ * of her cleft, their top edge arched over each cheek with a notch at her middle. No panel at her sides: the band
+ * alone. Its front he then drew again on her own sheets, with her legs apart (the waistband and the leg opening, below).
  *
  * Her shape, MEASURED in cross-sections (2026-11-12): her bump sits directly on her mons and the tops of her thighs,
  * its fold at y 0.853 at her middle rising to 0.871 (x 0.06), 0.902 (0.10) and 0.943 (0.14); at y 0.98 her hip is
@@ -92,15 +97,23 @@ export const BAND_M = 0.005;
  * 3.4 cm wide; the bands' ends at her sides 16 cm above her crotch; the wings' top edge 1.5 cm above those at its
  * highest and 4.6 cm below them at the notch; the wings' lower edges straight from her hips to the foot of her cleft.
  *
- * WAISTBAND (GAME TUNING round those): across her mons 5 mm under her bump's fold and up along it, so the edge shows
- * just under her bump (front-view picks); round her hip at 0.986 (guide points: no view sees her side well); arched
- * over each cheek to 0.996 and down into the notch at 0.955 at her middle (back-view picks). The notch is 2.3 cm higher
- * than his drawing's own proportions put it (0.932): her cleft runs 4 cm higher than his mannequin's, whose notch sits
- * at the top of its cleft; here it is still a notch, 4 cm under the arches, and all but the shallow top of her cleft
- * is covered.
+ * WAISTBAND: its front AS HE DREW IT ON HER OWN SHEETS with her legs apart (2026-11-12; see the leg opening, below):
+ * one line from hip to hip under her bump -- along the fold from each hip to the panel's top corners, and straight
+ * across between them. MEASURED on her rest skin: his line along the fold is the fold itself (y 0.8745 at x 0.0655,
+ * 0.8965 at 0.092, 0.9225 at 0.122, 0.9685 at 0.1575); the panel's top corners are at x 0.054, y 0.862; and between
+ * them his line is on the UNDERSIDE of her bump, in front of the crease where it rests on her mons -- 1 cm in front
+ * reclined (y 0.849, z 0.042 at her middle), 2 cm in front standing with her legs apart (y 0.853, z 0.052), her bump
+ * lying differently on her mons in each. `TOP_FOLD` (guide points: places on her skin) is his fold line, and between
+ * the corners the line midway between his reclined one and his standing one (5 mm of her skin from each: no line on
+ * her skin is at the edge of her bump in both poses).
+ * Then (GAME TUNING) round her hip at 0.986 (guide points: no view sees her side well); arched over each cheek to
+ * 0.996 and down into the notch at 0.955 at her middle (back-view picks). The notch is 2.3 cm higher than his
+ * mannequin drawing's own proportions put it (0.932): her cleft runs 4 cm higher than his mannequin's, whose notch
+ * sits at the top of its cleft; here it is still a notch, 4 cm under the arches, and all but the shallow top of her
+ * cleft is covered.
  */
-export const TOP_FRONT = [[0.0, 0.848], [0.04, 0.851], [0.06, 0.865], [0.08, 0.880], [0.10, 0.896], [0.12, 0.915], [0.14, 0.937], [0.152, 0.956]];
-export const TOP_SIDE = [[0.160, 0.968, -0.012], [0.166, 0.979, -0.045], [0.168, 0.986, -0.082], [0.164, 0.991, -0.115], [0.152, 0.994, -0.15]];
+export const TOP_FOLD = [[0.0, 0.851, 0.047], [0.017, 0.851, 0.045], [0.025, 0.852, 0.042], [0.034, 0.8535, 0.038], [0.044, 0.858, 0.038], [0.054, 0.862, 0.0345], [0.0655, 0.8745, 0.039], [0.092, 0.8965, 0.037], [0.122, 0.9225, 0.0235], [0.1575, 0.9685, -0.0095]];
+export const TOP_SIDE = [[0.166, 0.979, -0.045], [0.168, 0.986, -0.082], [0.164, 0.991, -0.115], [0.152, 0.994, -0.15]];
 export const TOP_BACK = [[0.135, 0.995], [0.09, 0.996], [0.05, 0.990], [0.026, 0.975], [0.008, 0.960], [0.0, 0.955]];
 /**
  * GAME TUNING (metres): the side band's width along her skin. His drawing shows it as a line; this is the garment's
@@ -108,48 +121,73 @@ export const TOP_BACK = [[0.135, 0.995], [0.09, 0.996], [0.05, 0.990], [0.026, 0
  */
 export const SIDE_BAND_M = 0.015;
 /**
- * A LEG OPENING (GAME TUNING): the band's lower edge, from behind her hip round it and down the fold to the triangle
- * (`LEG_BAND`, guide points: each `SIDE_BAND_M` from the waistband's own curve along her skin, worked out from that
- * curve, and MEASURED again when this is generated); the triangle's side, down the crease between her mons and her
- * thigh (`LEG_TRI`, front-view picks); under her crotch the skin nearest a line 1.5 cm either side of her middle -- the
- * foot of the inner wall of each thigh, her crotch's floor being 1.2 cm wide (MEASURED) -- so the strap covers her
- * opening and no more of her thighs than that (Joshua, 2026-11-12: "taper down to 3cm wide which should cover the
- * opening and avoid the paint being drawn on the upper inside thighs"); and from the foot of her cleft out and up
- * across her cheek to behind her hip in one line, a little bowed, as his drawing's wing is (`LEG_BACK`, back-view
- * picks).
+ * A LEG OPENING: the band's lower edge, from behind her hip round it, down the fold and on under the panel's top
+ * corner -- the waistband's own curve between two of its control points (`BAND_FROM`, the panel's corner, to `BAND_TO`,
+ * behind her hip), each sample moved `SIDE_BAND_M` along her skin away from it (`bandLower`: worked out on each of her
+ * sides from that side's own curve, her two hips not being mirror images, and MEASURED again when this is generated);
+ * then the front panel's side and the strap, AS JOSHUA DREW THEM WITH HER LEGS APART (2026-11-12: "I think we need to
+ * design the bottom with the legs apart and when they close, should hopefully look right. We are doing it backwards"),
+ * on her own drawing sheets -- reclined and legs apart at 100%, from underneath at 45 degrees.
+ *
+ * MEASURED on those two sheets (scripts/probe-body-sheets.mjs; each mark met with her posed skin along the sheet's
+ * view, and read at that pixel's own place ON HER LEGS-APART SKIN, as the room looks it up): his panel is one funnel in
+ * both -- and his two drawings land on ONE line of her legs-apart skin, their half-widths within 3 mm of each other all
+ * the way down: 10.3 cm across where it leaves the band under her bump, 5.6 cm at the foot of her mons, 4.2 cm at the
+ * front of her crotch, 3.3 cm under it and 2.8 cm between her cheeks, where he wrote "3 cm". `LEG_FUNNEL` is that line
+ * (guide points on her LEGS-APART skin: half the funnel's width from `APART_MID_X`, the height and how far forward; his
+ * two sheets' and her two sides' averaged).
+ * On her REST skin the same line is her crotch's floor and the foot of each thigh's inner wall: 1.7 to 2.2 cm apart
+ * all along her crotch, where with her legs apart it is 4.2 cm apart at the front and 2.8 cm between her cheeks. Her
+ * rest skin does not tell those apart, which is why the line is not laid there (the design pose, below): the first
+ * cuts, laid at rest, drew his strap kinked, and once 6 to 7 cm wide.
+ *
+ * The funnel's line is used from where it is clear of the band (`SIDE_BAND_M` from the waistband): above that the
+ * band's own lower edge is the leg opening, round under the panel's corner. From the funnel's foot the curve runs out
+ * and up across her cheek to behind her hip in one line, a little bowed, as his mannequin drawing's wing is
+ * (`LEG_BACK`, back-view picks of her rest skin, GAME TUNING).
  */
-export const LEG_BAND = [[0.154, 0.9747, -0.1439], [0.1617, 0.9749, -0.1249], [0.1676, 0.9739, -0.1052], [0.1709, 0.9715, -0.0864], [0.1709, 0.968, -0.0651], [0.1677, 0.9635, -0.0465], [0.1633, 0.9584, -0.028], [0.1588, 0.9464, -0.0129], [0.1524, 0.9321, -0.0001], [0.143, 0.9184, 0.0113], [0.1315, 0.9054, 0.0212], [0.1184, 0.8924, 0.0294], [0.1051, 0.8808, 0.0349], [0.0892, 0.8682, 0.0382]];
-export const LEG_TRI = [[0.070, 0.853], [0.052, 0.840], [0.037, 0.830], [0.025, 0.823]];
-export const GUSSET = [[0.019, 0.818, 0.012], [0.015, 0.816, -0.010], [0.015, 0.815, -0.040], [0.015, 0.815, -0.070], [0.016, 0.817, -0.098]];
-export const LEG_BACK = [[0.016, 0.830], [0.024, 0.853], [0.042, 0.878], [0.064, 0.903], [0.090, 0.929], [0.118, 0.953]];
-/** The garment's own skin: her mons, in front of her middle at this height (a front-view pick). */
+/** The control points of the waistband's left half (`TOP_FOLD` then `TOP_SIDE`) the side band runs between, and how far apart its lower edge's guide points are taken (metres). GAME TUNING. */
+export const BAND_FROM = 5, BAND_TO = TOP_FOLD.length + TOP_SIDE.length - 1, BAND_STEP_M = 0.02;
+export const LEG_FUNNEL = [[0.0515, 0.8541, 0.045], [0.0444, 0.848, 0.038], [0.0405, 0.843, 0.031], [0.0375, 0.8383, 0.024], [0.034, 0.8318, 0.017], [0.0307, 0.8239, 0.010], [0.0279, 0.8178, 0.003], [0.0253, 0.813, -0.005], [0.0234, 0.8103, -0.014], [0.0223, 0.8096, -0.024], [0.0211, 0.8098, -0.035], [0.02, 0.8104, -0.047], [0.0189, 0.8117, -0.060], [0.0176, 0.8146, -0.075], [0.0164, 0.8178, -0.090], [0.0153, 0.8218, -0.105], [0.0143, 0.8268, -0.120], [0.0141, 0.8329, -0.135], [0.0137, 0.8408, -0.150], [0.0121, 0.8503, -0.162]];
+/** MEASURED: the middle of his funnel on her legs-apart skin (her bones carry her crotch 2 mm to her right of her rest middle). */
+export const APART_MID_X = 0.001;
+export const LEG_BACK = [[0.016, 0.850], [0.026, 0.860], [0.042, 0.878], [0.064, 0.903], [0.090, 0.929], [0.118, 0.953]];
+/**
+ * The garment's own skin, where the walk for its inside starts: her mons, in front of her middle (a front-view pick of
+ * her rest skin), and each wing across her seat (back-view picks) -- the strap between them is narrow (2.8 cm between
+ * her cheeks, less the `BARRIER_M` each side), and the walk is not counted on to pass through it.
+ */
 export const SEED = [0.0, 0.838];
+export const SEEDS_BACK = [[0.07, 0.95], [-0.07, 0.95]];
 
 /**
- * THE STRAP BETWEEN HER LEGS HANGS ON HER PELVIS (Joshua, 2026-11-12: "the bottom strap should taper down to 3cm wide
- * which should cover the opening and avoid the paint being drawn on the upper inside thighs as it shouldn't stretch wide
- * as the legs spread open"). Her skin between her legs is three quarters her thigh bones' (MEASURED along her crotch's
- * floor: her pelvis bone 0.15 to 0.32, her two thighs the rest), so paint that rides it spreads with her legs: the
- * gusset drew 6 to 7 cm wide reclined. A real strap does not: it hangs from the garment, and her skin moves under it.
+ * THE DESIGN IS LAID ON HER SKIN WITH HER LEGS APART (Joshua, 2026-11-12: "I think we need to design the bottom with
+ * the legs apart and when they close, should hopefully look right. We are doing it backwards").
  *
- * So round her crotch the garment is ALSO held inside a shape that stands still on her pelvis, whatever her skin there
- * does (`fabricMaterial.ts` works it out for each pixel from where her bones have carried that point, seen from her
- * pelvis bone as it stood at rest): under her crotch a strap `half` either side of her middle (3 cm across); in front of
- * `front.z` a V opening upward from the height `front.fromY` by `front.slope` metres a metre, and behind `back.z` another
- * (`back.fromY`, `back.slope`) -- the lines of the leg openings as designed, 2 to 3 mm wider, so at rest it cuts nothing
- * off the design (tests/athleticBottom); each comes in over `blend` either side of its z. It only ever takes paint
- * AWAY, and only from her skin within `zoneOuter` of the line under her crotch from `zoneA` (her mons) to `zoneB`
- * (between her cheeks) -- wholly within `zoneInner` of it, fading between.
+ * WHY (MEASURED 2026-11-12). At rest her crotch is a tunnel: a floor 1.8 cm wide between her thighs' inner walls, which
+ * meet a centimetre below it, and her thighs lie against the sides of her mons. His strap's edges run along the foot
+ * of those walls and his panel's sides down those folds -- so on her REST skin the outline sat in creases, where her
+ * skin either side of the line is the same place in space to within a cell of the field. Standing shows none of it (the
+ * creases are closed). With her legs apart, squatting or reclined they open -- the room draws her crotch's 1.8 cm
+ * 3 to 4 cm wide -- and what the field could not tell apart drew as kinks along the panel's sides and the strap
+ * (reclined, on her left, worst). The first cut also held the strap to 3 cm on her pelvis bone, which crossed his own
+ * line where her skin carries it wider, and kinked there too.
  *
- * GAME TUNING but `mid` (her middle, MEASURED) and `bone` (her pelvis bone, the first of her skin's joints).
+ * SO the garment is designed where he drew it: on her skin AS THE ROOM DRAWS IT WITH HER LEGS APART (its LEGS APART at
+ * 100 %, seen from her pelvis bone). `POSE_BIN` is that pose MEASURED from the room (scripts/probe-legs-apart.mjs): each
+ * vertex's CARRY from its rest place, settled against her points' slip as she was drawn (src/sarahlab/designPose.ts).
+ * Everything from the curves on -- the distances, the walls, the field's block of cells -- is worked out on her
+ * legs-apart skin, and the room looks each pixel up at its own place there: its rest place, its vertices' carries
+ * (which the generated module stores for every vertex in or near the field's block: within `POSE_PAD_M` of it, in
+ * `POSE_STEP_M` steps) and their slip. There the creases are open and a line on her skin is clear of the rest of her;
+ * the edging is `BAND_M` wide as drawn with her legs apart; and where her skin gathers as her legs close, the garment's
+ * lines gather with it.
+ *
+ * The strap is the skin his line encloses, and rides it. Nothing holds it on her pelvis any more.
  */
-export const STRAP = Object.freeze({
-  half: 0.015, blend: 0.012,
-  front: Object.freeze({ z: -0.022, fromY: 0.812, slope: 1.95 }),
-  back: Object.freeze({ z: -0.085, fromY: 0.815, slope: 0.75 }),
-  zoneA: [MID_X, 0.835, 0.025], zoneB: [MID_X, 0.83, -0.135], zoneInner: 0.04, zoneOuter: 0.08,
-  bone: 'Bone_000',
-});
+export const POSE_BIN = 'scripts/data/sarah-v2-legs-apart.bin';
+/** GAME TUNING (metres): the step a carry is stored in (Int16: carries up to 1.6 m), and how far round the field's block her vertices' carries are stored. */
+export const POSE_STEP_M = 0.00005, POSE_PAD_M = 0.04;
 
 /** GAME TUNING (metres): the curves' sample spacing, and how many times each is smoothed and laid back on her skin. */
 export const STEP_M = 0.002, SETTLE = 3;
@@ -234,6 +272,9 @@ function invert(a) {
   r[12] = -(r[0] * a[12] + r[4] * a[13] + r[8] * a[14]); r[13] = -(r[1] * a[12] + r[5] * a[13] + r[9] * a[14]); r[14] = -(r[2] * a[12] + r[6] * a[13] + r[10] * a[14]); r[15] = 1;
   return r;
 }
+
+/** Her body file's vertex count, and her rest frame from her mesh's own units (metres = units * scale + offset): what scripts/probe-legs-apart.mjs measures in. */
+export async function bodyFrame() { const { vertices, toMetres } = await load(BODY_GLB); return { vertices, ...toMetres }; }
 
 /** The copies of a vertex split along a texture seam are one point (within 0.01 mm, as `traceBikiniBottom.mjs`). */
 function weld(pos) {
@@ -375,17 +416,62 @@ function onSkin(curve, project) {
   return c;
 }
 
-function designCurves(tools) {
+/**
+ * The band's lower edge: the waistband's samples `a` to `b` (in the curve's own order), each moved `SIDE_BAND_M` along
+ * her skin away from the curve and down -- across the curve in the plane of her skin there (her skin's normal blended
+ * from its triangle's corners and smoothed along the curve, crossed with the curve's direction) -- then laid again
+ * three times so each is that far from its own sample in a straight line, her skin there being nearly flat.
+ */
+function bandLower(top, a, b, tools, at, tris, nrm) {
+  const n = top.length, idx = [];
+  for (let i = a; ; i = (i + 1) % n) { idx.push(i); if (i === b) break; if (idx.length > n) throw new Error('the side band\'s ends are not on the waistband'); }
+  const c = idx.map((i) => top[i]);
+  let normals = c.map((p) => {
+    const [q, t] = tools.projectOn(p), w = weightsIn(q, pt(at, tris[t]), pt(at, tris[t + 1]), pt(at, tris[t + 2]));
+    const m = add(add(scale(pt(nrm, tris[t]), w[0]), scale(pt(nrm, tris[t + 1]), w[1])), scale(pt(nrm, tris[t + 2]), w[2]));
+    return scale(m, 1 / (len(m) || 1));
+  });
+  for (let r = 0; r < 6; r += 1) normals = normals.map((m, k) => { if (k === 0 || k === normals.length - 1) return m; const s = add(add(scale(normals[k - 1], 0.25), scale(m, 0.5)), scale(normals[k + 1], 0.25)); return scale(s, 1 / (len(s) || 1)); });
+  const away = c.map((p, k) => { const along = sub(top[(idx[k] + 2) % n], top[(idx[k] - 2 + n) % n]); let d = cross(normals[k], along); d = scale(d, 1 / (len(d) || 1)); return d[1] > 0 ? scale(d, -1) : d; });
+  let q = c.map((p, k) => tools.project(add(p, scale(away[k], SIDE_BAND_M))));
+  for (let r = 0; r < 3; r += 1) {
+    q = q.map((v, k) => { const off = sub(v, c[k]); return tools.project(add(c[k], scale(off, SIDE_BAND_M / (len(off) || 1)))); });
+    q = q.map((v, k) => (k === 0 || k === q.length - 1 ? v : tools.project(add(add(scale(q[k - 1], 0.25), scale(v, 0.5)), scale(q[k + 1], 0.25)))));
+  }
+  // guide points for the leg opening's curve: one every `BAND_STEP_M` along it
+  const guides = [q[0]];
+  let run = 0;
+  for (let k = 1; k < q.length; k += 1) { run += len(sub(q[k], q[k - 1])); if (run >= BAND_STEP_M) { guides.push(q[k]); run = 0; } }
+  return guides;
+}
+
+function designCurves(tools, apart, tris) {
   const { pick, project } = tools;
+  // every control point is a place on her REST skin (a pick from in front or behind, or the skin nearest a guide point),
+  // and her right side's are her left's across her middle; each is then carried to that same skin with her legs apart
   const front = ([x, y]) => pick(FRONT, [MID_X + x, y, 0]), back = ([x, y]) => pick(BACK, [MID_X + x, y, 0]);
   const guide = ([x, y, z]) => project([MID_X + x, y, z]);
+  const across = (p) => project(mirror(p));
+  const lay = (ctrl) => onSkin(catmullClosed(ctrl, STEP_M), apart.tools.project);
   // the waistband: her front's middle, round her left to her back's middle, and back round her right
-  const left = [...TOP_FRONT.map(front), ...TOP_SIDE.map(guide), ...TOP_BACK.map(back)];
-  const inner = left.slice(1, -1), top = [left[0], ...inner, left[left.length - 1], ...inner.slice().reverse().map((p) => project(mirror(p)))];
-  // her left leg's opening, and her right's (mirrored, and run the other way round so both go the same way about her)
-  const legL = [...LEG_BAND.map(guide), ...LEG_TRI.map(front), ...GUSSET.map(guide), ...LEG_BACK.map(back)];
-  const legR = legL.map((p) => project(mirror(p))).reverse();
-  return [top, legL, legR].map((ctrl) => onSkin(catmullClosed(ctrl, STEP_M), project));
+  const left = [...TOP_FOLD.map(guide), ...TOP_SIDE.map(guide), ...TOP_BACK.map(back)];
+  const inner = left.slice(1, -1), top = lay([left[0], ...inner, left[left.length - 1], ...inner.slice().reverse().map(across)].map(apart.carry));
+  // the side bands' lower edges, each from its own side of the waistband (which runs front to back on her left and back
+  // to front on her right)
+  const nearest = (p) => { const q = apart.carry(p); let best = 0, bd = Infinity; top.forEach((c, i) => { const d = len(sub(c, q)); if (d < bd) { bd = d; best = i; } }); return best; };
+  const bandL = bandLower(top, nearest(left[BAND_FROM]), nearest(left[BAND_TO]), apart.tools, apart.at, tris, apart.nrm);
+  const bandR = bandLower(top, nearest(across(left[BAND_TO])), nearest(across(left[BAND_FROM])), apart.tools, apart.at, tris, apart.nrm);
+  // her left leg's opening: the band from behind her hip down to the panel, the panel's side and the strap, and up across
+  // her cheek; and her right's, run the other way round so both go the same way about her
+  // (the funnel's side and the strap are places on her legs-apart skin already: his own lines there)
+  // (and only from where they are clear of the band: nearer the waistband than the band is wide, the band's own lower
+  // edge is the leg opening, round under the panel's corner)
+  const waist = segments([top]);
+  const funnel = (side) => LEG_FUNNEL.map(([x, y, z]) => apart.tools.project([APART_MID_X + side * x, y, z])).filter((p) => waist.distance(p, 0.1) > SIDE_BAND_M);
+  const seat = LEG_BACK.map(back);
+  const legL = [...bandL.slice().reverse(), ...funnel(1), ...seat.map(apart.carry)];
+  const legR = [...seat.map(across).map(apart.carry).reverse(), ...funnel(-1).reverse(), ...bandR.slice().reverse()];
+  return { curves: [top, lay(legL), lay(legR)], bands: [bandL, bandR] };
 }
 
 // ── 3-4. inside, and how far ────────────────────────────────────────────────────────────────────────────────────────
@@ -456,12 +542,14 @@ function blockedEdges(at, nrm, graph, segs) {
   return blocked;
 }
 
-/** Her points walked to from the seed without crossing a blocked edge or stepping on a `barrier` point. */
-function flood(seedPoint, at, count, graph, blocked, barrier) {
-  let s = -1, bd = Infinity;
-  for (let p = 0; p < count; p += 1) { if (barrier[p]) continue; const d = len(sub(pt(at, p), seedPoint)); if (d < bd) { bd = d; s = p; } }
-  const inside = new Uint8Array(count), stack = [s];
-  inside[s] = 1;
+/** Her points walked to from the seeds without crossing a blocked edge or stepping on a `barrier` point. */
+function flood(seedPoints, at, count, graph, blocked, barrier) {
+  const inside = new Uint8Array(count), stack = [];
+  for (const seedPoint of seedPoints) {
+    let s = -1, bd = Infinity;
+    for (let p = 0; p < count; p += 1) { if (barrier[p]) continue; const d = len(sub(pt(at, p), seedPoint)); if (d < bd) { bd = d; s = p; } }
+    if (!inside[s]) { inside[s] = 1; stack.push(s); }
+  }
   while (stack.length) {
     const p = stack.pop();
     for (let j = graph.start[p]; j < graph.start[p + 1]; j += 1) {
@@ -540,6 +628,48 @@ function decode(data, vertices) {
     field[v] = (bin[at++] - ZERO_BYTE) * STEP_STORE_M;
   }
   return field;
+}
+
+// ── her legs apart ──────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * Her legs-apart places as measured from the room (`POSE_BIN`, written by scripts/probe-legs-apart.mjs): little-endian,
+ * Uint32 version (1), Uint32 her vertex count, Uint32 entries, Float32 step (metres); then each entry's vertex (Uint32),
+ * then each entry's carry in steps (three Int16). A vertex not listed is not carried.
+ */
+function readPose(file, vertices) {
+  const b = readFileSync(file), dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const version = dv.getUint32(0, true), n = dv.getUint32(4, true), entries = dv.getUint32(8, true), step = dv.getFloat32(12, true);
+  if (version !== 1 || n !== vertices || b.byteLength !== 16 + entries * 10) throw new Error(`${file}: not her ${vertices} vertices' legs-apart places`);
+  const carry = new Float64Array(vertices * 3), from = 16 + entries * 4;
+  for (let e = 0; e < entries; e += 1) { const v = dv.getUint32(16 + e * 4, true); for (let k = 0; k < 3; k += 1) carry[v * 3 + k] = dv.getInt16(from + (e * 3 + k) * 2, true) * step; }
+  return { carry, entries };
+}
+/** The carries of the vertices `wanted` says (by point), as the module stores them: each stored vertex's gap from the one before (a varint), then its three steps (Int16, low byte first). */
+function encodePose(carry, pointOf, wanted) {
+  const bytes = [];
+  let prev = -1, entries = 0;
+  for (let v = 0; v < pointOf.length; v += 1) {
+    const p = pointOf[v];
+    if (!wanted(p)) continue;
+    let gap = v - prev;
+    prev = v;
+    while (gap >= 0x80) { bytes.push((gap & 0x7f) | 0x80); gap >>>= 7; }
+    bytes.push(gap);
+    for (let k = 0; k < 3; k += 1) { const q = carry[p * 3 + k] & 0xffff; bytes.push(q & 0xff, q >> 8); }
+    entries += 1;
+  }
+  return { data: Buffer.from(bytes).toString('base64'), entries };
+}
+function decodePose(data, vertices) {
+  const bin = Buffer.from(data, 'base64'), carry = new Int16Array(vertices * 3), stored = new Uint8Array(vertices);
+  let at = 0, v = -1;
+  while (at < bin.length) {
+    let gap = 0, shift = 0, byte = 0;
+    do { byte = bin[at++]; gap |= (byte & 0x7f) << shift; shift += 7; } while (byte & 0x80);
+    v += gap; stored[v] = 1;
+    for (let k = 0; k < 3; k += 1) { const q = bin[at] | (bin[at + 1] << 8); carry[v * 3 + k] = q >= 0x8000 ? q - 0x10000 : q; at += 2; }
+  }
+  return { carry, stored };
 }
 
 // ── 8. the field ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -682,7 +812,7 @@ function fieldAtlas({ dims, value }) {
   return { bytes, width: W, height: H, cols, rows };
 }
 
-function moduleSource({ vertices, edge, fill, report, volume, atlas, toMetres, sideBand }) {
+function moduleSource({ vertices, edge, fill, pose, report, volume, atlas, toMetres, sideBand }) {
   const lines = (data) => { const out = []; for (let i = 0; i < data.length; i += LINE_CHARS) out.push(`    '${data.slice(i, i + LINE_CHARS)}'`); return out.join(' +\n'); };
   return `/**
  * GENERATED by \`scripts/designAthleticBottom.mjs\` -- do not edit by hand. To regenerate, from the repo root:
@@ -717,7 +847,8 @@ export const ATHLETIC_BOTTOM = Object.freeze({
   sideBand: Object.freeze({ width: ${SIDE_BAND_M}, laid: Object.freeze([${sideBand.map((v) => +v.toFixed(5)).join(', ')}] as const) }),
   /**
    * the field (public/): a block of \`voxel\`-metre cells, \`dims\` of them along x, y and z from its corner \`lo\`
-   * (her rest frame, metres), each cell's value \`range\` either side of the outline over 0..255 (128 on the outline);
+   * (her rest frame, metres, round her skin WITH HER LEGS APART: \`pose\`), each cell's value \`range\` either side of
+   * the outline over 0..255 (128 on the outline);
    * its slices (one for each z, \`dims[0]\` by \`dims[1]\`) lie \`cols\` across the picture, row after row. \`toMetres\`
    * is her rest frame from her mesh's own units (metres = units * scale + offset; MEASURED from her body file).
    */
@@ -727,24 +858,22 @@ export const ATHLETIC_BOTTOM = Object.freeze({
     toMetres: Object.freeze({ scale: ${+toMetres.scale.toFixed(9)}, offset: Object.freeze([${toMetres.offset.map((v) => +v.toFixed(9)).join(', ')}] as const) }),
   }),
   /**
-   * the strap between her legs hangs on her pelvis (\`bone\`): round her crotch (within \`zoneOuter\` metres of the line
-   * from \`zoneA\` to \`zoneB\`, wholly within \`zoneInner\`) the garment is also held inside a shape that stands still on
-   * her pelvis -- \`half\` either side of her middle \`mid\` under her crotch; in front of \`front.z\` opening upward from
-   * the height \`front.fromY\` by \`front.slope\`, and behind \`back.z\` from \`back.fromY\` by \`back.slope\` (each coming
-   * in over \`blend\` either side of its z). Metres, her rest frame.
+   * HER LEGS APART: the garment is designed, and looked up, on her skin as the room draws it with her legs apart (the
+   * script says why). \`carry\` holds, for every vertex in or near the field's block that her bones carry at all, how
+   * far they take it from its rest place (\`athleticBottomCarry\` reads it): each stored vertex's gap from the stored
+   * vertex before it (the first counts from -1; a 7-bit varint, low 7 bits first), then three Int16 (low byte first),
+   * its carry along x, y and z in steps of \`step\` metres, her rest frame. A vertex not stored is not carried.
    */
-  strap: Object.freeze({
-    bone: '${STRAP.bone}', mid: ${MID_X}, half: ${STRAP.half}, blend: ${STRAP.blend},
-    front: Object.freeze({ z: ${STRAP.front.z}, fromY: ${STRAP.front.fromY}, slope: ${STRAP.front.slope} }), back: Object.freeze({ z: ${STRAP.back.z}, fromY: ${STRAP.back.fromY}, slope: ${STRAP.back.slope} }),
-    zoneA: Object.freeze([${STRAP.zoneA.join(', ')}] as const), zoneB: Object.freeze([${STRAP.zoneB.join(', ')}] as const), zoneInner: ${STRAP.zoneInner}, zoneOuter: ${STRAP.zoneOuter},
-  }),
+  pose: Object.freeze({ step: ${POSE_STEP_M}, entries: ${pose.entries} }),
+  carry:
+${lines(pose.data)},
   edge:
 ${lines(edge.data)},
   fill:
 ${lines(fill.data)},
 });
 
-const decoded: { edge?: Float32Array; fill?: Float32Array } = {};
+const decoded: { edge?: Float32Array; fill?: Float32Array; carry?: Float32Array } = {};
 
 /**
  * One of the two fields, per vertex of the body it was designed on (metres, + inside). Null when \`vertexCount\` is given
@@ -765,10 +894,30 @@ export function athleticBottomField(which: 'edge' | 'fill', vertexCount?: number
   }
   return (decoded[which] = field);
 }
+
+/**
+ * Her legs-apart places: each vertex's carry from its rest place (three numbers a vertex: metres, her rest frame; none
+ * for a vertex not stored). Null when \`vertexCount\` is given and is not that body's. Decoded once and cached: every
+ * call returns the SAME array, so treat it as read-only.
+ */
+export function athleticBottomCarry(vertexCount?: number): Float32Array | null {
+  const s = ATHLETIC_BOTTOM;
+  if (vertexCount !== undefined && vertexCount !== s.vertices) return null;
+  if (decoded.carry) return decoded.carry;
+  const bin = globalThis.atob(s.carry), carry = new Float32Array(s.vertices * 3);
+  let at = 0, v = -1;
+  while (at < bin.length) {
+    let gap = 0, shift = 0, byte = 0;
+    do { byte = bin.charCodeAt(at++); gap |= (byte & 0x7f) << shift; shift += 7; } while (byte & 0x80);
+    v += gap;
+    for (let k = 0; k < 3; k++) { const q = bin.charCodeAt(at) | (bin.charCodeAt(at + 1) << 8); carry[v * 3 + k] = (q >= 0x8000 ? q - 0x10000 : q) * s.pose.step; at += 2; }
+  }
+  return (decoded.carry = carry);
+}
 `;
 }
 
-export async function designAthleticBottom({ log = console.log } = {}) {
+export async function designAthleticBottom({ log = console.log, pose = POSE_BIN, outTs = OUT_TS, outPng = OUT_PNG } = {}) {
   const t0 = Date.now();
   const { pos, idx, onArm, vertices, toMetres } = await load(BODY_GLB);
   const { pointOf, at, count } = weld(pos);
@@ -776,27 +925,46 @@ export async function designAthleticBottom({ log = console.log } = {}) {
   const keep = new Uint8Array(tris.length / 3);
   for (let t = 0; t < tris.length; t += 3) keep[t / 3] = tris[t] !== tris[t + 1] && tris[t + 1] !== tris[t + 2] && tris[t] !== tris[t + 2] && !onArm[idx[t]] && !onArm[idx[t + 1]] && !onArm[idx[t + 2]] ? 1 : 0;
   const tools = skinTools(at, tris, keep);
-  const curves = designCurves(tools);
+  // her skin WITH HER LEGS APART: each point's carry (the copies of a vertex along a seam are one point: their average),
+  // in the very steps it is stored in, so the room looks the garment up at the places it is designed at
+  const measured = readPose(pose, vertices), sum = new Float64Array(count * 3), copies = new Uint16Array(count);
+  for (let v = 0; v < vertices; v += 1) { const p = pointOf[v]; copies[p] += 1; for (let k = 0; k < 3; k += 1) sum[p * 3 + k] += measured.carry[v * 3 + k]; }
+  const apartAt = new Float64Array(count * 3), carry = new Int16Array(count * 3);
+  for (let i = 0; i < count * 3; i += 1) {
+    const q = Math.round(sum[i] / copies[Math.floor(i / 3)] / POSE_STEP_M);
+    if (Math.abs(q) > 32767) throw new Error(`${pose}: a carry of ${(q * POSE_STEP_M).toFixed(3)} m does not fit its store`);
+    carry[i] = q; apartAt[i] = at[i] + q * POSE_STEP_M;
+  }
+  const apartTools = skinTools(apartAt, tris, keep), apartNrm = pointNormals(apartAt, count, tris);
+  // a place on her rest skin, at the same place on her skin with her legs apart (its triangle's corners, by its weights in it)
+  const carried = (p) => {
+    const [q, t] = tools.projectOn(p), w = weightsIn(q, pt(at, tris[t]), pt(at, tris[t + 1]), pt(at, tris[t + 2])).map((x) => Math.max(0, x)), all = w[0] + w[1] + w[2] || 1;
+    return scale(add(add(scale(pt(apartAt, tris[t]), w[0]), scale(pt(apartAt, tris[t + 1]), w[1])), scale(pt(apartAt, tris[t + 2]), w[2])), 1 / all);
+  };
+  const apart = { tools: apartTools, at: apartAt, nrm: apartNrm, carry: carried };
+  const { curves, bands } = designCurves(tools, apart, tris);
   const lengths = curves.map((c) => c.reduce((s, p, i) => s + len(sub(c[(i + 1) % c.length], p)), 0));
-  log(`body: ${vertices} vertices, ${count} points; outline: waistband ${lengths[0].toFixed(3)} m, leg openings ${lengths[1].toFixed(3)} and ${lengths[2].toFixed(3)} m (${curves.map((c) => c.length).join(' / ')} samples)`);
+  log(`body: ${vertices} vertices, ${count} points, ${measured.entries} of them carried with her legs apart (${pose}); outline: waistband ${lengths[0].toFixed(3)} m, leg openings ${lengths[1].toFixed(3)} and ${lengths[2].toFixed(3)} m (${curves.map((c) => c.length).join(' / ')} samples)`);
 
-  const graph = skinGraph(count, tris), nrm = pointNormals(at, count, tris), segs = segments(curves);
-  const blocked = blockedEdges(at, nrm, graph, segs);
+  // from here on her skin is her skin with her legs apart
+  const graph = skinGraph(count, tris), segs = segments(curves);
+  const blocked = blockedEdges(apartAt, apartNrm, graph, segs);
   // (only her skin within reach of the curves is measured; the rest is FAR_M inside or out)
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const c of curves) for (const q of c) for (let k = 0; k < 3; k += 1) { lo[k] = Math.min(lo[k], q[k] - FAR_M); hi[k] = Math.max(hi[k], q[k] + FAR_M); }
   const far = new Float64Array(count), barrier = new Uint8Array(count);
   let sided = 0;
   for (let p = 0; p < count; p += 1) {
-    const q = pt(at, p), reach = q.every((v, k) => v >= lo[k] && v <= hi[k]);
+    const q = pt(apartAt, p), reach = q.every((v, k) => v >= lo[k] && v <= hi[k]);
     far[p] = reach ? segs.distance(q, FAR_M) : FAR_M;
     if (far[p] < BARRIER_M) barrier[p] = 1;
   }
   // the walk, which stops short of the curves; then every point beside a curve by that curve's wall, as far out as the
   // field's own cells take their side from it (so the middle of the side band, which no walk reaches, is the garment)
-  const inside = flood(tools.pick(FRONT, [MID_X + SEED[0], SEED[1], 0]), at, count, graph, blocked, barrier);
-  const walls = curveWalls(curves, tools, at, tris, nrm, inside, barrier);
-  for (let p = 0; p < count; p += 1) if (far[p] < FIELD_WALL_M) { inside[p] = wallSide(pt(at, p), walls) > 0 ? 1 : 0; sided += 1; }
+  const seeds = [tools.pick(FRONT, [MID_X + SEED[0], SEED[1], 0]), ...SEEDS_BACK.map(([x, y]) => tools.pick(BACK, [MID_X + x, y, 0]))].map(carried);
+  const inside = flood(seeds, apartAt, count, graph, blocked, barrier);
+  const walls = curveWalls(curves, apartTools, apartAt, tris, apartNrm, inside, barrier);
+  for (let p = 0; p < count; p += 1) if (far[p] < FIELD_WALL_M) { inside[p] = wallSide(pt(apartAt, p), walls) > 0 ? 1 : 0; sided += 1; }
   let inCount = 0; for (let p = 0; p < count; p += 1) inCount += inside[p];
   // a curve with a gap would let the walk out over all of her: the garment is a few thousand points, not tens of thousands
   if (inCount > 20000 || inCount < 1000) throw new Error(`the garment came out ${inCount} points: an outline is not closed`);
@@ -804,11 +972,11 @@ export async function designAthleticBottom({ log = console.log } = {}) {
   for (let p = 0; p < count; p += 1) field[p] = inside[p] ? far[p] : -far[p];
   log(`inside: ${inCount} points (${blocked.reduce((s, b) => s + b, 0)} edges of her skin crossed by the outline, ${sided} points beside it sided by its walls)`);
   // the side band as laid: each of its lower edge's guide points to the waistband's curve
-  const waist = segments([curves[0]]), bandWide = LEG_BAND.map(([x, y, z]) => waist.distance(tools.project([MID_X + x, y, z]), 0.1));
-  const sideBand = [Math.min(...bandWide), Math.max(...bandWide)];
-  log(`side band: ${(sideBand[0] * 1000).toFixed(1)} to ${(sideBand[1] * 1000).toFixed(1)} mm wide along its ${LEG_BAND.length} guide points (designed ${SIDE_BAND_M * 1000} mm)`);
+  const waist = segments([curves[0]]), bandWide = bands.map((b) => b.map((p) => waist.distance(p, 0.1)));
+  const sideBand = [Math.min(...bandWide.flat()), Math.max(...bandWide.flat())];
+  log(`side bands: ${bandWide.map((w) => `${(Math.min(...w) * 1000).toFixed(1)} to ${(Math.max(...w) * 1000).toFixed(1)} mm`).join(' (her left) and ')} (her right) wide along their ${bands.map((b) => b.length).join(' and ')} guide points (designed ${SIDE_BAND_M * 1000} mm)`);
 
-  const edge = fitLine(field, 0, at, graph, segs, count), fill = fitLine(field, BAND_M, at, graph, segs, count);
+  const edge = fitLine(field, 0, apartAt, graph, segs, count), fill = fitLine(field, BAND_M, apartAt, graph, segs, count);
   const mm = (m) => (m * 1000).toFixed(2);
   log(`edge line: ${edge.crossed} edges crossed, placed within ${mm(edge.errMedian)} mm (median), ${mm(edge.errMax)} mm (most); ${edge.flipped} values held to their side`);
   log(`fill line: ${fill.crossed} edges crossed, placed within ${mm(fill.errMedian)} mm (median), ${mm(fill.errMax)} mm (most); ${fill.flipped} values held to their side`);
@@ -828,15 +996,26 @@ export async function designAthleticBottom({ log = console.log } = {}) {
     if (worst > STEP_STORE_M || lost) throw new Error(`${name}: round trip off by ${mm(worst)} mm, ${lost} vertices on the wrong side`);
   }
 
-  const volume = fieldVolume(at, tris, tools, walls, field), atlas = fieldAtlas(volume);
-  mkdirSync(dirname(OUT_PNG), { recursive: true });
-  await sharp(Buffer.from(atlas.bytes), { raw: { width: atlas.width, height: atlas.height, channels: 1 } }).toColourspace('b-w').png({ compressionLevel: 9 }).toFile(OUT_PNG);
-  log(`field: ${volume.dims.join(' x ')} cells of ${FIELD_VOXEL_M * 1000} mm from (${volume.lo.map((v) => v.toFixed(3)).join(', ')}), ${volume.near} of them within reach of a curve (the curves' walls face the garment at ${walls.map((w) => (w.agree * 100).toFixed(0)).join(' / ')} % of their samples); written ${OUT_PNG} (${atlas.width} x ${atlas.height})`);
+  const volume = fieldVolume(apartAt, tris, apartTools, walls, field), atlas = fieldAtlas(volume);
+  mkdirSync(dirname(outPng), { recursive: true });
+  await sharp(Buffer.from(atlas.bytes), { raw: { width: atlas.width, height: atlas.height, channels: 1 } }).toColourspace('b-w').png({ compressionLevel: 9 }).toFile(outPng);
+  log(`field: ${volume.dims.join(' x ')} cells of ${FIELD_VOXEL_M * 1000} mm from (${volume.lo.map((v) => v.toFixed(3)).join(', ')}), ${volume.near} of them within reach of a curve (the curves' walls face the garment at ${walls.map((w) => (w.agree * 100).toFixed(0)).join(' / ')} % of their samples); written ${outPng} (${atlas.width} x ${atlas.height})`);
+
+  // her legs-apart places the room needs: every vertex carried at all whose place, at rest or with her legs apart, is in
+  // the field's block or within POSE_PAD_M of it (a vertex left out is looked up at its rest place, outside the block)
+  const blockHi = volume.dims.map((d, k) => volume.lo[k] + d * FIELD_VOXEL_M);
+  const nearBlock = (A, p) => [0, 1, 2].every((k) => A[p * 3 + k] > volume.lo[k] - POSE_PAD_M && A[p * 3 + k] < blockHi[k] + POSE_PAD_M);
+  const P = encodePose(carry, pointOf, (p) => (carry[p * 3] || carry[p * 3 + 1] || carry[p * 3 + 2]) && (nearBlock(at, p) || nearBlock(apartAt, p)));
+  {
+    const back = decodePose(P.data, vertices);
+    for (let v = 0; v < vertices; v += 1) { const p = pointOf[v]; for (let k = 0; k < 3; k += 1) if (back.stored[v] && back.carry[v * 3 + k] !== carry[p * 3 + k]) throw new Error('her legs-apart places do not come back as stored'); }
+  }
+  log(`her legs apart: ${P.entries} vertices' carries stored (${POSE_STEP_M * 1000} mm steps; ${(P.data.length / 1024).toFixed(0)} KB)`);
 
   const report = `the garment ${inCount} of her skin's ${count} points; the outline's lines per vertex land within ${mm(edge.errMax)} mm (edge) and ${mm(fill.errMax)} mm (fill) of the true lines on ${edge.crossed} and ${fill.crossed} crossed edges (median ${mm(edge.errMedian)} and ${mm(fill.errMedian)} mm).`;
-  writeFileSync(OUT_TS, moduleSource({ vertices, edge: E, fill: F, report, volume, atlas, toMetres, sideBand }));
-  log(`wrote ${OUT_TS}: ${E.entries} + ${F.entries} entries (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
-  return { curves, inside: inCount, edge, fill, volume };
+  writeFileSync(outTs, moduleSource({ vertices, edge: E, fill: F, pose: P, report, volume, atlas, toMetres, sideBand }));
+  log(`wrote ${outTs}: ${E.entries} + ${F.entries} entries (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+  return { curves, bands, inside: inCount, edge, fill, volume };
 }
 
 if (process.argv[1]?.endsWith('designAthleticBottom.mjs')) await designAthleticBottom();
