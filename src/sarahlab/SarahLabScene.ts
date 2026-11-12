@@ -347,6 +347,7 @@ import { bikiniBottomField } from './bikiniBottomStencil';
 import { bakeBriefCloth } from './briefCloth';
 import { briefClothTriangles } from './briefClothProxy';
 import { ClothBrief } from './clothBrief';
+import { PaintedEdge, outlineRuns } from './paintedEdge';
 import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
 
 const M = UNITS_PER_METRE;
@@ -687,9 +688,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   let briefData: { positions: Float32Array; normals: Float32Array | null; index: Uint32Array; material: THREE.Material } | null = null;
   let clothBrief: ClothBrief | null = null, clothBriefTried = false, clothBriefPose = '';
+  /** its painted edge as a Strip (BIKINI_BOTTOM_SOURCE 'paint': paintedEdge.ts), made with it */
+  let paintedEdge: PaintedEdge | null = null, paintedEdgeHidden = false, cordsHidden = false;
+  /**
+   * GAME TUNING: where the painted bikini bottom's modelled cords begin, metres either side of her middle. The paint's
+   * outline reaches 12.5 cm (MEASURED, bikiniBottomStencil.ts), its band tapering from 10 cm; begun at 12.5 cm the cords
+   * left bare skin between them on her back's right (2026-11-12), so they begin over the taper.
+   */
+  const CORDS_FROM_M = 0.1;
   /** a probe's choices for it (`clothBriefRemake`): the hold across its panels' middles */
-  /** MEASURED (bikiniBottomStencil.ts): the painted bikini bottom's outline reaches 12.5 cm either side of her middle; its cords begin there. */
-  const CORDS_FROM_M = 0.125;
   let clothBriefTry: { holdMiddle?: number; holdEdge?: number; holdFree?: number; restScale?: number } = {};
   /** a probe's change to the birth position's angles (humanBirth.ts `tweak`) */
   let birthTweak: Partial<BirthSpec> | null = null;
@@ -863,6 +870,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       clothBrief = new ClothBrief(body, bake, tris, briefData.material, M, clothBriefTry.restScale !== undefined ? { restScale: clothBriefTry.restScale } : {});
       clothBrief.mesh.userData.madeInMs = Math.round(performance.now() - t0);
       three.add(clothBrief.mesh);
+      if (BIKINI_BOTTOM_SOURCE === 'paint') {
+        // the painted edge, a Strip along the paint's outline up to where the cords take over (Joshua, 2026-11-12: "add an
+        // offset by making it thicker like Under Build as a Strip"), in the bikini's own colour
+        const runs = outlineRuns(base.basePos, tris, bikiniBottomField(count) ?? [], GEOMETRY_PER_METRE, CORDS_FROM_M * GEOMETRY_PER_METRE);
+        const own = briefData.material as THREE.MeshStandardMaterial;
+        const look = new THREE.MeshStandardMaterial({ color: own.color?.clone() ?? new THREE.Color(0x658b61), roughness: own.roughness ?? 0.75 });
+        paintedEdge = new PaintedEdge(new BodySurface(body, tris, base.basePos), runs, look, M);
+        // (her triangles face out as wound, or the other way: her rest normals decide, as for her cloth)
+        { const n = g.getAttribute('normal'); let vote = 0; for (let t = 0; t + 2 < tris.length && t < 30000; t += 3) { const a = tris[t], b2 = tris[t + 1], c = tris[t + 2], P = base.basePos; const ux = P[b2 * 3] - P[a * 3], uy = P[b2 * 3 + 1] - P[a * 3 + 1], uz = P[b2 * 3 + 2] - P[a * 3 + 2], vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2]; vote += (uy * vz - uz * vy) * n.getX(a) + (uz * vx - ux * vz) * n.getY(a) + (ux * vy - uy * vx) * n.getZ(a); } paintedEdge.sign = vote < 0 ? -1 : 1; }
+        three.add(paintedEdge.group);
+      }
     } catch (e) { console.warn('[sarahlab] her bikini bottom could not be made as cloth', e); clothBrief = null; }
     return clothBrief;
   }
@@ -2255,7 +2273,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     {
       const want = !!briefData && recovered && !!model?.visible && shownNow('bikini') && !bottomsOff() && (view === 'all' || view === 'bikini');
       if (want) ensureClothBrief();
-      if (clothBrief) { if (want && !clothBrief.mesh.visible) clothBrief.restart(); clothBrief.mesh.visible = want; }
+      if (clothBrief) { if (want && !clothBrief.mesh.visible) clothBrief.restart(); clothBrief.mesh.visible = want && !cordsHidden; }
+      if (paintedEdge) paintedEdge.group.visible = want && !paintedEdgeHidden && !!clothBrief?.mesh.visible;
     }
     // her rebuilt birth area drawn as her own skin under what she wears (painted leggings and all), bare where she is not
     vulva?.setDressedLips(vulvaKeepNow());
@@ -7516,6 +7535,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     vulva?.dispose(); vulva = null; remakeVulva = null;
     bottomShell?.dispose(); bottomShell = null; bottomShellTried = false; briefTies = null;
     clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; briefData = null; clothBriefPose = '';
+    paintedEdge?.dispose(); paintedEdge = null;
     dropBabyHolder();
     ownFingers?.dispose(); ownFingers = null; withFingers = null; fingerFills?.dispose(); fingerFills = null;
     rig = null; measure = null; fingers = []; skinned = []; shaped = []; garments = []; hasBelly = false; anchors = null; legAnchors = null; navel = null; sidesAt = []; babyAt = []; chestAt = []; milkAt = []; groinAt = [];
@@ -8121,6 +8141,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         model.updateMatrixWorld(true);
         if (pose !== clothBriefPose) { clothBriefPose = pose; if (!sitMoving) clothBrief.restart(); }
         clothBrief.frame(dt > 1 / 40 ? 1 / 40 : dt);
+        if (paintedEdge?.group.visible) { const cb = clothBrief; paintedEdge.frame((v, out) => cb.posedVertex(v, out)); }
       }
       // seated (or still standing up), the fitted tee is worn; standing again, the cloth is laid on her afresh
       // -- with its sleeves, and not cropped: a tank has no sleeves to tear under her arms, and the fitted tee is far
@@ -9407,6 +9428,36 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // her bikini bottom made from her skin made again with a probe's choices (centimetres; rounds of its robe)
         // her bikini bottom as cloth (clothBrief.ts): its costs and make, how far it stands off her skin as drawn (cm,
         // + outside, measured to her nearest skin point along her normal there), and a number of frames run for it
+        // (a probe's) her painted bikini bottom against its outline: how much paint (layer 0) her vertices carry by how far
+        // in from the outline they are (cm bins, outside negative)
+        // (a probe's) its modelled cords hidden or shown, to see the paint alone
+        bikiniCords: (show: boolean) => { cordsHidden = !show; applyLook(); return { made: !!clothBrief, visible: clothBrief?.mesh.visible ?? false }; },
+        // (a probe's) red dots where three.js poses her vertices that lie on the bikini's outline (|field| < 3 mm)
+        outlineDots: () => {
+          const b = bodyOf()?.mesh; if (!b) return 0;
+          const f = bikiniBottomField(b.geometry.getAttribute('position').count); if (!f) return 0;
+          const pts: number[] = [], v = new THREE.Vector3();
+          b.updateMatrixWorld(true); b.skeleton?.update();
+          for (let i = 0; i < f.length; i++) if (Math.abs(f[i]) < 0.003) { b.getVertexPosition(i, v); b.localToWorld(v); pts.push(v.x, v.y, v.z); }
+          const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+          const dots = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xff0000, size: 4, sizeAttenuation: false, depthTest: false }));
+          dots.renderOrder = 999; dots.frustumCulled = false; three.add(dots);
+          return pts.length / 3;
+        },
+        // (a probe's) which meshes of hers are drawn, and her body (bodyOf) hidden or shown
+        bodyMeshes: (hideBody?: boolean) => { const b = bodyOf()?.mesh; if (b && hideBody !== undefined) b.visible = !hideBody; const out: string[] = []; model?.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh && m.visible) out.push(`${m.name}:${m.geometry.getAttribute('position').count}${m === b ? '*' : ''}:${(m.material as THREE.Material).name}`); }); return out; },
+        paintVsOutline: () => {
+          const b = bodyOf()?.mesh; if (!b) return null;
+          const A = b.geometry.getAttribute('fabricPaint') as THREE.BufferAttribute | undefined, f = bikiniBottomField(b.geometry.getAttribute('position').count);
+          if (!A || !f) return { attr: !!A, field: !!f };
+          const bins: Record<string, [number, number]> = {};
+          for (let v = 0; v < f.length; v++) { const k = f[v] <= -0.0299 ? 'unstored' : (Math.floor(f[v] * 200) / 2).toFixed(1); const e = bins[k] ?? (bins[k] = [0, 0]); e[0]++; e[1] += A.getX(v); }
+          let painted = 0, paintedOut = 0; for (let v = 0; v < f.length; v++) if (A.getX(v) >= 0.5) { painted++; if (f[v] < 0) paintedOut++; }
+          bins['painted>=0.5'] = [1, painted]; bins['ofThemOutside'] = [1, paintedOut]; bins['itemSize'] = [1, A.itemSize];
+          return Object.fromEntries(Object.entries(bins).map(([k, [n, s]]) => [k, +(s / n).toFixed(3)]));
+        },
+        // (a probe's) her painted bikini bottom's edge strip shown or hidden, and how many runs it has
+        paintedEdge: (show?: boolean) => { if (paintedEdge && show !== undefined) paintedEdgeHidden = !show; if (paintedEdge) paintedEdge.group.visible = !!clothBrief?.mesh.visible && !paintedEdgeHidden; const b = bodyOf()?.mesh; return { runs: paintedEdge?.runs ?? 0, visible: paintedEdge?.group.visible ?? false, check: paintedEdge && b ? paintedEdge.check(b, bikiniBottomField(b.geometry.getAttribute('position').count)) : null }; },
         clothBriefRemake: (next: { holdMiddle?: number; holdEdge?: number; holdFree?: number; restScale?: number } = {}) => { clothBriefTry = next; clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; applyLook(); return !!clothBrief; },
         clothBrief: (frames = 0, dt = 1 / 60) => {
           if ((BIKINI_BOTTOM_SOURCE === 'cloth' || BIKINI_BOTTOM_SOURCE === 'paint') && recovered && model) ensureClothBrief();

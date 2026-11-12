@@ -153,6 +153,9 @@ export class ClothBrief {
     return { skinMedian: med(skinD), skinMost: most(skinD), holdMedian: med(holdD), holdMost: most(holdD), scale: +(this.skin.worldScale).toFixed(3), edgeP01: at(0.01), edgeP05: at(0.05), edgeP50: at(0.5), edgeP95: at(0.95), squashed80: +(ratio.filter((r) => r < 0.8).length / Math.max(1, ratio.length)).toFixed(3) };
   }
 
+  /** Body vertex v as she is posed this frame, in the world (her soft body and navel included): valid after `frame`. */
+  posedVertex(v: number, out: Float32Array): void { this.skin.posedVertex(v, out, 0); }
+
   stats(): ClothBriefStats {
     return { ...this.shown, particles: this.bake.particles, vertices: this.bake.vertices, jumps: this.jumps };
   }

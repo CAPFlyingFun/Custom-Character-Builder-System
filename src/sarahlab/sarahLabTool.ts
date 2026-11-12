@@ -568,7 +568,7 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'tee + leggings', garments: ['shirtAthletic', 'leggings'] },
   { name: 'top + low leggings', garments: ['shirtAthletic', 'leggingsLow'] },
   // (its bottom painted, in the top's own green: the bikini material's colour, MEASURED from her file, in sRGB)
-  { name: 'bikini', garments: ['bikini'], ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { paint: [{ template: 'bikiniBottom', fabric: { family: 'athletic' as const, colour: 11, tint: '#658b61' } }] } : {}) },
+  { name: 'bikini', garments: ['bikini'], ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { paint: [{ template: 'bikiniBottom', fabric: { family: 'jersey' as const, colour: 0, tint: '#658b61' } }] } : {}) },
   { name: 'swimsuit', garments: ['swimsuit'] },
   { name: 'none', garments: [] },
   { name: 'spandex + high leggings', garments: ['shirtSpandexHigh', 'leggings'] },
