@@ -118,6 +118,12 @@ export interface ClothSkinOptions {
    * fold is reached from its edge, where its neighbours lie on the right skin. Absent: its own contact only.
    */
   neighbours?: { readonly start: Uint32Array; readonly list: Uint32Array };
+  /**
+   * Her triangles to walk over (three body vertex indices each), in place of her drawn index: her opening's area is
+   * drawn by its own patch (vulvaMesh.ts) and left out of her index, so a garment over it -- her bikini bottom's gusset
+   * -- would find a hole in her there. Absent: her drawn index, as before.
+   */
+  triangles?: ArrayLike<number>;
 }
 
 /** 1.5 mm of fabric off her skin, in the room's 100 units to the metre. */
@@ -180,6 +186,8 @@ export class ClothSkin {
   /** Her skin indices and weights, four a vertex, copied once (so a normalized or interleaved file reads the same). */
   private readonly skinI: Uint16Array | null;
   private readonly skinW: Float32Array | null;
+  /** Her weights' attributes and their versions as last read: read again when the room changes them (`readWeights`). */
+  private weightsRead: { si: Attr; sw: Attr; siV: number; swV: number } | null = null;
   private readonly binding: ClothBinding;
   /** 1 for a triangle of her arm (see `armBones`); and 1 for a particle that must keep off them. */
   private readonly armTri: Uint8Array;
@@ -295,11 +303,12 @@ export class ClothSkin {
     const nV = pos.count;
 
     // her triangles
-    const index = g.index;
-    const nT = index ? Math.floor(index.count / 3) : Math.floor(nV / 3);
+    const index = g.index, walkOver = options?.triangles;
+    const nT = walkOver ? Math.floor(walkOver.length / 3) : index ? Math.floor(index.count / 3) : Math.floor(nV / 3);
     if (nT === 0) throw new Error('ClothSkin: the body has no triangles');
     const tris = new Uint32Array(nT * 3);
-    if (index) { const ia = index.array; for (let i = 0; i < nT * 3; i++) tris[i] = ia[i]; }
+    if (walkOver) for (let i = 0; i < nT * 3; i++) tris[i] = walkOver[i];
+    else if (index) { const ia = index.array; for (let i = 0; i < nT * 3; i++) tris[i] = ia[i]; }
     else for (let i = 0; i < nT * 3; i++) tris[i] = i;
     for (let i = 0; i < tris.length; i++) if (tris[i] >= nV) throw new RangeError(`ClothSkin: triangle corner ${tris[i]} is outside the body's ${nV} vertices`);
     this.tris = tris;
@@ -384,6 +393,7 @@ export class ClothSkin {
         for (let k = 0; k < 4; k++) if (sw[v * 4 + k] !== 0 && si[v * 4 + k] > maxBone) maxBone = si[v * 4 + k];
       }
       this.skinI = si; this.skinW = sw;
+      this.weightsRead = { si: SI, sw: SW, siV: (SI as THREE.BufferAttribute).version ?? 0, swV: (SW as THREE.BufferAttribute).version ?? 0 };
     } else { this.skinI = null; this.skinW = null; }
     this.bones = new Float64Array(Math.max(maxBone + 1, body.skeleton?.bones.length ?? 0, 1) * 12);
 
@@ -813,8 +823,32 @@ export class ClothSkin {
   }
 
   /** Read her pose for this update: bones, world matrix, which morphs are on, where her positions are. */
+  /**
+   * Her skin weights read again when the room has changed them since: in a birth position her middle is weighted to her
+   * pelvis (birthWeights.ts), her heels to her feet (ankleWeights.ts), each finger to its own bones (fingerWeights.ts),
+   * all written into her weights in place. Posed with the weights she had when this was built, a garment over her middle
+   * was held where her skin no longer was: her bikini bottom torn from her in RECLINE and SQUAT (2026-11-11).
+   */
+  private readWeights(): void {
+    const r = this.weightsRead, g = this.body.geometry;
+    if (!r || !this.skinI || !this.skinW) return;
+    const SI = g.getAttribute('skinIndex') as Attr | undefined, SW = g.getAttribute('skinWeight') as Attr | undefined;
+    if (!SI || !SW) return;
+    const siV = (SI as THREE.BufferAttribute).version ?? 0, swV = (SW as THREE.BufferAttribute).version ?? 0;
+    if (SI === r.si && SW === r.sw && siV === r.siV && swV === r.swV) return;
+    const si = this.skinI, sw = this.skinW, n = Math.min(SI.count, si.length / 4);
+    for (let v = 0; v < n; v++) {
+      si[v * 4] = SI.getX(v); si[v * 4 + 1] = SI.getY(v); si[v * 4 + 2] = SI.getZ(v); si[v * 4 + 3] = SI.getW(v);
+      sw[v * 4] = SW.getX(v); sw[v * 4 + 1] = SW.getY(v); sw[v * 4 + 2] = SW.getZ(v); sw[v * 4 + 3] = SW.getW(v);
+    }
+    let maxBone = -1; for (let i = 0; i < n * 4; i++) if (sw[i] !== 0 && si[i] > maxBone) maxBone = si[i];
+    if ((maxBone + 1) * 12 > this.bones.length) this.bones = new Float64Array((maxBone + 1) * 12);
+    this.weightsRead = { si: SI, sw: SW, siV, swV };
+  }
+
   private refresh(): void {
     const m = this.body, g = m.geometry;
+    this.readWeights();
     if (++this.frame > 0x3fffffff) { this.stamp.fill(0); this.frame = 1; }
     this.posedCount = 0;
 

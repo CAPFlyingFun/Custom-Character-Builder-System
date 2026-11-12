@@ -50,7 +50,7 @@ try {
     const STATES = JSON.parse(process.env.STATES ?? '[{"name":""}]');
     for (const st of STATES) {
     for (const a of st.press ?? []) { await press(a); await run(1); }
-    for (const [h, ...g] of st.hooks ?? []) await hook(h, ...g);
+    for (const [h, ...g] of st.hooks ?? []) { const r = await hook(h, ...g); if (process.env.LOG_STATE_HOOKS) log('state hook', h, JSON.stringify(r)); }
     await run(1);
     const tag = st.name ? `-${st.name}` : '';
     for (const p of POSES) {

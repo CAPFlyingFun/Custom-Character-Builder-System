@@ -339,11 +339,14 @@ import {
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS,
-  BIKINI_BOTTOM_FROM_SKIN,
+  BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE,
 } from './sarahLabTool';
 import { blendJointTurns, sitEase, stepSit } from './poseBlend';
 import { createSkinShell, type SkinShell } from './skinShellMesh';
 import { bikiniBottomField } from './bikiniBottomStencil';
+import { bakeBriefCloth } from './briefCloth';
+import { briefClothTriangles } from './briefClothProxy';
+import { ClothBrief } from './clothBrief';
 import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
 
 const M = UNITS_PER_METRE;
@@ -677,6 +680,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * the garment is drawn when they are
    */
   let bottomShell: SkinShell | null = null, bottomShellTried = false, briefTies: THREE.SkinnedMesh | null = null;
+  /**
+   * HER MESHY BIKINI BOTTOM AS CLOTH (Joshua, 2026-11-11: "MESHY model bottom with stretchy as a cloth sim, but not alter
+   * the shape or design of it…"; BIKINI_BOTTOM_SOURCE 'cloth', clothBrief.ts): the brief in her body file, taken out of
+   * her model as it loads (`briefData`, her body-local rest) and drawn by the cloth, made the first time she wears it
+   */
+  let briefData: { positions: Float32Array; normals: Float32Array | null; index: Uint32Array; material: THREE.Material } | null = null;
+  let clothBrief: ClothBrief | null = null, clothBriefTried = false, clothBriefPose = '';
+  /** a probe's choices for it (`clothBriefRemake`): the hold across its panels' middles */
+  let clothBriefTry: { holdMiddle?: number } = {};
   /** a probe's change to the birth position's angles (humanBirth.ts `tweak`) */
   let birthTweak: Partial<BirthSpec> | null = null;
   /** room kept between her thighs as she is posed (birthRoom.ts): the watcher, whether it is on, what it was last worked out for */
@@ -814,16 +826,52 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (bottomShell) bottomShell.mesh.userData.madeInMs = Math.round(performance.now() - t0);
     return bottomShell;
   }
+  /** The modelled brief's own data, read from her model as it loads (her body-local rest, before any field of hers). */
+  function takeBrief(m: THREE.SkinnedMesh): typeof briefData {
+    const g = m.geometry, p = g.getAttribute('position'), n = g.getAttribute('normal'), idx = g.index, mat = m.material;
+    if (!p || !idx || Array.isArray(mat)) return null;
+    const positions = new Float32Array(p.count * 3), normals = n ? new Float32Array(p.count * 3) : null;
+    for (let i = 0; i < p.count; i++) { positions[i * 3] = p.getX(i); positions[i * 3 + 1] = p.getY(i); positions[i * 3 + 2] = p.getZ(i); if (n && normals) { normals[i * 3] = n.getX(i); normals[i * 3 + 1] = n.getY(i); normals[i * 3 + 2] = n.getZ(i); } }
+    return { positions, normals, index: Uint32Array.from(idx.array), material: mat };
+  }
+  /** Her bikini bottom as cloth, made now if it has not been (null when it cannot be: another body, no brief). */
+  function ensureClothBrief(): ClothBrief | null {
+    if (clothBrief || clothBriefTried || !briefData || !model) return clothBrief;
+    const b = bodyOf(); if (!b) return null;
+    clothBriefTried = true;
+    const body = b.mesh, g = body.geometry, count = g.getAttribute('position').count;
+    const cloth = briefClothTriangles(briefData.positions.length / 3);
+    const base = shaped.find((x) => x.mesh === body)?.fields;
+    if (!cloth || !base) return null;
+    // all of her skin's triangles: her opening's area is drawn by its own patch, its triangles hers all the same
+    const all = (body.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array ?? [], area = vulva?.bake.area;
+    const seen = new Set<string>(), tris: number[] = [];
+    for (const list of [all, area ?? []]) for (let t = 0; t + 2 < list.length; t += 3) { const a = list[t], b2 = list[t + 1], c = list[t + 2], k = [a, b2, c].sort((x, y) => x - y).join(','); if (seen.has(k)) continue; seen.add(k); tris.push(a, b2, c); }
+    const t0 = performance.now();
+    try {
+      // (her rest as her file has it, as the brief was fitted to it; her shape now is read every frame by the cloth)
+      const bake = bakeBriefCloth({
+        brief: { positions: briefData.positions, index: briefData.index, normals: briefData.normals ?? undefined },
+        cloth, skin: { positions: base.basePos, index: tris, normals: base.baseNrm ?? g.getAttribute('normal').array }, unitsPerMetre: GEOMETRY_PER_METRE,
+        field: bikiniBottomField(count), ...clothBriefTry,
+      });
+      model.updateMatrixWorld(true);
+      clothBrief = new ClothBrief(body, bake, tris, briefData.material, M);
+      clothBrief.mesh.userData.madeInMs = Math.round(performance.now() - t0);
+      three.add(clothBrief.mesh);
+    } catch (e) { console.warn('[sarahlab] her bikini bottom could not be made as cloth', e); clothBrief = null; }
+    return clothBrief;
+  }
   /**
    * How much of her lips' shape shows through what she wears (VULVA DETAIL): under her bikini bottom made from her skin,
    * none -- it stands off her skin as her skin is, and her lips' own shape, through it, stood out through its gusset
    * (2026-11-11, seen from under her) -- otherwise the fabric panel's.
    */
-  function vulvaKeepNow(): number { return bottomShell?.mesh.visible ? 0 : fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP; }
+  function vulvaKeepNow(): number { return bottomShell?.mesh.visible || clothBrief?.mesh.visible ? 0 : fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP; }
   function vulvaDressed(view: string): boolean {
     if (bottomsOff()) return false;
     // (her bikini bottom made from her skin drawn over her -- the editor's bikini view too -- clears her skin shut)
-    if (bottomShell?.mesh.visible) return true;
+    if (bottomShell?.mesh.visible || clothBrief?.mesh.visible) return true;
     if (view !== 'all') return false;
     return lowerCovered() || skinned.some((m) => m.visible && m.userData.recoveredLeggings);
   }
@@ -2198,6 +2246,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // every rule a garment does: the outfit, the editor's view, her bottoms off in a birth)
     if (BIKINI_BOTTOM_FROM_SKIN && recovered && shownNow('bikini')) ensureBottomShell();
     if (bottomShell) { bottomShell.mesh.visible = !!briefTies?.visible && !!model?.visible; if (bottomShell.mesh.visible) bottomShell.sync(); }
+    // her bikini bottom as cloth: worn as any bottom is (the outfit, the editor's view, off while a birth is under way),
+    // laid on her afresh each time it comes back
+    {
+      const want = !!briefData && recovered && !!model?.visible && shownNow('bikini') && !bottomsOff() && (view === 'all' || view === 'bikini');
+      if (want) ensureClothBrief();
+      if (clothBrief) { if (want && !clothBrief.mesh.visible) clothBrief.restart(); clothBrief.mesh.visible = want; }
+    }
     // her rebuilt birth area drawn as her own skin under what she wears (painted leggings and all), bare where she is not
     vulva?.setDressedLips(vulvaKeepNow());
     vulva?.setDressed(vulvaDressed(view));
@@ -7456,6 +7511,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
     vulva?.dispose(); vulva = null; remakeVulva = null;
     bottomShell?.dispose(); bottomShell = null; bottomShellTried = false; briefTies = null;
+    clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; briefData = null; clothBriefPose = '';
     dropBabyHolder();
     ownFingers?.dispose(); ownFingers = null; withFingers = null; fingerFills?.dispose(); fingerFills = null;
     rig = null; measure = null; fingers = []; skinned = []; shaped = []; garments = []; hasBelly = false; anchors = null; legAnchors = null; navel = null; sidesAt = []; babyAt = []; chestAt = []; milkAt = []; groinAt = [];
@@ -7494,6 +7550,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       loadedModel.scale.setScalar(M);
       const approvedSkin = findSkinnedMesh(loadedModel);
       recovered = hooks.nativeOutfitPreview !== true && SARAH_LAB_MODELS[modelIndex].id === 'v2-body' && approvedSkin?.geometry.attributes.position.count === 115710 && approvedSkin.skeleton.bones.length === 68;
+      // (the modelled brief, its data taken for the cloth, out of her model: never drawn, never shaped)
+      const briefOut: THREE.SkinnedMesh[] = [];
       if (recovered) {
         loadedModel.updateMatrixWorld(true);
         loadedModel.traverse(n => {
@@ -7507,11 +7565,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             const v = new THREE.Vector3(); let max = -Infinity;
             for (const i of m.geometry.index.array) { m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld); max = Math.max(max, v.y); }
             if (max < 110) {
-              if (BIKINI_BOTTOM_FROM_SKIN && cutBriefToStrings(m)) briefTies = m;
+              if (BIKINI_BOTTOM_SOURCE === 'cloth' && (briefData = takeBrief(m))) briefOut.push(m);
+              else if (BIKINI_BOTTOM_FROM_SKIN && cutBriefToStrings(m)) briefTies = m;
               else m.userData.replacedByRecovered = true;
             }
           }
         });
+        for (const m of briefOut) { m.removeFromParent(); m.geometry.dispose(); }
       } else {
         // not the body the recovered clothes were fitted to: nothing fetched for it is any use
         for (const run of inflight.values()) run.abort.abort();
@@ -8051,6 +8111,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (fabric && model) { model.updateMatrixWorld(true); fabric.frame(); }
       // and every built strap laid on her skin as she is this frame
       if (builder && model) builder.frame();
+      // her bikini bottom as cloth, moved over her as she is this frame: laid on her afresh when she changes pose (STAND
+      // to SIT and back is a move, worn all the way through it)
+      if (clothBrief?.mesh.visible && model?.visible) {
+        model.updateMatrixWorld(true);
+        if (pose !== clothBriefPose) { clothBriefPose = pose; if (!sitMoving) clothBrief.restart(); }
+        clothBrief.frame(dt > 1 / 40 ? 1 / 40 : dt);
+      }
       // seated (or still standing up), the fitted tee is worn; standing again, the cloth is laid on her afresh
       // -- with its sleeves, and not cropped: a tank has no sleeves to tear under her arms, and the fitted tee is far
       // longer than a crop, so both are worn seated as they are standing
@@ -9334,6 +9401,34 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // against her nearest, along her skin's normal there (room units; less than 0 inside her), and the share inside)
         // (`opts.material`: every drawn mesh of that material instead, but those whose names start with `opts.exclude`)
         // her bikini bottom made from her skin made again with a probe's choices (centimetres; rounds of its robe)
+        // her bikini bottom as cloth (clothBrief.ts): its costs and make, how far it stands off her skin as drawn (cm,
+        // + outside, measured to her nearest skin point along her normal there), and a number of frames run for it
+        clothBriefRemake: (next: { holdMiddle?: number } = {}) => { clothBriefTry = next; clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; applyLook(); return !!clothBrief; },
+        clothBrief: (frames = 0, dt = 1 / 60) => {
+          if (BIKINI_BOTTOM_SOURCE === 'cloth' && recovered && model) ensureClothBrief();
+          if (!clothBrief || !model) return { made: false, tried: clothBriefTried, data: !!briefData };
+          for (let k = 0; k < frames; k++) { model.updateMatrixWorld(true); clothBrief.frame(dt); }
+          const b = bodyOf()?.mesh, P = clothBrief.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+          let depth: Record<string, number> | null = null;
+          if (b && clothBrief.mesh.visible) {
+            const cell = 2, box = new THREE.Box3(), v = new THREE.Vector3(), pts: THREE.Vector3[] = [];
+            for (let i = 0; i < P.count; i += 2) { const q = new THREE.Vector3().fromBufferAttribute(P, i); pts.push(q); box.expandByPoint(q); }
+            box.expandByScalar(4);
+            const bp = b.geometry.attributes.position, grid = new Map<string, number[]>(), wp: number[] = [];
+            for (let i = 0; i < bp.count; i++) { b.getVertexPosition(i, v); b.localToWorld(v); if (!box.containsPoint(v)) continue; const k = wp.length / 3; wp.push(v.x, v.y, v.z); const kk = `${Math.floor(v.x / cell)},${Math.floor(v.y / cell)},${Math.floor(v.z / cell)}`; (grid.get(kk) ?? grid.set(kk, []).get(kk)!).push(k); }
+            // her own triangles' normals are not posed here: the nearest of her points, and the cloth point's own side of it by
+            // the cloth's direction away from her (a point closer than 3 mm counts as touching)
+            const d: number[] = [];
+            for (const p of pts) {
+              let bd = Infinity; const cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell), cz = Math.floor(p.z / cell);
+              for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) for (let e = -1; e <= 1; e++) for (const k of grid.get(`${cx + a},${cy + c},${cz + e}`) ?? []) bd = Math.min(bd, (wp[k * 3] - p.x) ** 2 + (wp[k * 3 + 1] - p.y) ** 2 + (wp[k * 3 + 2] - p.z) ** 2);
+              if (Number.isFinite(bd)) d.push(Math.sqrt(bd));
+            }
+            d.sort((x, y) => x - y); const q = (f: number) => +(d[Math.min(d.length - 1, Math.floor(d.length * f))] / M * 100).toFixed(2);
+            depth = { measured: d.length, under2mm: +(d.filter((x) => x < 0.2 * M / 100).length / Math.max(1, d.length)).toFixed(3), p01: q(0.01), p05: q(0.05), p50: q(0.5), p95: q(0.95) };
+          }
+          return { made: true, debug: b ? clothBrief.debug(b) : null, visible: clothBrief.mesh.visible, madeInMs: clothBrief.mesh.userData.madeInMs, ...clothBrief.stats(), lifted: clothBrief.bake.lifted, wrongFace: clothBrief.bake.wrongFace, nearestCm: depth };
+        },
         skinShellRemake: (next: { offsetCm?: number; reachCm?: number; robe?: number; noShapes?: boolean; noSprings?: boolean; noTurn?: boolean } = {}) => {
           bottomShellTry = { ...(next.offsetCm !== undefined ? { offset: next.offsetCm / 100 } : {}), ...(next.reachCm !== undefined ? { weightReach: next.reachCm / 100 } : {}), ...(next.robe !== undefined ? { bridgeRounds: next.robe } : {}), noShapes: next.noShapes, noSprings: next.noSprings, noTurn: next.noTurn };
           bottomShell?.dispose(); bottomShell = null; bottomShellTried = false;

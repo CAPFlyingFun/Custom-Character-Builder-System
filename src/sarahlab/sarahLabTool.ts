@@ -479,9 +479,17 @@ export type RecoveredPart = 'leggings' | 'leggings-low' | 'bottom' | 'relaxed-hi
  * (`models/sarah-v2-bottom.glb`, fitted once in TRADDOMIUM) was found under her skin on the new body -- "hidden in the
  * pubic bone" -- and is worn again only with this off.
  */
-export const BIKINI_BOTTOM_FROM_SKIN = true;
+/**
+ * WHICH BIKINI BOTTOM SHE WEARS: 'cloth', the modelled brief in her body file as it was designed, moved by the room's
+ * cloth (Joshua, 2026-11-11: "MESHY model bottom with stretchy as a cloth sim, but not alter the shape or design of it…";
+ * `clothBrief.ts`); 'skin', the one made from her skin to the brief's outline (above; kept for any garment made that
+ * way); 'recovered', the recovered file. Neither of the first two fetches anything.
+ */
+export type BikiniBottomSource = 'cloth' | 'skin' | 'recovered';
+export const BIKINI_BOTTOM_SOURCE = 'cloth' as BikiniBottomSource;
+export const BIKINI_BOTTOM_FROM_SKIN = BIKINI_BOTTOM_SOURCE === 'skin';
 const PART_OF: Partial<Record<Garment, RecoveredPart>> = {
-  leggings: 'leggings', leggingsLow: 'leggings-low', ...(BIKINI_BOTTOM_FROM_SKIN ? {} : { bikini: 'bottom' as const }),
+  leggings: 'leggings', leggingsLow: 'leggings-low', ...(BIKINI_BOTTOM_SOURCE === 'recovered' ? { bikini: 'bottom' as const } : {}),
   shirtRelaxedHigh: 'relaxed-high', shirtRelaxedLow: 'relaxed-low', shirtSpandexHigh: 'spandex-high', shirtSpandexLow: 'spandex-low',
   shirtSpandexLite: 'spandex-lite',
 };
