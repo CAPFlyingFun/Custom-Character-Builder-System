@@ -23,6 +23,8 @@ export interface ShapeFields {
   readonly baseNrm: Float32Array | null;
   /** the weights last applied, so an unchanged set does nothing */
   last: string;
+  /** those weights by field (every field laid on the mesh now, at other than nothing): what of its shape is whose */
+  laid?: ReadonlyMap<string, number>;
 }
 
 export const SHAPE_FIELD_PREFIX = 'shape:';
@@ -108,6 +110,7 @@ export function applyShapeFields(mesh: THREE.Mesh, shape: ShapeFields, weights: 
   const key = live.map(([n, w]) => `${n}:${w.toFixed(5)}`).join('|') + (normalizeNormals ? '' : '|raw-normals') + (post ? `|post:${post.key}` : '');
   if (key === shape.last) return;
   shape.last = key;
+  shape.laid = new Map(live);
   const geom = mesh.geometry as THREE.BufferGeometry;
   const pos = geom.getAttribute('position') as THREE.BufferAttribute, P = pos.array as Float32Array;
   P.set(shape.basePos);

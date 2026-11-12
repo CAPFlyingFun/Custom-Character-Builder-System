@@ -33,7 +33,7 @@ import {
 } from './fabricLibrary';
 import { ensureRest, fabricFieldWorn, fabricSlip, fieldCells, setDetailKeep, setFabricLayer, setHang, setRegionOverlay, setUnder, type FabricLayer } from './fabricMaterial';
 import { layCarried, poseTurns, settleCarry } from './designPose';
-import { makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
+import { besideShapes, makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
 import { PUSH_ATTRIBUTE } from './softBody';
 import type { DetailKeep } from './bodyDetail';
 import { DEFAULT_LAYER_DETAIL, DEFAULT_VULVA_KEEP, resolveDetail, resolveVulva, type LayerDetail, type ResolvedDetail } from './detailMaterials';
@@ -155,6 +155,12 @@ export interface FabricHooks {
    * no slip at all (they are in none of its triangles), and a designed garment's edge was frayed all over the area.
    */
   skinTriangles?(body: THREE.Mesh): ArrayLike<number> | null;
+  /**
+   * The shape fields that are her POSE's, by name (the room made between her thighs for a birth pose, her hips and knees
+   * turned round...): what her pose does to her skin before her bones do the rest. A designed garment RIDES those, as it
+   * rides her bones; her slip (`skinSlip.ts`) is her own shapes' alone.
+   */
+  poseFields?(): readonly string[];
 }
 
 export interface FabricPanel {
@@ -198,10 +204,10 @@ export interface FabricPanel {
    * against her slip as it is laid: `drawn` is each vertex's place as the room draws it (seen from her pelvis as it stood
    * at rest) less its rest place, three numbers a vertex in her mesh's own units, none for a vertex left out; `step` the
    * step it is stored in (those units). With it, how far the room's own look-up then is from where each vertex was drawn
-   * (`off`: the worst of them, and what 99 in 100 are within; those units). Null with no designed garment on (her slip
-   * is only kept with one).
+   * (those units: the worst of them and what 99 in 100 are within -- `off` over every vertex given, `offNear` over
+   * those looked up inside the garment's block). Null with no designed garment on (her slip is only kept with one).
    */
-  poseCarry(drawn: Float32Array, step: number): { readonly carry: Float32Array; readonly off: { readonly worst: number; readonly most: number } } | null;
+  poseCarry(drawn: Float32Array, step: number): { readonly carry: Float32Array; readonly off: { readonly worst: number; readonly most: number }; readonly offNear: { readonly worst: number; readonly most: number; readonly vertices: number } } | null;
   /** A painted shirt's LENGTH, 0 just above her crotch to 1 just above her knee (Joshua, 2026-10-22). */
   setShirtLength(length: number): void;
   shirtLength(): number;
@@ -269,7 +275,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   /** Designed garments' fields by path, and their fetches (`fieldFor`). */
   const fields = new Map<string, THREE.Data3DTexture>(), fieldLoads = new Map<string, Promise<void>>();
   /** Her points' slip, kept while she wears a designed garment (`laySlip`). */
-  let slip: { readonly mesh: THREE.Mesh; readonly path: string; readonly driver: SlipDriver; readonly points: number; readonly vertices: Uint32Array; readonly shaped: { version: number }; shapedSeen: number; solvedAt: number; pending: boolean; readonly plain: Float32Array; readonly carry: Float32Array | null; readonly turn: Float32Array | null; readonly unitsPerMetre: number } | null = null;
+  let slip: { readonly mesh: THREE.Mesh; readonly path: string; readonly driver: SlipDriver; readonly points: number; readonly vertices: Uint32Array; readonly shaped: { version: number }; shapedSeen: number; solvedAt: number; pending: boolean; readonly plain: Float32Array; readonly carry: Float32Array | null; readonly turn: Float32Array | null; readonly unitsPerMetre: number; readonly block: { readonly lo: readonly number[]; readonly hi: readonly number[] } } | null = null;
   let target: Target = { kind: 'layer', index: 0 };
   let space: EditorSpace = 'design', paintView: PaintView = 'layer', isolated = false, active = true;
   let tool: PaintTool = 'brush', brushCm: number = BRUSH_RANGE_CM.initial;
@@ -925,13 +931,24 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       const solver = makeSkinSlip(rest.array, index, (x, y, z) => x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2]);
       // (`shaped.version` is stepped when her shapes' slip is to be worked out again: the driver reads it)
       const shaped = { version: 0 };
-      // (her belly's push for her baby is laid on her shapes point by point in the shader: softBody.ts)
-      const pushed = () => { const a = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined; return a && a.array instanceof Float32Array && a.count === pos.count ? a : null; };
-      const driver = slipDriver(solver, () => ({
-        rest: rest.array, shaped: pos.array, pushed: pushed()?.array ?? null, shapedVersion: shaped.version, weights: body.morphTargetInfluences ?? [],
+      // what is laid on her shapes beside them: her belly's push for her baby (added point by point in the shader:
+      // softBody.ts), less what of her shape is her pose's (`hooks.poseFields`; `skinSlip.besideShapes` says why)
+      const laid = new Float32Array(pos.count * 3);
+      const beside = (): Float32Array | null => {
+        const push = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined, fields = hooks.rest(body);
+        const posed = (hooks.poseFields?.() ?? []).flatMap((name) => { const f = fields?.fields.get(name), weight = fields?.laid?.get(name) ?? 0; return f && weight ? [{ index: f.index, pos: f.pos, weight }] : []; });
+        return besideShapes(laid, push && push.array instanceof Float32Array && push.count === pos.count ? push.array : null, posed);
+      };
+      let besideNow: Float32Array | null = null, besideAt = NaN;
+      const driver = slipDriver(solver, () => {
+        // (worked out again only when her shapes' slip is: `shaped.version` steps then)
+        if (shaped.version !== besideAt) { besideNow = beside(); besideAt = shaped.version; }
+        return {
+        rest: rest.array, shaped: pos.array, pushed: besideNow, shapedVersion: shaped.version, weights: body.morphTargetInfluences ?? [],
         morph: (k, v, out) => { const a = morphs[k]; if (a) { out[0] = a.getX(v); out[1] = a.getY(v); out[2] = a.getZ(v); } else { out[0] = 0; out[1] = 0; out[2] = 0; } },
-      }));
-      slip = { mesh: body, path: worn.path, driver, points: solver.points, vertices: solver.vertices, shaped, shapedSeen: -1, solvedAt: -Infinity, pending: true, plain: new Float32Array(pos.count * 3), carry, turn: carry && poseTurns(rest.array, index, carry, worn.unitsPerMetre), unitsPerMetre: worn.unitsPerMetre };
+        };
+      });
+      slip = { mesh: body, path: worn.path, driver, points: solver.points, vertices: solver.vertices, shaped, shapedSeen: -1, solvedAt: -Infinity, pending: true, plain: new Float32Array(pos.count * 3), carry, turn: carry && poseTurns(rest.array, index, carry, worn.unitsPerMetre), unitsPerMetre: worn.unitsPerMetre, block: { lo: worn.lo, hi: worn.hi } };
     }
     const pos = g.getAttribute('position') as THREE.BufferAttribute, now = performance.now();
     // (her shapes or her belly's push changed: both are written whole, and each write steps its version)
@@ -1229,10 +1246,17 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       const g = body.geometry as THREE.BufferGeometry, rest = g.getAttribute('fabricRest') as THREE.BufferAttribute, index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array;
       if (!index) return null;
       const carry = settleCarry(rest.array, index, drawn, slip.plain, step, slip.unitsPerMetre);
-      const back = layCarried(new Float32Array(carry.length), carry, poseTurns(rest.array, index, carry, slip.unitsPerMetre), slip.plain), off: number[] = [];
-      for (let i = 0; i < carry.length; i += 3) if (drawn[i] !== 0 || drawn[i + 1] !== 0 || drawn[i + 2] !== 0) off.push(Math.hypot(back[i] - drawn[i], back[i + 1] - drawn[i + 1], back[i + 2] - drawn[i + 2]));
-      off.sort((a, b) => a - b);
-      return { carry, off: { worst: off[off.length - 1] ?? 0, most: off[Math.floor(off.length * 0.99)] ?? 0 } };
+      const back = layCarried(new Float32Array(carry.length), carry, poseTurns(rest.array, index, carry, slip.unitsPerMetre), slip.plain), off: number[] = [], near: number[] = [];
+      const R = rest.array, { lo, hi } = slip.block;
+      for (let i = 0; i < carry.length; i += 3) {
+        if (drawn[i] === 0 && drawn[i + 1] === 0 && drawn[i + 2] === 0) continue;
+        const d = Math.hypot(back[i] - drawn[i], back[i + 1] - drawn[i + 1], back[i + 2] - drawn[i + 2]);
+        off.push(d);
+        if ([0, 1, 2].every((k) => R[i + k] + back[i + k] > lo[k] && R[i + k] + back[i + k] < hi[k])) near.push(d);
+      }
+      off.sort((a, b) => a - b); near.sort((a, b) => a - b);
+      const stats = (a: number[]) => ({ worst: a[a.length - 1] ?? 0, most: a[Math.floor(a.length * 0.99)] ?? 0 });
+      return { carry, off: stats(off), offNear: { ...stats(near), vertices: near.length } };
     },
     reshaped() { bridge?.reshape(); drape?.reshape(); },
     setShirtLength,

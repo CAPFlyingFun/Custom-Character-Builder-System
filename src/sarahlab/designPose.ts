@@ -36,6 +36,8 @@
  * where the carry as measured gave turns that did, in her creases.
  */
 export const POSE_SMOOTH_ROUNDS = 20, POSE_SMOOTH_M = 0.003;
+/** GAME TUNING: the most a turn may stretch her skin along any line (MEASURED 2026-11-12: with her legs apart her skin's turn takes an area of it to between 0.40 and 2.44 of its size); a fit beyond it is not used. */
+export const POSE_TURN_MOST = 6;
 /**
  * GAME TUNING: rounds `settleCarry` takes. MEASURED 2026-11-12 on her legs apart: after twelve every vertex is looked up
  * within 0.12 mm of where the room drew it (99 in 100 within the step the carry is stored in); after four, the worst
@@ -48,8 +50,8 @@ export const POSE_SETTLE_ROUNDS = 12;
  * row by row) that takes a small step along her rest skin to the same step along her skin in the pose. `rest`: her
  * vertices at rest; `index`: her triangles; `carry`: each vertex's carry to the pose (three numbers each, the same
  * units as `rest`; none for a vertex not carried); `unitsPerMetre`: how many of those units make a metre. The copies
- * of a vertex along a seam are one point. A vertex that is not carried, or has fewer than three neighbours, is not
- * turned (identity).
+ * of a vertex along a seam are one point. A vertex that is not carried, is on the border of what is carried, or has
+ * fewer than three neighbours, is not turned (identity).
  */
 export function poseTurns(rest: ArrayLike<number>, index: ArrayLike<number>, carry: ArrayLike<number>, unitsPerMetre: number, rounds = POSE_SMOOTH_ROUNDS): Float32Array {
   const n = rest.length / 3, turn = new Float32Array(n * 9);
@@ -89,6 +91,11 @@ export function poseTurns(rest: ArrayLike<number>, index: ArrayLike<number>, car
   }
   const degree = new Float64Array(points);
   for (let e = 0; e < ea.length; e++) { degree[ea[e]]++; degree[eb[e]]++; }
+  // a point on the border of what is carried -- a neighbour of its is not -- has the pose on one side of it only:
+  // nothing there says how her skin turns. It is held as it is carried, and not turned.
+  const has = new Uint8Array(points), border = new Uint8Array(points);
+  for (let v = 0; v < n; v++) if (carried[v] && pointOf[v] >= 0) has[pointOf[v]] = 1;
+  for (let e = 0; e < ea.length; e++) if (has[ea[e]] !== has[eb[e]]) { border[ea[e]] = 1; border[eb[e]] = 1; }
   // THE CARRY SMOOTHED OVER HER SKIN. Each neighbour's share is its MEAN VALUE weight (as `skinSlip.ts`: for each
   // triangle on the edge p-q, tan of half its angle at p, over the edge's length): with those a carry that is even
   // over a patch -- a stretch, a turn -- averages to itself however unevenly her points lie, and is left as it is.
@@ -108,7 +115,7 @@ export function poseTurns(rest: ArrayLike<number>, index: ArrayLike<number>, car
     corner(a, b, c); corner(b, c, a); corner(c, a, b);
     for (const [p, q] of [[a, b], [b, c], [c, a]]) { const key = Math.min(p, q) * points + Math.max(p, q); once.set(key, (once.get(key) ?? 0) + 1); }
   }
-  const held = new Uint8Array(points);
+  const held = border.slice();
   for (const [key, count] of once) if (count === 1) { held[Math.floor(key / points)] = 1; held[key % points] = 1; }
   const start = new Int32Array(points + 1);
   for (const key of share.keys()) start[Math.floor(key / points) + 1]++;
@@ -172,9 +179,12 @@ export function poseTurns(rest: ArrayLike<number>, index: ArrayLike<number>, car
     for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) { A[o + r * 3 + c] += h * nRest[p * 3 + r] * nRest[p * 3 + c]; B[o + r * 3 + c] += h * nPosed[p * 3 + r] * nRest[p * 3 + c]; }
     const a = A[o], b = A[o + 1], c = A[o + 2], d = A[o + 3], e = A[o + 4], f = A[o + 5], g = A[o + 6], k = A[o + 7], l = A[o + 8];
     const det = a * (e * l - f * k) - b * (d * l - f * g) + c * (d * k - e * g);
-    if (degree[p] < 3 || !(det > 1e-12 * h * h * h)) { J[o] = 1; J[o + 4] = 1; J[o + 8] = 1; continue; }
+    if (degree[p] < 3 || border[p] || !(det > 1e-12 * h * h * h)) { J[o] = 1; J[o + 4] = 1; J[o + 8] = 1; continue; }
     const inv = [(e * l - f * k) / det, (c * k - b * l) / det, (b * f - c * e) / det, (f * g - d * l) / det, (a * l - c * g) / det, (c * d - a * f) / det, (d * k - e * g) / det, (b * g - a * k) / det, (a * e - b * d) / det];
-    for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) J[o + r * 3 + q] = B[o + r * 3] * inv[q] + B[o + r * 3 + 1] * inv[3 + q] + B[o + r * 3 + 2] * inv[6 + q];
+    let sane = true;
+    for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) { const x = B[o + r * 3] * inv[q] + B[o + r * 3 + 1] * inv[3 + q] + B[o + r * 3 + 2] * inv[6 + q]; J[o + r * 3 + q] = x; if (!(Math.abs(x) <= POSE_TURN_MOST)) sane = false; }
+    // (a fit that says her skin is stretched more than her skin stretches is no measure of it: not turned)
+    if (!sane) { for (let i = 0; i < 9; i++) J[o + i] = i % 4 === 0 ? 1 : 0; }
   }
   for (let v = 0; v < n; v++) { const p = pointOf[v]; if (p < 0 || !carried[v]) continue; for (let i = 0; i < 9; i++) turn[v * 9 + i] = J[p * 9 + i]; }
   return turn;

@@ -2,10 +2,11 @@
  * Her skin's slip (src/sarahlab/skinSlip.ts, 2026-11-12): the part of her points' movement that is not smooth, along her
  * skin. On a sheet of skin laid unevenly, as hers is: a movement the whole sheet makes together has next to no slip; a
  * point's own slide along the sheet comes back as its slip; what a point moves off the sheet is not slip; the copies of
- * a point along a seam slip as one; and slips add. And the driver that keeps her slip as her shapes and morphs change.
+ * a point along a seam slip as one; and slips add. And the driver that keeps her slip as her shapes and morphs change,
+ * with what is laid on her shapes beside them: her belly's push counted, what of her shape is her pose's taken off.
  */
 import { describe, expect, it } from 'vitest';
-import { SLIP_MORPH_FLOOR, SLIP_STEP, makeSkinSlip, slipDriver, type SlipSource } from '../src/sarahlab/skinSlip';
+import { SLIP_MORPH_FLOOR, SLIP_STEP, besideShapes, makeSkinSlip, slipDriver, type SlipSource } from '../src/sarahlab/skinSlip';
 
 /** A repeatable 0..1 (mulberry32). */
 function random(seed: number): () => number {
@@ -163,5 +164,35 @@ describe('her slip kept as she changes (slipDriver)', () => {
     let worst = 0;
     for (let i = 0; i < pushed.length; i++) worst = Math.max(worst, Math.abs(pushed[i] - v.target[i]));
     expect(worst).toBeLessThan(1e-7);
+  });
+
+  it('leaves what of her shape is her pose\'s out of her slip (a designed garment rides it), her belly\'s push in', () => {
+    const w = world(), n = w.n;
+    w.driver.update(w.target);
+    // a pose's field that slides her points their own way, laid on her shapes at half weight: as her shapes, it is slip
+    const index = Uint32Array.from({ length: n }, (_, v) => v), half = 0.5;
+    for (let i = 0; i < w.shaped.length; i++) w.shaped[i] = w.rest[i] + half * w.slides[i];
+    w.state.shapedVersion = 1;
+    w.driver.update(w.target);
+    expect(longest(w.target)).toBeGreaterThan(0.0005);
+    // named as her pose's, it is taken off before her slip is worked out: none
+    const beside = besideShapes(new Float32Array(n * 3), null, [{ index, pos: w.slides, weight: half }]);
+    expect(beside).not.toBeNull();
+    w.state.pushed = beside; w.state.shapedVersion = 2;
+    w.driver.update(w.target);
+    expect(longest(w.target)).toBeLessThan(1e-7);
+    // and with her belly's push as well, her slip is the push's alone
+    const push = Float32Array.from(w.slides, (x) => 0.25 * x), both = besideShapes(new Float32Array(n * 3), push, [{ index, pos: w.slides, weight: half }])!;
+    w.state.pushed = both; w.state.shapedVersion = 3;
+    w.driver.update(w.target);
+    const withPush = w.target.slice(), v = world();
+    v.state.pushed = push; v.state.shapedVersion = 1;
+    v.driver.update(v.target);
+    let worst = 0;
+    for (let i = 0; i < withPush.length; i++) worst = Math.max(worst, Math.abs(withPush[i] - v.target[i]));
+    expect(worst).toBeLessThan(1e-7);
+    // nothing laid beside her shapes: nothing to give; a field at no weight is none
+    expect(besideShapes(new Float32Array(n * 3), null, [])).toBeNull();
+    expect(besideShapes(new Float32Array(n * 3), null, [{ index, pos: w.slides, weight: 0 }])).toBeNull();
   });
 });

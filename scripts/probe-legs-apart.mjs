@@ -82,6 +82,8 @@ try {
   steps.forEach((q, e) => out.writeInt16LE(q, 16 + index.length * 4 + e * 2));
   mkdirSync(path.dirname(OUT), { recursive: true });
   writeFileSync(OUT, out);
-  log(`wrote ${path.relative(ROOT, OUT)}: ${index.length} of her ${frame.vertices} vertices carried, the farthest ${(longest * 100).toFixed(1)} cm (${out.length} bytes); looked up with it, 99 in 100 are within ${(got.off.most * frame.scale * 1000).toFixed(3)} mm of where the room drew them, the worst ${(got.off.worst * frame.scale * 1000).toFixed(3)} mm`);
+  log(`wrote ${path.relative(ROOT, OUT)}: ${index.length} of her ${frame.vertices} vertices carried, the farthest ${(longest * 100).toFixed(1)} cm (${out.length} bytes)`);
+  const mm = (v) => (v * frame.scale * 1000).toFixed(3);
+  log(`looked up with it, her vertices are back where the room drew them: of the ${got.offNear.vertices} inside the bottom's block 99 in 100 within ${mm(got.offNear.most)} mm, the worst ${mm(got.offNear.worst)} mm; of them all, ${mm(got.off.most)} and ${mm(got.off.worst)} mm`);
   if (errors.length) log('page errors', errors.slice(-5).join(' | '));
 } finally { await browser.close(); server.httpServer.close(); }

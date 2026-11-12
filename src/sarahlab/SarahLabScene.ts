@@ -349,6 +349,12 @@ import { briefClothTriangles } from './briefClothProxy';
 import { ClothBrief } from './clothBrief';
 import { PaintedEdge, outlineRuns } from './paintedEdge';
 import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
+/**
+ * The shape fields that are her POSE's -- laid on her only in a birth pose, by how she is posed: the room made between
+ * her thighs, her hips' and knees' turns and smoothing, her seat. What a designed garment rides as it rides her bones
+ * (`fabricPanel.ts`'s `poseFields`); every other field is her own shape, whose slides along her skin are her slip.
+ */
+const POSE_SHAPE_FIELDS: readonly string[] = Object.freeze([BIRTH_THIGHS_FIELD, BIRTH_GAP_FIELD, BIRTH_SEAT_FIELD, BIRTH_ROOM_FIELD, BIRTH_NORMALS_FIELD, BIRTH_KNEES_FIELD, KNEE_TURN_FIELD, HIP_TURN_FIELD, BIRTH_CONTACT_FIELD]);
 
 const M = UNITS_PER_METRE;
 /** What the story bake leaves out (`bakeForStory`): her vulva's own parts, inside her and under what she wears. */
@@ -3307,6 +3313,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       changed: () => outfits?.changed(),
       // the light tee lies over her nipples and navel, as cloth or as the fitted tee: it counts for AUTO's detail
       clothOver: () => (clothWorn() ? { name: 'shirtSpandexLite', label: 'cloth tee' } : fittedTee() ? { name: 'shirtSpandexLite', label: 'spandex tee' } : null),
+      // what of her shape is her pose's: a designed garment rides it (fabricPanel.ts)
+      poseFields: () => POSE_SHAPE_FIELDS,
       // all of her skin's triangles, each once: her opening's area is drawn by its own patch, its triangles hers all the
       // same (her own list has them again when the patch is not shown)
       skinTriangles: (mesh) => {
@@ -9536,8 +9544,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // scripts/probe-legs-apart.mjs): each vertex's carry from its rest place to where the room draws it, seen from
         // her pelvis bone (`pelvis`, by name) as it stood at rest, settled against her slip as it is laid now -- so a
         // designed garment must be on. Her mesh's own units, in steps of `step`, as base64 Float32 triples (`data`); none
-        // for a vertex whose place, at rest and as drawn, is outside the box `lo`..`hi` (those units too). And `off`: how
-        // far the room's own look-up with that carry is from where each vertex was drawn (the worst, and 99 in 100).
+        // for a vertex whose place, at rest and as drawn, is outside the box `lo`..`hi` (those units too). And how far
+        // the room's own look-up with that carry is from where each vertex was drawn (the worst, and 99 in 100): `off`
+        // over them all, `offNear` over those looked up inside the garment's block.
         poseCarry: (pelvis: string, lo: number[], hi: number[], step: number) => {
           const b = bodyOf()?.mesh, bone = b?.skeleton?.bones.find((x) => x.name === pelvis), rest = b?.geometry.getAttribute('fabricRest') as THREE.BufferAttribute | undefined;
           if (!b || !bone || !rest || !fabric) return null;
@@ -9557,7 +9566,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const got = fabric.poseCarry(drawn, step);
           if (!got) return null;
           const bytes = new Uint8Array(got.carry.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          return { data: btoa(s), off: got.off };
+          return { data: btoa(s), off: got.off, offNear: got.offNear };
         },
         // (a probe's) the area of her skin made again round her opening (vulvaMesh.ts), one of its attributes as base64
         // Float32 (its points before her bones, or what it carries of her skin's fabric attributes), and its triangles

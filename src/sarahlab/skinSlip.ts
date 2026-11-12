@@ -29,8 +29,9 @@
  * stretch on an evenly jittered sheet, and her skin is far less even than that.
  *
  * It is LINEAR: the slip of a sum of movements is the sum of their slips. So the room keeps one slip for her shapes as
- * they are (with what is laid on them point by point before her bones: her belly's push for her baby), and one for each
- * of her morphs, and adds them by the morphs' weights each time those change.
+ * they are (with what is laid on them point by point before her bones: her belly's push for her baby; and without
+ * what of her shape is her pose's, which is no slide of her points but her skin moved: `besideShapes`), and one for
+ * each of her morphs, and adds them by the morphs' weights each time those change.
  */
 
 /**
@@ -156,6 +157,24 @@ export interface SlipSource {
   /** her morphs' weights now, and morph k's movement of vertex v (written into `out`: three numbers) */
   readonly weights: ArrayLike<number>;
   morph(k: number, v: number, out: Float32Array): void;
+}
+
+/**
+ * What is laid on her shapes beside them, for `SlipSource.pushed` (written into `out`, three numbers a vertex; null when
+ * there is nothing): `push`, a movement added to her shapes point by point before her bones (her belly's push for her
+ * baby), LESS what of her shape is her POSE's -- each of `posed` a shape field laid on her by how she is posed (the
+ * vertices it moves, how far at full weight, and its weight now). Her slip is her own shapes': what her pose does to her
+ * skin before her bones is hers to ride, as what her bones do is. MEASURED 2026-11-12: with her pose's fields counted
+ * as her shapes, her slip reclined differed from her slip with her legs apart by 3 to 5 mm half way down her bikini
+ * bottom's panel (her hips are turned round only reclined), and the panel's sides jogged out there -- while Joshua's
+ * two drawings of that panel, each mark riding her skin from one pose to the other, are within 2.7 mm of each other.
+ */
+export function besideShapes(out: Float32Array, push: ArrayLike<number> | null, posed: readonly { readonly index: ArrayLike<number>; readonly pos: ArrayLike<number>; readonly weight: number }[]): Float32Array | null {
+  const live = posed.filter((f) => f.weight !== 0 && f.index.length > 0);
+  if (!push && !live.length) return null;
+  if (push) out.set(push as ArrayLike<number>); else out.fill(0);
+  for (const f of live) for (let k = 0; k < f.index.length; k++) { const i = f.index[k] * 3; out[i] -= f.weight * f.pos[k * 3]; out[i + 1] -= f.weight * f.pos[k * 3 + 1]; out[i + 2] -= f.weight * f.pos[k * 3 + 2]; }
+  return out;
 }
 
 /**

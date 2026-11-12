@@ -69,7 +69,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   draws LEGS APART, measure again, then run the design script, then build.
 - Her shapes' slide is taken off before the look-up: her points' SLIP (`skinSlip.ts`), worked out over ALL of her
   skin's triangles, the area under her opening's patch among them (`fabricPanel.ts`'s `skinTriangles`), and taken
-  through the pose's turn of her skin.
+  through the pose's turn of her skin. It is her own shapes' alone: what her POSE does to her skin before her bones
+  (the birth poses' shape fields, `POSE_SHAPE_FIELDS`) a garment rides, as it rides her bones.
 - A drawing sheet's marks are carried back to her skin by its corner squares and `sheets.json` (the sheets' script),
   each to its pixel's own place on her legs-apart skin, as the room looks that pixel up.
 

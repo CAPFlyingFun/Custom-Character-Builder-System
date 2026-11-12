@@ -76,17 +76,22 @@ describe('a pose\'s turns, read from its carry (2026-11-12)', () => {
     expect(worstOff(0.03, POSE_SMOOTH_ROUNDS)).toBeLessThan(0.01);
   });
 
-  it('turns the copies of a point along a seam as one, and does not turn a vertex that is not carried', () => {
+  it('turns the copies of a point along a seam as one, and does not turn a vertex that is not carried or is on the border of what is', () => {
     const { rest, index, id, right, N, mid, count } = sheet(31, 0.005, true), carry = new Float32Array(count * 3);
     expect(count).toBe(N * N + N);
-    // her left half carried (stretched and lifted), her right half not; the seam's column is carried
-    for (let v = 0; v < count; v++) if (rest[v * 3] <= rest[id[0][mid] * 3] + 0.002) { carry[v * 3] = 0.4 * rest[v * 3] + 0.001; carry[v * 3 + 2] = 0.3 * rest[v * 3 + 1] + 0.001; }
-    const turn = poseTurns(rest, index, carry, 1);
-    for (let j = 0; j < N; j++) for (let k = 0; k < 9; k++) expect(turn[right[j][mid] * 9 + k]).toBe(turn[id[j][mid] * 9 + k]);
+    // her left carried (stretched and lifted) to four columns past the seam, the rest of her not
+    const last = mid + 4, carriedTo = (i: number) => i <= last;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) for (const v of new Set([id[j][i], right[j][i]])) if (carriedTo(i)) { carry[v * 3] = 0.4 * rest[v * 3] + 0.001; carry[v * 3 + 2] = 0.3 * rest[v * 3 + 1] + 0.001; }
+    // (the pose's own turn: across her 1.4, up her lifted 0.3 for one; and a step off her skin goes off her skin as lifted)
+    const turn = poseTurns(rest, index, carry, 1), tilt = Math.hypot(0.42, 1.4), want = [1.4, 0, 0, 0, 1, -0.42 / tilt, 0, 0.3, 1.4 / tilt];
+    // the seam's two copies of each point: one turn, and the pose's own
+    for (let j = 6; j < N - 6; j++) for (let k = 0; k < 9; k++) { expect(turn[right[j][mid] * 9 + k]).toBe(turn[id[j][mid] * 9 + k]); expect(turn[id[j][mid] * 9 + k]).toBeCloseTo(want[k], 3); }
     const identity = [1, 0, 0, 0, 1, 0, 0, 0, 1];
     let notCarried = 0;
     for (let v = 0; v < count; v++) if (!carry[v * 3] && !carry[v * 3 + 2]) { notCarried++; expect(Array.from(turn.subarray(v * 9, v * 9 + 9))).toEqual(identity); }
-    expect(notCarried).toBeGreaterThan(N * 10);
+    expect(notCarried).toBeGreaterThan(N * 8);
+    // nor is the last carried column, the border of what is carried: the pose is on one side of it only
+    for (let j = 0; j < N; j++) expect(Array.from(turn.subarray(id[j][last] * 9, id[j][last] * 9 + 9))).toEqual(identity);
     // and nothing carried: nothing turned
     expect(Array.from(poseTurns(rest, index, new Float32Array(count * 3), 1).subarray(0, 9))).toEqual(identity);
   });
