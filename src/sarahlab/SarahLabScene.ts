@@ -688,7 +688,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let briefData: { positions: Float32Array; normals: Float32Array | null; index: Uint32Array; material: THREE.Material } | null = null;
   let clothBrief: ClothBrief | null = null, clothBriefTried = false, clothBriefPose = '';
   /** a probe's choices for it (`clothBriefRemake`): the hold across its panels' middles */
-  let clothBriefTry: { holdMiddle?: number } = {};
+  let clothBriefTry: { holdMiddle?: number; holdEdge?: number; holdFree?: number; restScale?: number } = {};
   /** a probe's change to the birth position's angles (humanBirth.ts `tweak`) */
   let birthTweak: Partial<BirthSpec> | null = null;
   /** room kept between her thighs as she is posed (birthRoom.ts): the watcher, whether it is on, what it was last worked out for */
@@ -856,7 +856,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         field: bikiniBottomField(count), ...clothBriefTry,
       });
       model.updateMatrixWorld(true);
-      clothBrief = new ClothBrief(body, bake, tris, briefData.material, M);
+      clothBrief = new ClothBrief(body, bake, tris, briefData.material, M, clothBriefTry.restScale !== undefined ? { restScale: clothBriefTry.restScale } : {});
       clothBrief.mesh.userData.madeInMs = Math.round(performance.now() - t0);
       three.add(clothBrief.mesh);
     } catch (e) { console.warn('[sarahlab] her bikini bottom could not be made as cloth', e); clothBrief = null; }
@@ -9403,7 +9403,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // her bikini bottom made from her skin made again with a probe's choices (centimetres; rounds of its robe)
         // her bikini bottom as cloth (clothBrief.ts): its costs and make, how far it stands off her skin as drawn (cm,
         // + outside, measured to her nearest skin point along her normal there), and a number of frames run for it
-        clothBriefRemake: (next: { holdMiddle?: number } = {}) => { clothBriefTry = next; clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; applyLook(); return !!clothBrief; },
+        clothBriefRemake: (next: { holdMiddle?: number; holdEdge?: number; holdFree?: number; restScale?: number } = {}) => { clothBriefTry = next; clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; applyLook(); return !!clothBrief; },
         clothBrief: (frames = 0, dt = 1 / 60) => {
           if (BIKINI_BOTTOM_SOURCE === 'cloth' && recovered && model) ensureClothBrief();
           if (!clothBrief || !model) return { made: false, tried: clothBriefTried, data: !!briefData };

@@ -62,6 +62,9 @@ export interface BriefClothInput {
   readonly middleX?: number;
   /** (a probe's) the hold across the panels' middles, in place of BRIEF_CLOTH.holdMiddle (1: held everywhere) */
   readonly holdMiddle?: number;
+  /** (a probe's) in place of BRIEF_CLOTH.holdEdge and holdFree */
+  readonly holdEdge?: number;
+  readonly holdFree?: number;
 }
 
 export interface BriefClothBake {
@@ -245,7 +248,7 @@ export function bakeBriefCloth(input: BriefClothInput): BriefClothBake {
   for (let p = 0; p < N; p++) { offset[p] = Math.max(offset[p] + lift[p], C); if (lift[p] > 0) { lifted++; liftMost = Math.max(liftMost, lift[p]); } }
 
   // HOW IT IS HELD
-  const pin = new Float32Array(N), e0 = BRIEF_CLOTH.holdEdge, e1 = BRIEF_CLOTH.holdFree, knot = tieFrom - BRIEF_CLOTH.holdKnot * U;
+  const pin = new Float32Array(N), e0 = input.holdEdge ?? BRIEF_CLOTH.holdEdge, e1 = input.holdFree ?? BRIEF_CLOTH.holdFree, knot = tieFrom - BRIEF_CLOTH.holdKnot * U;
   for (let p = 0; p < N; p++) {
     let h = 1;
     if (field) { const t = Math.min(1, Math.max(0, (inside[p] - e0) / (e1 - e0))), s = t * t * (3 - 2 * t); h = 1 - s * (1 - (input.holdMiddle ?? BRIEF_CLOTH.holdMiddle)); }

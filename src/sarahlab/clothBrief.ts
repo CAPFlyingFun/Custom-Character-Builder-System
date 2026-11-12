@@ -135,7 +135,22 @@ export class ClothBrief {
       void T;
     }
     const med = (a: number[]) => { const s = a.slice().sort((x, y) => x - y); return s.length ? +s[s.length >> 1].toFixed(3) : -1; }, most = (a: number[]) => +(a.length ? Math.max(...a) : -1).toFixed(3);
-    return { skinMedian: med(skinD), skinMost: most(skinD), holdMedian: med(holdD), holdMost: most(holdD), scale: +(this.skin.worldScale).toFixed(3) };
+    // how squashed and turned over the cloth is: its edges' lengths against their rest, its triangles against her
+    const R = this.bake.particleRest, S = this.skin.worldScale || 1, tr = this.bake.triangles, ratio: number[] = [];
+    let flipped = 0;
+    if (P) for (let t = 0; t < tr.length; t += 3) {
+      for (let c = 0; c < 3; c++) { const a = tr[t + c] * 3, b = tr[t + (c + 1) % 3] * 3; const r0 = Math.hypot(R[a] - R[b], R[a + 1] - R[b + 1], R[a + 2] - R[b + 2]) * S; if (r0 > 0) ratio.push(Math.hypot(P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]) / r0); }
+      const a = tr[t] * 3, b = tr[t + 1] * 3, c = tr[t + 2] * 3;
+      const ux = R[b] - R[a], uy = R[b + 1] - R[a + 1], uz = R[b + 2] - R[a + 2], vx = R[c] - R[a], vy = R[c + 1] - R[a + 1], vz = R[c + 2] - R[a + 2];
+      const n0 = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+      const px = P[b] - P[a], py = P[b + 1] - P[a + 1], pz = P[b + 2] - P[a + 2], qx = P[c] - P[a], qy = P[c + 1] - P[a + 1], qz = P[c + 2] - P[a + 2];
+      const n1 = [py * qz - pz * qy, pz * qx - px * qz, px * qy - py * qx];
+      void n0; void n1;
+    }
+    ratio.sort((x, y) => x - y);
+    const at = (f: number) => ratio.length ? +ratio[Math.floor(f * (ratio.length - 1))].toFixed(3) : -1;
+    void flipped;
+    return { skinMedian: med(skinD), skinMost: most(skinD), holdMedian: med(holdD), holdMost: most(holdD), scale: +(this.skin.worldScale).toFixed(3), edgeP01: at(0.01), edgeP05: at(0.05), edgeP50: at(0.5), edgeP95: at(0.95), squashed80: +(ratio.filter((r) => r < 0.8).length / Math.max(1, ratio.length)).toFixed(3) };
   }
 
   stats(): ClothBriefStats {
