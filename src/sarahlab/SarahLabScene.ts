@@ -27,7 +27,7 @@ import { JointLimits, type JointAngles } from '../actor/jointLimits';
 import { rangeDeg, type RangeLevel } from '../data/jointRange';
 import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
 import { SkinPainter, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
-import { ensureRest } from './fabricMaterial';
+import { ensureRest, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
 import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig } from './faceRig';
 import { REST_SCALE, RoomGarment } from './garment/roomGarment';
@@ -694,6 +694,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const PAINTED_EDGE_ON = false;
   let paintedEdge: PaintedEdge | null = null, paintedEdgeHidden = false, cordsHidden = false;
   /**
+   * Whether the painted bikini bottom wears her Meshy brief's modelled cords: off (Joshua, 2026-11-12: "remove the side
+   * string straps on the bikini bottom, they don't need it as it's more of an athletic style anyway and not all bottom use
+   * strings especially elastic clothing" -- the athletic bottom has a side band of its own). The cloth bottom is the cords
+   * and all, so it always has them.
+   */
+  const BIKINI_CORDS = false;
+  const clothBriefWorn = BIKINI_BOTTOM_SOURCE === 'cloth' || (BIKINI_BOTTOM_SOURCE === 'paint' && BIKINI_CORDS);
+  /** Whether her painted bikini bottom is on her now, worn as any bottom is (set with her look). */
+  let paintedBottomOn = false;
+  /**
    * GAME TUNING: where the painted bikini bottom's modelled cords begin, metres either side of her middle. The paint's
    * outline reaches 12.5 cm (MEASURED, bikiniBottomStencil.ts), its band tapering from 10 cm; begun at 12.5 cm the cords
    * left bare skin between them on her back's right (2026-11-12), so they begin over the taper.
@@ -892,11 +902,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * none -- it stands off her skin as her skin is, and her lips' own shape, through it, stood out through its gusset
    * (2026-11-11, seen from under her) -- otherwise the fabric panel's.
    */
-  function vulvaKeepNow(): number { return bottomShell?.mesh.visible || clothBrief?.mesh.visible ? 0 : fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP; }
+  function vulvaKeepNow(): number { return bottomShell?.mesh.visible || clothBrief?.mesh.visible || paintedBottomOn ? 0 : fabric?.vulvaKeep() ?? DEFAULT_VULVA_KEEP; }
   function vulvaDressed(view: string): boolean {
     if (bottomsOff()) return false;
-    // (her bikini bottom made from her skin drawn over her -- the editor's bikini view too -- clears her skin shut)
-    if (bottomShell?.mesh.visible || clothBrief?.mesh.visible) return true;
+    // (her bikini bottom made from her skin drawn over her -- the editor's bikini view too -- clears her skin shut; so
+    // does her painted one, as it did while it wore its cords)
+    if (bottomShell?.mesh.visible || clothBrief?.mesh.visible || paintedBottomOn) return true;
     if (view !== 'all') return false;
     return lowerCovered() || skinned.some((m) => m.visible && m.userData.recoveredLeggings);
   }
@@ -2275,7 +2286,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // laid on her afresh each time it comes back
     {
       const want = !!briefData && recovered && !!model?.visible && shownNow('bikini') && !bottomsOff() && (view === 'all' || view === 'bikini');
-      if (want) ensureClothBrief();
+      paintedBottomOn = want && BIKINI_BOTTOM_SOURCE === 'paint';
+      if (want && clothBriefWorn) ensureClothBrief();
       if (clothBrief) { if (want && !clothBrief.mesh.visible) clothBrief.restart(); clothBrief.mesh.visible = want && !cordsHidden; }
       if (paintedEdge) paintedEdge.group.visible = want && !paintedEdgeHidden && !!clothBrief?.mesh.visible;
     }
@@ -3295,6 +3307,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       changed: () => outfits?.changed(),
       // the light tee lies over her nipples and navel, as cloth or as the fitted tee: it counts for AUTO's detail
       clothOver: () => (clothWorn() ? { name: 'shirtSpandexLite', label: 'cloth tee' } : fittedTee() ? { name: 'shirtSpandexLite', label: 'spandex tee' } : null),
+      // all of her skin's triangles, each once: her opening's area is drawn by its own patch, its triangles hers all the
+      // same (her own list has them again when the patch is not shown)
+      skinTriangles: (mesh) => {
+        const all = (mesh.userData.allIndices as ArrayLike<number> | undefined) ?? mesh.geometry.index?.array, area = vulva?.bake.area;
+        if (!all) return null;
+        if (!area?.length) return all;
+        const n = mesh.geometry.getAttribute('position').count, inArea = new Uint8Array(n), key = (a: number, b2: number, c: number) => [a, b2, c].sort((x, y) => x - y).join(',');
+        const seen = new Set<string>();
+        for (let t = 0; t + 2 < area.length; t += 3) { seen.add(key(area[t], area[t + 1], area[t + 2])); inArea[area[t]] = 1; inArea[area[t + 1]] = 1; inArea[area[t + 2]] = 1; }
+        const tris: number[] = [];
+        for (let t = 0; t + 2 < all.length; t += 3) { const a = all[t], b2 = all[t + 1], c = all[t + 2]; if (inArea[a] && inArea[b2] && inArea[c] && seen.has(key(a, b2, c))) continue; tris.push(a, b2, c); }
+        const out = new Uint32Array(tris.length + area.length);
+        out.set(tris); out.set(area, tris.length);
+        return out;
+      },
       // the middle of her vulva: a vertex of her own skin at its split's middle (her rebuilt area reads its paint there)
       vulvaHint: () => { if (!vulva) return undefined; const b2 = vulva.bake; let best = -1, bd = Infinity; for (let p2 = 0; p2 < b2.count; p2++) if (b2.ring[p2] === 0) { const d2 = Math.abs(b2.flat[p2 * 2 + 1] - b2.split.mid); if (d2 < bd) { bd = d2; best = p2; } } return best >= 0 ? b2.src[best * 3] : undefined; },
       navelHint: () => {
@@ -9004,6 +9031,50 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (a probe: resolves once `n` more frames have been drawn -- a slow renderer draws a frame in seconds, and a shot taken
         // before the next one shows the camera as it was)
         frames: (n = 2) => frames(n),
+        // (a probe's) her bump at any size, as its slider and the quick sizes set it (percent)
+        bump: (percent?: number) => { if (percent !== undefined) { bump = Math.max(0, Math.min(BUMP_MAX_PERCENT, Math.round(percent))); if (bumpInput) bumpInput.value = String(bump); applyLook(); applyMotion(); refresh(); } return bump; },
+        // (a probe's) HER DRAWING SHEET (Joshua, 2026-11-12: "the v2's plain body at 4 angles (front/side/45/back) at
+        // 0/80/140/200% belly size so that way I can draw directly on her model so the proportions match exactly"): her as
+        // she is now, drawn FLAT -- no perspective, every part of her at one scale, `mmPerPixel` -- from `yaw` about her
+        // (radians, 0 her front) and `pitch` (below 0 from beneath), as `look` turns, on a plain ground of one colour with
+        // nothing of the room about her (its floor, her stool, her birth mat: a view from beneath looks through where
+        // they are), lit from the camera's side as the room lights her front (its lights turned with the camera for the
+        // picture and put back). `about` 'room': the picture's middle at `centre` (metres, the room's). `about` 'pelvis' (his "Squat,
+        // Reclined, and Spread from underneath at about 45"): the view is turned with her pelvis as her pose carries it,
+        // so it looks at her the same way lying back as standing, and `centre` is metres from the middle of her hip joints
+        // in her pelvis's own axes (x her left, y up her spine, z her front). `shift` moves the picture's middle along the
+        // view's own right and up (metres): a view larger than one picture is shot in tiles.
+        // Returns a PNG of the whole drawing buffer, its size, and what carries a mark back to her: a mark at pixel (x, y)
+        // is on the line through centre + right * (x + 0.5 - width / 2) * mm + up * (height / 2 - y - 0.5) * mm, running
+        // along `toward` (all the room's, metres): scripts/probe-body-sheets.mjs.
+        sheet: (yaw: number, centre: [number, number, number], mmPerPixel: number, ground = 0x8d8e92, pitch = 0, about: 'room' | 'pelvis' = 'room', shift: [number, number] = [0, 0]) => {
+          if (!model) return null;
+          model.updateMatrixWorld(true);
+          const gl = ctx.renderer.gl, w = gl.domElement.width, h = gl.domElement.height, k = (mmPerPixel / 1000) * M;
+          const lens = new THREE.OrthographicCamera((-w * k) / 2, (w * k) / 2, (h * k) / 2, (-h * k) / 2, 0.5 * M, 60 * M);
+          const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, yaw, 0, 'YXZ')), at = new THREE.Vector3(centre[0], centre[1], centre[2]).multiplyScalar(M);
+          if (about === 'pelvis') {
+            const sk = findSkinnedMesh(model);
+            if (!sk || !measure) return null;
+            // how her pose carries her pelvis: its bone as it is now against as it was bound, in the room
+            const carried = new THREE.Matrix4().copy(sk.matrixWorld).multiply(sk.bindMatrixInverse).multiply(new THREE.Matrix4().multiplyMatrices(sk.skeleton.bones[0].matrixWorld, sk.skeleton.boneInverses[0])).multiply(sk.bindMatrix);
+            const q = new THREE.Quaternion(); carried.decompose(new THREE.Vector3(), q, new THREE.Vector3());
+            const bones = sk.skeleton.bones, j = measure.joints;
+            at.applyQuaternion(q).add(bones[j.hipL].getWorldPosition(new THREE.Vector3()).add(bones[j.hipR].getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5));
+            turn.premultiply(q);
+          }
+          const out = new THREE.Vector3(0, 0, 1).applyQuaternion(turn), up = new THREE.Vector3(0, 1, 0).applyQuaternion(turn), right = new THREE.Vector3(1, 0, 0).applyQuaternion(turn);
+          at.addScaledVector(right, shift[0] * M).addScaledVector(up, shift[1] * M);
+          lens.up.copy(up); lens.position.copy(at).addScaledVector(out, 30 * M); lens.lookAt(at); lens.updateMatrixWorld(true);
+          const lights = [key, rim, under], was = lights.map((l) => l.position.clone());
+          let picture: string | null = null;
+          try {
+            for (const l of lights) l.position.applyQuaternion(turn);
+            picture = shootDataUrl(gl, three, lens, { type: 'image/png', background: new THREE.Color(ground), hide: [floor, ring, strip.object, stool, ...(birthMatMesh ? [birthMatMesh] : [])] });
+          } finally { lights.forEach((l, i) => l.position.copy(was[i])); }
+          ctx.renderer.render(three, camera);
+          return { picture, width: w, height: h, centre: at.toArray().map((v) => v / M), right: right.toArray(), up: up.toArray(), toward: out.negate().toArray() };
+        },
         // the camera at any angle about her (yaw radians, 0 her front; pitch radians, below 0 from beneath)
         // (and how far off, world units, and at what height: for a close look at her neckline)
         look: (yaw: number, pitch?: number, distance?: number, height?: number, across?: number) => { orbit.yaw = yaw; if (pitch !== undefined) orbit.pitch = pitch; if (distance !== undefined) orbit.distance = distance; if (height !== undefined) orbit.target.y = height; if (across !== undefined) orbit.target.x = across; turning = false; },
@@ -9448,6 +9519,46 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return pts.length / 3;
         },
         // (a probe's) which meshes of hers are drawn, and her body (bodyOf) hidden or shown
+        // (a probe's) which of her paint layers are drawn from a designed garment's mask (fabricMaterial.ts), and her UVs for it
+        // (a probe's) her skin's points as base64 Float32 triples: 'local' as her shapes leave them before her bones move
+        // them (model units), 'rest' as her fabric is laid by (fabricRest), 'posed' as drawn (metres, the room's frame)
+        bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'hung' | 'slip') => {
+          const b = bodyOf()?.mesh; if (!b) return null;
+          const g = b.geometry, n = g.getAttribute('position').count, out = new Float32Array(n * 3), v = new THREE.Vector3();
+          if (kind === 'posed') { b.updateMatrixWorld(true); b.skeleton?.update(); for (let i = 0; i < n; i++) { b.getVertexPosition(i, v); b.localToWorld(v); out[i * 3] = v.x / M; out[i * 3 + 1] = v.y / M; out[i * 3 + 2] = v.z / M; } }
+          // ('hung': as drawn, but seen from her pelvis bone as it stood at rest -- where each point is for something that
+          // hangs on her pelvis and does not ride her skin; model units)
+          else if (kind === 'hung') {
+            b.updateMatrixWorld(true); b.skeleton.update();
+            const pelvis = new THREE.Matrix4().multiplyMatrices(b.skeleton.bones[0].matrixWorld, b.skeleton.boneInverses[0]);
+            const U = new THREE.Matrix4().copy(b.bindMatrixInverse).multiply(pelvis.invert()).multiply(b.bindMatrix);
+            for (let i = 0; i < n; i++) { b.getVertexPosition(i, v); v.applyMatrix4(U); out[i * 3] = v.x; out[i * 3 + 1] = v.y; out[i * 3 + 2] = v.z; }
+          }
+          // ('shaped': her shapes and her morphs, before her bones move her -- model units)
+          else if (kind === 'shaped') { for (let i = 0; i < n; i++) { THREE.Mesh.prototype.getVertexPosition.call(b, i, v); out[i * 3] = v.x; out[i * 3 + 1] = v.y; out[i * 3 + 2] = v.z; } }
+          else { const a = g.getAttribute(kind === 'rest' ? 'fabricRest' : kind === 'slip' ? 'fabricSlip' : 'position') as THREE.BufferAttribute | undefined; if (!a) return null; for (let i = 0; i < n; i++) { out[i * 3] = a.getX(i); out[i * 3 + 1] = a.getY(i); out[i * 3 + 2] = a.getZ(i); } }
+          const bytes = new Uint8Array(out.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          return btoa(s);
+        },
+        // (a probe's) the area of her skin made again round her opening (vulvaMesh.ts), one of its attributes as base64
+        // Float32 (its points before her bones, or what it carries of her skin's fabric attributes), and its triangles
+        areaPoints: (name: string) => {
+          const g = vulva?.mesh.geometry, a = g?.getAttribute(name) as THREE.BufferAttribute | undefined;
+          if (!g || !a) return null;
+          const out = new Float32Array(a.count * a.itemSize);
+          for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) out[i * a.itemSize + c] = a.getComponent(i, c);
+          const bytes = new Uint8Array(out.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          return { itemSize: a.itemSize, count: a.count, data: btoa(s), index: Array.from(g.index?.array ?? []), drawn: [g.drawRange.start, g.drawRange.count] };
+        },
+        // (a probe's) how the area's points are read from hers: where each lies in her triangle, and its texture's copy
+        areaBake: () => { const b = vulva?.bake; return b ? { count: b.count, src: Array.from(b.src), bary: Array.from(b.bary), uvSrc: Array.from(b.uvSrc), uvBary: Array.from(b.uvBary) } : null; },
+        // (a probe's) her body's morphs that are on now, by name
+        bodyMorphs: () => { const b = bodyOf()?.mesh; if (!b?.morphTargetDictionary || !b.morphTargetInfluences) return null; const out: Record<string, number> = {}; for (const [name, k] of Object.entries(b.morphTargetDictionary)) { const w = b.morphTargetInfluences[k]; if (w) out[name] = +w.toFixed(4); } return { on: out, count: Object.keys(b.morphTargetDictionary).length, relative: b.geometry.morphTargetsRelative }; },
+        // (a probe's) which of her paint layers are drawn from a designed garment's field (fabricMaterial.ts), the levels
+        // set by hand for a look, and her points' slip as it is kept for it (skinSlip.ts)
+        paintFieldLevels: (levels: number[]) => { const b = bodyOf()?.mesh; if (!b) return false; setFabricFieldLevels((Array.isArray(b.material) ? b.material[0] : b.material) as THREE.Material, levels); return true; },
+        paintFieldState: () => { const b = bodyOf()?.mesh; if (!b) return null; const m = (Array.isArray(b.material) ? b.material[0] : b.material) as THREE.Material, g = b.geometry; const areaSlip = vulva?.mesh.geometry.getAttribute('fabricSlip') as THREE.BufferAttribute | undefined; let areaLongest = 0; if (areaSlip) for (let i = 0; i < areaSlip.count; i++) areaLongest = Math.max(areaLongest, Math.hypot(areaSlip.getX(i), areaSlip.getY(i), areaSlip.getZ(i)));
+          return { field: fabricFieldState(m), slip: fabric?.slipState() ?? null, area: vulva ? { visible: vulva.mesh.visible, points: vulva.mesh.geometry.getAttribute('position').count, slip: !!areaSlip, longest: areaLongest, attributes: Object.keys(vulva.mesh.geometry.attributes).length } : null, attributes: Object.keys(g.attributes).length, shaderAttributes: (ctx.renderer.gl.info.programs ?? []).map((q) => Object.keys(q.getAttributes() as object)).sort((x, y) => y.length - x.length)[0] ?? [], attributeLimit: ctx.renderer.gl.getContext().getParameter(ctx.renderer.gl.getContext().MAX_VERTEX_ATTRIBS) as number, material: m.name, count: g.getAttribute('position').count }; },
         bodyMeshes: (hideBody?: boolean) => { const b = bodyOf()?.mesh; if (b && hideBody !== undefined) b.visible = !hideBody; const out: string[] = []; model?.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh && m.visible) out.push(`${m.name}:${m.geometry.getAttribute('position').count}${m === b ? '*' : ''}:${(m.material as THREE.Material).name}`); }); return out; },
         paintVsOutline: () => {
           const b = bodyOf()?.mesh; if (!b) return null;
@@ -9463,7 +9574,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         paintedEdge: (show?: boolean) => { if (paintedEdge && show !== undefined) paintedEdgeHidden = !show; if (paintedEdge) paintedEdge.group.visible = !!clothBrief?.mesh.visible && !paintedEdgeHidden; const b = bodyOf()?.mesh; return { runs: paintedEdge?.runs ?? 0, visible: paintedEdge?.group.visible ?? false, check: paintedEdge && b ? paintedEdge.check(b, bikiniBottomField(b.geometry.getAttribute('position').count)) : null }; },
         clothBriefRemake: (next: { holdMiddle?: number; holdEdge?: number; holdFree?: number; restScale?: number } = {}) => { clothBriefTry = next; clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; applyLook(); return !!clothBrief; },
         clothBrief: (frames = 0, dt = 1 / 60) => {
-          if ((BIKINI_BOTTOM_SOURCE === 'cloth' || BIKINI_BOTTOM_SOURCE === 'paint') && recovered && model) ensureClothBrief();
+          if (clothBriefWorn && recovered && model) ensureClothBrief();
           if (!clothBrief || !model) return { made: false, tried: clothBriefTried, data: !!briefData };
           for (let k = 0; k < frames; k++) { model.updateMatrixWorld(true); clothBrief.frame(dt); }
           const b = bodyOf()?.mesh, P = clothBrief.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;

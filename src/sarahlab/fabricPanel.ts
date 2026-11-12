@@ -31,7 +31,9 @@ import {
   fabricFamily, opacityOf, swatchRect, tileUnits, trimPick, type FabricChoice, type FabricFamilyId, type FabricLayout,
   type FabricPick, type OutfitConfig, type PaintTool,
 } from './fabricLibrary';
-import { ensureRest, setDetailKeep, setFabricLayer, setHang, setRegionOverlay, setUnder } from './fabricMaterial';
+import { ensureRest, fabricFieldWorn, fabricSlip, fieldCells, setDetailKeep, setFabricLayer, setFabricPelvis, setHang, setRegionOverlay, setUnder, type FabricLayer } from './fabricMaterial';
+import { makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
+import { PUSH_ATTRIBUTE } from './softBody';
 import type { DetailKeep } from './bodyDetail';
 import { DEFAULT_LAYER_DETAIL, DEFAULT_VULVA_KEEP, resolveDetail, resolveVulva, type LayerDetail, type ResolvedDetail } from './detailMaterials';
 import { BRUSH_RANGE_CM, BodyPaint, PAINT_LAYER_COUNT, packLayer } from './bodyPaint';
@@ -41,11 +43,24 @@ import { TINT_BASE_COLOUR, readTint, tintLabel, tintPixels } from './fabricTint'
 import { HEM_LIFT_FLAT, HEM_LIFT_RIBBED, TunicDrape } from './tunicDrape';
 import { AUTO_DETAIL, type DetailOverride, type SavedClothes } from './characterSaves';
 import {
-  COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
-  withDial, type CoverageParams, type PieceKind,
+  COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, designedField, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
+  withDial, type CoverageParams, type DesignedField, type PieceKind,
 } from './paintTemplates';
 
 export const FABRIC_PANEL_ROLE = 'sarahlab-fabric';
+/**
+ * GAME TUNING (milliseconds): how often her shapes' slip is worked out again at the most while her rest shape keeps
+ * changing (a control dragged, her belly shrinking in a birth): eight times a second, and once more when it stops.
+ */
+export const SLIP_SHAPE_MS = 120;
+/**
+ * GAME TUNING (metres): how far round a designed garment's block her points' slip is worked out. The points on the
+ * region's border are held (`skinSlip.ts`), and a held border nearer the outline than her slides' own reach dulls the
+ * slip beside it: with the region ending at the block (4 cm from the outline), the outline's sharpest turns in her squat
+ * were 46 degrees (their 99th percentile) against 33 with the region 4 cm wider, and no better for 8 (MEASURED,
+ * 2026-11-12, on her skin's points read out of the room).
+ */
+export const SLIP_MARGIN_M = 0.04;
 /** The painted pieces that cover her crotch: off while she gives birth. */
 const LOWER_KINDS: readonly string[] = ['bottom', 'onePiece'];
 export type EditorSpace = 'design' | 'paint' | 'save';
@@ -132,6 +147,13 @@ export interface FabricHooks {
    * should be working").
    */
   clothOver?(): { readonly name: string; readonly label: string } | null;
+  /**
+   * All of her skin's triangles, each once -- with those another mesh draws in her place (the area round her opening,
+   * vulvaMesh.ts, cut out of her own list while it stands in): what her points' slip is worked out over. Without it
+   * her own list is used. MEASURED 2026-11-12: over her own list alone 2,481 of her 2,622 vertices under that area had
+   * no slip at all (they are in none of its triangles), and a designed garment's edge was frayed all over the area.
+   */
+  skinTriangles?(body: THREE.Mesh): ArrayLike<number> | null;
 }
 
 export interface FabricPanel {
@@ -163,9 +185,11 @@ export interface FabricPanel {
    * paint covers her navel, so a bare or bikini navel is never touched. 0 with nothing painted there.
    */
   navelFlatten(): number;
-  /** The cleavage bridge and the drape: re-laid once a frame, and again after her shape changes. */
+  /** The cleavage bridge and the drape: re-laid once a frame, and again after her shape changes. Her points' slip too. */
   frame(): void;
   reshaped(): void;
+  /** (a probe's) Her points' slip as it is kept for the designed garment she wears, or null with none: how many of her points, how many slips worked out, which morphs carry one, and the longest slip laid (her mesh's own units). */
+  slipState(): { readonly points: number; readonly vertices: number; readonly solved: number; readonly morphs: readonly number[]; readonly longest: number } | null;
   /** A painted shirt's LENGTH, 0 just above her crotch to 1 just above her knee (Joshua, 2026-10-22). */
   setShirtLength(length: number): void;
   shirtLength(): number;
@@ -230,6 +254,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   const paintChoices: FabricChoice[] = Array.from({ length: PAINT_LAYER_COUNT }, () => DEFAULT_CHOICE);
   const atlases = new Map<string, Promise<(CanvasImageSource & { width: number; height: number }) | null>>();
   const swatches = new Map<string, THREE.Texture>();
+  /** Designed garments' fields by path, and their fetches (`fieldFor`). */
+  const fields = new Map<string, THREE.Data3DTexture>(), fieldLoads = new Map<string, Promise<void>>();
+  /** Her points' slip, kept while she wears a designed garment (`laySlip`). */
+  let slip: { readonly mesh: THREE.Mesh; readonly path: string; readonly driver: SlipDriver; readonly points: number; readonly vertices: Uint32Array; readonly shaped: { version: number }; shapedSeen: number; solvedAt: number; pending: boolean } | null = null;
   let target: Target = { kind: 'layer', index: 0 };
   let space: EditorSpace = 'design', paintView: PaintView = 'layer', isolated = false, active = true;
   let tool: PaintTool = 'brush', brushCm: number = BRUSH_RANGE_CM.initial;
@@ -817,6 +845,78 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     for (const [key, texture] of swatches) if (key.includes('~') && !worn.has(key)) { texture.dispose(); swatches.delete(key); }
   }
 
+  /**
+   * A designed garment's field (`paintTemplates.designedField`) for paint layer i, while that layer is still the design
+   * (a stroke or a fill by hand takes its template off, and the layer is drawn from its own paint again). Fetched the
+   * first time it is wanted; the layer is drawn from its paint until it is in.
+   */
+  function fieldFor(i: number, body: THREE.SkinnedMesh): NonNullable<FabricLayer['field']> | null {
+    const t = templates[i], d = t ? designedField(t.params, body.geometry.getAttribute('position').count) : null;
+    if (!d) return null;
+    const f = d.field, have = fields.get(f.path);
+    // (its strap hangs on her pelvis bone: with no such bone there is nothing to hang it on, and it rides her skin)
+    if (have) return { texture: have, level: d.level, scale: f.scale, offset: f.offset, strap: f.strap && pelvisOf(body, f.strap.bone) ? f.strap : null };
+    if (!fieldLoads.has(f.path)) fieldLoads.set(f.path, hooks.loadImage(f.path).then((image) => {
+      if (!image || disposed) return;
+      // its picture read back as numbers (its slices lie side by side), and laid as one block: linear data, blended
+      // between cells, nothing beyond its faces
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width; canvas.height = image.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(image, 0, 0);
+      const cells = fieldCells(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, f.dims, f.cols);
+      if (!cells) { console.error(`[fabric] ${f.path} is not the picture of a ${f.dims.join(' x ')} field`); return; }
+      const texture = new THREE.Data3DTexture(cells, f.dims[0], f.dims[1], f.dims[2]);
+      texture.format = THREE.RedFormat; texture.type = THREE.UnsignedByteType; texture.colorSpace = THREE.NoColorSpace;
+      texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter; texture.unpackAlignment = 1;
+      texture.wrapS = texture.wrapT = texture.wrapR = THREE.ClampToEdgeWrapping; texture.needsUpdate = true;
+      fields.set(f.path, texture);
+      sync();
+    }));
+    return null;
+  }
+  const pelvisOf = (body: THREE.SkinnedMesh, name: string) => body.skeleton?.bones.find((b) => b.name === name) ?? null;
+  /**
+   * HER POINTS' SLIP, kept up to date while a designed garment is drawn from its field (`skinSlip.ts`): her shapes'
+   * slip worked out again when her rest shape changes (at most once every `SLIP_SHAPE_MS` while a control is dragged,
+   * and once more when it stops), her morphs' added by their weights. Nothing is done with no designed garment on.
+   */
+  function laySlip(): void {
+    const body = hooks.body();
+    if (!body) return;
+    const material = Array.isArray(body.material) ? body.material[0] : body.material;
+    if (!fabricFieldWorn(material)) return;
+    let worn: DesignedField | null = null;
+    for (let i = 0; i < PAINT_LAYER_COUNT && !worn; i++) { const t = templates[i], d = t ? designedField(t.params, body.geometry.getAttribute('position').count) : null; if (d && fields.has(d.field.path)) worn = d.field; }
+    if (!worn) return;
+    // her skin as seen from her pelvis, for the garment's strap (her bones are where this frame has put them)
+    const pelvis = worn.strap ? pelvisOf(body, worn.strap.bone) : null;
+    if (pelvis) setFabricPelvis(body, material, pelvis);
+    const g = body.geometry as THREE.BufferGeometry, target = fabricSlip(body, hooks.rest(body));
+    if (!slip || slip.mesh !== body || slip.path !== worn.path) {
+      const rest = g.getAttribute('fabricRest') as THREE.BufferAttribute, pos = g.getAttribute('position') as THREE.BufferAttribute, index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array;
+      // (her rest shape as plain numbers in her mesh's own units, as her shape fields leave it: a body without them is left alone)
+      if (!index || !(pos.array instanceof Float32Array) || pos.normalized) return;
+      const { lo, hi } = worn, pad = SLIP_MARGIN_M * worn.unitsPerMetre, morphs = g.morphTargetsRelative ? g.morphAttributes.position ?? [] : [];
+      const solver = makeSkinSlip(rest.array, index, (x, y, z) => x >= lo[0] - pad && x <= hi[0] + pad && y >= lo[1] - pad && y <= hi[1] + pad && z >= lo[2] - pad && z <= hi[2] + pad);
+      // (`shaped.version` is stepped when her shapes' slip is to be worked out again: the driver reads it)
+      const shaped = { version: 0 };
+      // (her belly's push for her baby is laid on her shapes point by point in the shader: softBody.ts)
+      const pushed = () => { const a = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined; return a && a.array instanceof Float32Array && a.count === pos.count ? a : null; };
+      const driver = slipDriver(solver, () => ({
+        rest: rest.array, shaped: pos.array, pushed: pushed()?.array ?? null, shapedVersion: shaped.version, weights: body.morphTargetInfluences ?? [],
+        morph: (k, v, out) => { const a = morphs[k]; if (a) { out[0] = a.getX(v); out[1] = a.getY(v); out[2] = a.getZ(v); } else { out[0] = 0; out[1] = 0; out[2] = 0; } },
+      }));
+      slip = { mesh: body, path: worn.path, driver, points: solver.points, vertices: solver.vertices, shaped, shapedSeen: -1, solvedAt: -Infinity, pending: true };
+    }
+    const pos = g.getAttribute('position') as THREE.BufferAttribute, now = performance.now();
+    // (her shapes or her belly's push changed: both are written whole, and each write steps its version)
+    const seen = pos.version * 65536 + ((g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined)?.version ?? 0);
+    if (seen !== slip.shapedSeen) { slip.shapedSeen = seen; slip.pending = true; }
+    if (slip.pending && now - slip.solvedAt >= SLIP_SHAPE_MS) { slip.shaped.version++; slip.pending = false; slip.solvedAt = now; }
+    if (slip.driver.update(target.array as Float32Array)) target.needsUpdate = true;
+  }
   const cached = (pick: FabricPick | null, which: 'plain' | 'trim') => (pick ? swatches.get(swatchKey(pick, which)) ?? null : null);
   function layerFor(mesh: THREE.Mesh, c: FabricChoice, pick: FabricPick | null, which: 'plain' | 'trim') {
     const texture = cached(pick, which);
@@ -854,8 +954,9 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         // a layer shows once something is painted on it and while the editor is not hiding it: an empty or hidden
         // layer leaves her approved skin shader alone (its paint is kept)
         const l = p && p.has(i) && layerShown(i) ? layerFor(body, c, c.fabric, 'plain') : null;
-        setFabricLayer(body, material, i, l, { layers: PAINT_LAYER_COUNT, masked: true, rest: hooks.rest(body) });
+        setFabricLayer(body, material, i, l ? { ...l, field: fieldFor(i, body) } : null, { layers: PAINT_LAYER_COUNT, masked: true, rest: hooks.rest(body) });
       }
+      laySlip();
       dressBridge(body, p);
       dressDrape(body, p);
     }
@@ -1088,7 +1189,15 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     wearOutfit,
     clearAll,
     navelFlatten,
-    frame() { bridge?.update(); drape?.update(); layHang(); layUnder(); },
+    frame() { bridge?.update(); drape?.update(); layHang(); layUnder(); laySlip(); },
+    slipState() {
+      const body = hooks.body();
+      if (!slip || slip.mesh !== body) return null;
+      const a = (body.geometry as THREE.BufferGeometry).getAttribute('fabricSlip') as THREE.BufferAttribute | undefined;
+      let longest = 0;
+      if (a) for (const v of slip.vertices) longest = Math.max(longest, Math.hypot(a.getX(v), a.getY(v), a.getZ(v)));
+      return { points: slip.points, vertices: slip.vertices.length, solved: slip.driver.stats.solved, morphs: slip.driver.stats.morphs.slice(), longest };
+    },
     reshaped() { bridge?.reshape(); drape?.reshape(); },
     setShirtLength,
     shirtLength: () => shirtLength,
@@ -1119,6 +1228,9 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       disposed = true;
       for (const t of swatches.values()) t.dispose();
       swatches.clear();
+      for (const t of fields.values()) t.dispose();
+      fields.clear();
+      slip = null;
     },
   };
 }

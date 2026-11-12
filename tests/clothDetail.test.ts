@@ -534,7 +534,7 @@ describe('the patch', () => {
       for (const token of ['#include <project_vertex>', '#include <begin_vertex>', '#include <beginnormal_vertex>']) expect(count(shader.vertexShader, token), token).toBe(1);
       for (const token of ['#include <color_fragment>', '#include <normal_fragment_maps>', '#include <map_fragment>', '#include <roughnessmap_fragment>', '#include <metalnessmap_fragment>']) expect(count(shader.fragmentShader, token), token).toBe(1);
       const key = material.customProgramCacheKey();
-      expect(key).toContain('|fabric-1-v11');
+      expect(key).toContain('|fabric-1-v14');
       expect(key).toContain('|cloth-detail-v4');
     });
   }

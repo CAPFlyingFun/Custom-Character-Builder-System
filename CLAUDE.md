@@ -48,8 +48,24 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   color and save"; her face and the rest: "I would keep the details I have"). EVEN (`skinChoices.ts`, baked by
   `scripts/evenSkin.mjs`) is the skin she wears unless another is chosen; what is drawn flat beside her skin (her
   opening's doors) takes that colour. Looks are painted over it (PAINT SKIN), never baked light.
+- **A garment's cut is his drawing, and is drawn with her legs apart** (Joshua, 2026-11-12: "I draw how I want it
+  to look like and your shape should be close"; "I think we need to design the bottom with the legs apart and when
+  they close, should hopefully look right. We are doing it backwards"). He draws on her own DRAWING SHEETS
+  (`scripts/probe-body-sheets.mjs`: "so that way I can draw directly on her model so the proportions match exactly").
+  His reference pictures and marked-up sheets never go in the repo.
 - Every number is labelled MEASURED, BIOLOGICAL SHAPE or GAME TUNING.
 - No unrelated refactoring. Measure rather than assume: render and look.
+
+## Garments painted on her skin
+
+- A designed garment is an OUTLINE laid on her rest skin (`scripts/designAthleticBottom.mjs`) and kept as a FIELD
+  in space round her (`public/models/paint/*-field.png`), looked up for each pixel at its own place on her rest skin
+  (`fabricMaterial.ts`). Not a value per vertex and not a mask in her UV layout: both drew jagged in the room
+  (MEASURED 2026-11-12 -- her shapes slide her skin's points along her skin by up to 15 mm beside an outline).
+- That slide is taken off before the look-up: her points' SLIP (`skinSlip.ts`), worked out over ALL of her skin's
+  triangles, the area under her opening's patch among them (`fabricPanel.ts`'s `skinTriangles`).
+- Between her legs a garment's strap hangs on her pelvis, not on her skin (`STRAP` in the design script).
+- A drawing sheet's marks are carried back to her skin by its corner squares and `sheets.json` (the sheets' script).
 
 ## Verification
 

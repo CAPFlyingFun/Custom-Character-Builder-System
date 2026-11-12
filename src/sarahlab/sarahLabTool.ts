@@ -480,9 +480,12 @@ export type RecoveredPart = 'leggings' | 'leggings-low' | 'bottom' | 'relaxed-hi
  * pubic bone" -- and is worn again only with this off.
  */
 /**
- * WHICH BIKINI BOTTOM SHE WEARS: 'paint', its front, gusset and back painted on her to the modelled brief's own outline,
- * its strings, knots and bows the modelled ones, held on her 3 mm off her skin (Joshua, 2026-11-12: "Do the painted main
- * bottoms, but keep the cords": the cloth's crumpling where her birth shaping squeezes her could not happen to paint);
+ * WHICH BIKINI BOTTOM SHE WEARS: 'paint', painted on her -- since 2026-11-12 the athletic bottom designed on her skin from
+ * Joshua's reference, red with black edging and no strings (`athleticBottomStencil.ts`; he: "map out the exact outline
+ * (edging) where it should sit on her first, then basically fill in the polygon"; "remove the side string straps... more
+ * of an athletic style"), before it her Meshy brief's outline with its modelled cords (Joshua, 2026-11-12: "Do the
+ * painted main bottoms, but keep the cords": the cloth's crumpling where her birth shaping squeezes her could not happen
+ * to paint);
  * 'cloth', the modelled brief in her body file as it was designed, moved by the room's
  * cloth (Joshua, 2026-11-11: "MESHY model bottom with stretchy as a cloth sim, but not alter the shape or design of it…";
  * `clothBrief.ts`); 'skin', the one made from her skin to the brief's outline (above; kept for any garment made that
@@ -554,6 +557,8 @@ export function uncoveredSkinIndices(indices: ArrayLike<number>, coverage: Array
 /** One layer of a painted outfit: a coverage template (`paintTemplates.ts`) in a fabric swatch (`fabricLibrary.ts`). */
 /** Sarah's red and her leggings' charcoal, from Joshua's reference picture of her (2026-10-23). */
 export const SARAH_RED = '#be0f2a', SARAH_LEGGINGS = '#3a3b52';
+/** GAME TUNING round MEASURED: the athletic bikini bottom's red and its edging's black, from Joshua's reference (2026-11-12). */
+export const BIKINI_RED = '#c42a3c', BIKINI_EDGING = '#1c1416';
 /** One layer of a built-in outfit: a template and its fabric, a pack colour or a custom one (`tint`, fabricTint.ts). */
 export interface PaintedLayer { readonly template: string; readonly fabric: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string } }
 /** A modelled garment's fabric in a built-in outfit, as the editor's FABRIC would set it. */
@@ -567,8 +572,9 @@ export interface BuiltInOutfit { readonly name: string; readonly garments: reado
 export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'tee + leggings', garments: ['shirtAthletic', 'leggings'] },
   { name: 'top + low leggings', garments: ['shirtAthletic', 'leggingsLow'] },
-  // (its bottom painted, in the top's own green: the bikini material's colour, MEASURED from her file, in sRGB)
-  { name: 'bikini', garments: ['bikini'], ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { paint: [{ template: 'bikiniBottom', fabric: { family: 'jersey' as const, colour: 0, tint: '#658b61' } }] } : {}) },
+  // (its bottom painted: the athletic bottom's black edging under its red, his reference's colours -- MEASURED off it, its
+  // lit red about (220, 47, 64) and its edging about (23, 11, 12) -- while the top stays green until the bottom is settled)
+  { name: 'bikini', garments: ['bikini'], ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { paint: [{ template: 'athleticBottomEdge', fabric: { family: 'jersey' as const, colour: 0, tint: BIKINI_EDGING } }, { template: 'athleticBottom', fabric: { family: 'jersey' as const, colour: 0, tint: BIKINI_RED } }] } : {}) },
   { name: 'swimsuit', garments: ['swimsuit'] },
   { name: 'none', garments: [] },
   { name: 'spandex + high leggings', garments: ['shirtSpandexHigh', 'leggings'] },

@@ -416,6 +416,12 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // her skin (fabricMaterial.ts: fabricPaint, fabricRest, ...); the area carries the paint as her skin does, read
   // through her texture's own copies of each point, and read again whenever one of them changes.
   const OWN = new Set(['position', 'normal', 'uv', 'skinIndex', 'skinWeight', 'color', JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE]);
+  // WHERE A POINT IS, and its slip (skinSlip.ts), are read where the area's point LIES in her triangle (`bake.src`), as its
+  // place is -- not as a texture coordinate is, through her texture's own copy of the triangle, which may reach past the
+  // triangle to keep a piece of her texture whole. MEASURED 2026-11-12 (standing, the default look): read through the
+  // texture's copy, 31 of the area's 6,191 points had a rest place more than 1 mm off (10.4 mm the worst), and a
+  // designed garment's field is looked up at that place.
+  const IN_HER_TRIANGLE = new Set(['fabricRest', 'fabricSlip']);
   const extras: { name: string; from: THREE.BufferAttribute | THREE.InterleavedBufferAttribute; version: number }[] = [];
   const readExtras = (): boolean => {
     let changed = false;
@@ -425,7 +431,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       const version = (a as THREE.BufferAttribute).version ?? 0;
       if (e && e.from === a && e.version === version) continue;
       const out = new Float32Array(P * a.itemSize);
-      sampleInto(out, floatsOf(a), a.itemSize, bake.uvSrc, bake.uvBary, P);
+      if (IN_HER_TRIANGLE.has(name)) sampleInto(out, floatsOf(a), a.itemSize, bake.src, bake.bary, P); else sampleInto(out, floatsOf(a), a.itemSize, bake.uvSrc, bake.uvBary, P);
       geom.setAttribute(name, new THREE.BufferAttribute(out, a.itemSize));
       if (!e) { e = { name, from: a, version }; extras.push(e); } else { e.from = a; e.version = version; }
       changed = true;

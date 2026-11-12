@@ -16,6 +16,7 @@
 import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
+import { ATHLETIC_BOTTOM, athleticBottomField } from './athleticBottomStencil';
 
 export interface CoverageParams {
   /**
@@ -77,9 +78,16 @@ export interface CoverageParams {
   /**
    * A cut traced from a modelled garment instead of the lines above: 'bikiniBottom', her Meshy bikini bottom's front,
    * gusset and back, painted to the brief's own outline (Joshua, 2026-11-12: "Do the painted main bottoms, but keep the
-   * cords": `bikiniBottomStencil.ts`; its strings, knots and bows stay modelled).
+   * cords": `bikiniBottomStencil.ts`; its strings, knots and bows stay modelled). Or one DESIGNED on her skin:
+   * 'athleticBottom', the athletic bikini bottom drawn from his reference (`athleticBottomStencil.ts`), whose crisp
+   * lines come from its field in space round her (`designedField` below).
    */
-  readonly outline?: 'bikiniBottom';
+  readonly outline?: 'bikiniBottom' | 'athleticBottom';
+  /**
+   * Of a designed outline, which of its lines this layer ends at: 'edge', its outline (its edging's outer side), or
+   * 'fill', its edging's inner side -- an edging is the edge layer under the fill layer, in its own colour.
+   */
+  readonly outlineLine?: 'edge' | 'fill';
   readonly legCut: { readonly crotch: number; readonly side: number; readonly sideBack: number; readonly gusset: number; readonly gussetFront: number; readonly traced?: boolean; readonly backSpan: number } | null;
   /**
    * A shirt's LENGTH (Joshua, 2026-10-22: "make the shirt length adjustable from knee-length up to just above the
@@ -372,6 +380,9 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['swimsuit', 'One-piece swimsuit', 'Other', { ...upper(-1, -1, LINES.neckScoop, -1, { strapIn: 0.98, strap: 0.47, neckBack: 0.86, armhole: LINES.armhole }), ...FULL, legEnd: 0.4, legCut: ONE_PIECE_CUT }, 'swimsuit'],
   // her Meshy bikini bottom, painted to the modelled brief's own outline (`outline`)
   ['bikiniBottom', 'Bikini bottom', 'Other', lower(NO_RISE, 0, { outline: 'bikiniBottom' })],
+  // her athletic bikini bottom, designed on her skin from Joshua's reference: its fill, and its edging under it
+  ['athleticBottom', 'Athletic bikini bottom', 'Shorts', lower(NO_RISE, 0, { outline: 'athleticBottom', outlineLine: 'fill' })],
+  ['athleticBottomEdge', 'Athletic bikini bottom edging', 'Shorts', lower(NO_RISE, 0, { outline: 'athleticBottom', outlineLine: 'edge' })],
   ['stockings', 'Thigh-high stockings', 'Other', lower(NO_RISE, 1.0, { legStart: 0.22, feet: true })],
   ['socksKnee', 'Knee-high socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.58, feet: true })],
   ['socks', 'Crew socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.86, feet: true })],
@@ -526,6 +537,92 @@ export function insideCorner(u: number, v: number, r: number): number {
   return r - Math.hypot(Math.max(r - u, 0), Math.max(r - v, 0));
 }
 
+/**
+ * A designed garment's field, as the room lays it: its picture (`path`), its block (`dims` cells, slices `cols` across
+ * the picture), and what turns a place on her rest skin in her mesh's own units into the block's 0..1 (`scale`, `offset`).
+ */
+export interface DesignedField {
+  readonly path: string;
+  readonly dims: readonly [number, number, number];
+  readonly cols: number;
+  readonly scale: readonly [number, number, number];
+  readonly offset: readonly [number, number, number];
+  /** the block's corners in her mesh's own units (her points in and round it are the ones whose slip is kept, `skinSlip.ts`), and how many of those units make a metre */
+  readonly lo: readonly [number, number, number];
+  readonly hi: readonly [number, number, number];
+  readonly unitsPerMetre: number;
+  /**
+   * The garment's strap between her legs, which hangs on her pelvis and does not ride her skin (`athleticBottomStencil.ts`
+   * says why): its V and the part of her it holds, in her mesh's own units (slopes are plain numbers), and `perUnit`,
+   * what one unit of distance is on the field's 0..1 scale. Null for a garment with none.
+   */
+  readonly strap: StrapHold | null;
+}
+export interface StrapHold {
+  /** her pelvis bone's name */
+  readonly bone: string;
+  /** her middle, the strap's half width under her crotch, and over what distance along her (z) its front and back come in */
+  readonly mid: number; readonly half: number; readonly blend: number;
+  /** in front of `z` (behind it, for the back) the hold opens upward from the height `fromY` by `slope` */
+  readonly front: { readonly z: number; readonly fromY: number; readonly slope: number };
+  readonly back: { readonly z: number; readonly fromY: number; readonly slope: number };
+  readonly zoneA: readonly [number, number, number]; readonly zoneB: readonly [number, number, number];
+  readonly zoneInner: number; readonly zoneOuter: number;
+  readonly perUnit: number;
+}
+
+/**
+ * A field's value (0..1, one half on the outline) at a pixel of her skin, with the strap's hold taken: `at` is the
+ * pixel's own place on her rest skin (slip-free), `hung` where her bones have carried it, seen from her pelvis as it
+ * stood at rest (both her mesh's own units). Within the strap's part of her the garment is also held inside its V
+ * about her middle; elsewhere the value is untouched. `fabricMaterial.ts`'s shader does exactly this for each pixel:
+ * this is the same rule in the open, for tests and probes.
+ */
+export function strapHeld(value: number, at: readonly [number, number, number], hung: readonly [number, number, number], s: StrapHold): number {
+  const step = (lo: number, hi: number, x: number) => { const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo))); return t * t * (3 - 2 * t); };
+  const ab = [s.zoneA[0] - s.zoneB[0], s.zoneA[1] - s.zoneB[1], s.zoneA[2] - s.zoneB[2]];
+  const t = Math.min(1, Math.max(0, ((at[0] - s.zoneB[0]) * ab[0] + (at[1] - s.zoneB[1]) * ab[1] + (at[2] - s.zoneB[2]) * ab[2]) / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2])));
+  const d = Math.hypot(at[0] - s.zoneB[0] - ab[0] * t, at[1] - s.zoneB[1] - ab[1] * t, at[2] - s.zoneB[2] - ab[2] * t);
+  const free = 1 - step(s.zoneInner, s.zoneOuter, d);
+  const front = step(s.front.z - s.blend, s.front.z + s.blend, at[2]), back = 1 - step(s.back.z - s.blend, s.back.z + s.blend, at[2]);
+  const half = s.half + front * s.front.slope * Math.max(hung[1] - s.front.fromY, 0) + back * s.back.slope * Math.max(hung[1] - s.back.fromY, 0);
+  const side = 0.5 + (half - Math.abs(hung[0] - s.mid)) * s.perUnit;
+  return value + (Math.min(value, side) - value) * free;
+}
+
+/**
+ * A designed garment's FIELD (`athleticBottomStencil.ts`: the garment as a block of cells in space round her hips, 0..1
+ * for -range..+range metres from its outline, one half on it) and where this layer's line is on that scale -- its
+ * edging's outer side or inner side. Null for any other template, or for a body it was not designed on (`vertexCount`).
+ */
+export function designedField(p: Pick<CoverageParams, 'outline' | 'outlineLine'>, vertexCount: number): { readonly field: DesignedField; readonly level: number } | null {
+  if (p.outline !== 'athleticBottom' || vertexCount !== ATHLETIC_BOTTOM.vertices) return null;
+  const f = ATHLETIC_BOTTOM.field, inset = p.outlineLine === 'edge' ? 0 : ATHLETIC_BOTTOM.band;
+  return { field: athleticField ?? (athleticField = layField(f, ATHLETIC_BOTTOM.strap)), level: 0.5 + inset / (2 * f.range) };
+}
+let athleticField: DesignedField | null = null;
+/** A generated field's numbers (metres, her rest frame) as the room uses them (her mesh's own units, and 0..1 of its block). */
+function layField(f: { readonly path: string; readonly dims: readonly [number, number, number]; readonly lo: readonly [number, number, number]; readonly voxel: number; readonly range: number; readonly cols: number; readonly toMetres: { readonly scale: number; readonly offset: readonly [number, number, number] } }, strap: (Omit<StrapHold, 'perUnit'>) | null): DesignedField {
+  const units = (p: readonly [number, number, number]) => [0, 1, 2].map((i) => (p[i] - f.toMetres.offset[i]) / f.toMetres.scale) as unknown as [number, number, number], s = f.toMetres.scale;
+  const k = [0, 1, 2] as const, size = k.map((i) => f.dims[i] * f.voxel);
+  // metres = units * s + o, and 0..1 = (metres - lo) / size
+  return {
+    path: f.path, dims: f.dims, cols: f.cols,
+    scale: k.map((i) => f.toMetres.scale / size[i]) as unknown as [number, number, number],
+    offset: k.map((i) => (f.toMetres.offset[i] - f.lo[i]) / size[i]) as unknown as [number, number, number],
+    lo: k.map((i) => (f.lo[i] - f.toMetres.offset[i]) / f.toMetres.scale) as unknown as [number, number, number],
+    hi: k.map((i) => (f.lo[i] + size[i] - f.toMetres.offset[i]) / f.toMetres.scale) as unknown as [number, number, number],
+    unitsPerMetre: 1 / f.toMetres.scale,
+    strap: strap && {
+      bone: strap.bone, mid: (strap.mid - f.toMetres.offset[0]) / s, half: strap.half / s, blend: strap.blend / s,
+      front: { z: (strap.front.z - f.toMetres.offset[2]) / s, fromY: (strap.front.fromY - f.toMetres.offset[1]) / s, slope: strap.front.slope },
+      back: { z: (strap.back.z - f.toMetres.offset[2]) / s, fromY: (strap.back.fromY - f.toMetres.offset[1]) / s, slope: strap.back.slope },
+      zoneA: units(strap.zoneA), zoneB: units(strap.zoneB), zoneInner: strap.zoneInner / s, zoneOuter: strap.zoneOuter / s,
+      perUnit: s / (2 * f.range),
+    },
+  };
+}
+
 /** The coverage of `p` at every vertex of the map, 0 to 1. */
 export function coverage(map: BodyMap, p: CoverageParams): Float32Array {
   const n = map.region.length, out = new Float32Array(n);
@@ -534,6 +631,14 @@ export function coverage(map: BodyMap, p: CoverageParams): Float32Array {
     // crisp edge falls on the outline itself (see EDGE); none where her body is not the one it was traced on
     const field = bikiniBottomField(n);
     if (field) for (let v = 0; v < n; v++) out[v] = Math.max(0, Math.min(1, 0.5 + field[v] / (2 * OUTLINE_EDGE_M)));
+    return out;
+  }
+  if (p.outline === 'athleticBottom') {
+    // its line's own values (chosen so the straight blend across her triangles crosses where the true line does), over a
+    // ramp as wide as they are kept: her triangles over her hips reach 37 mm, and a value cut short by a narrower ramp
+    // would move the line across them
+    const field = athleticBottomField(p.outlineLine ?? 'fill', n), ramp = ATHLETIC_BOTTOM.far;
+    if (field) for (let v = 0; v < n; v++) out[v] = Math.max(0, Math.min(1, 0.5 + field[v] / (2 * ramp)));
     return out;
   }
   const stencil = p.legCut?.traced ? leotardFrontStencil(n) : null;
