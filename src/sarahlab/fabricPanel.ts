@@ -45,6 +45,7 @@ import { PUSH_ATTRIBUTE } from './softBody';
 import type { DetailKeep } from './bodyDetail';
 import { DEFAULT_LAYER_DETAIL, DEFAULT_VULVA_KEEP, resolveDetail, resolveVulva, type LayerDetail, type ResolvedDetail } from './detailMaterials';
 import { BRUSH_RANGE_CM, BodyPaint, PAINT_LAYER_COUNT, packLayer } from './bodyPaint';
+import { LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, type LineMode } from './levelLine';
 import { BODY_REGIONS, REGION_GROUPS, groupOf, groupRegions, type BodyMap, type RegionSide } from './bodyRegions';
 import { CleavageBridge } from './cleavageBridge';
 import { TINT_BASE_COLOUR, readTint, tintLabel, tintPixels } from './fabricTint';
@@ -89,6 +90,8 @@ export const FABRIC_ACTION = Object.freeze({
   /** TOP + BOTTOM MATCH: a set's two halves kept in one fabric. */
   setMatch: 'sarahlab:fabric:set-match',
   tool: (t: PaintTool) => `sarahlab:fabric:tool:${t}`,
+  /** a stroke held to a level: FREE, BODY LEVEL, ROOM LEVEL (`levelLine.ts`) */
+  line: 'sarahlab:fabric:line',
   region: (id: string) => `sarahlab:fabric:region:${id}`,
   side: (s: RegionSide) => `sarahlab:fabric:side:${s}`,
   showRegions: 'sarahlab:fabric:show-regions',
@@ -291,6 +294,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   let target: Target = { kind: 'layer', index: 0 };
   let space: EditorSpace = 'design', paintView: PaintView = 'layer', isolated = false, active = true;
   let tool: PaintTool = 'brush', brushCm: number = BRUSH_RANGE_CM.initial;
+  /** The brush and the eraser held to a level, or going as the finger goes (`levelLine.ts`; Joshua, 2026-11-12). */
+  let line: LineMode = 'free';
   let painting = false, disposed = false, stroking = false, side: RegionSide = 'both', showingRegions = false;
   let paint: BodyPaint | null = null;
   let override: DetailOverride = AUTO_DETAIL;
@@ -441,6 +446,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     ['orbit', button('TURN HER', FABRIC_ACTION.tool('orbit'), () => { tool = 'orbit'; draw(); })],
   ]);
   tools.append(...toolButtons.values());
+  const lineButton = button(lineModeLine(line), FABRIC_ACTION.line, () => { line = nextLineMode(line); draw(); });
+  const lineRow = row(); lineRow.append(lineButton);
   const brush = slider(FABRIC_FIELD.brush, BRUSH_RANGE_CM, (v) => { brushCm = v; draw(); });
   const edits = row();
   const undoButton = button('UNDO', FABRIC_ACTION.undo, () => { const l = bodyPaint()?.undo() ?? -1; if (l >= 0) { templates[l] = null; sync(); refreshTargets(); touched(); } });
@@ -474,7 +481,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   const regionsHead = el('summary', 'cursor:pointer;font-size:11px;opacity:.8;padding:4px 0'); regionsHead.textContent = 'REGIONS · tap to fill or clear a whole region';
   const regionsShow = row(); regionsShow.append(showRegions);
   regionsBox.append(regionsHead, sides, regions, regionsShow);
-  paintBox.append(heading('TOOL'), tools, brush.wrap, edits, regionsBox);
+  paintBox.append(heading('TOOL'), tools, lineRow, brush.wrap, edits, regionsBox);
 
   // ---- SAVE (the room's)
   const saveBox = el('div', 'display:flex;flex-direction:column;gap:8px');
@@ -833,6 +840,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     press(showRegions, showingRegions);
     brush.label.textContent = `BRUSH · ${brushCm.toFixed(1)} cm`; brush.input.value = String(brushCm);
     brush.wrap.style.display = tool === 'orbit' || tool === 'region' ? 'none' : 'flex';
+    lineButton.textContent = lineModeLine(line); lineButton.title = lineModeNote(line); press(lineButton, line !== 'free');
+    lineRow.style.display = !LEVEL_LINE_OFFERED || tool === 'orbit' || tool === 'region' ? 'none' : 'flex';
     // the summary names what is being edited, so a folded drawer still says it
     const piece = pieces().find((p) => p.id === selectedId);
     const name = fabricName(c);
@@ -1161,7 +1170,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const p = paint, i = layer();
     if (!stroking || !p || i < 0) return;
     const units = hooks.unitsPerCm(p.mesh);
-    if (p.stroke(x, y, i, brushCm * units, tool === 'erase') && tool === 'brush') ensurePaintFabric();
+    if (p.stroke(x, y, i, brushCm * units, tool === 'erase', undefined, { mode: LEVEL_LINE_OFFERED ? line : 'free', unitsPerCm: units }) && tool === 'brush') ensurePaintFabric();
     else sync();
   }
   let lastFlatten = 0;

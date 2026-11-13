@@ -125,6 +125,17 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (`scripts/sarahV2Recovery/body-slim.mjs`) or rewrites her armpits' weights, lay it again; to lay it with other numbers,
   start from the file as it was before (git: 5b07495).
 
+## A stroke held to a level
+
+- The brushes can hold a stroke to a level (Joshua, 2026-11-12: "an option when painting to draw straight lines probably
+  both either room level or body level"): LINE steps FREE, BODY LEVEL, ROOM LEVEL, in PAINT SKIN's brush and in the outfit
+  editor's BODY PAINT (`levelLine.ts`, called by `skinPaint.ts` and `bodyPaint.ts`). BODY LEVEL is her own height in her
+  rest shape, so the line runs straight round her whatever pose she is painted in; ROOM LEVEL is her height in the room as
+  she is posed, level with the floor. A dab lands ON the level -- where it crosses her triangles -- at its point nearest the
+  finger on screen, not at the vertex under the finger.
+- A stroke that starts within a finger's width of the last line carries it on at exactly its height (so a strap can be
+  painted from several sides and meet itself); one that starts anywhere else starts a line of its own.
+
 ## Verification
 
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local

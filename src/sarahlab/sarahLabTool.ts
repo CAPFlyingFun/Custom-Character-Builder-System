@@ -229,6 +229,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   skinColour: 'sarahlab:skin-colour:',
   skinHard: 'sarahlab:skin-hard',
   skinErase: 'sarahlab:skin-erase',
+  /** a stroke held to a level: FREE, BODY LEVEL, ROOM LEVEL (`levelLine.ts`) */
+  skinLine: 'sarahlab:skin-line',
   skinUndo: 'sarahlab:skin-undo',
   skinRedo: 'sarahlab:skin-redo',
   skinClear: 'sarahlab:skin-clear',
