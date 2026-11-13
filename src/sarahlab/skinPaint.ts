@@ -47,7 +47,8 @@
  * does, and sends the GPU only the rows a dab changed.
  */
 import * as THREE from 'three'; // the painter at the bottom only: the core above it uses nothing from three or the DOM
-import { LINE_JOIN_M, LINE_REACH_M, LevelMesh, LevelStroke, type LevelHost, type LevelView, type LineMode } from './levelLine';
+import { LINE_JOIN_M, LINE_REACH_M, LevelMesh, LevelStroke, MOTION_SHAPES, standingShape, type LevelHost, type LevelView, type LineMode, type StandingSource } from './levelLine';
+import { PUSH_ATTRIBUTE } from './softBody';
 
 // ---------------------------------------------------------------------------------------------------------------------
 // THE CORE
@@ -684,19 +685,60 @@ function readPixels(source: CanvasImageSource, width: number, height: number): U
   return ctx.getImageData(0, 0, width, height).data;
 }
 
+/** What of her shape is her pose's now (`StandingSource.posed`): the room tells a painter, which cannot know. */
+export type PosedShapes = StandingSource['posed'];
+/**
+ * What her standing shape is made of, read off her mesh (`levelLine.ts` `standingShape`), with a key that changes when
+ * any of it does -- so the shape is worked out again only then. Null for a mesh whose points are not plain numbers.
+ */
+export function standingSourceOf(mesh: THREE.Mesh, posed: PosedShapes): (StandingSource & { readonly key: string }) | null {
+  const g = mesh.geometry as THREE.BufferGeometry, pos = g.getAttribute('position') as THREE.BufferAttribute | undefined;
+  if (!pos || !(pos.array instanceof Float32Array) || pos.normalized || pos.itemSize !== 3 || (pos as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) return null;
+  const push = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined;
+  const pushed = push && push.array instanceof Float32Array && push.count === pos.count && push.itemSize === 3 ? push : null;
+  // (her morphs as moves from her shape: a file that holds them whole instead has none to add here)
+  const targets = g.morphTargetsRelative ? g.morphAttributes.position ?? [] : [], weights = mesh.morphTargetInfluences ?? [];
+  const names: string[] = [];
+  for (const [name, k] of Object.entries(mesh.morphTargetDictionary ?? {})) names[k] = name;
+  const morphs = targets.map((a, k) => ({
+    name: names[k] ?? '', weight: weights[k] ?? 0,
+    move: (v: number, out: number[]) => { out[0] = a.getX(v); out[1] = a.getY(v); out[2] = a.getZ(v); },
+  }));
+  const key = `${pos.version} ${pushed ? pushed.version : '-'} ${morphs.map((m) => (MOTION_SHAPES.has(m.name) ? 0 : m.weight)).join(',')} ${posed.map((f) => f.weight).join(',')}`;
+  return { shaped: pos.array, morphs, push: pushed ? pushed.array as Float32Array : null, posed, key };
+}
+
+/**
+ * THE SURFACE A HELD STROKE IS LAID ON (`levelLine.ts` says why it is not her body file's rest shape): her triangles
+ * with her points where that surface has them -- her standing shape (BODY LEVEL) or where she is in the room (ROOM
+ * LEVEL), both in her mesh's own units -- its grid, each point's height on it and the way it faces there.
+ */
+interface LevelSpace { readonly key: string; readonly mesh: SkinMesh; readonly grid: TriangleGrid; readonly height: Float32Array; readonly normal: Float32Array }
+
 /** Her skin's colour map as a paintable texture of its own, with the brush, the eraser, CLEAR and UNDO. */
 export class SkinPainter {
   readonly texture: THREE.DataTexture;
   readonly image: SkinImage;
   readonly base: SkinImage;
   private readonly history = new SkinUndo();
-  /** Where each vertex of her posed body is on screen: pixels, depth in view (-1..1), its height in the room and how far from the eye (the room's units). */
-  private screen: { x: Float32Array; y: Float32Array; depth: Float32Array; world: Float32Array; eye: Float32Array; scale: number } | null = null;
-  private surface: { readonly mesh: SkinMesh; readonly grid: TriangleGrid; readonly height: Float32Array } | null = null;
+  /**
+   * Where each vertex of her posed body is on screen: pixels, depth in view (-1..1), how far from the eye (the room's
+   * units, `scale` of them to one of her mesh's), and where it is in the room in her mesh's own units (xyz, `room`).
+   * `stamp` counts the strokes: what was worked out for one stroke's pose is not kept for the next.
+   */
+  private screen: { x: Float32Array; y: Float32Array; depth: Float32Array; eye: Float32Array; room: Float32Array; scale: number; stamp: number } | null = null;
+  private strokes = 0;
+  private surface: { readonly mesh: SkinMesh; readonly grid: TriangleGrid } | null = null;
   /** A stroke held to a level, and the last line's height between strokes (`levelLine.ts`). */
   private readonly level = new LevelStroke();
   /** Her skin's joins, for a held stroke: made at the first one. */
   private joins: LevelMesh | null = null;
+  /** The surface the last held stroke was laid on: kept while it is still hers (`LevelSpace.key`). */
+  private space: LevelSpace | null = null;
+  /** Which surface this stroke's last dab is on (a dab on another is not joined to it). */
+  private laidOn = '';
+  /** What of her shape is her pose's now, for her standing shape: the room's to tell (none, left unset). */
+  posed: (() => PosedShapes) | null = null;
   /** The last dab of this stroke, to join the next one to. */
   private last: { readonly centre: Point; readonly normal: readonly [number, number, number] } | null = null;
   /** This stroke's decal, anchored at its first touch (null until then, and between strokes). */
@@ -762,19 +804,22 @@ export class SkinPainter {
   /** Where every vertex of her POSED body lands on screen now; call as a stroke starts (she may have moved since). */
   beginStroke(camera: THREE.Camera, width: number, height: number): void {
     const g = this.mesh.geometry as THREE.BufferGeometry, n = g.getAttribute('position').count;
-    const x = new Float32Array(n), y = new Float32Array(n), depth = new Float32Array(n), world = new Float32Array(n), eye = new Float32Array(n), v = new THREE.Vector3();
+    const x = new Float32Array(n), y = new Float32Array(n), depth = new Float32Array(n), room = new Float32Array(n * 3), eye = new Float32Array(n), v = new THREE.Vector3();
     this.mesh.updateMatrixWorld(true);
     camera.updateMatrixWorld();
+    const scale = this.mesh.getWorldScale(v).x || 1;
     // (how far a point is from the eye: along the way the camera looks)
     const e = camera.matrixWorldInverse.elements;
     for (let i = 0; i < n; i++) {
       this.mesh.getVertexPosition(i, v).applyMatrix4(this.mesh.matrixWorld);
-      world[i] = v.y; eye[i] = -(e[2] * v.x + e[6] * v.y + e[10] * v.z + e[14]);
+      room[i * 3] = v.x / scale; room[i * 3 + 1] = v.y / scale; room[i * 3 + 2] = v.z / scale;
+      eye[i] = -(e[2] * v.x + e[6] * v.y + e[10] * v.z + e[14]);
       v.project(camera);
       x[i] = (v.x * 0.5 + 0.5) * width; y[i] = (0.5 - v.y * 0.5) * height; depth[i] = v.z;
     }
-    this.screen = { x, y, depth, world, eye, scale: this.mesh.getWorldScale(v).x || 1 };
+    this.screen = { x, y, depth, eye, room, scale, stamp: ++this.strokes };
     this.last = null;
+    this.laidOn = '';
     this.decal = null;
     this.level.begin();
     this.history.begin();
@@ -795,16 +840,16 @@ export class SkinPainter {
   }
 
   /** Her rest surface, its UVs as the texture samples them, and the grid over it: built on the first stroke. */
-  private prepare(): { readonly mesh: SkinMesh; readonly grid: TriangleGrid; readonly height: Float32Array } | null {
+  private prepare(): { readonly mesh: SkinMesh; readonly grid: TriangleGrid } | null {
     if (this.surface) return this.surface;
     const g = this.mesh.geometry as THREE.BufferGeometry, t = this.texture;
     const restAttr = g.getAttribute('fabricRest'), uvAttr = g.getAttribute(t.channel ? `uv${t.channel}` : 'uv');
     if (!restAttr || !uvAttr) return null;
-    const n = Math.min(restAttr.count, uvAttr.count), rest = new Float32Array(n * 3), uv = new Float32Array(n * 2), height = new Float32Array(n);
+    const n = Math.min(restAttr.count, uvAttr.count), rest = new Float32Array(n * 3), uv = new Float32Array(n * 2);
     if (t.matrixAutoUpdate) t.updateMatrix();
     const e = t.matrix.elements; // the map's transform: uv' = M (u, v, 1), as three's shader samples it
     for (let i = 0; i < n; i++) {
-      rest[i * 3] = restAttr.getX(i); rest[i * 3 + 1] = height[i] = restAttr.getY(i); rest[i * 3 + 2] = restAttr.getZ(i);
+      rest[i * 3] = restAttr.getX(i); rest[i * 3 + 1] = restAttr.getY(i); rest[i * 3 + 2] = restAttr.getZ(i);
       const u = uvAttr.getX(i), v = uvAttr.getY(i);
       uv[i * 2] = e[0] * u + e[3] * v + e[6];
       uv[i * 2 + 1] = e[1] * u + e[4] * v + e[7];
@@ -812,32 +857,54 @@ export class SkinPainter {
     // every triangle of her, not only those drawn now (the room may leave covered skin out of the draw)
     const index = (this.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array ?? Uint32Array.from({ length: n }, (_, i) => i);
     const mesh: SkinMesh = { rest, uv, index };
-    this.surface = { mesh, grid: new TriangleGrid(mesh, GRID_CELL_M / this.metresPerUnit), height };
+    this.surface = { mesh, grid: new TriangleGrid(mesh, GRID_CELL_M / this.metresPerUnit) };
     return this.surface;
   }
 
   /**
-   * The places a stroke held to a level dabs for the finger at (px, py): the level's points from where the finger last
-   * was, each on her rest surface. BODY LEVEL is her rest height (the mesh's own units, as the brush's radius); ROOM
-   * LEVEL where she stands in the room now (the room's units, `scale` of them to one of the mesh's).
+   * The surface a stroke held to `mode` is laid on, as she is now: her standing shape, worked out again only when what it
+   * is made of has changed, or her points in the room, as this stroke found her. (A body whose shape cannot be read
+   * keeps BODY LEVEL on her body file's rest shape.)
    */
-  private levelPlaces(px: number, py: number, mode: LineMode, radius: number, surface: { readonly mesh: SkinMesh; readonly grid: TriangleGrid; readonly height: Float32Array }): { centre: Point; normal: readonly [number, number, number] }[] {
+  private levelSpace(mode: LineMode, surface: { readonly mesh: SkinMesh }): LevelSpace | null {
     const s = this.screen;
-    if (!s) return [];
-    const g = this.mesh.geometry as THREE.BufferGeometry, nrm = g.getAttribute('fabricRestNormal') as THREE.BufferAttribute | undefined, rest = surface.mesh.rest;
-    // (her rest normals as plain numbers, three a vertex, where they are held that way)
-    const normal = nrm && nrm.itemSize === 3 && !(nrm as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute ? nrm.array as ArrayLike<number> : null;
-    const room = mode === 'room', units = room ? s.scale : 1, hidden = HIDDEN_BEHIND_M / this.metresPerUnit * s.scale;
-    const view: LevelView = { rest, index: surface.mesh.index, height: room ? s.world : surface.height, x: s.x, y: s.y, eye: s.eye, normal };
-    const joins = this.joins ??= new LevelMesh(rest, surface.mesh.index);
+    if (!s) return null;
+    const count = Math.floor(surface.mesh.rest.length / 3);
+    let key: string, points: ArrayLike<number> | null = null, source: ReturnType<typeof standingSourceOf> = null;
+    if (mode === 'room') { key = `room ${s.stamp}`; points = s.room; }
+    else {
+      source = standingSourceOf(this.mesh, this.posed?.() ?? []);
+      key = source && source.shaped.length >= count * 3 ? `body ${source.key}` : 'rest';
+    }
+    if (this.space?.key === key) return this.space;
+    if (mode !== 'room') points = key === 'rest' || !source ? surface.mesh.rest : standingShape(source);
+    if (!points || points.length < count * 3) return null;
+    const height = new Float32Array(count);
+    for (let i = 0; i < count; i++) height[i] = points[i * 3 + 1];
+    const mesh: SkinMesh = { rest: points, uv: surface.mesh.uv, index: surface.mesh.index };
+    const joins = this.joins ??= new LevelMesh(surface.mesh.rest, surface.mesh.index);
+    this.space = { key, mesh, grid: new TriangleGrid(mesh, GRID_CELL_M / this.metresPerUnit), height, normal: joins.normals(points) };
+    return this.space;
+  }
+
+  /**
+   * The places a stroke held to a level dabs for the finger at (px, py): the level's points from where the finger last
+   * was, each on the stroke's own surface (`space`: her standing shape, or her points in the room), in her mesh's units
+   * as the brush's radius is.
+   */
+  private levelPlaces(px: number, py: number, mode: LineMode, radius: number, space: LevelSpace): { centre: Point; normal: readonly [number, number, number] }[] {
+    const s = this.screen, joins = this.joins;
+    if (!s || !joins) return [];
+    const at = space.mesh.rest, faces = space.normal, hidden = HIDDEN_BEHIND_M / this.metresPerUnit * s.scale;
+    const view: LevelView = { rest: at, index: space.mesh.index, height: space.height, x: s.x, y: s.y, eye: s.eye, normal: faces };
     const host: LevelHost = {
       pick: (x, y) => this.pick(x, y),
-      near: (vertex, reach) => joins.joined(surface.grid.near({ x: rest[vertex * 3], y: rest[vertex * 3 + 1], z: rest[vertex * 3 + 2] }, reach / units + radius), vertex),
-      facing: (vertex) => (nrm ? [nrm.getX(vertex), nrm.getY(vertex), nrm.getZ(vertex)] : null),
+      near: (vertex, reach) => joins.joined(space.grid.near({ x: at[vertex * 3], y: at[vertex * 3 + 1], z: at[vertex * 3 + 2] }, reach + radius), vertex),
+      facing: (vertex) => [faces[vertex * 3], faces[vertex * 3 + 1], faces[vertex * 3 + 2]],
       // (seen: nothing of her drawn at that place is much nearer the eye)
       visible: (x, y, eye) => { const front = this.pick(x, y); return front < 0 || eye <= s.eye[front] + hidden; },
-      least: 2 * radius * units,
-      most: LINE_REACH_M / this.metresPerUnit * units,
+      least: 2 * radius,
+      most: LINE_REACH_M / this.metresPerUnit,
     };
     return this.level.at(mode, view, host, px, py).map((p) => ({ centre: p.centre, normal: p.normal }));
   }
@@ -856,10 +923,16 @@ export class SkinPainter {
     if (!(radius > 0) || !Number.isFinite(radius)) return false;
     const line = settings.line && settings.line !== 'free' ? settings.line : null;
     let places: { centre: Point; normal: readonly [number, number, number] }[];
-    if (line) {
+    // (a held stroke is laid on its own surface -- her standing shape, or her points in the room -- and its dabs choose
+    // their texels there; any other on her body file's rest shape, as ever)
+    const space = line ? this.levelSpace(line, surface) : null;
+    if (line && !space) return false;
+    const on = space ?? surface, onKey = space ? space.key : '';
+    if (this.laidOn !== onKey) { this.last = null; this.laidOn = onKey; }
+    if (line && space) {
       // (nothing to lay while the line has not moved on, or the finger is off her: the last dab is kept, and the next
       // joins it only if it is near, as any two dabs are)
-      places = this.levelPlaces(px, py, line, radius, surface);
+      places = this.levelPlaces(px, py, line, radius, space);
       if (!places.length) return false;
     } else {
       const hit = this.pick(px, py);
@@ -895,11 +968,11 @@ export class SkinPainter {
     let lo = Infinity, hi = -Infinity;
     for (const d of dabs) {
       const dab: SkinDab = { centre: d.centre, radius, colour: settings.colour, strength: settings.strength, hardness: settings.hardness, erase: settings.erase, normal: d.normal, pattern };
-      const triangles = surface.grid.near(d.centre, radius);
-      const rows = dabRows(this.image, surface.mesh, triangles, dab);
+      const triangles = on.grid.near(d.centre, radius);
+      const rows = dabRows(this.image, on.mesh, triangles, dab);
       if (!rows) continue;
       this.history.keep(this.image, rows);
-      const changed = paintDab(this.image, this.base, surface.mesh, triangles, dab);
+      const changed = paintDab(this.image, this.base, on.mesh, triangles, dab);
       if (changed) { lo = Math.min(lo, changed.from); hi = Math.max(hi, changed.to); }
     }
     if (lo > hi) return false;

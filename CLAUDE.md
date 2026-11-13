@@ -129,12 +129,26 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 
 - The brushes can hold a stroke to a level (Joshua, 2026-11-12: "an option when painting to draw straight lines probably
   both either room level or body level"): LINE steps FREE, BODY LEVEL, ROOM LEVEL, in PAINT SKIN's brush and in the outfit
-  editor's BODY PAINT (`levelLine.ts`, called by `skinPaint.ts` and `bodyPaint.ts`). BODY LEVEL is her own height in her
-  rest shape, so the line runs straight round her whatever pose she is painted in; ROOM LEVEL is her height in the room as
-  she is posed, level with the floor. A dab lands ON the level -- where it crosses her triangles -- at its point nearest the
-  finger on screen, not at the vertex under the finger.
+  editor's BODY PAINT (`levelLine.ts`, called by `skinPaint.ts` and `bodyPaint.ts`). BODY LEVEL is her own height as she
+  stands -- on her STANDING SHAPE (`standingShape`: her points as she is built, before her bones pose her: her shape
+  fields, her build's morphs and her belly's push, without her pose's shape fields and her motion's morphs,
+  `MOTION_SHAPES`) -- so the line runs straight round her whatever pose she is painted in; ROOM LEVEL is her height in the
+  room as she is posed, level with the floor. A dab lands ON the level -- where it crosses her triangles -- at its point
+  nearest the finger on screen, not at the vertex under the finger.
+- A held stroke is LAID ON THE SURFACE IT IS LEVEL ON (her standing shape, or her points in the room), not on her body
+  file's rest shape (`fabricRest`) where the brushes otherwise work: the level is found there, and each dab chooses its
+  texels (PAINT SKIN) or her vertices (BODY PAINT) by where they are there. The room does not draw her body file: her
+  shapes carry her points by different amounts from one to the next (`skinSlip.ts`). MEASURED 2026-11-13 on her points
+  read out of the room in her T-pose: her trunk's points within 2 mm of one height in her body file stand over 14.7 mm of
+  the room's height at her under-bust and 25.7 mm across her belly; within 1 mm of one height on her standing shape, over
+  1.9 mm at 0.95 m and at 0.80 m (the band itself is 2 mm), and over 4.4 to 6.1 mm in her STAND pose, which poses her
+  trunk itself: the line is level on HER. The first build held BODY LEVEL to her body file's height: in the room's
+  picture the line's middle ran over 38 pixels of height and its edges were torn; laid on her standing shape, 6 pixels in
+  the same view, its band even.
 - A stroke that starts within a finger's width of the last line carries it on at exactly its height (so a strap can be
   painted from several sides and meet itself); one that starts anywhere else starts a line of its own.
+- After anything changes how the room shapes her before her bones (a new kind of shape field, a morph that is her pose's
+  or her motion's), look at `standingSourceOf` and `MOTION_SHAPES`: her standing shape has to stay what she is standing.
 
 ## Verification
 

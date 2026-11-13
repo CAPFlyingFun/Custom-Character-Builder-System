@@ -701,7 +701,11 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   function bodyPaint(): BodyPaint | null {
     const body = hooks.body();
     if (!body) return null;
-    if (paint?.mesh !== body) paint = new BodyPaint(body);
+    if (paint?.mesh !== body) {
+      paint = new BodyPaint(body);
+      // (what of her shape is her pose's now: a stroke held to BODY LEVEL is level on her standing shape, which is without it)
+      paint.posed = () => { const fields = hooks.rest(body); return (hooks.poseFields?.() ?? []).flatMap((name) => { const f = fields?.fields.get(name), weight = fields?.laid?.get(name) ?? 0; return f && weight ? [{ index: f.index, pos: f.pos, weight }] : []; }); };
+    }
     return paint;
   }
   const garmentName = () => (target.kind === 'garment' ? target.name : '');

@@ -27,8 +27,8 @@ import * as THREE from 'three';
 import { SkinPose } from './skinPose';
 import { bodyDetail } from './bodyDetail';
 import type { BodyMap } from './bodyRegions';
-import { TriangleGrid } from './skinPaint';
-import { LINE_REACH_M, LevelMesh, LevelStroke, type LevelHost, type LevelView, type LineMode } from './levelLine';
+import { TriangleGrid, standingSourceOf, type PosedShapes } from './skinPaint';
+import { LINE_REACH_M, LevelMesh, LevelStroke, standingShape, type LevelHost, type LevelView, type LineMode } from './levelLine';
 
 export const PAINT_ATTRIBUTE = 'fabricPaint';
 /** Layers held per vertex (one vec3 attribute). */
@@ -168,12 +168,26 @@ export class BodyPaint {
     for (const l of layers) c = Math.max(c, this.weights[v * PAINT_LAYER_COUNT + l] ?? 0);
     return c;
   }
-  /** Where each vertex of her posed body is on screen: pixels, depth in view (-1..1), its height in the room and how far from the eye (the room's units). */
-  private screen: { x: Float32Array; y: Float32Array; depth: Float32Array; world: Float32Array; eye: Float32Array; scale: number } | null = null;
+  /**
+   * Where each vertex of her posed body is on screen: pixels, depth in view (-1..1), how far from the eye (the room's
+   * units, `scale` of them to one of her mesh's), and where it is in the room in her mesh's own units (xyz, `room`).
+   * `stamp` counts the strokes: what was worked out for one stroke's pose is not kept for the next.
+   */
+  private screen: { x: Float32Array; y: Float32Array; depth: Float32Array; eye: Float32Array; room: Float32Array; scale: number; stamp: number } | null = null;
+  private strokes = 0;
   /** A stroke held to a level, and the last line's height between strokes (`levelLine.ts`). */
   private readonly level = new LevelStroke();
-  /** Her rest surface for a level's search: her triangles gridded, and each vertex's rest height. Built at the first held stroke. */
-  private surface: { readonly rest: ArrayLike<number>; readonly index: ArrayLike<number>; readonly grid: TriangleGrid; readonly joins: LevelMesh; readonly height: Float32Array } | null = null;
+  /** Her skin's joins, for a held stroke: made at the first one. */
+  private joins: LevelMesh | null = null;
+  /**
+   * THE SURFACE A HELD STROKE IS LAID ON (`levelLine.ts` says why it is not her body file's rest shape): her points where
+   * that surface has them -- her standing shape (BODY LEVEL) or where she is in the room (ROOM LEVEL), both in her mesh's
+   * own units -- her triangles gridded over them, each point's height and the way the surface faces there. Kept while it
+   * is still hers (`key`).
+   */
+  private space: { readonly key: string; readonly points: ArrayLike<number>; readonly index: ArrayLike<number>; readonly grid: TriangleGrid; readonly height: Float32Array; readonly normal: Float32Array } | null = null;
+  /** What of her shape is her pose's now, for her standing shape: the editor's to tell (none, left unset). */
+  posed: (() => PosedShapes) | null = null;
 
   constructor(readonly mesh: THREE.SkinnedMesh) {
     this.pose = new SkinPose(mesh);
@@ -299,19 +313,20 @@ export class BodyPaint {
   /** Where every vertex of her POSED body lands on screen now; call as a stroke starts (she may have moved since). */
   beginStroke(camera: THREE.Camera, width: number, height: number): void {
     const g = this.mesh.geometry as THREE.BufferGeometry, n = g.getAttribute('position').count;
-    const x = new Float32Array(n), y = new Float32Array(n), depth = new Float32Array(n), world = new Float32Array(n), eye = new Float32Array(n), v = new THREE.Vector3();
+    const x = new Float32Array(n), y = new Float32Array(n), depth = new Float32Array(n), room = new Float32Array(n * 3), eye = new Float32Array(n), v = new THREE.Vector3();
     this.mesh.updateMatrixWorld(true);
     camera.updateMatrixWorld();
-    const pose = this.pose, point = this.posedPoint, e = camera.matrixWorldInverse.elements;
+    const pose = this.pose, point = this.posedPoint, e = camera.matrixWorldInverse.elements, scale = this.mesh.getWorldScale(v).x || 1;
     pose.refresh();
     for (let i = 0; i < n; i++) {
       pose.posedVertex(i, point);
+      room[i * 3] = point[0] / scale; room[i * 3 + 1] = point[1] / scale; room[i * 3 + 2] = point[2] / scale;
       // (how far a point is from the eye: along the way the camera looks)
-      world[i] = point[1]; eye[i] = -(e[2] * point[0] + e[6] * point[1] + e[10] * point[2] + e[14]);
+      eye[i] = -(e[2] * point[0] + e[6] * point[1] + e[10] * point[2] + e[14]);
       v.fromArray(point).project(camera);
       x[i] = (v.x * 0.5 + 0.5) * width; y[i] = (0.5 - v.y * 0.5) * height; depth[i] = v.z;
     }
-    this.screen = { x, y, depth, world, eye, scale: this.mesh.getWorldScale(v).x || 1 };
+    this.screen = { x, y, depth, eye, room, scale, stamp: ++this.strokes };
     this.level.begin();
   }
 
@@ -341,8 +356,12 @@ export class BodyPaint {
     const nrm = (this.mesh.geometry as THREE.BufferGeometry).getAttribute('fabricRestNormal');
     let changed = 0;
     if (line && line.mode !== 'free') {
-      for (const p of this.levelPlaces(px, py, line.mode, radius, line.unitsPerCm, r, nrm as THREE.BufferAttribute | undefined)) {
-        changed += dab(this.weights, layer, r, p.centre, radius, strength, erase, nrm ? { rest: nrm.array as ArrayLike<number>, at: p.normal } : undefined);
+      // (a held stroke is laid on its own surface -- her standing shape, or her points in the room -- and its dabs choose
+      // her vertices by where they are there)
+      const space = this.levelSpace(line.mode, line.unitsPerCm, r);
+      if (!space) return false;
+      for (const p of this.levelPlaces(px, py, line.mode, radius, line.unitsPerCm, space)) {
+        changed += dab(this.weights, layer, space.points, p.centre, radius, strength, erase, { rest: space.normal, at: p.normal });
       }
     } else {
       const hit = this.pick(px, py);
@@ -354,29 +373,47 @@ export class BodyPaint {
     return changed > 0;
   }
 
-  /** The places a stroke held to a level dabs for the finger at (px, py) (as `SkinPainter.levelPlaces`). */
-  private levelPlaces(px: number, py: number, mode: LineMode, radius: number, unitsPerCm: number, rest: ArrayLike<number>, nrm: THREE.BufferAttribute | undefined): { centre: { x: number; y: number; z: number }; normal: [number, number, number] }[] {
+  /**
+   * The surface a stroke held to `mode` is laid on, as she is now (as `SkinPainter.levelSpace`): her standing shape, worked
+   * out again only when what it is made of has changed, or her points in the room, as this stroke found her. (A body
+   * whose shape cannot be read keeps BODY LEVEL on her body file's rest shape, `rest`.)
+   */
+  private levelSpace(mode: LineMode, unitsPerCm: number, rest: ArrayLike<number>): BodyPaint['space'] {
     const s = this.screen;
-    if (!s || !(unitsPerCm > 0)) return [];
-    if (!this.surface || this.surface.rest !== rest) {
-      const g = this.mesh.geometry as THREE.BufferGeometry, n = rest.length / 3, height = new Float32Array(n);
-      for (let i = 0; i < n; i++) height[i] = rest[i * 3 + 1];
-      // every triangle of her, not only those drawn now (the room may leave covered skin out of the draw)
-      const index = (this.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array ?? Uint32Array.from({ length: n }, (_, i) => i);
-      this.surface = { rest, index, grid: new TriangleGrid({ rest, uv: [], index }, 2 * unitsPerCm), joins: new LevelMesh(rest, index), height };
+    if (!s || !(unitsPerCm > 0)) return null;
+    const g = this.mesh.geometry as THREE.BufferGeometry, count = Math.floor(rest.length / 3);
+    let key: string, points: ArrayLike<number> | null = null, source: ReturnType<typeof standingSourceOf> = null;
+    if (mode === 'room') { key = `room ${s.stamp}`; points = s.room; }
+    else {
+      source = standingSourceOf(this.mesh, this.posed?.() ?? []);
+      key = source && source.shaped.length >= count * 3 ? `body ${source.key}` : 'rest';
     }
-    const surface = this.surface, room = mode === 'room', units = room ? s.scale : 1, perMetre = unitsPerCm * 100;
-    const normal = nrm && nrm.itemSize === 3 && !(nrm as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute ? nrm.array as ArrayLike<number> : null;
-    const view: LevelView = { rest, index: surface.index, height: room ? s.world : surface.height, x: s.x, y: s.y, eye: s.eye, normal };
-    const hidden = HIDDEN_BEHIND_M * perMetre * s.scale;
+    if (this.space?.key === key) return this.space;
+    if (mode !== 'room') points = key === 'rest' || !source ? rest : standingShape(source);
+    if (!points || points.length < count * 3) return null;
+    const height = new Float32Array(count);
+    for (let i = 0; i < count; i++) height[i] = points[i * 3 + 1];
+    // every triangle of her, not only those drawn now (the room may leave covered skin out of the draw)
+    const index = (this.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array ?? Uint32Array.from({ length: count }, (_, i) => i);
+    const joins = this.joins ??= new LevelMesh(rest, index);
+    this.space = { key, points, index, grid: new TriangleGrid({ rest: points, uv: [], index }, 2 * unitsPerCm), height, normal: joins.normals(points) };
+    return this.space;
+  }
+
+  /** The places a stroke held to a level dabs for the finger at (px, py), each on the stroke's own surface (as `SkinPainter.levelPlaces`). */
+  private levelPlaces(px: number, py: number, mode: LineMode, radius: number, unitsPerCm: number, space: NonNullable<BodyPaint['space']>): { centre: { x: number; y: number; z: number }; normal: [number, number, number] }[] {
+    const s = this.screen, joins = this.joins;
+    if (!s || !joins) return [];
+    const at = space.points, faces = space.normal, perMetre = unitsPerCm * 100, hidden = HIDDEN_BEHIND_M * perMetre * s.scale;
+    const view: LevelView = { rest: at, index: space.index, height: space.height, x: s.x, y: s.y, eye: s.eye, normal: faces };
     const host: LevelHost = {
       pick: (x, y) => this.pick(x, y),
-      near: (vertex, reach) => surface.joins.joined(surface.grid.near({ x: rest[vertex * 3], y: rest[vertex * 3 + 1], z: rest[vertex * 3 + 2] }, reach / units + radius), vertex),
-      facing: (vertex) => (nrm ? [nrm.getX(vertex), nrm.getY(vertex), nrm.getZ(vertex)] : null),
+      near: (vertex, reach) => joins.joined(space.grid.near({ x: at[vertex * 3], y: at[vertex * 3 + 1], z: at[vertex * 3 + 2] }, reach + radius), vertex),
+      facing: (vertex) => [faces[vertex * 3], faces[vertex * 3 + 1], faces[vertex * 3 + 2]],
       // (seen: nothing of her drawn at that place is much nearer the eye)
       visible: (x, y, eye) => { const front = this.pick(x, y); return front < 0 || eye <= s.eye[front] + hidden; },
-      least: 2 * radius * units,
-      most: LINE_REACH_M * perMetre * units,
+      least: 2 * radius,
+      most: LINE_REACH_M * perMetre,
     };
     return this.level.at(mode, view, host, px, py).map((p) => ({ centre: { x: p.centre.x, y: p.centre.y, z: p.centre.z }, normal: p.normal }));
   }

@@ -3,15 +3,19 @@
  * draw straight lines probably both either room level or body level?").
  *
  * - The level on one triangle: the piece between two edges, a corner on it, an edge along it; the far side and what is
- *   hidden are left out; the point is ON her rest surface and exactly at the height.
+ *   hidden are left out; the point is ON the surface and exactly at the height.
  * - A stroke on a body (a ring of skin, seen from in front): the finger wanders and every dab stays at the height the
- *   stroke started at -- her own rest height (BODY LEVEL) or her height in the room as she leans (ROOM LEVEL); a fast drag
+ *   stroke started at -- her own height (BODY LEVEL) or her height in the room as she leans (ROOM LEVEL); a fast drag
  *   is followed in steps; off her, or out of reach, nothing is dabbed.
  * - A stroke that starts on the last line carries it on at exactly its height; one that starts elsewhere starts its own.
+ * - Her STANDING SHAPE, the surface BODY LEVEL is level on: her shaped points with her build's morphs and her belly's
+ *   push, without her pose's fields and her motion's morphs. A line level in her body file is not level on it once her
+ *   shapes carry her points unevenly -- and a stroke laid on the standing shape is. The way a surface faces at a point is
+ *   one way for every copy of it along a texture seam.
  */
 import { describe, expect, it } from 'vitest';
 import {
-  LINE_CARRY_PX, LINE_MODES, LINE_STEP_PX, LevelMesh, LevelStroke, levelPoint, lineModeLine, lineModeNote, nextLineMode, type LevelHost, type LevelView, type LineMode,
+  LINE_CARRY_PX, LINE_MODES, LINE_STEP_PX, LevelMesh, LevelStroke, MOTION_SHAPES, levelPoint, lineModeLine, lineModeNote, nextLineMode, standingShape, type LevelHost, type LevelView, type LineMode, type StandingSource,
 } from '../src/sarahlab/levelLine';
 
 describe('level line: the button', () => {
@@ -244,5 +248,66 @@ describe('level line: a stroke on her', () => {
     // forgotten: nothing to carry
     stroke.reset();
     expect(stroke.held).toBeNull();
+  });
+});
+
+describe('her standing shape: what BODY LEVEL is level on', () => {
+  /** A morph that moves every vertex by one move. */
+  const morph = (name: string, weight: number, dx: number, dy: number, dz: number) => ({ name, weight, move: (_v: number, out: number[]) => { out[0] = dx; out[1] = dy; out[2] = dz; } });
+
+  it("is her shaped points, her build's morphs and her belly's push -- without her pose's fields and her motion's morphs", () => {
+    const source: StandingSource = {
+      shaped: [0, 1, 0, 1, 1, 0, 2, 1, 0],
+      morphs: [morph('belly', 0.5, 0, 0.2, 0), morph('armRaiseL', 1, 0, 5, 0), morph('bellyBob', 1, 0, -3, 0), morph('breastGrow', 0, 9, 9, 9)],
+      push: [0, 0, 0.25, 0, 0, 0, 0, 0, 0],
+      // her pose's field laid at 0.5 on the last vertex (its 0.4 of height is in `shaped` already: taken back off)
+      posed: [{ index: [2], pos: [0, 0.8, 0], weight: 0.5 }],
+    };
+    const S = standingShape(source);
+    expect(Array.from(S).map((v) => +v.toFixed(6))).toEqual([0, 1.1, 0.25, 1, 1.1, 0, 2, 0.7, 0]);
+    // written into the array given, when it is the right length
+    const out = new Float32Array(9);
+    expect(standingShape(source, out)).toBe(out);
+    expect(standingShape(source, new Float32Array(3))).not.toBe(out);
+    for (const name of ['armRaiseL', 'armRaiseR', 'bellyBob', 'bellySway', 'breastBob', 'bellySeatV2']) expect(MOTION_SHAPES.has(name)).toBe(true);
+    for (const name of ['belly', 'breastGrow', 'bellyTilt', 'shape:bellyWidth']) expect(MOTION_SHAPES.has(name)).toBe(false);
+  });
+
+  it('a line level in her body file is not level on her once her shapes carry her points unevenly; a stroke laid on her standing shape is', () => {
+    // a ring of skin round the y axis, 0.2 across and 1 tall, seen from in front; her shapes lift each point by its own amount
+    const around = 48, rows = 21, rest: number[] = [], index: number[] = [], lift = (a: number, r: number) => 0.03 * Math.sin(3 * a) + 0.01 * ((a * 7 + r * 3) % 2);
+    for (let r = 0; r < rows; r++) for (let a = 0; a < around; a++) { const t = (a / around) * Math.PI * 2; rest.push(0.1 * Math.sin(t), r / (rows - 1), 0.1 * Math.cos(t)); }
+    for (let r = 0; r + 1 < rows; r++) for (let a = 0; a < around; a++) { const p = r * around + a, q = r * around + ((a + 1) % around); index.push(p, q, p + around, q, q + around, p + around); }
+    const n = rest.length / 3;
+    const S = standingShape({ shaped: rest, morphs: [{ name: 'belly', weight: 1, move: (v, out) => { out[0] = 0; out[1] = lift(v % around, Math.floor(v / around)); out[2] = 0; } }], push: null, posed: [] });
+    // on screen, as she stands: her standing shape seen from in front, 400 pixels a unit, y down
+    const X = new Float32Array(n), Y = new Float32Array(n), E = new Float32Array(n), H = new Float32Array(n);
+    for (let v = 0; v < n; v++) { X[v] = 200 + S[v * 3] * 400; Y[v] = 500 - S[v * 3 + 1] * 400; E[v] = 2 - S[v * 3 + 2]; H[v] = S[v * 3 + 1]; }
+    const mesh = new LevelMesh(rest, index), faces = mesh.normals(S), triangles = Array.from({ length: index.length / 3 }, (_, t) => t);
+    const view: LevelView = { rest: S, index, height: H, x: X, y: Y, eye: E, normal: faces };
+    const pick = (px: number, py: number) => { let best = -1, near = 12 * 12, front = Infinity; for (let v = 0; v < n; v++) { const d = (X[v] - px) ** 2 + (Y[v] - py) ** 2; if (d < near && E[v] < front + 1e-6 && faces[v * 3 + 2] > 0) { best = v; front = E[v]; near = Math.max(d, 1); } } return best; };
+    const host: LevelHost = { pick, near: () => triangles, facing: (v) => [faces[v * 3], faces[v * 3 + 1], faces[v * 3 + 2]], visible: () => true, least: 0.05, most: 0.2 };
+    const stroke = new LevelStroke(); stroke.begin();
+    const dabs = [];
+    for (let px = 170; px <= 230; px += 4) dabs.push(...stroke.at('body', view, host, px, 300 + 6 * Math.sin(px / 9)));
+    stroke.end();
+    expect(dabs.length).toBeGreaterThan(8);
+    // every dab at one height ON HER STANDING SHAPE: a level line as she is drawn
+    const heights = dabs.map((p) => p.centre.y);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1e-9);
+    // the same ring taken level in her body file (the row of her rest shape nearest that height) stands centimetres out of level on her
+    const row = Math.round(heights[0] * (rows - 1)), stood = Array.from({ length: around }, (_, a) => S[(row * around + a) * 3 + 1]);
+    expect(Math.max(...stood) - Math.min(...stood)).toBeGreaterThan(0.05);
+  });
+
+  it('a surface faces one way at every copy of a point along a texture seam', () => {
+    // two triangles folded along an edge whose two points are each held twice (a seam): the copies face alike
+    const rest = [0, 0, 0, 1, 0, 0, 0, 1, 0, /* copies of vertices 1 and 2 */ 1, 0, 0, 0, 1, 0, 1, 1, 1];
+    const index = [0, 1, 2, 3, 5, 4];
+    const mesh = new LevelMesh(rest, index), N = mesh.normals(rest);
+    for (const [a, b] of [[1, 3], [2, 4]]) for (let k = 0; k < 3; k++) expect(N[a * 3 + k]).toBeCloseTo(N[b * 3 + k], 6);
+    for (let v = 0; v < 6; v++) expect(Math.hypot(N[v * 3], N[v * 3 + 1], N[v * 3 + 2])).toBeCloseTo(1, 6);
+    // the corner on one triangle alone faces as that triangle does
+    expect([N[0], N[1], N[2]].map((x) => +x.toFixed(6))).toEqual([0, 0, 1]);
   });
 });

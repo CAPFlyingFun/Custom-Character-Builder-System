@@ -1590,6 +1590,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     ensureRest(b.mesh.geometry as THREE.BufferGeometry, shaped.find((x) => x.mesh === b.mesh)?.fields ?? null);
     const scale = b.mesh.getWorldScale(new THREE.Vector3()).x || 1;
     const painter = new SkinPainter(b.mesh, source, under, scale / M);
+    // (what of her shape is her pose's now: a stroke held to BODY LEVEL is level on her standing shape, which is without it)
+    painter.posed = () => { const fields = shaped.find((x) => x.mesh === b.mesh)?.fields; return POSE_SHAPE_FIELDS.flatMap((name) => { const f = fields?.fields.get(name), weight = fields?.laid?.get(name) ?? 0; return f && weight ? [{ index: f.index, pos: f.pos, weight }] : []; }); };
     paintUnitsPerCm = (M / 100) / scale;
     painted = { painter, under };
     b.material.map = painter.texture; b.material.needsUpdate = true;

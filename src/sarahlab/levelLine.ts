@@ -6,13 +6,23 @@
  * With LINE on, a stroke keeps the height it starts at: wherever the finger goes after, each dab lands on THE LEVEL -- the
  * curve round her where her skin is at that height -- at its point nearest the finger on screen. Two heights:
  *
- *   - BODY LEVEL: her own height in her rest shape (`fabricRest`, where both brushes already work). The line runs
- *     straight round her as she stands, whatever pose she is painted in -- her arms up, leaning, reclined.
+ *   - BODY LEVEL: her own height as she stands -- on her STANDING SHAPE (`standingShape`): her points as she is built,
+ *     before her bones pose her. The line runs straight round her as she stands, whatever pose she is painted in -- her
+ *     arms up, leaning, reclined.
  *   - ROOM LEVEL: her height in the room as she is posed now. The line is level with the floor.
  *
+ * THE SPACE A HELD STROKE IS LAID IN. Each of the two is a surface with her triangles (`LevelView.rest`): her standing
+ * shape, or her points in the room. The level is found on THAT surface, and the brush chooses what a dab covers by
+ * where it is on that surface too -- not on her body file's rest shape, where the brushes otherwise work. The first
+ * build held BODY LEVEL to her body file's height and dabbed there (2026-11-13), and in the room the line was neither
+ * level nor clean: the room does not draw her body file, it adds her shapes to it, and they carry her points by
+ * different amounts from one to the next (`skinSlip.ts` tells the same of a garment's outline). MEASURED on her skin's
+ * points read out of the room, standing: the points of her trunk within 2 mm of one height in her body file stand over
+ * 14.7 mm of height in the room at her under-bust (1.228 m), 15.0 mm at 1.10 m and 25.7 mm across her belly at 0.95 m.
+ *
  * The level crosses a triangle where its corners stand on both sides of the height: a straight piece from one edge to
- * another, the same in her rest shape and on screen (her corners are known in both), so a dab's centre is a point ON her
- * rest surface and exactly on the level, not a vertex near it. Of the pieces near the finger, the one nearest it on
+ * another, the same on that surface and on screen (her corners are known in both), so a dab's centre is a point ON the
+ * surface and exactly on the level, not a vertex near it. Of the pieces near the finger, the one nearest it on
  * screen is taken, among those that face the way her skin under the finger does (the far side of an arm is not hers to
  * paint from here) and that the caller can see (`visible`: nothing of her nearer the eye at that spot). And the pieces
  * looked at are those on the skin JOINED to her skin under the finger (`LevelMesh.joined`): her hip behind her hanging
@@ -60,24 +70,69 @@ export const LINE_JOIN_M = 0.03;
 const BACK_FACING = -0.1;
 
 
+/**
+ * WHAT HER STANDING SHAPE IS MADE OF, as the room holds it: her points as her shape fields leave them (her geometry's
+ * own positions), her morphs at their weights now, what is laid on her beside them point by point (her belly's push for
+ * her baby, `softBody.ts`), and what of her shape is her pose's (the birth poses' shape fields), which is taken back off.
+ */
+export interface StandingSource {
+  /** xyz per vertex. */
+  readonly shaped: ArrayLike<number>;
+  /** Each morph's name, its weight now, and a vertex's move at full weight (written into `out`). */
+  readonly morphs: readonly { readonly name: string; readonly weight: number; move(vertex: number, out: number[]): void }[];
+  /** xyz per vertex, or null. */
+  readonly push: ArrayLike<number> | null;
+  /** Sparse fields laid in `shaped` now: `index` its vertices, `pos` xyz for each, at `weight`. */
+  readonly posed: readonly { readonly index: ArrayLike<number>; readonly pos: ArrayLike<number>; readonly weight: number }[];
+}
+/**
+ * Her morphs that are her pose's or her motion's and not her build's (her raised arms, her belly's and breasts' bob and
+ * sway as she walks, her belly seated): no part of how she stands, so left out of her standing shape.
+ */
+export const MOTION_SHAPES: ReadonlySet<string> = new Set(['armRaiseL', 'armRaiseR', 'bellyBob', 'bellySway', 'breastBob', 'bellySeatV2']);
+
+/**
+ * HER STANDING SHAPE: where each of her points is as she is built, standing, before her bones pose her (xyz per vertex,
+ * her mesh's own units; written into `out` when it is the right length). What a BODY LEVEL line is level on.
+ */
+export function standingShape(source: StandingSource, out?: Float32Array): Float32Array {
+  const { shaped, push } = source, n = Math.floor(shaped.length / 3);
+  const S = out && out.length === n * 3 ? out : new Float32Array(n * 3);
+  for (let i = 0; i < n * 3; i++) S[i] = shaped[i] + (push && i < push.length ? push[i] : 0);
+  for (const f of source.posed) {
+    if (!f.weight) continue;
+    for (let k = 0; k < f.index.length; k++) {
+      const i = f.index[k] * 3;
+      if (!(i >= 0 && i + 2 < S.length)) continue;
+      S[i] -= f.weight * f.pos[k * 3]; S[i + 1] -= f.weight * f.pos[k * 3 + 1]; S[i + 2] -= f.weight * f.pos[k * 3 + 2];
+    }
+  }
+  const d = [0, 0, 0];
+  for (const m of source.morphs) {
+    if (!m.weight || !Number.isFinite(m.weight) || MOTION_SHAPES.has(m.name)) continue;
+    for (let v = 0; v < n; v++) { m.move(v, d); S[v * 3] += m.weight * d[0]; S[v * 3 + 1] += m.weight * d[1]; S[v * 3 + 2] += m.weight * d[2]; }
+  }
+  return S;
+}
+
 export interface LevelView {
-  /** xyz per vertex: her surface at rest (mesh units). */
+  /** xyz per vertex: the surface the stroke is laid on -- her standing shape, or her points in the room (one unit for all three). */
   readonly rest: ArrayLike<number>;
   /** Three vertices a triangle. */
   readonly index: ArrayLike<number>;
-  /** Each vertex's height: its own in her rest shape (BODY LEVEL) or where it stands in the room now (ROOM LEVEL). */
+  /** Each vertex's height on that surface: the level is where this is the stroke's. */
   readonly height: ArrayLike<number>;
   /** Where each vertex is on screen now (pixels) and how far from the eye. */
   readonly x: ArrayLike<number>;
   readonly y: ArrayLike<number>;
   readonly eye: ArrayLike<number>;
-  /** xyz per vertex: her rest normals (unit), where she has them. */
+  /** xyz per vertex: the way that surface faces (unit), where it is known (`LevelMesh.normals`). */
   readonly normal?: ArrayLike<number> | null;
 }
 export interface LevelPoint {
-  /** On her rest surface (mesh units), exactly on the level. */
+  /** On the stroke's surface (its units), exactly on the level. */
   readonly centre: { readonly x: number; readonly y: number; readonly z: number };
-  /** Her rest normal there (unit): her vertices' own blended, or the triangle's face. */
+  /** The way the surface faces there (unit): its vertices' own blended, or the triangle's face. */
   readonly normal: [number, number, number];
   /** Where it is on screen, how far that is from the finger (pixels), and how far from the eye. */
   readonly px: number;
@@ -122,7 +177,7 @@ export function levelPoint(
     let p = ends[0], q = ends[1];
     if (ends.length > 2) { let far = -1; for (let i = 0; i < ends.length; i++) for (let j = i + 1; j < ends.length; j++) { const d = (sx(ends[i]) - sx(ends[j])) ** 2 + (sy(ends[i]) - sy(ends[j])) ** 2; if (d > far) { far = d; p = ends[i]; q = ends[j]; } } }
     if (facing) {
-      // her rest face normal, as the brushes' own test takes it
+      // the triangle's own face on the stroke's surface, as the brushes' own test takes it
       const ux = rest[b * 3] - rest[a * 3], uy = rest[b * 3 + 1] - rest[a * 3 + 1], uz = rest[b * 3 + 2] - rest[a * 3 + 2];
       const vx = rest[c * 3] - rest[a * 3], vy = rest[c * 3 + 1] - rest[a * 3 + 1], vz = rest[c * 3 + 2] - rest[a * 3 + 2];
       const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz);
@@ -196,6 +251,29 @@ export class LevelMesh {
     this.given = new Uint32Array(triangles); this.reached = new Uint32Array(triangles);
   }
 
+  /**
+   * The way a surface with her triangles faces at each vertex (`space` xyz per vertex; unit normals, xyz per vertex):
+   * her triangles' own, summed over each welded point, so the copies of a point along a texture seam face one way.
+   */
+  normals(space: ArrayLike<number>): Float32Array {
+    const { point, index } = this, n = point.length, sum = new Float64Array((this.start.length - 1) * 3), out = new Float32Array(n * 3);
+    for (let t = 0; t * 3 + 2 < index.length; t++) {
+      const a = index[t * 3], b = index[t * 3 + 1], c = index[t * 3 + 2];
+      if (!(a >= 0 && a < n && b >= 0 && b < n && c >= 0 && c < n)) continue;
+      const ux = space[b * 3] - space[a * 3], uy = space[b * 3 + 1] - space[a * 3 + 1], uz = space[b * 3 + 2] - space[a * 3 + 2];
+      const vx = space[c * 3] - space[a * 3], vy = space[c * 3 + 1] - space[a * 3 + 1], vz = space[c * 3 + 2] - space[a * 3 + 2];
+      // (the cross product is twice the triangle's area long: a big triangle counts for more)
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      if (!Number.isFinite(nx + ny + nz)) continue;
+      for (const v of [a, b, c]) { const p = point[v] * 3; sum[p] += nx; sum[p + 1] += ny; sum[p + 2] += nz; }
+    }
+    for (let v = 0; v < n; v++) {
+      const p = point[v] * 3, l = Math.hypot(sum[p], sum[p + 1], sum[p + 2]);
+      if (l > 0) { out[v * 3] = sum[p] / l; out[v * 3 + 1] = sum[p + 1] / l; out[v * 3 + 2] = sum[p + 2] / l; }
+    }
+    return out;
+  }
+
   /** Of `triangles`, those joined to `vertex` through one another (each once): the stretch of her skin the vertex is on. */
   joined(triangles: Iterable<number>, vertex: number): number[] {
     const out: number[] = [];
@@ -214,9 +292,9 @@ export class LevelMesh {
 export interface LevelHost {
   /** The vertex under a screen place, -1 off her (the brush's own pick). */
   pick(px: number, py: number): number;
-  /** The triangles within `reach` (the view's own height units) of a vertex's place on her at rest that are joined to it (`LevelMesh.joined`), each once. */
+  /** The triangles within `reach` (the surface's units) of a vertex's place on the stroke's surface that are joined to it (`LevelMesh.joined`), each once. */
   near(vertex: number, reach: number): Iterable<number>;
-  /** Her rest normal at a vertex, where she has them. */
+  /** The way the stroke's surface faces at a vertex, where it is known. */
   facing(vertex: number): readonly [number, number, number] | null;
   /** Whether a point at a screen place this far from the eye can be seen. */
   visible(px: number, py: number, eye: number): boolean;
