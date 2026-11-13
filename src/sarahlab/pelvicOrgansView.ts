@@ -20,6 +20,7 @@ import { clothCompliance, clothDamping, clothFriction, clothGravityScale, clothM
 import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
+import { layAdnexa } from '../actor/adnexa';
 
 /** How each organ's soft body is tuned. GAME TUNING: firm enough to keep its shape, damped so a sway settles in about a
  * second ("not like jelly"), its ties looser where anatomy leaves it free. */
@@ -117,6 +118,10 @@ export class PelvicOrgansView {
   readonly group = new THREE.Group();
   private readonly holder = new THREE.Object3D();
   private organs: Organ[] = [];
+  /** HER OVARIES AND TUBES (actor/adnexa.ts), beside whichever womb she has: carried by her small womb's soft body when it
+   * is drawn (`skin`), else laid where v2's womb stands (`rest`, her rest frame, metres). */
+  private adnexa: { mesh: THREE.Mesh; rest: Float32Array; skin: CageSkin | null; out: Float32Array }[] = [];
+  private readonly adnexaMaterials = { ovaries: new THREE.MeshStandardMaterial({ color: 0xe6cdb2, roughness: 0.6, metalness: 0 }), tubes: new THREE.MeshStandardMaterial({ color: 0xd88f98, roughness: 0.55, metalness: 0 }) };
   /** Where three of their rest places were last step, and how fast they were going (world metres, m/s). */
   private last: number[] | null = null;
   private speed: number[] | null = null;
@@ -258,6 +263,24 @@ export class PelvicOrgansView {
     if (room === this.outer) return;
     this.outer = room;
     const u = this.organs.find((o) => o.name === 'uterus'); if (u) u.mesh.visible = !room && this.innerOn;
+    this.layAdnexa(); this.draw();
+  }
+  /** Her ovaries and tubes laid again beside her womb as it is now: v2's own, or her small womb (carried by its soft body). */
+  private layAdnexa(): void {
+    for (const a of this.adnexa) { a.mesh.removeFromParent(); a.mesh.geometry.dispose(); }
+    this.adnexa = [];
+    const uterus = this.organs.find((o) => o.name === 'uterus'), womb = this.outer ?? this.layout?.uterus;
+    if (!womb) return;
+    let laid: ReturnType<typeof layAdnexa>;
+    try { laid = layAdnexa(womb); } catch { return; }
+    for (const [name, m] of [['ovaries', laid.ovaries], ['tubes', laid.tubes]] as const) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(m.points.length), 3)); g.setIndex(new THREE.BufferAttribute(m.triangles, 1));
+      const mesh = new THREE.Mesh(g, this.adnexaMaterials[name]);
+      mesh.name = `organ:${name}`; mesh.frustumCulled = false; mesh.visible = this.innerOn;
+      this.group.add(mesh);
+      this.adnexa.push({ mesh, rest: m.points, skin: !this.outer && uterus ? skinToCage(uterus.cage, m.points, 4) : null, out: new Float32Array(m.points.length) });
+    }
   }
   /** The room her womb takes, whichever womb she has: v2's own, or the one grown here (null: not pregnant). */
   get wombRoom(): WombRoom | null { return this.outer ?? this.grown; }
@@ -265,7 +288,7 @@ export class PelvicOrgansView {
   set doorsShown(on: boolean) { this.doorsOn = on; this.doors.mesh.visible = on && this.group.visible; this.doors.skin.visible = on && this.outerOn && this.group.visible; }
   /** Her womb and her bladder drawn or not (v2: only while she is seen through -- behind her open doors only her canal
    * is to be seen); her canal is always drawn with the rest. */
-  set innerShown(on: boolean) { this.innerOn = on; for (const o of this.organs) if (o.name !== 'vagina') o.mesh.visible = on && !(o.name === 'uterus' && !!this.outer); }
+  set innerShown(on: boolean) { this.innerOn = on; for (const o of this.organs) if (o.name !== 'vagina') o.mesh.visible = on && !(o.name === 'uterus' && !!this.outer); for (const a of this.adnexa) a.mesh.visible = on; }
   /** The test piece of outer skin round her doors drawn or not: in v2 her own skin is there. */
   set outerSkinShown(on: boolean) { this.outerOn = on; this.doors.skin.visible = on && this.doorsOn && this.group.visible; }
   /** Her doors' outer faces in this colour (v2: her own skin's tone round her opening); their lining stays its own. */
@@ -352,6 +375,7 @@ export class PelvicOrgansView {
     }
     const by = (n: Name) => this.organs.find((o) => o.name === n)!.cage;
     this.touching = (['uterus', 'vagina'] as const).map((n) => ({ a: by('bladder'), b: by(n), gaps: restGaps(by('bladder'), by(n)) }));
+    this.layAdnexa();
     this.draw();
   }
 
@@ -744,6 +768,17 @@ export class PelvicOrgansView {
       pos.needsUpdate = true;
       o.mesh.geometry.computeVertexNormals();
     }
+    // her ovaries and tubes: with her small womb's soft body, or where v2's womb stands
+    if (this.adnexa.length) {
+      const uterus = this.organs.find((o) => o.name === 'uterus'), e = this.adnexa.some((a) => !a.skin) ? this.boneToWorld().elements : null;
+      for (const a of this.adnexa) {
+        if (a.skin && uterus) followCage(uterus.cage, a.skin, a.out);
+        else if (e) for (let i = 0; i < a.rest.length; i += 3) { const x = a.rest[i], y = a.rest[i + 1], z = a.rest[i + 2]; a.out[i] = e[0] * x + e[4] * y + e[8] * z + e[12]; a.out[i + 1] = e[1] * x + e[5] * y + e[9] * z + e[13]; a.out[i + 2] = e[2] * x + e[6] * y + e[10] * z + e[14]; }
+        const pos = a.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, arr = pos.array as Float32Array;
+        for (let i = 0; i < arr.length; i++) arr[i] = a.out[i] * this.units;
+        pos.needsUpdate = true; a.mesh.geometry.computeVertexNormals();
+      }
+    }
   }
 
   /** How far each organ's soft body is from where its bone holds it now, metres (for probes: how much it sways). */
@@ -768,6 +803,8 @@ export class PelvicOrgansView {
   dispose(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
     this.organs = []; this.touching = [];
+    for (const a of this.adnexa) { a.mesh.removeFromParent(); a.mesh.geometry.dispose(); }
+    this.adnexa = []; this.adnexaMaterials.ovaries.dispose(); this.adnexaMaterials.tubes.dispose();
     for (const m of this.materials.values()) m.dispose();
     for (const m of [this.doors.mesh, this.doors.skin]) { m.removeFromParent(); m.geometry.dispose(); }
     this.doors.material.dispose(); this.doors.skinMaterial.dispose(); this.doors.outerMaterial.dispose();

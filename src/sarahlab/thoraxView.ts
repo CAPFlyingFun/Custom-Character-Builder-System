@@ -1,5 +1,6 @@
 /**
- * HER LUNGS, HER HEART AND HER DIAPHRAGM IN THE ROOM (the skeleton-outward plan, Phase 2: "Breathing: the diaphragm
+ * HER LUNGS, HER HEART AND HER DIAPHRAGM IN THE ROOM -- and under her diaphragm her liver, gallbladder, spleen and
+ * pancreas, and her windpipe (actor/upperOrgans.ts), laid again with her diaphragm as she breathes (the skeleton-outward plan, Phase 2: "Breathing: the diaphragm
  * drops and the lungs fill on each breath. Heart: a blended teardrop between the lungs, tilted left" --
  * actor/thoracicOrgans.ts). They are laid in the inside of her own rib cage as her bones give it and carried by her chest
  * bone: her rib cage holds them, so they are not soft bodies as her belly's organs are (sarahlab/abdomenView.ts) -- they
@@ -9,12 +10,17 @@
  * game sets them later (running, sleeping, holding her breath).
  */
 import * as THREE from 'three';
+import { layUpper } from '../actor/upperOrgans';
 import { BREATH, HEART, PULSE, diaphragmMesh, diaphragmPoints, heartMesh, heartPoints, layThorax, lungMesh, lungPoints, meshVolume, type ThoraxLandmarks, type ThoraxLayout } from '../actor/thoracicOrgans';
 
-type Name = 'lungL' | 'lungR' | 'heart' | 'diaphragm';
-const NAMES: readonly Name[] = ['lungL', 'lungR', 'heart', 'diaphragm'];
-/** Lungs pink, her heart dark red, her diaphragm the red-brown of muscle. GAME TUNING. */
-const COLOURS: Record<Name, number> = { lungL: 0xe8a6a0, lungR: 0xe8a6a0, heart: 0x9c2f33, diaphragm: 0xa4523c };
+type Name = 'lungL' | 'lungR' | 'heart' | 'diaphragm' | Upper;
+/** Her upper belly's organs and her windpipe (actor/upperOrgans.ts): under her diaphragm, laid again with it. */
+type Upper = 'liver' | 'gallbladder' | 'spleen' | 'pancreas' | 'windpipe';
+const UPPER: readonly Upper[] = ['liver', 'gallbladder', 'spleen', 'pancreas', 'windpipe'];
+const NAMES: readonly Name[] = ['lungL', 'lungR', 'heart', 'diaphragm', ...UPPER];
+/** Lungs pink, her heart dark red, her diaphragm the red-brown of muscle; her liver deep red-brown, her gallbladder green,
+ * her spleen purple, her pancreas salmon, her windpipe the pale of cartilage. GAME TUNING. */
+const COLOURS: Record<Name, number> = { lungL: 0xe8a6a0, lungR: 0xe8a6a0, heart: 0x9c2f33, diaphragm: 0xa4523c, liver: 0x7a3026, gallbladder: 0x5d7f3c, spleen: 0x6b2c4c, pancreas: 0xe2b07e, windpipe: 0xddcbb8 };
 
 /** How they are drawn. GAME TUNING: her lungs and diaphragm are laid again only when her breath has moved `breathStep`
  * (of a quiet breath: about 22 times a breath in, each under a millimetre of her diaphragm; about a millisecond's work
@@ -75,7 +81,7 @@ export class ThoraxView {
     // (laid before anything is hung on her: if her rib cage cannot be laid in, nothing of this is left on her bone)
     this.layout = layThorax(thorax, 0);
     try {
-      const L = this.layout, shapes = { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, 0), diaphragm: diaphragmMesh(L) };
+      const L = this.layout, U = layUpper(L), shapes = { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, 0), diaphragm: diaphragmMesh(L), liver: U.liver, gallbladder: U.gallbladder, spleen: U.spleen, pancreas: U.pancreas, windpipe: U.windpipe };
       for (const name of NAMES) {
         const sheet = name === 'diaphragm';
         const material = new THREE.MeshStandardMaterial({ color: COLOURS[name], roughness: 0.55, metalness: 0, side: sheet ? THREE.DoubleSide : THREE.FrontSide, transparent: sheet, opacity: sheet ? THORAX_DRAW.diaphragmOpacity : 1 });
@@ -133,12 +139,15 @@ export class ThoraxView {
     if (breathed) {
       const L = (this.layout = layThorax(this.thorax, breath)); this.drawnBreath = breath;
       lungPoints(L, 1, this.points('lungL')); lungPoints(L, -1, this.points('lungR')); diaphragmPoints(L, this.points('diaphragm'));
+      // (her upper belly's organs go down with her diaphragm; her windpipe stays)
+      const up = layUpper(L);
+      for (const n of ['liver', 'gallbladder', 'spleen', 'pancreas'] as const) { const to = this.points(n); if (to.length === up[n].points.length) to.set(up[n].points); }
       U.breath++; S.breath = 0;
     }
     // (her heart rides on her diaphragm: laid again with her breath as well as with its own beat)
     if (beaten) { heartPoints(this.layout, beat, this.points('heart')); this.drawnBeat = beat; U.heart++; S.heart = 0; }
     // their shading: every `shadeEvery`th time they are laid, and once they have lain still a while
-    if (U.breath >= D.shadeEvery || (U.breath > 0 && S.breath >= D.restAfter)) { this.shade(['lungL', 'lungR', 'diaphragm']); U.breath = 0; }
+    if (U.breath >= D.shadeEvery || (U.breath > 0 && S.breath >= D.restAfter)) { this.shade(['lungL', 'lungR', 'diaphragm', 'liver', 'gallbladder', 'spleen', 'pancreas']); U.breath = 0; }
     if (U.heart >= D.shadeEvery || (U.heart > 0 && S.heart >= D.restAfter)) { this.shade(['heart']); U.heart = 0; }
   }
 
