@@ -21,6 +21,7 @@
  * their size (slower, more travel) and firmer with milk; a FIRMNESS control for each, 50% being these defaults.
  */
 import * as THREE from 'three';
+import { BREATH_GLSL, breathAt, createBreathUniforms, type BreathUniforms } from './breathSkin';
 
 /** One mass: its displacement from where it hangs at rest (metres, her body frame) and its velocity. */
 export interface Mass { x: number; y: number; z: number; vx: number; vy: number; vz: number }
@@ -127,7 +128,7 @@ export const UNITS_PER_METRE = 1 / 0.89974678;
 export const MIDLINE_BLEND_M = 0.012;
 
 /** What moves her meshes this frame: each mass's displacement as her skin shows it (metres, her frame), shared by every patched material. */
-export interface JiggleUniforms {
+export interface JiggleUniforms extends BreathUniforms {
   readonly belly: { value: THREE.Vector3 };
   readonly breastL: { value: THREE.Vector3 };
   readonly breastR: { value: THREE.Vector3 };
@@ -163,6 +164,8 @@ export const createJiggleUniforms = (): JiggleUniforms => ({
   kickRest: { value: new THREE.Matrix4() }, kickUnits: { value: new THREE.Matrix3() },
   bellySoft: { value: new THREE.Vector4(0, 0, 0, 0.1) },
   pubicAt: { value: new THREE.Vector4(0, 0, 0, 0) }, pubicDir: { value: new THREE.Vector4(0, 0, 1, 0.04) },
+  // her breath (breathSkin.ts)
+  ...createBreathUniforms(),
 });
 
 /** A kick's move at a point of her (rest metres) for a belly follow weight, rest metres, into `out` (its xyz added). */
@@ -229,8 +232,9 @@ export function patchJiggle(material: THREE.Material, uniforms: JiggleUniforms):
     shader.uniforms.uKickUnits = uniforms.kickUnits;
     shader.uniforms.uBellySoft = uniforms.bellySoft;
     shader.uniforms.uPubicAt = uniforms.pubicAt; shader.uniforms.uPubicDir = uniforms.pubicDir;
+    shader.uniforms.uBreath = uniforms.breath; shader.uniforms.uBreathMarks = uniforms.breathMarks; shader.uniforms.uBreathSlices = uniforms.breathSlices;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nattribute vec3 jiggle;\nattribute vec3 babyPush;\nuniform vec3 uJiggleThighL;\nuniform vec3 uJiggleThighR;\nuniform vec3 uJiggleCalfL;\nuniform vec3 uJiggleCalfR;\nuniform vec3 uJiggleBelly;\nuniform vec3 uJiggleBreastL;\nuniform vec3 uJiggleBreastR;\nuniform vec4 uKickAt[${KICKS}];\nuniform vec4 uKickDir[${KICKS}];\nuniform mat4 uKickRest;\nuniform mat3 uKickUnits;\nuniform vec4 uBellySoft;\nuniform vec4 uPubicAt;\nuniform vec4 uPubicDir;`)
+      .replace('#include <common>', `#include <common>\n${BREATH_GLSL}\nattribute vec3 jiggle;\nattribute vec3 babyPush;\nuniform vec3 uJiggleThighL;\nuniform vec3 uJiggleThighR;\nuniform vec3 uJiggleCalfL;\nuniform vec3 uJiggleCalfR;\nuniform vec3 uJiggleBelly;\nuniform vec3 uJiggleBreastL;\nuniform vec3 uJiggleBreastR;\nuniform vec4 uKickAt[${KICKS}];\nuniform vec4 uKickDir[${KICKS}];\nuniform mat4 uKickRest;\nuniform mat3 uKickUnits;\nuniform vec4 uBellySoft;\nuniform vec4 uPubicAt;\nuniform vec4 uPubicDir;`)
       .replace('#include <morphtarget_vertex>', `#include <morphtarget_vertex>
 vec3 kickMove = vec3(0.0);
 if (jiggle.x > 0.0) {
@@ -244,6 +248,8 @@ if (jiggle.x > 0.0) {
   // her belly's soft shape: each point moved by how far it stands out of her, its edges held (softAt)
   kickMove += clamp(jiggle.x * ${(1 / UNITS_PER_METRE).toFixed(8)}, 0.0, 1.0) * (uKickUnits * (uBellySoft.xyz * max(kickP.z - uBellySoft.w, 0.0)));
 }
+// her breath (breathSkin.ts): her chest and belly out as she breathes in -- every point of her trunk and what she wears on it
+kickMove += uKickUnits * breathMove((uKickRest * vec4(transformed, 1.0)).xyz);
 // her pubic area pressed by her baby's head (every point of her: her skin, her opening, what she wears)
 if (uPubicAt.w != 0.0) {
   vec3 pubicD = (uKickRest * vec4(transformed, 1.0)).xyz - uPubicAt.xyz;
@@ -446,6 +452,9 @@ export function jiggleAt(j: Jiggle, v: number, out: { x: number; y: number; z: n
   if (x === undefined || y === undefined || z === undefined) return;
   const u = j.uniforms;
   kickP.set(x, y, z).applyMatrix4(u.kickRest.value);
+  // (her breath, as the shader moves it)
+  breathAt(u, kickP.x, kickP.y, kickP.z, kickM).applyMatrix3(u.kickUnits.value);
+  out.x += kickM.x; out.y += kickM.y; out.z += kickM.z;
   if (!(w[o] > 0)) { pubicAt(u, kickP, kickM).applyMatrix3(u.kickUnits.value); out.x += kickM.x; out.y += kickM.y; out.z += kickM.z; return; }
   // (her belly's soft shape, as the shader moves it)
   softAt(u, w[o], kickP, kickM).applyMatrix3(u.kickUnits.value);

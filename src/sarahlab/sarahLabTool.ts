@@ -153,6 +153,12 @@ export const SARAH_LAB_ACTION = Object.freeze({
   slope: 'sarahlab:slope:',
   /** BALANCE TEST: her centre of mass and what holds it up, drawn (actor/bodyMass.ts) */
   balance: 'sarahlab:balance',
+  /** HER BREATH AND HEART (actor/vitals.ts): ACTIVITY steps AUTO (follows WALK), REST, WALK, JOG, RUN, SPRINT; CHEST
+   * SHARE steps AUTO (as research measures it by how she lies) and fixed shares; BREATHING on or off; REFILL her energy */
+  activity: 'sarahlab:activity',
+  chestShare: 'sarahlab:chest-share',
+  breathing: 'sarahlab:breathing',
+  refill: 'sarahlab:refill',
   sit: 'sarahlab:sit',
   tpose: 'sarahlab:tpose',
   /** the birth positions (actor/humanBirth.ts) */
@@ -270,6 +276,8 @@ export const SARAH_LAB_FIELD = Object.freeze({
   bowel: 'sarahlab-bowel',
   bladder: 'sarahlab-bladder',
   gutLine: 'sarahlab-gut-line',
+  /** her breath and her heart now: breaths a minute, a breath's air, beats a minute, her energy */
+  vitals: 'sarahlab-vitals',
   /** the BIRTH line: where her baby's birth is (birthSequence.ts) */
   birthLine: 'sarahlab-birth-line',
   /** the BIRTH timeline: where in it she is, to jump to any moment */

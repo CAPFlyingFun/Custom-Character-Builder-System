@@ -22,7 +22,7 @@ const COLOURS: Record<Name, number> = { lungL: 0xe8a6a0, lungR: 0xe8a6a0, heart:
  * and their shading is worked out again every `shadeEvery`th time, and once more when they have lain still `restAfter`
  * seconds; her diaphragm a little see-through, so her lungs' bases and her heart show on it; `depthMost`, the deepest
  * `depth` taken. */
-export const THORAX_DRAW = Object.freeze({ breathStep: 0.04, beatStep: 0.1, shadeEvery: 2, restAfter: 1, diaphragmOpacity: 0.82, depthMost: 2 });
+export const THORAX_DRAW = Object.freeze({ breathStep: 0.04, beatStep: 0.1, shadeEvery: 2, restAfter: 1, diaphragmOpacity: 0.82, depthMost: BREATH.most });
 
 /** Her breath through one cycle (`at` 0..1 of it): 0 the end of a breath out .. 1 the end of a breath in. Breathing in
  * takes `BREATH.inShare` of it and breathing out the rest, each eased at both ends. */
@@ -45,6 +45,9 @@ export class ThoraxView {
   beatsPerMinute: number = PULSE.perMinute;
   /** How deep she breathes: 0 not at all .. 1 quietly .. 2 twice as deep. */
   depth = 1;
+  /** Her breath (0 all out .. 1 all in) and her heart's squeeze (0..1) as her vitals give them (actor/vitals.ts, `drive`):
+   * while set, they are drawn as given rather than run here. */
+  private driven: { breath: number; beat: number } | null = null;
   private readonly holder = new THREE.Object3D();
   private readonly meshes = new Map<Name, THREE.Mesh>();
   private readonly materials = new Map<Name, THREE.MeshStandardMaterial>();
@@ -89,7 +92,14 @@ export class ThoraxView {
   }
 
   /** Her breath now: 0 the end of a breath out .. 1 the end of a breath in. */
-  get breath(): number { return breathCurve(this.cycle); }
+  get breath(): number { return this.driven ? this.driven.breath : breathCurve(this.cycle); }
+  /**
+   * HER VITALS DRIVE THEM (actor/vitals.ts, the room's `stepBreath`): her breath (0..1), her heart's squeeze (0..1), how
+   * deep she breathes (in quiet breaths) and her rates, as they are this moment. Drawn at the next `update`.
+   */
+  drive(breath: number, beat: number, depth: number, breathsPerMinute: number, beatsPerMinute: number): void {
+    this.driven = { breath, beat }; this.depth = depth; this.breathsPerMinute = breathsPerMinute; this.beatsPerMinute = beatsPerMinute;
+  }
   /** Her chest as laid at the breath it is drawn at. */
   get laid(): ThoraxLayout { return this.layout; }
 
@@ -118,7 +128,7 @@ export class ThoraxView {
   }
 
   private draw(): void {
-    const D = THORAX_DRAW, deep = Math.min(D.depthMost, Math.max(0, Number.isFinite(this.depth) ? this.depth : 1)), breath = this.breath * deep, beat = beatCurve(this.pulse);
+    const D = THORAX_DRAW, deep = Math.min(D.depthMost, Math.max(0, Number.isFinite(this.depth) ? this.depth : 1)), breath = this.breath * deep, beat = this.driven ? this.driven.beat : beatCurve(this.pulse);
     const breathed = !(Math.abs(breath - this.drawnBreath) < D.breathStep), beaten = breathed || !(Math.abs(beat - this.drawnBeat) < D.beatStep), U = this.unshaded, S = this.still;
     if (breathed) {
       const L = (this.layout = layThorax(this.thorax, breath)); this.drawnBreath = breath;

@@ -26,8 +26,10 @@ import { SkinContact, spreadTriangles } from './skinContact';
 import { JointLimits, type JointAngles } from '../actor/jointLimits';
 import { rangeDeg, type RangeLevel } from '../data/jointRange';
 import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
-import { SkinPainter, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
-import { LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, type LineMode } from './levelLine';
+import { SkinPainter, standingSourceOf, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
+import { ACTIVITY, ACTIVITIES, breathFlare, chestShare, restingVitals, stepVitals, type Activity, type VitalsNow } from '../actor/vitals';
+import { breathAt, breathVolumes, layBreathTable } from './breathSkin';
+import { LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, standingShape, type LineMode } from './levelLine';
 import { ensureRest, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
 import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig } from './faceRig';
@@ -100,7 +102,7 @@ import v2Pelvis from '../data/pelvis/v2.json';
 import v2Torso from '../data/torso/v2.json';
 import { AbdomenView } from './abdomenView';
 import { ThoraxView } from './thoraxView';
-import { measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
+import { LUNGS, measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
 import v2Thorax from '../data/thorax/v2.json';
 import { wombRoomOf } from './wombRoom';
 import { STOMACH, RECTUM } from '../actor/abdominalOrgans';
@@ -1986,6 +1988,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (buttons.linkAll) { const all = BREAST_DIMENSIONS.every((k) => linked.has(k)); buttons.linkAll.textContent = all ? 'UNLINK W·H·D' : 'LINK W·H·D'; lit(buttons.linkAll, all); }
     lit(buttons.stand, pose === 'stand');
     lit(buttons.walk, pose === 'walk');
+    if (buttons[SARAH_LAB_ACTION.activity]) { buttons[SARAH_LAB_ACTION.activity].textContent = activityLabel(); buttons[SARAH_LAB_ACTION.chestShare].textContent = chestLabel(); buttons[SARAH_LAB_ACTION.breathing].textContent = `BREATHING · ${breathingOn ? 'ON' : 'OFF'}`; }
     lit(buttons.sit, pose === 'sit');
     lit(buttons.tpose, pose === 'tpose');
     for (const p of ['apart', 'squat', 'recline'] as const) lit(buttons[p], pose === p);
@@ -2982,6 +2985,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const balance = btn('BALANCE TEST', SARAH_LAB_ACTION.balance, () => setBalance(!balanceOn)); buttons[SARAH_LAB_ACTION.balance] = balance; row.append(balance);
       right.appendChild(row);
       const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.balance; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; fields[SARAH_LAB_FIELD.balance] = line; right.appendChild(line); }
+    // HER BREATH AND HEART (actor/vitals.ts): what she is doing, her chest's share of a breath, breathing on or off, her energy
+    { const line = document.createElement('div'); line.dataset.tab = 'pose'; line.dataset.field = SARAH_LAB_FIELD.vitals; line.style.cssText = 'font-size:12px;letter-spacing:.05em'; line.textContent = vitalsLine(); fields[SARAH_LAB_FIELD.vitals] = line; right.appendChild(line);
+      const row = document.createElement('div'); row.dataset.tab = 'pose'; row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+      const steps: (Activity | 'auto')[] = ['auto', ...ACTIVITIES];
+      buttons[SARAH_LAB_ACTION.activity] = btn(activityLabel(), SARAH_LAB_ACTION.activity, () => { activity = steps[(steps.indexOf(activity) + 1) % steps.length]; });
+      buttons[SARAH_LAB_ACTION.chestShare] = btn(chestLabel(), SARAH_LAB_ACTION.chestShare, () => { chestShareSet = CHEST_SHARE_STEPS[(CHEST_SHARE_STEPS.indexOf(chestShareSet) + 1) % CHEST_SHARE_STEPS.length]; });
+      buttons[SARAH_LAB_ACTION.breathing] = btn('BREATHING · ON', SARAH_LAB_ACTION.breathing, () => { breathingOn = !breathingOn; });
+      buttons[SARAH_LAB_ACTION.refill] = btn('REFILL ENERGY', SARAH_LAB_ACTION.refill, () => { vitals.energy = 1; });
+      for (const k of [SARAH_LAB_ACTION.activity, SARAH_LAB_ACTION.chestShare, SARAH_LAB_ACTION.breathing, SARAH_LAB_ACTION.refill]) row.append(buttons[k]);
+      right.appendChild(row); }
     // her birth opening, closed to the full 10 cm (with the birth poses: LEGS APART, SQUAT, RECLINE)
     birthOpenInput = slider(SARAH_LAB_FIELD.birthOpen, birthOpenPct, (v) => { birthOpenPct = v; vulva?.setOpen(v / 100); organs?.setOpening(v / 100); }, 100, 'pose');
     // and how far the area round it is pushed out, on its own (in a birth it opens first, and bulges once her baby's head
@@ -5664,6 +5677,87 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * where it is frame to frame, plus a walk's own bounce, which this walk-on-the-spot leaves out, and gravity as her
    * body leans -- in her own frame, steps each mass, and hands the shaders what her skin shows of it.
    */
+  // ------------------------------------------------------------------------------------------- her breath and her heart
+  /**
+   * HER BREATH AND HER HEARTBEAT (actor/vitals.ts; Joshua, 2026-11-13: "link up the outer skin to the lungs during
+   * breathing so the chest and belly would naturally move in and out per breath and synced to like stamina"): what she
+   * does (ACTIVITY: AUTO follows WALK) sets her effort, her effort and her energy set her breath and her heart, and every
+   * frame her skin breathes by them (breathSkin.ts: her chest's share of each breath by how she lies, `chestShare`, or
+   * CHEST SHARE's) and her lungs and heart are drawn by them (thoraxView.ts). BREATHING off holds her skin still.
+   */
+  const vitals = restingVitals();
+  let vitalsNow: VitalsNow | null = null;
+  let activity: Activity | 'auto' = 'auto';
+  /** CHEST SHARE: null as research measures it by how she lies; else her chest's fixed share of each breath */
+  let chestShareSet: number | null = null;
+  const CHEST_SHARE_STEPS: readonly (number | null)[] = [null, 0.5, 0.6, 0.7, 0.8];
+  let breathingOn = true;
+  /** a probe's held breath (0 all out .. 1 all in), or null to let her breathe */
+  let breathHeld: number | null = null;
+  /** her trunk's table and each move's sweep as last laid, and for what shape (breathSkin.ts) */
+  let breathLaid: { key: string; chest: number; belly: number; at: number } | null = null;
+  let breathArm: { mesh: THREE.SkinnedMesh; share: Float32Array } | null = null;
+  let vitalsShownAt = 0;
+  /** what of her shape is her pose's now (as her painters read it) */
+  function poseShapesOf(mesh: THREE.Mesh) {
+    const fields = shaped.find((x) => x.mesh === mesh)?.fields;
+    return POSE_SHAPE_FIELDS.flatMap((name) => { const f = fields?.fields.get(name), weight = fields?.laid?.get(name) ?? 0; return f && weight ? [{ index: f.index, pos: f.pos, weight }] : []; });
+  }
+  /** each of her points' share on her arms' bones (her two upper arms, found by name as scripts/sarahV2SideLock.mjs finds
+   * them, and every bone under them) */
+  function armShareOf(mesh: THREE.SkinnedMesh): Float32Array {
+    if (breathArm?.mesh === mesh) return breathArm.share;
+    const bones = mesh.skeleton.bones, arm = new Uint8Array(bones.length);
+    bones.forEach((b, k) => { for (let q: THREE.Object3D | null = b; q; q = q.parent) if (q.name === 'Bone_021' || q.name === 'Bone_026') { arm[k] = 1; break; } });
+    const g = mesh.geometry, SI = g.getAttribute('skinIndex'), SW = g.getAttribute('skinWeight'), n = g.getAttribute('position').count, share = new Float32Array(n);
+    if (SI && SW) for (let i = 0; i < n; i++) { let a = 0; for (let c = 0; c < 4; c++) a += arm[SI.getComponent(i, c)] ? SW.getComponent(i, c) : 0; share[i] = a; }
+    breathArm = { mesh, share };
+    return share;
+  }
+  /** Her trunk's table and each move's sweep laid again when her shape has changed (at most twice a second). */
+  function layBreath(now: number): boolean {
+    const b = bodyOf();
+    if (!b || !babyFrame) return false;
+    const src = standingSourceOf(b.mesh, poseShapesOf(b.mesh));
+    if (!src) return false;
+    const key = `${src.key} ${jiggle.breath.value.z.toFixed(2)}`;
+    if (breathLaid && (breathLaid.key === key || now - breathLaid.at < 0.5)) return true;
+    const S = standingShape(src), rest = new Float32Array(S.length), v = new THREE.Vector3();
+    for (let i = 0; i < S.length; i += 3) v.set(S[i], S[i + 1], S[i + 2]).applyMatrix4(babyFrame.meshToRest).toArray(rest, i);
+    layBreathTable(jiggle, rest, armShareOf(b.mesh), { pubisTop: v2Pelvis.landmarks.symphysisTop[1], xiphoid: v2Thorax.xiphoid[1], sternumTop: v2Thorax.sternumTop[1], midX: v2Pelvis.landmarks.symphysisTop[0], ribsLowest: v2Thorax.sections[0].y });
+    const index = (b.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? b.mesh.geometry.index?.array;
+    if (!index) return false;
+    const swept = breathVolumes(jiggle, rest, index);
+    breathLaid = { key, chest: swept.chest, belly: swept.belly, at: now };
+    return swept.chest > 0 && swept.belly > 0;
+  }
+  /** One step of her breath and her heart; her skin's move and her lungs and heart laid by them. */
+  function stepBreath(dt: number): void {
+    const weeks = pregnant() ? herWeek(bump, babyCount, pregnancy) : 0;
+    const intensity = activity === 'auto' ? (pose === 'walk' ? ACTIVITY.walk : ACTIVITY.rest) : ACTIVITY[activity];
+    const now = (vitalsNow = stepVitals(vitals, dt, intensity, { weeks }));
+    const B = jiggle.breath.value;
+    B.z = breathFlare(weeks);
+    if (babyFrame) { jiggle.kickRest.value.copy(babyFrame.meshToRest); jiggle.kickUnits.value.setFromMatrix4(babyFrame.meshToRest).invert(); }
+    const breath = breathHeld ?? now.breath, air = (now.tidalL * breath) / 1000;
+    if (breathingOn && layBreath(performance.now() / 1000) && breathLaid) {
+      const share = chestShareSet ?? chestShare(softDown, pose === 'sit');
+      B.x = (share * air) / breathLaid.chest; B.y = ((1 - share) * air) / breathLaid.belly;
+    } else { B.x = 0; B.y = 0; }
+    thorax?.drive(breath, now.beat, now.tidalL / (LUNGS.tidalMl / 1000), now.breathsPerMinute, now.beatsPerMinute);
+    // its line, a few times a second
+    const t = performance.now();
+    if (t - vitalsShownAt > 250) { vitalsShownAt = t; const f = fields[SARAH_LAB_FIELD.vitals]; if (f) f.textContent = vitalsLine(); }
+  }
+  function vitalsLine(): string {
+    const v = vitalsNow;
+    if (!v) return 'BREATH & HEART';
+    const share = chestShareSet ?? chestShare(softDown, pose === 'sit');
+    return `BREATH ${Math.round(v.breathsPerMinute)}/min · ${v.tidalL.toFixed(2)} L · chest ${Math.round(share * 100)}% · HEART ${Math.round(v.beatsPerMinute)} bpm · ENERGY ${Math.round(v.energy * 100)}%`;
+  }
+  const activityLabel = (): string => `ACTIVITY · ${activity === 'auto' ? `AUTO (${pose === 'walk' ? 'WALK' : 'REST'})` : activity.toUpperCase()}`;
+  const chestLabel = (): string => `CHEST · ${chestShareSet === null ? 'AUTO' : `${Math.round(chestShareSet * 100)}%`}`;
+
   /**
    * Her belly's soft moves a step (softBody.ts): the rules read her lean from the way down in her frame against standing,
    * her baby's place in her womb, and how full her womb is; the springs ease there; the shaders read the result.
@@ -5737,6 +5831,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function feelMotion(dt: number): void {
     seated = sitMoving ? seatShare() : stepSeated(seated, pose === 'sit' ? 1 : 0, dt);
     applyMotion();
+    if (dt > 0) stepBreath(dt);
     const b = bodyOf();
     // (v3, on her skeleton: no belly to hang a mass from, but her womb's own soft body carries her babies)
     if (!anchors || !b || !(dt > 0)) { if (organs && organsGrowWomb && dt > 0) { feltBelly.set(0, 0, 0); stepBabies(dt); } return; }
@@ -8342,6 +8437,43 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (a probe's look inside her hands: her mesh and the finger parts, read only by a probe that asks)
       if (new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth') (globalThis as unknown as Record<string, unknown>).__sarahLabHands = () => ({ mesh: bodyOf()?.mesh ?? null, fingerSplit, fingerWeights, fingerFills, babyFrame, measure, THREE });
       if (new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth') (globalThis as unknown as Record<string, unknown>).__sarahLabCloth = {
+        // her breath and her heart (actor/vitals.ts, breathSkin.ts): what they are, and a breath held for a picture
+        vitals: () => ({ now: vitalsNow, vitals: { ...vitals }, activity, chestShareSet, breathingOn, breathHeld, laid: breathLaid, move: jiggle.breath.value.toArray(), marks: jiggle.breathMarks.value.toArray(), slices: jiggle.breathSlices.value.map((x) => x.toArray().map((y) => +y.toFixed(4))), share: chestShare(softDown, pose === 'sit'), down: softDown.toArray() }),
+        // her breath's move on her own skin now (breathSkin.ts `breathAt`, as the shader adds it): how far her points go
+        // (mm, the most and where), and the air it sweeps against the air breathed (mL) -- her chest's and belly's apart
+        breathCheck: () => {
+          const b = bodyOf();
+          if (!b || !babyFrame || !breathLaid) return null;
+          const src = standingSourceOf(b.mesh, poseShapesOf(b.mesh)); if (!src) return null;
+          const S = standingShape(src), n = S.length / 3, rest = new Float32Array(S.length), mv = new Float32Array(S.length), v = new THREE.Vector3(), o = new THREE.Vector3();
+          for (let i = 0; i < S.length; i += 3) v.set(S[i], S[i + 1], S[i + 2]).applyMatrix4(babyFrame.meshToRest).toArray(rest, i);
+          const B = jiggle.breath.value, keep = B.clone();
+          const part = (cx: number, by: number) => {
+            B.set(cx, by, keep.z, keep.w);
+            let most = 0, at = -1;
+            for (let i = 0; i < n; i++) { breathAt(jiggle, rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2], o); o.toArray(mv, i * 3); const l = o.length(); if (l > most) { most = l; at = i; } }
+            const index = (b.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? b.mesh.geometry.index!.array;
+            let swept = 0;
+            for (let t = 0; t + 2 < index.length; t += 3) { const i = index[t], j = index[t + 1], k = index[t + 2];
+              const ax = rest[j * 3] - rest[i * 3], ay = rest[j * 3 + 1] - rest[i * 3 + 1], az = rest[j * 3 + 2] - rest[i * 3 + 2], bx = rest[k * 3] - rest[i * 3], by2 = rest[k * 3 + 1] - rest[i * 3 + 1], bz = rest[k * 3 + 2] - rest[i * 3 + 2];
+              const nx = (ay * bz - az * by2) / 2, ny = (az * bx - ax * bz) / 2, nz = (ax * by2 - ay * bx) / 2;
+              for (const q of [i, j, k]) swept += (mv[q * 3] * nx + mv[q * 3 + 1] * ny + mv[q * 3 + 2] * nz) / 3; }
+            return { mostMm: +(most * 1000).toFixed(2), at: at >= 0 ? Array.from(rest.slice(at * 3, at * 3 + 3), (x) => +x.toFixed(3)) : null, sweptMl: +(Math.abs(swept) * 1e6).toFixed(1) };
+          };
+          const chest = part(keep.x, 0), belly = part(0, keep.y), both = part(keep.x, keep.y);
+          B.copy(keep);
+          const now = vitalsNow, breath = breathHeld ?? now?.breath ?? 0;
+          return { airMl: +((now?.tidalL ?? 0) * breath * 1000).toFixed(1), share: chestShareSet ?? chestShare(softDown, pose === 'sit'), chest, belly, both, laid: breathLaid };
+        },
+        setVitals: (set: { activity?: Activity | 'auto'; energy?: number; effort?: number; held?: number | null; chest?: number | null; breathing?: boolean }) => {
+          if (set.activity !== undefined) activity = set.activity;
+          if (set.energy !== undefined) vitals.energy = set.energy;
+          if (set.effort !== undefined) vitals.effort = set.effort;
+          if (set.held !== undefined) breathHeld = set.held;
+          if (set.chest !== undefined) chestShareSet = set.chest;
+          if (set.breathing !== undefined) breathingOn = set.breathing;
+          refresh(); return vitalsLine();
+        },
         // the three masses (softBody.ts): where each is, and what her skin shows of it (metres)
         bellySkin: (all?: boolean) => { const k = bellySkin(); if (k && babyAutoDepth && babySkinDepth?.length === k.length) { const u = depthUnit(); for (let i = 0; i < k.length; i++) k[i] -= babyAutoDepth * u * babySkinDepth[i]; } return k ? { n: k.length / 3, sample: Array.from(all ? k : k.slice(0, 30)), depth: all && babySkinDepth ? Array.from(babySkinDepth) : null, depthUnit: depthUnit(), zmax: Math.max(...Array.from(k).filter((_, i) => i % 3 === 2)), baby: all && babyPoints ? Array.from(babyPoints) : null, babyAll: all && babyAll ? Array.from(babyAll) : null, curl: babyCurl ? { centre: babyCurl.centre.toArray(), long: babyCurl.long.toArray(), back: babyCurl.back.toArray(), side: babyCurl.side.toArray(), size: babyCurl.size.toArray() } : null } : null; },
         // a probe's check: points of her body at the same place whose pushes differ (a seam opening)
