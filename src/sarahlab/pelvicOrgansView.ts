@@ -399,6 +399,14 @@ export class PelvicOrgansView {
     return out;
   }
 
+  /** Carried to where her pelvis holds them now, at once and at rest: after a time they were not stepped (hidden, with
+   * X-RAY at nothing) they are not left to swing in from where she stood then. */
+  carry(): void {
+    const toWorld = this.boneToWorld().elements;
+    for (const o of this.organs) placeCage(o.cage, toWorld);
+    this.last = this.marks(toWorld); this.speed = null;
+    this.draw();
+  }
   /** One step of `dt` seconds: their soft bodies follow her pelvis, feeling only gravity's change as she leans. A pose put
    * on in one frame (her pelvis's motion changing faster than JUMP_ACCEL allows) is not a movement: they are simply
    * carried to where it holds them. */

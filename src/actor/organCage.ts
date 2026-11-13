@@ -57,6 +57,24 @@ export function makeCage(rest: ArrayLike<number>, mass: ArrayLike<number>, tie: 
   return { n, rest: r, restCentre: [cx, cy, cz], q, mass: m, tie: Float32Array.from(tie), radius: Float32Array.from(radius), x: new Float32Array(3 * n), v: new Float32Array(3 * n), R: [1, 0, 0, 0, 1, 0, 0, 0, 1], centre: [0, 0, 0], primed: false };
 }
 
+/**
+ * A cage's rest places set again (the bone's frame, metres: what it is tied to, and the shape it keeps) -- an organ
+ * carried by something its bone does not carry (her diaphragm as she breathes: sarahlab/abdomenView.ts `ride`). With
+ * `carry` (the bone's frame to the world, as `stepCage`'s `boneToWorld`) its points are carried the same way at once:
+ * what moves its rest place moves the organ itself, with no lag (her diaphragm pushes what is under it; left to its
+ * ties alone a soft organ would trail its rest place by centimetres in a hard breath). Without it, it follows by its ties.
+ */
+export function setRest(c: Cage, rest: ArrayLike<number>, carry: ArrayLike<number> | null = null): void {
+  if (carry && c.primed) for (let i = 0; i < c.n; i++) {
+    const dx = rest[3 * i] - c.rest[3 * i], dy = rest[3 * i + 1] - c.rest[3 * i + 1], dz = rest[3 * i + 2] - c.rest[3 * i + 2];
+    c.x[3 * i] += carry[0] * dx + carry[4] * dy + carry[8] * dz; c.x[3 * i + 1] += carry[1] * dx + carry[5] * dy + carry[9] * dz; c.x[3 * i + 2] += carry[2] * dx + carry[6] * dy + carry[10] * dz;
+  }
+  let M = 0, cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < c.n; i++) { c.rest[3 * i] = rest[3 * i]; c.rest[3 * i + 1] = rest[3 * i + 1]; c.rest[3 * i + 2] = rest[3 * i + 2]; M += c.mass[i]; cx += c.mass[i] * rest[3 * i]; cy += c.mass[i] * rest[3 * i + 1]; cz += c.mass[i] * rest[3 * i + 2]; }
+  cx /= M; cy /= M; cz /= M; c.restCentre[0] = cx; c.restCentre[1] = cy; c.restCentre[2] = cz;
+  for (let i = 0; i < c.n; i++) { c.q[3 * i] = c.rest[3 * i] - cx; c.q[3 * i + 1] = c.rest[3 * i + 1] - cy; c.q[3 * i + 2] = c.rest[3 * i + 2] - cz; }
+}
+
 /** A 4x4 (column-major, as three's `Matrix4.elements`) applied to a point. */
 function apply(e: ArrayLike<number>, x: number, y: number, z: number, out: Float32Array | number[], o: number): void {
   out[o] = e[0] * x + e[4] * y + e[8] * z + e[12];

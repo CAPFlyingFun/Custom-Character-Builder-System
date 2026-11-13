@@ -178,9 +178,44 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   pancreas, and her windpipe (`actor/upperOrgans.ts`, laid again with her diaphragm as she breathes; drawn by
   `thoraxView.ts`); her stomach, bowel, rectum and kidneys (`actor/abdominalOrgans.ts`); her womb, canal and bladder
   (`actor/pelvicOrgans.ts`), and her ovaries and tubes beside whichever womb she has (`actor/adnexa.ts`, drawn by
-  `pelvicOrgansView.ts`). All under X-RAY. The spleen, pancreas and gallbladder were placed where they touch her other
-  organs least (MEASURED 2026-11-13): her spleen against her left kidney's upper pole and her pancreas at L2, where her
-  transverse colon, laid high, leaves it room.
+  `pelvicOrgansView.ts`).
+- **Only under X-RAY** (Joshua, 2026-11-13: "all the organs and even skeleton doesn't have to actually render underneath
+  the skin and be transparent... only with X-Ray mode will it all show up to help with performance"): her skeleton and
+  her organs are not built until X-RAY is first used; with X-RAY at 0 none of them is drawn and none of them is stepped
+  (her pelvic organs only while her skeleton's doors are in use).
+- **Organ against organ** (Joshua, 2026-11-13, of her spleen pressing into her kidney and her pancreas laid low: "is it
+  an easy fix?" -- "Yes."). Her own rib cage, measured on her bones, puts her diaphragm about a vertebra lower against
+  her spine than a textbook's (the bottom of her breastbone is level with her T11/T12 disc), and the organs first laid
+  from her landmarks alone did not fit under it. MEASURED 2026-11-13 at the end of a quiet breath out, before: her
+  stomach's fundus 2.7 cm up through her diaphragm, 17% of it in her left lung; 43% of her right kidney inside her liver;
+  18% of her spleen inside her left kidney, its foot below her lowest ribs; her liver up to 3.2 cm into her spine; her
+  pancreas at her navel's height, two vertebrae low; 11% of her stomach in her colon. Now:
+  - her liver lies in front of her spine and rests on her right kidney and her pancreas, its underside coming down beside
+    them in a slope (`OFF_KIDNEYS.skirt`); her spleen is seated under her left dome's slope, in front of her left kidney's
+    outer edge, within her ribs; her pancreas's neck is at her L1/L2 disc, level with her stomach's pylorus, in front of
+    her kidneys; her kidneys are 2 cm lower, 6 mm nearer her spine and 6 mm further back; her colon's top is lower, its
+    middle under her stomach (`ABDOMEN_PLACE`, `LIVER`, `SPLEEN`, `PANCREAS`: each number's reason is in its comment);
+  - her stomach is one even turn from its fundus to its pylorus (a J: `ABDOMEN_PLACE.stomach`, `stomachLine`), flat front
+    to back, its turn never tighter than its own half-size, and it is SET in place all of a piece (`tubeSetOff`,
+    `tubeSetOffTube`, `tubeSetUnder`): pushed into place station by station its skin crumpled (79 of its edges folded
+    back) and it held 5 to 16% less than its number. Now it holds its number to the millilitre and its skin has no fold;
+  - what lies under her diaphragm is laid on what is already there -- her upper belly's organs on her kidneys (`layUpper`'s
+    `kidneys`, `OFF_KIDNEYS`), her stomach and colon under and off them (`upperBelly`, `layAbdomen`'s `upper`) -- so
+    another body is kept clear by the same rules;
+  - what lies under her diaphragm rides its domes down all of a piece as she breathes in (`domeDrop`, `BREATH_RIDE`: her
+    stomach, kidneys and the tops of her colon and her bowel with her liver, spleen and pancreas -- `abdomenView.ts`
+    `ride`), so they keep their places against one another at every breath.
+  `tests/upperOrgans.test.ts` holds it: none of her liver, gallbladder, spleen, pancreas, kidneys, stomach or colon lies in
+  another, in her lungs or heart, up through her diaphragm, out through her ribs or in her spine, at a quiet breath out, a
+  quiet breath in and her deepest breath (her gallbladder in its hollow in her liver excepted). After anything moves one
+  of them, or her diaphragm, run it. MEASURED in the room 2026-11-13, her organs as drawn in her STAND pose: none of them
+  in another at a breath out, a breath in and her hardest breath held in, but for one of her liver's 1,402 points in her
+  colon and her bowel's bumps against her colon (2% of its points at a breath out, as before; 5% at a breath in, 9% at her
+  hardest -- her bowel is pressed down from above and does not yet bulge forward as her belly's skin does).
+- Not done yet (Joshua, 2026-11-13: "go ahead and fix and do the last two things you mentioned"): in a pregnancy her bowel
+  is pushed up behind her womb into her upper belly, where nothing keeps it off her liver, spleen and pancreas, and her
+  diaphragm does not rise as a woman's does (about 4 cm by term); and her stomach is drawn no fuller than the room she has
+  for it (`ABDOMEN_PLACE.stomachRoomMl`, 450 mL) -- her belly does not yet round out for a full one.
 
 ## Verification
 

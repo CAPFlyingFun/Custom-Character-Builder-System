@@ -105,7 +105,7 @@ import { ThoraxView } from './thoraxView';
 import { LUNGS, measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
 import v2Thorax from '../data/thorax/v2.json';
 import { wombRoomOf } from './wombRoom';
-import { STOMACH, RECTUM } from '../actor/abdominalOrgans';
+import { STOMACH, RECTUM, layKidneys } from '../actor/abdominalOrgans';
 import { BLADDER } from '../actor/pelvicOrgans';
 import { drawnFill, gutNeeds, hoursToBladderUrge, restingGut, urineMlH, type GutState } from '../actor/gut';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
@@ -783,6 +783,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let babySoftOn = true;
   // (a probe's: her organs not drawn, to look at her bare bones)
   let organsOff = false;
+  /** a probe's: her skeleton hidden under X-RAY, so her organs are seen alone */
+  let bonesOff = false;
+  /** her pelvic organs were not stepped last frame (hidden): they are carried to her pelvis before they are stepped again */
+  let organsIdle = false;
   // (a probe's: her baby as one stiff length down her canal, as it was before 2026-11-10, to compare)
   let babyAlongOn = true;
   /** how far its body has been moved across to pass through the middle of her opening (birthPlace), eased */
@@ -6805,13 +6809,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     } catch (error) { console.error('[sarahlab] her pelvic organs could not be laid in her', error); organs?.dispose(); organs = null; v2OrganBones = null; applyOpening(); refresh(); return; }
     // (each on its own: one that cannot be built leaves the others, and is not tried again)
     try {
-      abdomen = new AbdomenView(v2Pelvis, v2Torso, f, M, organs!);
+      abdomen = new AbdomenView(v2Pelvis, v2Torso, f, M, organs!, v2Thorax as unknown as ThoraxLandmarks);
       abdomen.setFill(gutFill());
       three.add(abdomen.group);
     } catch (error) { console.error("[sarahlab] her belly's organs could not be laid in her", error); abdomen?.dispose(); abdomen = null; abdomenFailed = true; }
     try {
       // (her lungs, heart and diaphragm in her rib cage, carried by her chest: built new in v2)
-      if (!thorax && !thoraxFailed) { thorax = new ThoraxView(v2Thorax as unknown as ThoraxLandmarks, f.chest, M); three.add(thorax.group); }
+      if (!thorax && !thoraxFailed) { thorax = new ThoraxView(v2Thorax as unknown as ThoraxLandmarks, f.chest, M, layKidneys(v2Torso, v2Pelvis.landmarks.symphysisTop[0])); three.add(thorax.group); }
     } catch (error) { console.error('[sarahlab] her lungs and heart could not be laid in her', error); thorax?.dispose(); thorax = null; thoraxFailed = true; }
     refresh();
   }
@@ -6851,7 +6855,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!model) return;
     const share = organs || skeletonV2 ? Math.min(1, Math.max(0, xrayPct / 100)) : 0, opacity = Math.max(0.06, 1 - 0.94 * share);
     // (v2: her skeleton and her organs inside her drawn solid, and only while she is seen through)
-    if (skeletonV2) skeletonV2.visible = share > 0;
+    if (skeletonV2) skeletonV2.visible = share > 0 && !bonesOff;
     if (organs && !organsGrowWomb) { applyOpening(); if (abdomen) abdomen.visible = share > 0; if (thorax) thorax.visible = share > 0; }
     // (v2: and her own womb's wall shown through her, faintly, as it is while her baby is shown)
     if (vulva) vulva.seeWomb(share > 0 || (babyShown && !!babyHolder));
@@ -8274,7 +8278,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (her doors' feet raised to where her own skin leaves the sleeve round them, as last laid, as far as her skin is
         // laid down to them: no wall of her own skin round her lips -- pelvicOrgansView.ts `setFootRise`)
         if (vulva) { const t = Math.min(1, Math.max(0, (organs.opening - SEAT_SKIN_OPENS.from) / (SEAT_SKIN_OPENS.to - SEAT_SKIN_OPENS.from))); organs.setFootRise(lipsOnSkin ? null : vulva.seatRise, t * t * (3 - 2 * t)); }
-        organs.update(dt);
+        // (stepped only while they are seen -- under X-RAY -- or her doors are in use: hidden, nothing of her insides runs.
+        // Joshua, 2026-11-13: "only with X-Ray mode will it all show up to help with performance". Once X-RAY had been
+        // used they went on stepping their soft bodies behind her skin for the rest of the visit; shown again, they are
+        // first carried to where her pelvis holds them now -- pelvicOrgansView.ts `carry`: left to follow, her womb and
+        // her bladder swung in from where she had stood, MEASURED 2026-11-13 24.5 cm off as X-RAY came back in a squat)
+        if (xrayPct > 0 || doorsOpening()) { if (organsIdle) { organs.carry(); organsIdle = false; } organs.update(dt); } else organsIdle = true;
         // (v2, her skeleton's opening: her own skin stretched down to her doors, over the sleeve round her canal as it now
         // stands -- none of it up to SEAT_SKIN_OPENS.from open, all of it by SEAT_SKIN_OPENS.to)
         if (vulva) {
@@ -8289,7 +8298,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (seated) vulva.setSkeletonHole(1 - step(SEAT_SKIN_OPENS.from, SEAT_SKIN_OPENS.holeShut));
         }
         // (her belly's and her chest's organs only while they are seen: X-RAY)
-        if (xrayPct > 0) { abdomen?.update(dt); thorax?.update(dt); }
+        // (her chest first: her belly's organs ride her diaphragm as it is drawn)
+        if (xrayPct > 0) { thorax?.setWomb(organs.wombRoom ?? null); thorax?.update(dt); abdomen?.ride(thorax ? thorax.dropAt : null, thorax?.laid); abdomen?.update(dt); }
         // (FOLD BACK's line follows the doors as they go, not only the slider)
         const fl = fields[SARAH_LAB_FIELD.foldBack], line = foldBackLine(foldBackPct, organs.doorAngles);
         if (fl && fl.textContent !== line) fl.textContent = line;
@@ -9154,6 +9164,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (a probe's: its skin's share shown, 0 plain .. 1 its own)
         babySkin: () => +babySkin.skinShow.value.toFixed(3),
         organsHidden: (on: boolean) => { organsOff = on; if (organs) organs.visible = !on && organs.visible; applyXray(); return organsOff; },
+        // her skeleton hidden under X-RAY (her organs seen alone), or shown again: for probes' pictures
+        skeletonHidden: (on: boolean) => { bonesOff = on; applyXray(); return bonesOff; },
         babyAlong: (on?: boolean) => { if (on !== undefined) babyAlongOn = on; return babyAlongOn; },
         babySoft: (on?: boolean) => { if (on !== undefined) { babySoftOn = on; if (!on) setSqueeze(babySqueeze, null, M); } const r = babyRoots()[0], sb = r && softBabies.get(r); if (!sb) return { on: babySoftOn };
           return { on: babySoftOn, drive: +sb.drive.toFixed(3), ready: sb.ready, swing: +Math.max(...sb.vel.map((v) => v.length())).toFixed(3) }; },
@@ -9948,7 +9960,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // (each organ's box as drawn, metres: [least x, y, z, most x, y, z])
           const box: Record<string, number[]> = {};
           if (abdomen) for (const n of ['stomach', 'intestines', 'colon', 'rectum', 'kidneyL', 'kidneyR'] as const) { const a = abdomen.drawn(n); if (!a) continue; const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]; for (let i = 0; i < a.length; i += 3) for (let c = 0; c < 3; c++) { b[c] = Math.min(b[c], a[i + c]); b[3 + c] = Math.max(b[3 + c], a[i + c]); } box[n] = b.map((x) => +x.toFixed(3)); }
-          return { box, thorax: thorax?.report() ?? null, gut: { ...gut }, needs: gutNeeds(gut), urineMlH: urineMlH(gut.waterMl), layout: abdomen?.laid ?? null, sway: abdomen?.sway() ?? null, nan: bad, wombRoom: organs?.wombRoom ? { top: organs.wombRoom.top, leanDeg: organs.wombRoom.leanDeg, bottom: organs.wombRoom.path[0], widest: Math.max(...organs.wombRoom.halves.map((h) => h[0])) } : null };
+          return { box, thorax: thorax?.report() ?? null, gut: { ...gut }, needs: gutNeeds(gut), urineMlH: urineMlH(gut.waterMl), layout: abdomen?.laid ?? null, sway: abdomen?.sway() ?? null, nan: bad, wombRoom: organs?.wombRoom ? { top: organs.wombRoom.top, leanDeg: organs.wombRoom.leanDeg, bottom: organs.wombRoom.path[0], widest: Math.max(...organs.wombRoom.halves.map((h) => h[0])), slices: organs.wombRoom.path.map((q, k) => [...q, ...organs!.wombRoom!.halves[k]].map((v) => +v.toFixed(4))) } : null };
+        },
+        // her chest's and her belly's organs as drawn now (world metres), each with its triangles: for probes that measure
+        // organ against organ in the room (tests/upperOrgans.test.ts measures them as laid)
+        organsDrawn: () => {
+          const out: Record<string, { points: number[]; triangles: number[] }> = {};
+          const put = (name: string, p: Float32Array | null, t: ArrayLike<number> | null) => { if (p && t) out[name] = { points: Array.from(p, (v) => +v.toFixed(5)), triangles: Array.from(t) }; };
+          if (thorax) for (const n of ['lungL', 'lungR', 'heart', 'liver', 'gallbladder', 'spleen', 'pancreas'] as const) put(n, thorax.drawn(n), thorax.tris(n));
+          if (abdomen) for (const n of ['stomach', 'intestines', 'colon', 'kidneyL', 'kidneyR'] as const) put(n, abdomen.drawn(n), abdomen.tris(n));
+          return out;
         },
         // her pelvic organs (v3, on her skeleton): their layout (rest metres), how much her bladder holds, and how far each
         // soft body is from where its bone holds it now (metres); `bladder` sets how much it holds

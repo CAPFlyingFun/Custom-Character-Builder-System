@@ -23,6 +23,23 @@
  *
  * Every size is MEASURED (a source in its comment) or BIOLOGICAL SHAPE (where it sits, from anatomy's description of it);
  * what only shapes the mesh is GAME TUNING. Pure: plain arrays, no three.
+ *
+ * LAID IN HER OWN RIB CAGE, ORGAN AGAINST ORGAN (2026-11-13; Joshua, of her spleen pressing into her kidney and her
+ * pancreas laid low: "is it an easy fix?" -- "Yes."). These were first placed from her landmarks alone, before her
+ * diaphragm, her liver and her spleen were laid; measured against them in v2, at the end of a quiet breath out: her
+ * stomach's fundus stood 2.7 cm up through her diaphragm, 17% of it in her left lung; 43% of her right kidney was inside
+ * her liver, 2.7 cm deep; 18% of her spleen was inside her left kidney, 1.6 cm deep; her left kidney's upper pole stood
+ * 7 mm through her diaphragm's back; 11% of her stomach was in her colon. So:
+ *  - her stomach's line is drawn under her diaphragm's left dome, her colon's top lower -- its bends under her liver and
+ *    her spleen, its middle sagging under her stomach's greater curve -- and her kidneys a little lower, nearer her spine
+ *    and further back (`ABDOMEN_PLACE`);
+ *  - given what lies over them (`UpperBelly`: her liver's and her diaphragm's underside, her spleen, her pancreas), her
+ *    stomach and her colon are kept under and off it, whatever they hold and whatever her womb does (`layAbdomen`);
+ *  - as she breathes in, her stomach, her kidneys and her colon's top ride her diaphragm's domes down with the organs over
+ *    them (`BREATH_RIDE`), so they keep their places against one another at every breath.
+ * MEASURED after (tests/upperOrgans.test.ts holds it): none of her liver, gallbladder, spleen, pancreas, kidneys, stomach
+ * or colon lies in another, in her lungs or heart, up through her diaphragm, out through her ribs or in her spine, at a
+ * quiet breath out, a quiet breath in and her deepest breath (her gallbladder in its hollow in her liver excepted).
  */
 import type { P3 } from './pelvisMeasure';
 import { insideWomb, spineFrontAt, WOMB_SHAPE, type TorsoLandmarks, type WombRoom } from './pregnantWomb';
@@ -52,12 +69,34 @@ export const KIDNEY = Object.freeze({ length: 0.115, width: 0.06, thickness: 0.0
 /** Where they sit, against her landmarks. BIOLOGICAL SHAPE (from anatomy's description of each), GAME TUNING within it so
  * each lies in the room the others leave. Metres: x from her midline (+ her left), y as named, z ahead of her spine's front. */
 export const ABDOMEN_PLACE = Object.freeze({
-  /** the stomach's line, fundus to pylorus: [x, y above (-below) her xiphoid, z ahead of her spine's front there] */
-  stomach: [[0.07, 0.03, 0.035], [0.085, -0.005, 0.05], [0.075, -0.05, 0.068], [0.045, -0.078, 0.08], [0.008, -0.075, 0.088], [-0.025, -0.06, 0.075]] as readonly (readonly [number, number, number])[],
+  /** the stomach's line, fundus to pylorus (x from her midline, y above (-below) her xiphoid, z ahead of her spine's
+   * front there): from its `fundus`'s middle a quarter turn -- down, then toward her right -- and from the turn's end its
+   * `antrum` on to its pylorus [toward her right, up, forward]; `forward`, how much further ahead of her spine it is at
+   * the turn's end. The turn's radius is `turn` at the least and `turnPerWide` times its widest half-size (`layStomach`):
+   * a skin swept round a line folds on the inside of a bend tighter than its own half-size, and a fuller stomach's
+   * greater curve swings down and out, its pylorus -- its mobile end -- going down and to her right (BIOLOGICAL SHAPE).
+   * GAME TUNING within BIOLOGICAL SHAPE: its fundus under her diaphragm's left dome, beside the tip of her liver's left
+   * lobe and in front of her spleen; its body down in front of her spleen and her left kidney; its lower limb across her
+   * middle over her transverse colon to its pylorus just right of her midline, at her L1/L2 disc (the transpyloric plane)
+   * as it is between meals. At first its fundus began 3 cm above her xiphoid and 2 cm further out, which in her own rib
+   * cage is in her left lung; and written as six fixed stations its corner was tighter than its own half-size from a
+   * quarter of a litre up (MEASURED 2026-11-13: 11 of its skin's edges folded back at 250 mL, 29 at a litre). */
+  stomach: { fundus: [0.068, -0.03, 0.058] as const, leanDeg: 8, hookDeg: 40, turn: 0.05, turnPerWide: 1.25, forward: 0.04 },
+  /** the most her stomach is DRAWN holding where it is laid in her own rib cage (`layAbdomen` with what is over it).
+   * MEASURED 2026-11-13 in her own body: to 450 mL it is in none of her other organs; at half a litre 7 of its points
+   * stand in her gallbladder; from 600 mL its front reaches her belly's skin (7 cm ahead of her spine's front there) and
+   * at a litre it stands 2 cm out through it, and down into her bowel -- her belly is 7.4 cm deep inside there, and a
+   * litre is a ball 12 cm across. A woman's belly rounds out for a full stomach (BIOLOGICAL SHAPE); until her belly's
+   * skin gives for hers, it is drawn no fuller than the room she has, and its number goes on counting (actor/gut.ts).
+   * GAME TUNING. */
+  stomachRoomMl: 450,
   /** the intestines' middle [x, y, z ahead of the spine] and half-sizes, not pregnant */
   intestines: { centre: [0, 0.995, 0.045] as const, radii: [0.078, 0.062, 0.042] as const },
-  /** the colon's line, caecum to the left iliac fossa: [x, y, z ahead of the spine's front at that height] */
-  colon: [[-0.062, 0.945, 0.055], [-0.078, 1.0, 0.03], [-0.078, 1.07, 0.03], [-0.068, 1.105, 0.045], [-0.03, 1.09, 0.062], [0.03, 1.095, 0.062], [0.074, 1.13, 0.035], [0.085, 1.09, 0.015], [0.083, 1.0, 0.015], [0.07, 0.945, 0.04]] as readonly (readonly [number, number, number])[],
+  /** the colon's line, caecum to the left iliac fossa: [x, y, z ahead of the spine's front at that height]. Its top (GAME
+   * TUNING within BIOLOGICAL SHAPE, 2026-11-13): its right bend under her liver's right lobe, its left bend under her
+   * spleen's foot and beside her stomach, its middle sagging under her stomach's greater curve and in front of the top of
+   * her bowel (at first 3-5 cm higher, where her liver, her stomach and her spleen lie in her own rib cage) */
+  colon: [[-0.062, 0.945, 0.055], [-0.078, 1.0, 0.03], [-0.078, 1.04, 0.03], [-0.068, 1.066, 0.045], [-0.03, 1.063, 0.068], [0.03, 1.065, 0.068], [0.082, 1.077, 0.02], [0.086, 1.05, 0.015], [0.083, 1.0, 0.015], [0.07, 0.945, 0.04]] as readonly (readonly [number, number, number])[],
   /** the sigmoid and rectum, from the colon's end: [x, y, z] in her rest frame relative to her promontory's x and her
    * coccyx/opening (the rectum lies in the sacral hollow; the anus this far behind her opening) */
   sigmoid: [[0.075, 0.945, -0.015], [0.045, 0.925, -0.03], [0.015, 0.915, -0.07]] as readonly (readonly [number, number, number])[],
@@ -73,12 +112,61 @@ export const ABDOMEN_PLACE = Object.freeze({
    * wall, the rectum's front wall and the tissue between them. BIOLOGICAL SHAPE (the rectovaginal septum is thin). */
   behindCanal: 0.02,
   anusBelowOpening: 0.0,
-  /** the kidneys' middles: this far from her midline, at her L1/L2 disc (the left) and this far behind her spine's front */
-  kidneyOut: 0.064,
-  kidneyBehind: 0.028,
+  /** the kidneys' middles: this far from her midline, `kidneyBelow` under her L1/L2 disc (the left) and this far behind
+   * her spine's front */
+  kidneyOut: 0.058,
+  kidneyBehind: 0.034,
   /** each kidney's upper pole tipped back this much (degrees: BIOLOGICAL SHAPE) */
   kidneyBackDeg: 12,
+  /** GAME TUNING within BIOLOGICAL SHAPE, with `kidneyOut` and `kidneyBehind` (2026-11-13: at first at the disc itself,
+   * 6 mm further out and 6 mm further forward). Her rib cage, measured on her bones, puts her diaphragm's back lower
+   * against her spine than a textbook's (the bottom of her breastbone is level with her T11/T12 disc), and she is
+   * standing: a kidney lies lower standing than lying -- up to two vertebral bodies, 5 cm, before it is called dropped
+   * (https://taylorandfrancis.com/knowledge/Medicine_and_healthcare/Endocrinology/Nephroptosis). At the disc itself her
+   * left kidney's upper pole stood 7 mm up through her diaphragm's back, her right kidney was 43% inside her liver and
+   * her spleen 18% inside her left kidney (MEASURED 2026-11-13). Here her left kidney's middle is at the middle of her
+   * second lumbar vertebra, its upper pole at her T12/L1 disc: her spleen above and in front of its outer edge, her liver
+   * resting on her right one, her pancreas's tail in front of it (actor/upperOrgans.ts `OFF_KIDNEYS`). */
+  kidneyBelow: 0.02,
+  /** her stomach and her colon kept this far under what lies over them -- her liver, her diaphragm (`layAbdomen`'s
+   * `upper`) */
+  underDiaphragm: 0.004,
+  /** her colon kept this far from her stomach where they cross and from her pancreas behind it, and both this far from
+   * her spleen */
+  offStomach: 0.003,
 });
+
+/**
+ * HER BREATH CARRIES THEM: the share of her diaphragm's domes' drop (as she breathes in, from the end of a quiet breath
+ * out: actor/upperOrgans.ts `domeDrop`) each rides down with. MEASURED: her upper belly's organs go down with her
+ * diaphragm as she breathes in -- her liver 2.5 cm in normal breathing and 5.5 cm at the most (Suramo et al. 1984,
+ * https://www.scilit.net/publications/06bbddd9677701e90c9974b189eb72ea); her diaphragm 12 +- 7 mm and her liver 10 +- 8 mm
+ * in quiet breathing (Davies et al. 1994, https://scilit.com/publications/5de0dd688d316dbd43a020fdf4546d5e); and her
+ * liver's, spleen's and kidneys' motion follows the top of her right diaphragm's (R > 0.98, in held breaths) with a median
+ * slope not significantly different from 1 (ESTRO 2022,
+ * https://estro.org/Congresses/ESTRO-2022/615/05-intra-fraction-real-timeadaptation/11423/3dabdominalorganmotioncorrelatesstronglywiththedia).
+ * So her stomach (under her diaphragm's left dome) and her kidneys ride all of it, as her liver, spleen and pancreas do
+ * (upperOrgans.ts), and her colon's top -- its two bends and what runs between them, under her liver, stomach and spleen
+ * -- rides it with them, less and less down its sides to none `from` under her xiphoid; and the top of her bowel gives
+ * way under them the same, `bowelUnder` lower -- her colon lies ON her bowel, so her bowel's top has to go down as far as
+ * her colon over it does (GAME TUNING: what of her colon and her bowel lies low in her belly rides none of it; her
+ * bowel is pressed down from above and is not made to bulge elsewhere -- her belly's skin moves out with her breath by
+ * itself, sarahlab/breathSkin.ts). Before, only her liver, gallbladder, spleen and pancreas moved with her breath: at her
+ * deepest breath her liver went 3.7 cm down into her colon and her left lung's foot came down over her left kidney
+ * (MEASURED 2026-11-13).
+ */
+export const BREATH_RIDE = Object.freeze({ stomach: 1, kidneys: 1, colon: 1, bowel: 1, from: 0.2, full: 0.11, bowelUnder: 0.025 });
+
+/** The share of her diaphragm's drop a point of one of her belly's organs rides (its rest height `y`; her xiphoid's
+ * `xiphoidY`): `BREATH_RIDE`. */
+export function breathRide(organ: 'stomach' | 'intestines' | 'colon' | 'rectum' | 'kidneyL' | 'kidneyR', y: number, xiphoidY: number): number {
+  const R = BREATH_RIDE;
+  if (organ === 'stomach') return R.stomach;
+  if (organ === 'kidneyL' || organ === 'kidneyR') return R.kidneys;
+  if (organ !== 'colon' && organ !== 'intestines') return 0;
+  const t = clamp((y + (organ === 'colon' ? 0 : R.bowelUnder) - (xiphoidY - R.from)) / (R.from - R.full), 0, 1);
+  return (organ === 'colon' ? R.colon : R.bowel) * t * t * (3 - 2 * t);
+}
 
 export interface Tube { readonly path: readonly P3[]; readonly halves: readonly (readonly [number, number])[] }
 export interface Blob { readonly centre: P3; readonly radii: P3 }
@@ -130,21 +218,34 @@ export function tubeVolume(t: Tube): number {
   return v + e(t.halves[0]) + e(t.halves[t.halves.length - 1]);
 }
 
+/** Her stomach's line for a widest half-size `wide` (`ABDOMEN_PLACE.stomach`): its turn no tighter than its skin allows. */
+export function stomachLine(torso: TorsoLandmarks, wide: number, x0: number, n = 26): P3[] {
+  const S = ABDOMEN_PLACE.stomach, X = torso.landmarks.xiphoid, R = Math.max(S.turn, S.turnPerWide * wide), steps = 6, pts: P3[] = [];
+  const th0 = (S.leanDeg * Math.PI) / 180, th1 = Math.PI / 2 + (S.hookDeg * Math.PI) / 180, z0 = spineFrontAt(torso, X[1] + S.fundus[1]) + S.fundus[2];
+  for (let k = 0; k <= steps; k++) {
+    const t = k / steps, th = th0 + (th1 - th0) * t;
+    pts.push([x0 + S.fundus[0] + R * (Math.cos(th) - Math.cos(th0)), X[1] + S.fundus[1] - R * (Math.sin(th) - Math.sin(th0)), z0 + S.forward * (1 - (1 - t) ** 2)]);
+  }
+  return smoothLine(pts, n);
+}
+
 /** The stomach holding `ml`: its line and half-sizes. */
 export function layStomach(torso: TorsoLandmarks, ml: number, x0: number): AbdomenLayout['stomach'] {
-  const X = torso.landmarks.xiphoid, v = clamp(ml, STOMACH.emptyMl * 0.4, STOMACH.mostMl);
-  const pts = ABDOMEN_PLACE.stomach.map(([x, dy, dz]) => [x0 + x, X[1] + dy, spineFrontAt(torso, X[1] + dy) + dz]);
-  const path = smoothLine(pts, 26);
+  const v = clamp(ml, STOMACH.emptyMl * 0.4, STOMACH.mostMl);
   // (empty it lies flat front to back; full it rounds out)
   const fill = clamp((v - STOMACH.emptyMl) / (STOMACH.fullMl - STOMACH.emptyMl), 0, 1), flat = STOMACH.flatEmpty + (1 - STOMACH.flatEmpty) * Math.sqrt(fill);
-  const total = lineLength(path), s: number[] = [0];
-  for (let k = 1; k < path.length; k++) s.push(s[k - 1] + dist(path[k - 1], path[k]));
-  const unit: Tube = { path, halves: s.map((d) => { const p = stomachProfile(d / total); return [p, p * flat] as const; }) };
-  // (its widest half-size so it holds `v`, found by halving: its rounded ends grow faster than its length)
+  const tube = (wide: number): Tube => {
+    const path = stomachLine(torso, wide, x0), total = lineLength(path); let d = 0;
+    // (a ring's first half-size lies front to back along a line that runs in her frontal plane, as this one does
+    // (`sweepAny`'s frame), its second in that plane: flat front to back. They were the other way round: an empty stomach
+    // was drawn thin from the front and deep front to back)
+    return { path, halves: path.map((q, k) => { if (k) d += dist(path[k - 1], q); const p = stomachProfile(d / total) * wide; return [p * flat, p] as const; }) };
+  };
+  // (its widest half-size so it holds `v`, found by halving: its rounded ends grow faster than its length, and its line
+  // lengthens as its turn widens)
   let lo = 0, hi = 0.2;
-  for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (tubeVolume({ path, halves: unit.halves.map(([a, b]) => [a * m, b * m] as const) }) < v * 1e-6) lo = m; else hi = m; }
-  const scale = (lo + hi) / 2;
-  return { path, halves: unit.halves.map(([a, b]) => [a * scale, b * scale] as const), ml: v };
+  for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (tubeVolume(tube(m)) < v * 1e-6) lo = m; else hi = m; }
+  return { ...tube((lo + hi) / 2), ml: v };
 }
 
 /** The colon at `fill` (0 empty .. 1 full). */
@@ -206,9 +307,10 @@ export function layRectum(pelvis: PelvisLandmarks, colonEnd: P3, ml: number, x0:
   return { path, halves, ml: v };
 }
 
-/** Her kidneys: the left at her L1/L2 disc, the right lower, each beside her spine at her back. */
+/** Her kidneys: the left a little under her L1/L2 disc (`ABDOMEN_PLACE.kidneyBelow`), the right lower, each beside her
+ * spine at her back. */
 export function layKidneys(torso: TorsoLandmarks & { readonly discs?: readonly number[] }, x0: number): [Bean, Bean] {
-  const A = ABDOMEN_PLACE, K = KIDNEY, discs = torso.discs ?? [], l1l2 = discs[4] ?? torso.landmarks.navel + 0.07;
+  const A = ABDOMEN_PLACE, K = KIDNEY, discs = torso.discs ?? [], l1l2 = (discs[4] ?? torso.landmarks.navel + 0.07) - A.kidneyBelow;
   const lean = (K.leanDeg * Math.PI) / 180, back = (A.kidneyBackDeg * Math.PI) / 180;
   const bean = (side: -1 | 1): Bean => {
     const y = l1l2 - (side < 0 ? K.rightLower : 0);
@@ -217,6 +319,42 @@ export function layKidneys(torso: TorsoLandmarks & { readonly discs?: readonly n
     return { centre: [x0 + side * A.kidneyOut, y, spineFrontAt(torso, y) - A.kidneyBehind], radii: [K.width / 2, K.length / 2, K.thickness / 2], up, side };
   };
   return [bean(1), bean(-1)];
+}
+
+/** A kidney's (a bean's) frame: its across, up and front-to-back axes (as `bean` turns it). */
+export function beanFrame(b: Bean): [P3, P3, P3] {
+  const up = b.up, d = up[0];
+  let ax: P3 = [1 - d * up[0], -d * up[1], -d * up[2]];
+  const l = Math.hypot(...ax) || 1; ax = [ax[0] / l, ax[1] / l, ax[2] / l];
+  return [ax, up, [ax[1] * up[2] - ax[2] * up[1], ax[2] * up[0] - ax[0] * up[2], ax[0] * up[1] - ax[1] * up[0]]];
+}
+/** How deep a point is in a bean grown by `gap` (its ellipsoid's measure: under 1 inside). */
+export function inBean(b: Bean, gap: number, x: number, y: number, z: number): number {
+  const [a, u, w] = beanFrame(b), dx = x - b.centre[0], dy = y - b.centre[1], dz = z - b.centre[2];
+  const p = dx * a[0] + dy * a[1] + dz * a[2], q = dx * u[0] + dy * u[1] + dz * u[2], r = dx * w[0] + dy * w[1] + dz * w[2];
+  return (p / (b.radii[0] + gap)) ** 2 + (q / (b.radii[1] + gap)) ** 2 + (r / (b.radii[2] + gap)) ** 2;
+}
+/** A tube moved off beans (her stomach and colon off her spleen): each station out of each bean grown by its own size and
+ * `gap`, straight out from the bean's long axis (they lie beside her spleen, not over or under it -- over it is her
+ * diaphragm), as little as will do; the moves smoothed. */
+export function tubeOffBeans<T extends Tube>(t: T, beans: readonly Bean[], gap: number): T {
+  const n = t.path.length, d = new Float32Array(3 * n);
+  for (let k = 0; k < n; k++) {
+    const p = t.path[k], r = Math.max(t.halves[k][0], t.halves[k][1]);
+    for (const b of beans) {
+      if (inBean(b, gap + r, p[0], p[1], p[2]) >= 1) continue;
+      const up = b.up, v: P3 = [p[0] - b.centre[0], p[1] - b.centre[1], p[2] - b.centre[2]], along = v[0] * up[0] + v[1] * up[1] + v[2] * up[2];
+      let u: P3 = [v[0] - along * up[0], v[1] - along * up[1], v[2] - along * up[2]];
+      const l = Math.hypot(u[0], u[1], u[2]);
+      // (on its long axis: toward her middle and forward, where her stomach lies of her spleen)
+      u = l > 1e-4 ? [u[0] / l, u[1] / l, u[2] / l] : [-b.side * Math.SQRT1_2, 0, Math.SQRT1_2];
+      let lo = 0, hi = 0.01;
+      while (inBean(b, gap + r, p[0] + u[0] * hi, p[1] + u[1] * hi, p[2] + u[2] * hi) < 1 && hi < 0.2) { lo = hi; hi *= 2; }
+      for (let i = 0; i < 20; i++) { const m = (lo + hi) / 2; if (inBean(b, gap + r, p[0] + u[0] * m, p[1] + u[1] * m, p[2] + u[2] * m) < 1) lo = m; else hi = m; }
+      d[3 * k] += u[0] * hi; d[3 * k + 1] += u[1] * hi; d[3 * k + 2] += u[2] * hi;
+    }
+  }
+  return smoothedMove(t, d);
 }
 
 /** The intestines' mass holding `ml`, not yet pushed by a womb. */
@@ -283,7 +421,7 @@ export function outOfWomb(points: Float32Array, womb: WombRoom, gap: number = WO
 /**
  * A tube moved out of the womb as a tube (a colon, a stomach): each station's middle pushed out of the womb grown by its
  * own radius and the gap, the pushes smoothed along it so it bends round the womb rather than being squashed flat
- * against it. Returns the tube moved (its halves as they were).
+ * against it; then each station once more by what its ring still needs. Returns the tube moved (its halves as they were).
  */
 export function tubeOutOfWomb<T extends Tube>(t: T, womb: WombRoom | null, gap: number = WOMB_PUSH.gap): T {
   if (!womb) return t;
@@ -301,7 +439,132 @@ export function tubeOutOfWomb<T extends Tube>(t: T, womb: WombRoom | null, gap: 
     const own = d[3 * k + a], avg = sum / w;
     out[3 * k + a] = Math.abs(own) > Math.abs(avg) ? own : avg;
   }
+  const moved: T = { ...t, path: t.path.map((p, k) => [p[0] + out[3 * k], p[1] + out[3 * k + 1], p[2] + out[3 * k + 2]] as P3) };
+  // (and its rings and rounded ends: over her womb's rounded top a station's middle may stand clear while its ring dips
+  // into her womb's shoulder -- each station moved again, by the most any point of its ring still needs; up to thrice,
+  // its rings turning a little as its line moves)
+  const ring = 12, caps = 3, q = new Float32Array(3);
+  let clear = moved;
+  for (let pass = 0; pass < 3; pass++) {
+    const rings = sweepAny(clear.path, clear.halves, ring, caps).points, e = new Float32Array(3 * n);
+    let any = false;
+    for (let i = 0; i < rings.length; i += 3) {
+      q[0] = rings[i]; q[1] = rings[i + 1]; q[2] = rings[i + 2];
+      if (!outOfWomb(q, womb, gap)) continue;
+      // (its rings in order: `caps` of its first end, its stations, `caps` of its last end)
+      const k = clamp(Math.floor(i / (3 * ring)) - caps, 0, n - 1), dx = q[0] - rings[i], dy = q[1] - rings[i + 1], dz = q[2] - rings[i + 2];
+      if (dx * dx + dy * dy + dz * dz > e[3 * k] ** 2 + e[3 * k + 1] ** 2 + e[3 * k + 2] ** 2) { e[3 * k] = dx; e[3 * k + 1] = dy; e[3 * k + 2] = dz; any = true; }
+    }
+    if (!any) break;
+    clear = smoothedMove(clear, e);
+  }
+  return clear;
+}
+
+/** A tube's stations moved by `d` (3 a station), the moves smoothed along it a few stations each way, never below what
+ * each station itself needed (as `tubeOutOfWomb`). */
+function smoothedMove<T extends Tube>(t: T, d: Float32Array): T {
+  const n = t.path.length, span = Math.max(2, Math.round(n / 12)), out = new Float32Array(3 * n);
+  for (let k = 0; k < n; k++) for (let a = 0; a < 3; a++) {
+    let sum = 0, w = 0;
+    for (let j = -span; j <= span; j++) { const i = Math.min(n - 1, Math.max(0, k + j)), f = 1 - Math.abs(j) / (span + 1); sum += d[3 * i + a] * f; w += f; }
+    const own = d[3 * k + a], avg = sum / w;
+    out[3 * k + a] = Math.abs(own) > Math.abs(avg) ? own : avg;
+  }
   return { ...t, path: t.path.map((p, k) => [p[0] + out[3 * k], p[1] + out[3 * k + 1], p[2] + out[3 * k + 2]] as P3) };
+}
+
+/**
+ * A tube kept under a sheet over it (her diaphragm, her liver's underside: `ceiling(x, z)` its height): each station
+ * brought straight down until its ring -- and, at the tube's ends, its rounded end -- is `gap` under the sheet (its points
+ * as `sweepAny` lays them), the moves smoothed along it; again, up to thrice, while any of it is still over (its rings
+ * turn a little as its line moves).
+ */
+export function tubeUnder<T extends Tube>(t: T, ceiling: (x: number, z: number) => number, gap: number, ring = 16, caps = 4): T {
+  const n = t.path.length;
+  for (let pass = 0; pass < 3; pass++) {
+    const m = sweepAny(t.path, t.halves, ring, caps).points, d = new Float32Array(3 * n);
+    let most = 0;
+    for (let i = 0; i < m.length; i += 3) {
+      // (its rings in order: `caps` of its first end, its stations, `caps` of its last end)
+      const k = clamp(Math.floor(i / 3 / ring) - caps, 0, n - 1), over = m[i + 1] - (ceiling(m[i], m[i + 2]) - gap);
+      if (over > -d[3 * k + 1]) { d[3 * k + 1] = -over; most = Math.max(most, over); }
+    }
+    if (most <= 1e-5) break;
+    t = smoothedMove(t, d);
+  }
+  return t;
+}
+
+/**
+ * A tube SET DOWN under a sheet over it, all of a piece: moved straight down just far enough that nothing of it (its rings
+ * and its rounded ends, as `sweepAny` lays them) is higher than `gap` under the sheet. Its shape and what it holds stay as
+ * they were -- her stomach: brought down station by station (`tubeUnder`) its skin crumpled and it held 5 to 16% less than
+ * its number said (MEASURED 2026-11-13: 79 of its skin's edges folded back at 250 mL, 238 mL in it).
+ */
+export function tubeSetUnder<T extends Tube>(t: T, ceiling: (x: number, z: number) => number, gap: number, ring = 16, caps = 4): T {
+  const m = sweepAny(t.path, t.halves, ring, caps).points; let over = 0;
+  for (let i = 0; i < m.length; i += 3) over = Math.max(over, m[i + 1] - (ceiling(m[i], m[i + 2]) - gap));
+  return over > 1e-6 ? { ...t, path: t.path.map((q): P3 => [q[0], q[1] - over, q[2]]) } : t;
+}
+/** A tube SET OFF beans, all of a piece (her stomach off her spleen): moved level, away from each bean's middle toward its
+ * own, just far enough that nothing of it is within `gap` of the bean. */
+export function tubeSetOff<T extends Tube>(t: T, beans: readonly Bean[], gap: number, ring = 16, caps = 4): T {
+  let path = t.path;
+  for (const b of beans) {
+    const m = sweepAny(path, t.halves, ring, caps).points;
+    let wx = 0, wz = 0; for (const q of path) { wx += q[0]; wz += q[2]; } wx = wx / path.length - b.centre[0]; wz = wz / path.length - b.centre[2];
+    const l = Math.hypot(wx, wz); if (l > 1e-4) { wx /= l; wz /= l; } else { wx = -b.side * Math.SQRT1_2; wz = Math.SQRT1_2; }
+    const clear = (s: number) => { for (let i = 0; i < m.length; i += 3) if (inBean(b, gap, m[i] + wx * s, m[i + 1], m[i + 2] + wz * s) < 1) return false; return true; };
+    if (clear(0)) continue;
+    let lo = 0, hi = 0.005; while (!clear(hi) && hi < 0.2) { lo = hi; hi *= 2; }
+    for (let k = 0; k < 20; k++) { const s = (lo + hi) / 2; if (clear(s)) hi = s; else lo = s; }
+    const by = hi; path = path.map((q): P3 => [q[0] + wx * by, q[1], q[2] + wz * by]);
+  }
+  return path === t.path ? t : { ...t, path };
+}
+
+/** Whether a point is in a tube grown by `gap`: in one of its stations' rounds (each an ellipsoid on the station's ring,
+ * as long as the way to its neighbours -- near enough, its stations a few millimetres apart). */
+function inTube(frames: ReturnType<typeof sweepAny>['frames'], gap: number, x: number, y: number, z: number): boolean {
+  for (let k = 0; k < frames.length; k++) {
+    const f = frames[k], n = frames[Math.min(frames.length - 1, k + 1)], p = frames[Math.max(0, k - 1)], step = Math.max(dist(f.at, n.at), dist(f.at, p.at), Math.min(f.a, f.b)) + gap;
+    const vx = x - f.at[0], vy = y - f.at[1], vz = z - f.at[2], u = vx * f.n1[0] + vy * f.n1[1] + vz * f.n1[2], v = vx * f.n2[0] + vy * f.n2[1] + vz * f.n2[2], w = vx * f.t[0] + vy * f.t[1] + vz * f.t[2];
+    if ((u / (f.a + gap)) ** 2 + (v / (f.b + gap)) ** 2 + (w / step) ** 2 < 1) return true;
+  }
+  return false;
+}
+/** A tube SET OFF another, all of a piece (her stomach off her pancreas behind it): moved along `way` just far enough that
+ * nothing of it is within `gap` of the other. */
+export function tubeSetOffTube<T extends Tube>(t: T, other: Tube, gap: number, way: P3, ring = 16, caps = 4): T {
+  const m = sweepAny(t.path, t.halves, ring, caps).points, F = sweepAny(other.path, other.halves, 8, 2).frames;
+  const clear = (s: number) => { for (let i = 0; i < m.length; i += 3) if (inTube(F, gap, m[i] + way[0] * s, m[i + 1] + way[1] * s, m[i + 2] + way[2] * s)) return false; return true; };
+  if (clear(0)) return t;
+  let lo = 0, hi = 0.005; while (!clear(hi) && hi < 0.2) { lo = hi; hi *= 2; }
+  for (let k = 0; k < 20; k++) { const s = (lo + hi) / 2; if (clear(s)) hi = s; else lo = s; }
+  const by = hi;
+  return { ...t, path: t.path.map((q): P3 => [q[0] + way[0] * by, q[1] + way[1] * by, q[2] + way[2] * by]) };
+}
+
+/** A tube moved off another (her colon off her stomach where they cross): each station out of the other's ring (its widest
+ * half-size there) grown by its own and `gap`, away from the nearest point of the other's line; the moves smoothed. */
+export function tubeOffTube<T extends Tube>(t: T, other: Tube, gap: number): T {
+  const n = t.path.length, d = new Float32Array(3 * n), O = other.path;
+  for (let k = 0; k < n; k++) {
+    const p = t.path[k], r = Math.max(t.halves[k][0], t.halves[k][1]);
+    let best = Infinity, near: P3 = p, rr = 0;
+    for (let i = 0; i + 1 < O.length; i++) {
+      const a = O[i], b = O[i + 1], ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1;
+      const s = clamp(((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / l2, 0, 1), q: P3 = [a[0] + ab[0] * s, a[1] + ab[1] * s, a[2] + ab[2] * s], e = dist(p, q);
+      if (e < best) { best = e; near = q; const h0 = other.halves[i], h1 = other.halves[i + 1]; rr = Math.max(h0[0], h0[1]) * (1 - s) + Math.max(h1[0], h1[1]) * s; }
+    }
+    const want = rr + r + gap;
+    if (best >= want) continue;
+    // (away from it; straight down when on its line)
+    const u: P3 = best > 1e-6 ? [(p[0] - near[0]) / best, (p[1] - near[1]) / best, (p[2] - near[2]) / best] : [0, -1, 0];
+    d[3 * k] = u[0] * (want - best); d[3 * k + 1] = u[1] * (want - best); d[3 * k + 2] = u[2] * (want - best);
+  }
+  return smoothedMove(t, d);
 }
 
 /** How many of `points` lie in the womb (for tests). */
@@ -322,11 +585,40 @@ export function outOfBlob(points: Float32Array, b: Blob, gap: number): number {
   return moved;
 }
 
-/** Her belly's organs laid out: holding `fill`, round her womb (`womb`, null not pregnant) and her bladder. */
-export function layAbdomen(torso: TorsoLandmarks & { readonly discs?: readonly number[] }, pelvis: PelvisLandmarks, opening: P3, bladder: Blob, fill: AbdomenFill = ABDOMEN_DEFAULT_FILL, womb: WombRoom | null = null, canal: readonly P3[] | null = null): AbdomenLayout {
-  const x0 = pelvis.landmarks.symphysisTop[0];
-  // (a growing womb moves the stomach and the colon round it, each as a whole tube)
-  const stomach = tubeOutOfWomb(layStomach(torso, fill.stomachMl, x0), womb), colon = tubeOutOfWomb(layColon(torso, fill.colonFill, x0), womb);
+/** What lies over her belly's organs in her upper belly at the end of a quiet breath out (`layAbdomen`): the underside of
+ * what is over them (`under`, its height at x, z: her liver's where her liver is, her diaphragm's elsewhere --
+ * actor/upperOrgans.ts `layLiver`'s `bottomAt`), the organs laid beside them there (`organs`: her spleen) and the lines of
+ * those laid behind them (`tubes`: her pancreas). */
+export interface UpperBelly { readonly under: (x: number, z: number) => number; readonly organs: readonly Bean[]; readonly tubes?: readonly Tube[] }
+
+/**
+ * Her belly's organs laid out: holding `fill`, round her womb (`womb`, null not pregnant) and her bladder; `upper`, what lies
+ * over them in her upper belly (`UpperBelly`): her stomach and her colon are kept under her diaphragm and her liver and off
+ * her spleen, and her colon off her stomach and her pancreas. Without it they are laid by her landmarks alone (MEASURED
+ * 2026-11-13: her stomach's fundus then stood 2.7 cm up through her diaphragm into her left lung).
+ */
+export function layAbdomen(torso: TorsoLandmarks & { readonly discs?: readonly number[] }, pelvis: PelvisLandmarks, opening: P3, bladder: Blob, fill: AbdomenFill = ABDOMEN_DEFAULT_FILL, womb: WombRoom | null = null, canal: readonly P3[] | null = null, upper: UpperBelly | null = null): AbdomenLayout {
+  const x0 = pelvis.landmarks.symphysisTop[0], A = ABDOMEN_PLACE, off = upper?.organs ?? [];
+  // (her stomach, no fuller than the room she has for it (`stomachRoomMl`), set off her spleen beside it, forward off her
+  // pancreas behind it and down under what is over it, all of a piece -- twice, each move undoing a little of the others,
+  // and under last: nothing of it through her diaphragm)
+  let stomach = layStomach(torso, upper ? Math.min(fill.stomachMl, A.stomachRoomMl) : fill.stomachMl, x0);
+  if (upper) for (let pass = 0; pass < 2; pass++) {
+    stomach = tubeSetOff(stomach, off, A.offStomach);
+    for (const t of upper.tubes ?? []) stomach = tubeSetOffTube(stomach, t, A.offStomach, [0, 0, 1]);
+    stomach = tubeSetUnder(stomach, upper.under, A.underDiaphragm);
+  }
+  // (her colon the same, and off her stomach, where her transverse colon runs under it, and her pancreas behind it)
+  let colon = layColon(torso, fill.colonFill, x0);
+  if (upper) for (let pass = 0; pass < 2; pass++) {
+    colon = tubeOffBeans(tubeOffTube(tubeUnder(colon, upper.under, A.underDiaphragm), stomach, A.offStomach), off, A.offStomach);
+    for (const t of upper.tubes ?? []) colon = tubeOffTube(colon, t, A.offStomach);
+  }
+  // (a growing womb moves the stomach and the colon round it, each as a whole tube -- and what is over them does not give:
+  // pushed up against her liver and her diaphragm they stay under them, and her womb's top dents them from below, their
+  // points pushed out of it one by one as they are drawn: `outOfWomb`)
+  stomach = tubeOutOfWomb(stomach, womb); colon = tubeOutOfWomb(colon, womb);
+  if (upper && womb) { stomach = tubeUnder(stomach, upper.under, A.underDiaphragm); colon = tubeUnder(colon, upper.under, A.underDiaphragm); }
   const rectum = layRectum(pelvis, colon.path[colon.path.length - 1], fill.rectumMl, x0, opening, canal);
   const intestines = pushedIntestines(layIntestines(torso, fill.intestineMl, x0), womb, torso);
   const kidneys = layKidneys(torso, x0);

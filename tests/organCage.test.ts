@@ -2,10 +2,11 @@
  * AN ORGAN AS A SIMPLE SOFT BODY (src/actor/organCage.ts). Held still it stays exactly where it was laid; carried, it
  * lags and settles back to where its bone holds it in about a second; leaned, it sags only as far as its ligaments let
  * it and comes back; its shape survives all of it; two cages that touch at rest are not pushed apart standing still, and
- * are when one is pushed into the other; and the drawn points follow the cage.
+ * are when one is pushed into the other; the drawn points follow the cage; and a cage whose rest places are set again (an
+ * organ her diaphragm carries down as she breathes in) settles to them, keeping its shape.
  */
 import { describe, expect, it } from 'vitest';
-import { followCage, makeCage, nearestRotation, restGaps, separate, skinToCage, stepCage, type M3 } from '../src/actor/organCage';
+import { followCage, makeCage, nearestRotation, restGaps, separate, setRest, skinToCage, stepCage, type M3 } from '../src/actor/organCage';
 
 /** A small block of points, 2 x 2 x 3 cm, 10 g, tied `tie` everywhere. */
 function block(tie = 0.05, at: [number, number, number] = [0, 0, 0]) {
@@ -90,5 +91,31 @@ describe('an organ as a soft body', () => {
     c.primed = false; stepCage(c, 0, there, [0, 0, 0], TUNE);
     followCage(c, skin, out);
     out.forEach((v, k) => expect(v).toBeCloseTo(pts[k] + there[12 + (k % 3)], 6));
+  });
+
+  it('its rest places set again, it settles to them: carried down as her diaphragm carries an organ', () => {
+    const c = block(0.12), still = moved(0, 0, 0);
+    stepCage(c, 0, still, [0, 0, 0], TUNE);
+    expect(off(c, still)).toBe(0);
+    // every rest place 1.6 cm lower (a quiet breath in): its middle and its shape's offsets go with them
+    const lower = Float32Array.from(c.rest); for (let i = 1; i < lower.length; i += 3) lower[i] -= 0.016;
+    const middle = c.restCentre[1], q = Float32Array.from(c.q);
+    setRest(c, lower);
+    expect(c.restCentre[1]).toBeCloseTo(middle - 0.016, 6);
+    expect(Math.max(...Array.from(c.q, (v, i) => Math.abs(v - q[i])))).toBeLessThan(1e-6);
+    // it has not moved yet; in a second it has settled where its bone now holds it
+    expect(off(c, still)).toBeCloseTo(0.016, 5);
+    for (let k = 0; k < 60; k++) stepCage(c, 1 / 60, still, [0, 0, 0], TUNE);
+    expect(off(c, still)).toBeLessThan(0.0005);
+    // carried (her diaphragm pushes what is under it): its points go with its rest places at once, in its bone's frame --
+    // here turned a quarter about z and moved, so "down" in her frame is the world's +x
+    const turned = [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0.3, 0.2, 0.1, 1], d = block(0.12);
+    stepCage(d, 0, turned, [0, 0, 0], TUNE);
+    const was = Float32Array.from(d.x), lower2 = Float32Array.from(d.rest); for (let i = 1; i < lower2.length; i += 3) lower2[i] -= 0.057;
+    setRest(d, lower2, turned);
+    for (let i = 0; i < d.n; i++) { expect(d.x[3 * i] - was[3 * i]).toBeCloseTo(0.057, 6); expect(d.x[3 * i + 1] - was[3 * i + 1]).toBeCloseTo(0, 6); expect(d.x[3 * i + 2] - was[3 * i + 2]).toBeCloseTo(0, 6); }
+    // and it stays there: nothing is left for its ties to pull
+    stepCage(d, 1 / 60, turned, [0, 0, 0], TUNE);
+    for (let i = 0; i < d.n; i++) expect(Math.hypot(d.x[3 * i] - was[3 * i] - 0.057, d.x[3 * i + 1] - was[3 * i + 1], d.x[3 * i + 2] - was[3 * i + 2])).toBeLessThan(1e-5);
   });
 });

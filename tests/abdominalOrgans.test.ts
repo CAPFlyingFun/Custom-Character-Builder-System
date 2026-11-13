@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import torso from '../src/data/torso/skeleton.json';
 import pelvis from '../src/data/pelvis/skeleton.json';
-import { KIDNEY, RECTUM, STOMACH, inWomb, layAbdomen, layStomach, outOfWomb, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
+import { ABDOMEN_PLACE, KIDNEY, RECTUM, STOMACH, inWomb, layAbdomen, layStomach, outOfWomb, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
 import { BLADDER, layOrgans, type PelvisLandmarks } from '../src/actor/pelvicOrgans';
 import { growWomb, type TorsoLandmarks } from '../src/actor/pregnantWomb';
 import { eat, gutNeeds, hoursToBladderUrge, pee, restingGut, stepGut, urineMlH } from '../src/actor/gut';
@@ -21,12 +21,20 @@ describe('her belly organs, laid out', () => {
     const fundus = L.stomach.path[0], pylorus = L.stomach.path[L.stomach.path.length - 1];
     expect(fundus[0]).toBeGreaterThan(x0 + 0.04); // her left
     expect(pylorus[0]).toBeLessThan(x0); // just right of her middle
-    expect(fundus[1]).toBeGreaterThan(T.landmarks.xiphoid[1]); // up under her diaphragm
+    // up under her diaphragm's left dome, its top within a centimetre or so of the height of the bottom of her breastbone
+    // (its line began 3 cm above it, which in her own rib cage stood through her diaphragm; in her own rib cage the tip
+    // of her liver's left lobe and her dome's slope to her ribs let it no higher: tests/upperOrgans.test.ts)
+    expect(fundus[1] + L.stomach.halves[0][1]).toBeGreaterThan(T.landmarks.xiphoid[1] - 0.015);
+    expect(fundus[1]).toBeGreaterThan(pylorus[1] + 0.025);
+    // its pylorus hooks up from its lowest point (a J)
+    expect(pylorus[1]).toBeGreaterThan(Math.min(...L.stomach.path.map((q) => q[1])) + 0.005);
   });
   it('the kidneys sit either side of her spine at her back, the right lower', () => {
     const [left, right] = L.kidneys;
-    expect(left.centre[0] - x0).toBeCloseTo(0.064, 3);
-    expect(right.centre[0] - x0).toBeCloseTo(-0.064, 3);
+    expect(left.centre[0] - x0).toBeCloseTo(ABDOMEN_PLACE.kidneyOut, 6);
+    expect(right.centre[0] - x0).toBeCloseTo(-ABDOMEN_PLACE.kidneyOut, 6);
+    // her left kidney's middle a little under her L1/L2 disc (standing; under her diaphragm's back as her bones give it)
+    expect(left.centre[1]).toBeCloseTo(T.discs[4] - ABDOMEN_PLACE.kidneyBelow, 6);
     expect(left.centre[1] - right.centre[1]).toBeCloseTo(KIDNEY.rightLower, 4);
     expect(left.radii[1] * 2).toBeCloseTo(KIDNEY.length, 4);
     expect(left.centre[2]).toBeLessThan(-0.06); // behind her spine's front

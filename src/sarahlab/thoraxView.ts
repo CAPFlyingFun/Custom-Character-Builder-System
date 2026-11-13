@@ -10,7 +10,9 @@
  * game sets them later (running, sleeping, holding her breath).
  */
 import * as THREE from 'three';
-import { layUpper } from '../actor/upperOrgans';
+import { domeDrop, layUpper } from '../actor/upperOrgans';
+import { outOfWomb, type Bean } from '../actor/abdominalOrgans';
+import type { WombRoom } from '../actor/pregnantWomb';
 import { BREATH, HEART, PULSE, diaphragmMesh, diaphragmPoints, heartMesh, heartPoints, layThorax, lungMesh, lungPoints, meshVolume, type ThoraxLandmarks, type ThoraxLayout } from '../actor/thoracicOrgans';
 
 type Name = 'lungL' | 'lungR' | 'heart' | 'diaphragm' | Upper;
@@ -59,6 +61,8 @@ export class ThoraxView {
   private readonly materials = new Map<Name, THREE.MeshStandardMaterial>();
   private readonly toWorld = new THREE.Matrix4();
   private layout: ThoraxLayout;
+  /** her womb as it stands (her rest frame), or none: her upper belly's organs are pushed out of it (`setWomb`) */
+  private womb: WombRoom | null = null;
   /** how far through a breath and through a beat she is, 0..1 */
   private cycle = 0;
   private pulse = 0;
@@ -74,14 +78,16 @@ export class ThoraxView {
    * @param thorax the inside of her rib cage, measured on her bones (actor/thoracicOrgans.ts `measureThorax`)
    * @param chest her chest bone, with her rest frame (metres) as that bone carries it, read at her bind
    * @param units world units per metre
+   * @param kidneys her kidneys as laid at the end of a quiet breath out (actor/abdominalOrgans.ts `layKidneys`): her liver
+   * rests on them, her spleen and pancreas lie off them (actor/upperOrgans.ts `OFF_KIDNEYS`)
    */
-  constructor(private readonly thorax: ThoraxLandmarks, chest: { bone: THREE.Bone; matrix: THREE.Matrix4 }, private readonly units: number) {
+  constructor(private readonly thorax: ThoraxLandmarks, chest: { bone: THREE.Bone; matrix: THREE.Matrix4 }, private readonly units: number, private readonly kidneys: readonly Bean[] = []) {
     this.holder.matrixAutoUpdate = false; this.holder.matrix.copy(chest.matrix); this.holder.name = 'thoraxOrgans';
     this.group.name = 'thoraxOrgans'; this.group.matrixAutoUpdate = false;
     // (laid before anything is hung on her: if her rib cage cannot be laid in, nothing of this is left on her bone)
     this.layout = layThorax(thorax, 0);
     try {
-      const L = this.layout, U = layUpper(L), shapes = { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, 0), diaphragm: diaphragmMesh(L), liver: U.liver, gallbladder: U.gallbladder, spleen: U.spleen, pancreas: U.pancreas, windpipe: U.windpipe };
+      const L = this.layout, U = layUpper(L, this.kidneys), shapes = { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, 0), diaphragm: diaphragmMesh(L), liver: U.liver, gallbladder: U.gallbladder, spleen: U.spleen, pancreas: U.pancreas, windpipe: U.windpipe };
       for (const name of NAMES) {
         const sheet = name === 'diaphragm';
         const material = new THREE.MeshStandardMaterial({ color: COLOURS[name], roughness: 0.55, metalness: 0, side: sheet ? THREE.DoubleSide : THREE.FrontSide, transparent: sheet, opacity: sheet ? THORAX_DRAW.diaphragmOpacity : 1 });
@@ -106,8 +112,19 @@ export class ThoraxView {
   drive(breath: number, beat: number, depth: number, breathsPerMinute: number, beatsPerMinute: number): void {
     this.driven = { breath, beat }; this.depth = depth; this.breathsPerMinute = breathsPerMinute; this.beatsPerMinute = beatsPerMinute;
   }
+  /**
+   * HER WOMB AS IT STANDS (sarahlab/pelvicOrgansView.ts `wombRoom`; null, not pregnant): what of her liver, gallbladder,
+   * spleen and pancreas would lie in it is pushed out of it, point by point, as her belly's organs are
+   * (actor/abdominalOrgans.ts `outOfWomb`) -- late in a pregnancy her womb's top comes up under her liver. They are laid
+   * again when it changes.
+   */
+  setWomb(womb: WombRoom | null): void { if (womb !== this.womb) { this.womb = womb; this.drawnBreath = NaN; } }
   /** Her chest as laid at the breath it is drawn at. */
   get laid(): ThoraxLayout { return this.layout; }
+  /** How far her diaphragm's dome on that side of her (`x`, her rest frame) has come down as drawn, since the end of a
+   * quiet breath out (metres: actor/upperOrgans.ts `domeDrop`): what her belly's organs ride (sarahlab/abdomenView.ts
+   * `ride`). */
+  readonly dropAt = (x: number): number => domeDrop(this.layout, x);
 
   /** An organ's own points (her rest frame, metres), to be written in place. */
   private points(name: Name): Float32Array {
@@ -140,8 +157,8 @@ export class ThoraxView {
       const L = (this.layout = layThorax(this.thorax, breath)); this.drawnBreath = breath;
       lungPoints(L, 1, this.points('lungL')); lungPoints(L, -1, this.points('lungR')); diaphragmPoints(L, this.points('diaphragm'));
       // (her upper belly's organs go down with her diaphragm; her windpipe stays)
-      const up = layUpper(L);
-      for (const n of ['liver', 'gallbladder', 'spleen', 'pancreas'] as const) { const to = this.points(n); if (to.length === up[n].points.length) to.set(up[n].points); }
+      const up = layUpper(L, this.kidneys);
+      for (const n of ['liver', 'gallbladder', 'spleen', 'pancreas'] as const) { const to = this.points(n); if (to.length === up[n].points.length) { to.set(up[n].points); if (this.womb) outOfWomb(to, this.womb); } }
       U.breath++; S.breath = 0;
     }
     // (her heart rides on her diaphragm: laid again with her breath as well as with its own beat)
@@ -163,6 +180,8 @@ export class ThoraxView {
     }
     return out;
   }
+  /** An organ's triangles (its points' indices: `drawn`): for probes. */
+  tris(name: Name): ArrayLike<number> | null { return this.meshes.get(name)?.geometry.index?.array ?? null; }
   /** Her breath, what her lungs take up as drawn (mL: air and their own tissue; worked out here, when asked), and her
    * rates: for probes. */
   report(): { breath: number; lungMl: number; beatsPerMinute: number; breathsPerMinute: number } {

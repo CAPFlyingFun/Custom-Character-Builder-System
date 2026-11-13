@@ -8,12 +8,19 @@
  *
  * How full each is comes from her gut's numbers (actor/gut.ts): the room sets them by hand (STOMACH, BOWEL), the NPC brain
  * later by time.
+ *
+ * Given her rib cage (`thorax`), her stomach and her colon are laid under her liver and her diaphragm and off her spleen
+ * and her pancreas (actor/upperOrgans.ts `upperBelly`), and as she breathes in her stomach, her kidneys and the tops of
+ * her colon and her bowel ride down with her diaphragm's domes (`ride`: abdominalOrgans.ts `BREATH_RIDE`), as the organs
+ * over them do (sarahlab/thoraxView.ts) -- so each keeps its place against the others at every breath.
  */
 import * as THREE from 'three';
-import { ABDOMEN_DEFAULT_FILL, bean, coiledMass, layAbdomen, outOfBlob, outOfWomb, sweepAny, KIDNEY, type AbdomenFill, type AbdomenLayout, type Blob, type Bean, type Tube } from '../actor/abdominalOrgans';
+import { ABDOMEN_DEFAULT_FILL, bean, breathRide, coiledMass, layAbdomen, layKidneys, outOfBlob, outOfWomb, sweepAny, KIDNEY, type AbdomenFill, type AbdomenLayout, type Blob, type Bean, type Tube, type UpperBelly } from '../actor/abdominalOrgans';
+import { upperBelly } from '../actor/upperOrgans';
+import type { ThoraxLandmarks } from '../actor/thoracicOrgans';
 import type { PelvisLandmarks } from '../actor/pelvicOrgans';
 import type { TorsoLandmarks, WombRoom } from '../actor/pregnantWomb';
-import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
+import { followCage, makeCage, placeCage, restGaps, separate, setRest, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
 import { JUMP_ACCEL, type PelvicOrgansView } from './pelvicOrgansView';
 
@@ -36,7 +43,9 @@ const COLOURS: Record<Name | 'ureter', number> = { stomach: 0xd8968a, intestines
 const MASS: Record<Name, number> = { stomach: 150, intestines: 1000, colon: 450, rectum: 120, kidneyL: KIDNEY.grams, kidneyR: KIDNEY.grams };
 const G = 9.81;
 
-interface Organ { readonly name: Name; readonly cage: Cage; readonly skin: CageSkin; readonly mesh: THREE.Mesh; readonly tune: CageTune; readonly out: Float32Array; readonly hold: SpineBone }
+interface Organ { readonly name: Name; readonly cage: Cage; readonly skin: CageSkin; readonly mesh: THREE.Mesh; readonly tune: CageTune; readonly out: Float32Array; readonly hold: SpineBone;
+  /** its cage's rest places as laid, and the share of her diaphragm's drop each rides (`ride`) */
+  readonly base: Float32Array; readonly rides: Float32Array | null }
 interface Holder { readonly bone: SpineBone; readonly node: THREE.Object3D; readonly restQuat: THREE.Quaternion; readonly toWorld: THREE.Matrix4; last: number[] | null; speed: number[] | null; jumped: boolean }
 
 /** A tube's cage: every few stations its middle and four points round it. */
@@ -87,13 +96,26 @@ export class AbdomenView {
   private readonly materials = new Map<Name | 'ureter', THREE.MeshStandardMaterial>();
   /** each ureter: its rest points, their ties to the kidney and the bladder, and its mesh */
   private ureters: { rest: Float32Array; kidney: CageSkin; kidneyOf: Name; bladder: CageSkin | null; bladderCage: Cage | null; mesh: THREE.Mesh; out: Float32Array }[] = [];
+  /** how far her diaphragm's dome on a point's side of her has come down (metres, `ride`; none, not at all), and the
+   * breath her organs' cages were last set down at (her drawn chest's layout) */
+  private dropAt: ((x: number) => number) | null = null;
+  private dropKey: unknown = undefined;
+  private dropSet: unknown = null;
+  /** what lies over them in her upper belly at the end of a quiet breath out (her liver's and her diaphragm's underside,
+   * her spleen, her pancreas): her stomach and her colon are laid under and off it; none, by her landmarks alone */
+  private readonly upper: UpperBelly | null;
+  private readonly xiphoidY: number;
 
   /**
    * @param bones her spine's bones (her pelvis bone and those above it), each with her rest frame (metres) as that bone
    * carries it, read at her bind
    * @param pelvic her pelvic organs (her womb, bladder and canal, which these lie round)
+   * @param thorax the inside of her rib cage (actor/thoracicOrgans.ts): what lies over these is laid in it (`upperBelly`)
    */
-  constructor(private readonly pelvis: PelvisLandmarks, private readonly torso: TorsoLandmarks & { readonly discs?: readonly number[] }, bones: Record<SpineBone, { bone: THREE.Bone; matrix: THREE.Matrix4 }>, private readonly units: number, private readonly pelvic: PelvicOrgansView) {
+  constructor(private readonly pelvis: PelvisLandmarks, private readonly torso: TorsoLandmarks & { readonly discs?: readonly number[] }, bones: Record<SpineBone, { bone: THREE.Bone; matrix: THREE.Matrix4 }>, private readonly units: number, private readonly pelvic: PelvicOrgansView, thorax: ThoraxLandmarks | null = null) {
+    // (what lies over them at the end of a quiet breath out: her liver and diaphragm, her spleen, her pancreas)
+    this.upper = thorax ? upperBelly(thorax, layKidneys(torso, pelvis.landmarks.symphysisTop[0])) : null;
+    this.xiphoidY = torso.landmarks.xiphoid[1];
     for (const key of Object.keys(bones) as SpineBone[]) {
       const node = new THREE.Object3D(); node.matrixAutoUpdate = false; node.matrix.copy(bones[key].matrix); node.name = 'abdomenOrgans';
       bones[key].bone.add(node); node.updateMatrixWorld(true);
@@ -128,16 +150,17 @@ export class AbdomenView {
     this.wombLaid = womb; this.bladderLaid = pl.bladder;
     const bladder: Blob = { centre: pl.bladder.centre, radii: pl.bladder.radii };
     const opening = pl.vagina.path[0];
-    const L = layAbdomen(this.torso, this.pelvis, opening, bladder, this.fillNow, womb, pl.vagina.path);
+    const L = layAbdomen(this.torso, this.pelvis, opening, bladder, this.fillNow, womb, pl.vagina.path, this.upper);
     this.layout = L;
     const T = ABDOMEN_TUNE;
     const make = (name: Name, mesh: { points: Float32Array; triangles: Uint32Array }, cage: { rest: number[]; mass: number[]; tie: number[]; radius: number[] }) => {
       const c = makeCage(cage.rest, cage.mass, cage.tie, cage.radius), skin = skinToCage(c, mesh.points, 4);
+      const rides = Float32Array.from({ length: c.n }, (_, i) => breathRide(name, c.rest[3 * i + 1], this.xiphoidY));
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(mesh.points.length), 3)); g.setIndex(new THREE.BufferAttribute(mesh.triangles, 1));
       const m = new THREE.Mesh(g, this.materials.get(name)!); m.name = `organ:${name}`; m.frustumCulled = false;
       this.group.add(m);
-      this.organs.push({ name, cage: c, skin, mesh: m, tune: { shape: T[name].shape, keep: T[name].keep }, out: new Float32Array(mesh.points.length), hold: HUNG[name] });
+      this.organs.push({ name, cage: c, skin, mesh: m, tune: { shape: T[name].shape, keep: T[name].keep }, out: new Float32Array(mesh.points.length), hold: HUNG[name], base: Float32Array.from(c.rest), rides: rides.some((w) => w > 0) ? rides : null });
     };
     // (each drawn round her womb and her bladder: what would lie in them pushed out)
     const keepOut = (points: Float32Array, blobs: Blob[] = []) => { if (womb) outOfWomb(points, womb); for (const b of blobs) outOfBlob(points, b, 0.003); return points; };
@@ -158,7 +181,29 @@ export class AbdomenView {
       this.ureters.push({ rest, kidney: skinToCage(kidney, rest, 3), kidneyOf: kn, bladder: null, bladderCage: null, mesh, out: new Float32Array(rest.length) });
     });
     for (const h of this.holders.values()) { h.last = null; }
+    this.dropSet = null; this.rideCages();
     this.draw();
+  }
+
+  /**
+   * HER BREATH CARRIES THEM: how far her diaphragm's dome on each point's side of her has come down since the end of a
+   * quiet breath out (metres: sarahlab/thoraxView.ts `dropAt`), and what it was laid at (`key`: her chest's layout as
+   * drawn -- they are set down again only when it changes). Her stomach, her kidneys and the tops of her colon and her
+   * bowel ride down with it (abdominalOrgans.ts `BREATH_RIDE`), as soft bodies: their cages' rest places go down, and
+   * they follow.
+   */
+  ride(dropAt: ((x: number) => number) | null, key: unknown = dropAt): void { this.dropAt = dropAt; this.dropKey = key; }
+  /** Each riding organ's cage set down by its share of her diaphragm's drop now (when her chest has been laid again): its
+   * rest places, and its points carried with them at once -- her diaphragm pushes what is under it, it does not trail. */
+  private rideCages(): void {
+    if (this.dropKey === this.dropSet) return;
+    this.dropSet = this.dropKey;
+    for (const o of this.organs) {
+      if (!o.rides) continue;
+      const rest = Float32Array.from(o.base), at = this.dropAt;
+      if (at) for (let i = 0; i < o.cage.n; i++) if (o.rides[i] > 0) rest[3 * i + 1] -= o.rides[i] * at(o.base[3 * i]);
+      setRest(o.cage, rest, this.holders.get(o.hold)!.toWorld.elements);
+    }
   }
 
   /** The pairs that push on one another (kept again whenever her pelvic organs are laid again). */
@@ -187,6 +232,8 @@ export class AbdomenView {
       if (h.last && dt > 0 && !h.jumped) h.speed = now.map((v, i) => (v - h.last![i]) / dt);
       h.last = now;
     }
+    // (her breath's ride first, in her bones' frames as they are this step)
+    this.rideCages();
     for (const o of this.organs) {
       const h = this.holders.get(o.hold)!, toWorld = h.toWorld.elements;
       if (h.jumped) { placeCage(o.cage, toWorld); continue; }
@@ -240,6 +287,8 @@ export class AbdomenView {
   }
   /** Each organ's drawn points now (world metres): for probes. */
   drawn(name: Name): Float32Array | null { return this.organs.find((o) => o.name === name)?.out ?? null; }
+  /** An organ's triangles (its points' indices: `drawn`): for probes. */
+  tris(name: Name): ArrayLike<number> | null { return this.organs.find((o) => o.name === name)?.mesh.geometry.index?.array ?? null; }
   /** How far each soft body is from where its bone holds it now, metres. */
   sway(): Record<string, number> {
     const out: Record<string, number> = {};
