@@ -15,13 +15,17 @@
  *    ribs turn about her spine.
  *  - HER BELLY (from above her pubic bone to the bottom of her breastbone): its front moves forward, as her diaphragm
  *    drops and pushes what is under it out. Its back and her flanks hardly move.
+ *  - HER FULL BELLY, apart from her breath: what her belly gives for a stomach holding more than she has room for
+ *    (actor/abdominalOrgans.ts `stomachGiveMl`). Its top stays and it stands out low and round, as a small bump of her
+ *    own does (`BREATH_SHAPE`'s `full*`), where her breath's belly move is even from her pubic bone to her breastbone.
  *  - Only her trunk: what lies out beyond the sides of her trunk at that height (her arms, hanging beside her) does not
  *    move. Her trunk's width at each height (`BreathTable`) is measured from her own skin when she is shaped
  *    (`layBreathTable`), her arms' skin left out by their bones.
  *
  * How far it moves is the breath's air itself: the volume her skin sweeps moving out, over all of her trunk, is her
  * chest's or her belly's share of the air breathed in (`breathVolumes`: the sweep of each move at 1 m, from her own
- * triangles). Every shape number below is GAME TUNING within that.
+ * triangles); her full belly's sweep is what her stomach holds beyond its room, the same way (`full`). Every shape number
+ * below is GAME TUNING within that, but where it says MEASURED.
  */
 import * as THREE from 'three';
 
@@ -39,11 +43,23 @@ export const BREATH_SLICES = 34;
  *    bottom and top; `chestUp` how far up its front goes at its top, against forward.
  *  - belly: `bellyFrom` above the top of her pubic bone it starts, fading in over `bellyIn`; it fades out from `bellyOut[0]`
  *    below the bottom of her breastbone to `bellyOut[1]` above it; `bellySide`, its sides' share.
+ *  - a full belly (Joshua, 2026-11-13: "leave the top fixed, but make the bottom part curve rounded... it tends to be
+ *    down lower near her pelvis... like a smaller belly shape of around 40% on the belly slider with that side
+ *    profile"): her own small bump's shape. MEASURED 2026-11-13 off her skin, her 40% bump over her 0% belly: forward
+ *    62.4 mm at the most, at 0.27 of the way up from the top of her pubic bone to the bottom of her breastbone; over
+ *    that most, going up, 0.84 at 0.45 of the way, 0.65 at 0.63, 0.50 at 0.75, 0.23 at 0.87 and 0.06 at 0.99; across
+ *    her at its height 0.82 at 0.24 of her half-width, 0.51 at 0.47 and 0.13 at 0.71; and her skin beside her midline
+ *    goes sideways by about half its forward move times how far across her it is. `fullPeak` is where it stands out
+ *    most; `fullOver` shapes its fall above that, to nothing at the bottom of her breastbone (within 0.04 of her bump's,
+ *    rms); `fullAcross` is how far across her it reaches (within 0.06); `fullSide` its sideways share. GAME TUNING:
+ *    `fullUnder`, its round underside in to nothing at the top of her pubic bone -- her bump carries her pubic area
+ *    forward 2 to 4 cm, which a full belly does not.
  */
 export const BREATH_SHAPE = Object.freeze({
   spineDepth: 0.11, armEdge: 0.15,
   chestBelow: 0.04, chestOver: 0.02, chestTopFade: 0.08, chestFront: [0.75, 1] as const, chestSide: [1, 0.3] as const, chestUp: 0.25,
   bellyFrom: 0.02, bellyIn: 0.06, bellyOut: [0.03, 0.05] as const, bellySide: 0.15,
+  fullPeak: 0.26, fullUnder: 0.7, fullOver: 0.6, fullAcross: 0.9, fullSide: 0.5,
 });
 
 /** What the shaders and `breathAt` read: the moves now, her landmarks and her trunk's width. */
@@ -51,6 +67,8 @@ export interface BreathUniforms {
   /** x her chest's move now, y her belly's (metres at full weight), z her lower ribs' flare (1 before pregnancy), w the
    * height of the bottom of her rib cage at her sides (rest metres) */
   readonly breath: { value: THREE.Vector4 };
+  /** her full belly's move now: metres where it stands out most (0 with room in her stomach) */
+  readonly breathFull: { value: number };
   /** x the top of her pubic bone, y the bottom of her breastbone, z its top (heights, rest metres), w her midline (x) */
   readonly breathMarks: { value: THREE.Vector4 };
   /** each height's x half-widths of her trunk to her left and right of her midline, her spine's front z, her front z */
@@ -58,6 +76,7 @@ export interface BreathUniforms {
 }
 export const createBreathUniforms = (): BreathUniforms => ({
   breath: { value: new THREE.Vector4(0, 0, 1, 1.09) },
+  breathFull: { value: 0 },
   breathMarks: { value: new THREE.Vector4(0.87, 1.2, 1.37, 0) },
   breathSlices: { value: Array.from({ length: BREATH_SLICES }, () => new THREE.Vector4(0.15, 0.15, -0.05, 0.15)) },
 });
@@ -66,9 +85,11 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const smooth = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** The two moves' shapes at a point (rest metres), at 1 m each: `chest` and `belly` written (xyz). Zero off her trunk. */
-export function breathShapeAt(u: BreathUniforms, x: number, y: number, z: number, chest: { x: number; y: number; z: number }, belly: { x: number; y: number; z: number }): void {
+/** The moves' shapes at a point (rest metres), at 1 m each: `chest` and `belly` written (xyz), and her full belly's
+ * into `full` when given. Zero off her trunk. */
+export function breathShapeAt(u: BreathUniforms, x: number, y: number, z: number, chest: { x: number; y: number; z: number }, belly: { x: number; y: number; z: number }, full?: { x: number; y: number; z: number }): void {
   chest.x = chest.y = chest.z = 0; belly.x = belly.y = belly.z = 0;
+  if (full) full.x = full.y = full.z = 0;
   const S = BREATH_SHAPE, m = u.breathMarks.value, flare = u.breath.value.z, T = u.breathSlices.value;
   if (y < m.x || y > m.z + S.chestOver) return;
   const t = clamp((y - BREATH_SPAN.from) / BREATH_SPAN.step, 0, BREATH_SLICES - 1.001), k = Math.floor(t), f = t - k, a = T[k], b = T[k + 1];
@@ -90,24 +111,34 @@ export function breathShapeAt(u: BreathUniforms, x: number, y: number, z: number
   // her belly: its front forward
   const bb = smooth(m.x + S.bellyFrom, m.x + S.bellyFrom + S.bellyIn, y) * (1 - smooth(m.y - S.bellyOut[0], m.y + S.bellyOut[1], y)) * trunk;
   if (bb > 0) { const fz = smooth(0.3, 0.9, fr); belly.x = bb * S.bellySide * l * fz; belly.z = bb * fz; }
+  // her full belly: its front forward and a little apart, most low down, nothing at its top
+  if (full) {
+    const s = (y - m.x) / Math.max(0.05, m.y - m.x);
+    if (s > 0 && s < 1) {
+      const g = s < S.fullPeak ? Math.pow(smooth(0, S.fullPeak, s), S.fullUnder) : Math.pow(1 - smooth(S.fullPeak, 1, s), S.fullOver);
+      const w = g * (1 - smooth(0, S.fullAcross, al)) * smooth(0.3, 0.9, fr);
+      full.x = w * S.fullSide * l; full.z = w;
+    }
+  }
 }
 
-const sc = { x: 0, y: 0, z: 0 }, sb = { x: 0, y: 0, z: 0 };
-/** Her breath's move at a point (rest metres) into `out` (rest metres): what the shader adds. */
+const sc = { x: 0, y: 0, z: 0 }, sb = { x: 0, y: 0, z: 0 }, sf = { x: 0, y: 0, z: 0 };
+/** Her breath's move and her full belly's at a point (rest metres) into `out` (rest metres): what the shader adds. */
 export function breathAt(u: BreathUniforms, x: number, y: number, z: number, out: THREE.Vector3): THREE.Vector3 {
-  const A = u.breath.value;
-  if (!(A.x !== 0 || A.y !== 0)) return out.set(0, 0, 0);
-  breathShapeAt(u, x, y, z, sc, sb);
-  return out.set(A.x * sc.x + A.y * sb.x, A.x * sc.y + A.y * sb.y, A.x * sc.z + A.y * sb.z);
+  const A = u.breath.value, F = u.breathFull.value;
+  if (!(A.x !== 0 || A.y !== 0 || F !== 0)) return out.set(0, 0, 0);
+  breathShapeAt(u, x, y, z, sc, sb, sf);
+  return out.set(A.x * sc.x + A.y * sb.x + F * sf.x, A.x * sc.y + A.y * sb.y + F * sf.y, A.x * sc.z + A.y * sb.z + F * sf.z);
 }
 
 /** The same, in GLSL: `breathMove(p)` for a point in her rest frame (metres), her rest frame's move (metres). */
 export const BREATH_GLSL = `
 uniform vec4 uBreath;
+uniform float uBreathFull;
 uniform vec4 uBreathMarks;
 uniform vec4 uBreathSlices[${BREATH_SLICES}];
 vec3 breathMove(vec3 p) {
-  if (uBreath.x == 0.0 && uBreath.y == 0.0) return vec3(0.0);
+  if (uBreath.x == 0.0 && uBreath.y == 0.0 && uBreathFull == 0.0) return vec3(0.0);
   if (p.y < uBreathMarks.x || p.y > uBreathMarks.z + ${BREATH_SHAPE.chestOver.toFixed(4)}) return vec3(0.0);
   float t = clamp((p.y - ${BREATH_SPAN.from.toFixed(4)}) / ${BREATH_SPAN.step.toFixed(4)}, 0.0, ${(BREATH_SLICES - 1.001).toFixed(4)});
   int k = int(floor(t)); float f = t - float(k);
@@ -126,6 +157,12 @@ vec3 breathMove(vec3 p) {
   }
   float bb = smoothstep(uBreathMarks.x + ${BREATH_SHAPE.bellyFrom.toFixed(4)}, uBreathMarks.x + ${(BREATH_SHAPE.bellyFrom + BREATH_SHAPE.bellyIn).toFixed(4)}, p.y) * (1.0 - smoothstep(uBreathMarks.y - ${BREATH_SHAPE.bellyOut[0].toFixed(4)}, uBreathMarks.y + ${BREATH_SHAPE.bellyOut[1].toFixed(4)}, p.y)) * trunk;
   if (bb > 0.0) { float fz = smoothstep(0.3, 0.9, fr); move += uBreath.y * bb * vec3(${BREATH_SHAPE.bellySide.toFixed(4)} * l * fz, 0.0, fz); }
+  float fs = (p.y - uBreathMarks.x) / max(0.05, uBreathMarks.y - uBreathMarks.x);
+  if (uBreathFull != 0.0 && fs > 0.0 && fs < 1.0) {
+    float fg = fs < ${BREATH_SHAPE.fullPeak.toFixed(4)} ? pow(smoothstep(0.0, ${BREATH_SHAPE.fullPeak.toFixed(4)}, fs), ${BREATH_SHAPE.fullUnder.toFixed(4)}) : pow(1.0 - smoothstep(${BREATH_SHAPE.fullPeak.toFixed(4)}, 1.0, fs), ${BREATH_SHAPE.fullOver.toFixed(4)});
+    float fw = fg * (1.0 - smoothstep(0.0, ${BREATH_SHAPE.fullAcross.toFixed(4)}, al)) * smoothstep(0.3, 0.9, fr);
+    move += uBreathFull * fw * vec3(${BREATH_SHAPE.fullSide.toFixed(4)} * l, 0.0, 1.0);
+  }
   return move;
 }
 `;
@@ -167,15 +204,16 @@ export function layBreathTable(u: BreathUniforms, rest: ArrayLike<number>, arm: 
 /**
  * How much air each move sweeps at 1 m (m³ per metre, i.e. m²): over her skin's triangles (`rest` her points, rest
  * metres; `index` her triangles), each move's shape at a triangle's corners against the way the triangle faces, times its
- * area. Her chest's move then is her chest's share of a breath's air over `chest`, her belly's over `belly`.
+ * area. Her chest's move then is her chest's share of a breath's air over `chest`, her belly's over `belly`; her full
+ * belly's is what her stomach holds beyond its room over `full`.
  */
-export function breathVolumes(u: BreathUniforms, rest: ArrayLike<number>, index: ArrayLike<number>): { chest: number; belly: number } {
-  const n = Math.floor(rest.length / 3), C = new Float32Array(n * 3), Bm = new Float32Array(n * 3), c = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 };
+export function breathVolumes(u: BreathUniforms, rest: ArrayLike<number>, index: ArrayLike<number>): { chest: number; belly: number; full: number } {
+  const n = Math.floor(rest.length / 3), C = new Float32Array(n * 3), Bm = new Float32Array(n * 3), Fm = new Float32Array(n * 3), c = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 }, f = { x: 0, y: 0, z: 0 };
   for (let i = 0; i < n; i++) {
-    breathShapeAt(u, rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2], c, b);
-    C[i * 3] = c.x; C[i * 3 + 1] = c.y; C[i * 3 + 2] = c.z; Bm[i * 3] = b.x; Bm[i * 3 + 1] = b.y; Bm[i * 3 + 2] = b.z;
+    breathShapeAt(u, rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2], c, b, f);
+    C[i * 3] = c.x; C[i * 3 + 1] = c.y; C[i * 3 + 2] = c.z; Bm[i * 3] = b.x; Bm[i * 3 + 1] = b.y; Bm[i * 3 + 2] = b.z; Fm[i * 3] = f.x; Fm[i * 3 + 1] = f.y; Fm[i * 3 + 2] = f.z;
   }
-  let chest = 0, belly = 0;
+  let chest = 0, belly = 0, full = 0;
   for (let t = 0; t + 2 < index.length; t += 3) {
     const i = index[t], j = index[t + 1], k = index[t + 2];
     if (!(i < n && j < n && k < n)) continue;
@@ -183,9 +221,9 @@ export function breathVolumes(u: BreathUniforms, rest: ArrayLike<number>, index:
     const bx = rest[k * 3] - rest[i * 3], by = rest[k * 3 + 1] - rest[i * 3 + 1], bz = rest[k * 3 + 2] - rest[i * 3 + 2];
     // (half the cross product: the triangle's area along the way it faces)
     const nx = (ay * bz - az * by) / 2, ny = (az * bx - ax * bz) / 2, nz = (ax * by - ay * bx) / 2;
-    let cs = 0, bs = 0;
-    for (const v of [i, j, k]) { cs += C[v * 3] * nx + C[v * 3 + 1] * ny + C[v * 3 + 2] * nz; bs += Bm[v * 3] * nx + Bm[v * 3 + 1] * ny + Bm[v * 3 + 2] * nz; }
-    chest += cs / 3; belly += bs / 3;
+    let cs = 0, bs = 0, fs = 0;
+    for (const v of [i, j, k]) { cs += C[v * 3] * nx + C[v * 3 + 1] * ny + C[v * 3 + 2] * nz; bs += Bm[v * 3] * nx + Bm[v * 3 + 1] * ny + Bm[v * 3 + 2] * nz; fs += Fm[v * 3] * nx + Fm[v * 3 + 1] * ny + Fm[v * 3 + 2] * nz; }
+    chest += cs / 3; belly += bs / 3; full += fs / 3;
   }
-  return { chest: Math.abs(chest), belly: Math.abs(belly) };
+  return { chest: Math.abs(chest), belly: Math.abs(belly), full: Math.abs(full) };
 }

@@ -191,3 +191,7 @@ export function chestShare(down: { x: number; y: number; z: number }, seated = f
  * angle opening from 68.5 to 103.5 degrees (MEASURED above) -- as the half-angle's tangent, 1.86 times. */
 export const PREGNANT_FLARE = Math.tan((103.5 * Math.PI) / 360) / Math.tan((68.5 * Math.PI) / 360);
 export const breathFlare = (weeks = 0): number => 1 + (PREGNANT_FLARE - 1) * pregnancyShare(weeks);
+
+/** How far her diaphragm's domes have been pushed up at `weeks` of a pregnancy, metres: `most` (actor/thoracicOrgans.ts
+ * `DIAPHRAGM_RISE`, 4 cm at term), eased in with the rest of what a pregnancy does to her breath (`pregnancyShare`). */
+export const diaphragmRise = (weeks = 0, most = 0.04): number => most * pregnancyShare(weeks);

@@ -140,7 +140,29 @@ export type WombRoom = Pick<PregnantWomb, 'path' | 'halves' | 'leanDeg' | 'top'>
    * it, and moves points out of it (in place, by at least `gap`; returns how many moved). */
   readonly inside?: (x: number, y: number, z: number) => boolean;
   readonly pushOut?: (points: Float32Array, gap: number) => number;
+  /** its back wall, for the organs behind it (`WombWall`): nothing behind it is in the room */
+  readonly wall?: WombWall;
+  /** the height of its top over (x, z) -- the highest point of the room on the upright through there -- or -Infinity
+   * where it is not under that point: what rests on a womb (her liver) is laid on this */
+  readonly topAt?: (x: number, z: number) => number;
 };
+
+/**
+ * A WOMB'S BACK WALL, FOR THE ORGANS BEHIND IT. A womb near term stands forward off her spine: its back wall rises from
+ * her sacral promontory forward to under the tip of her breastbone, her bowel and her colon packed behind and above it
+ * and her kidneys, pancreas and spleen behind those (BIOLOGICAL SHAPE: "the intestines are displaced upward and
+ * backward" by the growing uterus). v2's womb is a rounder sac than that -- at 100% it reaches 5.5 cm behind her spine's
+ * front at every height up to its top (MEASURED 2026-11-13 in the room) -- so for her organs the room it takes is the sac
+ * IN FRONT of this wall: from `z0` at height `y0` (her promontory) the wall leans forward `slope` metres a metre up.
+ * GAME TUNING within that: `slope`.
+ */
+export interface WombWall { readonly y0: number; readonly z0: number; readonly slope: number }
+/** Where the wall stands at a height (z, rest metres). */
+export const wallAt = (w: WombWall, y: number): number => w.z0 + Math.max(0, y - w.y0) * w.slope;
+/** How far a womb's back wall leans forward, metres a metre up (GAME TUNING within BIOLOGICAL SHAPE: about 29 degrees
+ * off upright -- from her promontory to level with the front of the tip of her breastbone at its height: her womb's top
+ * then stands in her belly's bulge, in front of her ribs' line, and her liver, her stomach and her bowel behind it). */
+export const WOMB_WALL_SLOPE = 0.56;
 
 /** The front of her spine at a height (rest metres): -Infinity below her promontory, where the sacrum falls away behind. */
 export function spineFrontAt(torso: TorsoLandmarks, y: number): number {

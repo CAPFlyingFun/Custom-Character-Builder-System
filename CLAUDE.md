@@ -63,6 +63,18 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   them matching by default (sync)"). Both wear the pack's ATHLETIC knit in his red, their edging his black
   (`BIKINI_FABRIC`, `sarahLabTool.ts`): the bottom's edging layer, and the top's cords and the cord round each cup
   (`bikiniTrim`). The editor keeps the two in one fabric while TOP + BOTTOM MATCH is on (`fabricLibrary.matchSet`).
+- **The Character Builder holds what carries over to any game: stats and numbers, not game logic** (Joshua, 2026-11-13:
+  "avoid adding a lot of technical game stuff in CCBS, keep it mainly stats and numbers. When we get to the actual game
+  Repo (TRADDOMIUM Micro Battle), then we can take it further. For now, in CCBS, keep to starting and ending stats, the
+  average real time drain of stuff like food, digestion, etc"; "CCBS is a Character builder not a real game... it should
+  have stuff that can carry over easily"). The NPC brain's part here (P6) is where each need starts, where it ends and
+  how fast it moves in real time, by age, sex, pregnancy and newborn, each number with its unit, kind and source. Who
+  controls a character, a story director, objects that offer things and scenes are the game's, in the game's own repo.
+- **A fault found is fixed, and he is told at once** (Joshua, 2026-11-13, of her thirst coming on twice too early: "if
+  you see any future issues, please plan to automatically fix them and let me know so if I want to hold off, I can"): on
+  `claude-work`, as a small change of its own with its test, and reported with what it changes so he can hold it.
+  Measure before calling something a fault (her bowel looked slow over three days from her resting start and was right
+  over two weeks: left as it was). `main` still moves only on his approval.
 - Every number is labelled MEASURED, BIOLOGICAL SHAPE or GAME TUNING.
 - No unrelated refactoring. Measure rather than assume: render and look.
 
@@ -208,14 +220,61 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `tests/upperOrgans.test.ts` holds it: none of her liver, gallbladder, spleen, pancreas, kidneys, stomach or colon lies in
   another, in her lungs or heart, up through her diaphragm, out through her ribs or in her spine, at a quiet breath out, a
   quiet breath in and her deepest breath (her gallbladder in its hollow in her liver excepted). After anything moves one
-  of them, or her diaphragm, run it. MEASURED in the room 2026-11-13, her organs as drawn in her STAND pose: none of them
-  in another at a breath out, a breath in and her hardest breath held in, but for one of her liver's 1,402 points in her
-  colon and her bowel's bumps against her colon (2% of its points at a breath out, as before; 5% at a breath in, 9% at her
-  hardest -- her bowel is pressed down from above and does not yet bulge forward as her belly's skin does).
-- Not done yet (Joshua, 2026-11-13: "go ahead and fix and do the last two things you mentioned"): in a pregnancy her bowel
-  is pushed up behind her womb into her upper belly, where nothing keeps it off her liver, spleen and pancreas, and her
-  diaphragm does not rise as a woman's does (about 4 cm by term); and her stomach is drawn no fuller than the room she has
-  for it (`ABDOMEN_PLACE.stomachRoomMl`, 450 mL) -- her belly does not yet round out for a full one.
+  of them, or her diaphragm, run it. MEASURED in the room 2026-11-13, her organs as drawn in her STAND pose (the
+  `organsDrawn` probe), with no bump: none of them in another at a breath out and a breath in, but for her colon's
+  bumps in her bowel (11 and 10 of its 576 points; 30 with her stomach full, which presses her colon down) -- her bowel
+  is pressed down from above and does not yet bulge forward as her belly's skin does.
+- **In a pregnancy** (Joshua, 2026-11-13: "go ahead and fix and do the last two things you mentioned"). v2's womb is a sac
+  drawn rounder than a woman's womb -- its back stands through the front of her spine at every height -- so FOR HER ORGANS
+  her womb's room is the sac IN FRONT OF A BACK WALL that leans forward off her spine from her promontory
+  (`actor/pregnantWomb.ts` `WombWall`, `WOMB_WALL_SLOPE`; `sarahlab/wombRoom.ts`). Nothing of her womb, her baby or her
+  belly is changed; the sac's see-through back, and her placenta on it, still overlap what lies behind the wall. Then:
+  - her diaphragm is pushed up with her weeks, 4 cm at term (`DIAPHRAGM_RISE`, `vitals.ts` `diaphragmRise`): her lungs are
+    shorter, and her heart, her liver, her spleen, her stomach and her colon's top go up with it;
+  - her liver rests on her womb's top (`wombFloor`), her gallbladder on it further back, where there is room under her
+    diaphragm (`bladderBack`), and her liver on her gallbladder (`liverOver`: ONE laying for what is drawn and for what her
+    stomach and colon are set under; while her womb is low, exactly as with no womb). As she breathes in that seat gives
+    with her diaphragm's drop, so what is under her diaphragm still rides it all of a piece (`layUpper`'s `seat`);
+  - her colon has two ways round her womb (`layAbdomen`): over its top while it is low; once that would press it into her
+    liver and her stomach, across her BEHIND the wall and under her stomach (`tubeBehindWall`) -- whichever leaves less
+    of it in what is round it (`colonTrouble`). It changes way at one size of womb, between 50% and 73% of her bump: a
+    jump, seen once as the slider passes it. Her caecum goes round her womb as before, up and to her side;
+  - her bowel is packed behind the wall, and under her colon once that lies there (`packedIntestines`): by term a band
+    about 4.5 cm tall and 2 cm deep -- flat, its loops kept on its face (`coiledMass`'s `relief`). A woman's goes up and to
+    her sides as well; behind v2's womb there is no more room than that.
+  `tests/upperOrgans.test.ts` ("her insides in a pregnancy") holds it. After anything changes her womb's shape, its wall,
+  her diaphragm's rise or what lies under her diaphragm, run it and measure in the room again (her organs as drawn: the
+  `organsDrawn` probe). MEASURED in the room 2026-11-13 at 25, 50, 73, 100, 150 and 200% of her bump at a breath out, at
+  73 and 100% at a breath in, and at 100% at her hardest breath held in: none of them in another at 73% and at 100%
+  breathed in; elsewhere a point or two -- from 100% up, at a breath out, one of her liver's 1,402 points in her left
+  lung; at 100% one of her colon's 576 in her liver; at her hardest 6 of her left kidney's 270 in her colon, 3 mm --
+  and at 25 and 50%, before her colon goes behind the wall, her bowel's bumps against it (2 and 18 points).
+- **A full stomach** (the same instruction; then, of her whole belly moving out, Joshua, 2026-11-13: "leave the top
+  fixed, but make the bottom part curve rounded... it tends to be down lower near her pelvis... like a smaller belly shape
+  of around 40% on the belly slider with that side profile"): what her stomach holds beyond the room she has for it
+  (`ABDOMEN_PLACE.stomachRoomMl`, 450 mL) her belly's skin gives for (`stomachGiveMl`, `bellyGive`), by a move of its own
+  beside her breath's (`breathSkin.ts` `BREATH_SHAPE.full*`, `uBreathFull`; the room's `stepBreath` sizes it by its sweep,
+  so what she wears and her paint ride it): low and round, its top held -- her own small bump's shape. MEASURED 2026-11-13
+  off her skin, her 40% bump over her 0% belly: 62.4 mm forward at the most, 0.27 of the way up from the top of her pubic
+  bone to the bottom of her breastbone, next to nothing by her breastbone (its numbers by height and across her are in
+  `BREATH_SHAPE`'s comment; her 20% bump adds about 0.4 L to her belly and stands out 24 mm, her 40% 1.8 L and 63 mm).
+  The move is within 0.04 of that shape above its most; below, it comes in to nothing at the top of her pubic bone (her
+  bump carries her pubic area forward, a full belly does not). MEASURED in the room: 600 mL in her stomach, 150 mL swept
+  and 5.1 mm at the most; a litre, 550 mL and 18.6 mm; a litre and a half, 1,050 mL and 35.5 mm -- at 0.96 m on her
+  midline (the even move it replaced: 7.8 and 14.9 mm); with her bump at 40, 100 and 200% that litre and a half stands
+  her belly out 36.1, 33.3 and 32.6 mm. So a full stomach is about her 20% bump and the most it holds about her 30%
+  (Joshua, by eye, the same day: "about 20-30% belly size difference look right to me"). The sweep is the move's first
+  order: her mesh really gains 3% more at a litre and 4% more at a litre and a half, her skin spreading as it stands
+  out. `bellyGive` is the one number to turn down if it shows too much. NOT DONE: her stomach is still DRAWN no fuller
+  than 450 mL. A litre in her own rib cage is a long J down to her navel that takes her colon down with it (tried
+  2026-11-13 with its pylorus held and its depth kept to her belly's: set down all of a piece under her liver it sank
+  8 cm and stood 2 cm out through her belly's skin) -- it wants a stem to its line, its fundus kept narrow in the notch
+  between her liver's left tip and her ribs, and her colon laid under it.
+- **What a breath step and a womb change cost** (X-RAY only): her liver is laid again about 22 times a breath in; its room
+  over her kidneys, her pancreas and her womb is looked up some 5,000 times a laying, so those look-ups allocate nothing
+  and work their reaches out once (`beanTop`'s `frame`, `tubeTopOf`). MEASURED 2026-11-13 on the build machine with a
+  render running beside it: a laying 22 ms before, 8 ms now, over a womb as without; her belly's organs laid round a term
+  womb 80 ms a change of womb (her stomach's fit behind the wall tries none of its forward run first).
 
 ## Verification
 

@@ -7,7 +7,7 @@
  *
  * Her rest frame, metres.
  */
-import { WOMB_SHAPE, type WombRoom } from '../actor/pregnantWomb';
+import { WOMB_SHAPE, wallAt, type WombRoom, type WombWall } from '../actor/pregnantWomb';
 import type { P3 } from '../actor/pelvisMeasure';
 import { sacRadius, type WombShape } from './baby';
 
@@ -23,13 +23,17 @@ const ROOM = Object.freeze({ up: [0, 0.8, -0.6] as P3, spread: 6, far: 0.45 });
 /**
  * v2's womb as the room it takes. Its slices (the last WOMB_SHAPE.stations + 1, bottom to top up her body) are given for
  * what reads a room's height; whether a point is in it, and the way out of it, are the sac's own (`inside`, `pushOut`).
+ * Given her womb's back `wall` (actor/pregnantWomb.ts `WombWall`), the room is the sac in front of it: what stands just
+ * in front of the wall leaves the room straight back through it, when that is nearer than up and over; and `topAt` is
+ * the room's top over a place (her liver rests on it).
  */
-export function wombRoomOf(w: WombShape): WombRoom {
+export function wombRoomOf(w: WombShape, wall: WombWall | null = null): WombRoom {
   const c = w.centre, n = WOMB_SHAPE.stations;
-  const inside = (x: number, y: number, z: number, gap = 0): boolean => {
+  const inSac = (x: number, y: number, z: number, gap = 0): boolean => {
     const dx = x - c.x, dy = y - c.y, dz = z - c.z, d = Math.hypot(dx, dy, dz);
     return d < 1e-9 || d < sacRadius(w, dx / d, dy / d, dz / d) + gap;
   };
+  const inside = (x: number, y: number, z: number, gap = 0): boolean => (!wall || z > wallAt(wall, y) - gap) && inSac(x, y, z, gap);
   const pushOut = (points: Float32Array, gap: number): number => {
     let moved = 0;
     for (let p = 0; p + 2 < points.length; p += 3) {
@@ -43,7 +47,10 @@ export function wombRoomOf(w: WombShape): WombRoom {
       while (hi < ROOM.far && inside(x + ux * hi, y + uy * hi, z + uz * hi, gap)) { lo = hi; hi *= 2; }
       hi = Math.min(hi, ROOM.far);
       for (let k = 0; k < 18; k++) { const m = (lo + hi) / 2; if (inside(x + ux * m, y + uy * m, z + uz * m, gap)) lo = m; else hi = m; }
-      points[p] = x + ux * hi; points[p + 1] = y + uy * hi; points[p + 2] = z + uz * hi;
+      // (or straight back through its back wall, where that is nearer)
+      const back = wall ? z - (wallAt(wall, y) - gap) : Infinity;
+      if (back < hi) points[p + 2] = z - back;
+      else { points[p] = x + ux * hi; points[p + 1] = y + uy * hi; points[p + 2] = z + uz * hi; }
       moved++;
     }
     return moved;
@@ -51,10 +58,10 @@ export function wombRoomOf(w: WombShape): WombRoom {
   // (its slices up her body: each one's middle and half-sizes across her and front to back, by bisection out from its
   // middle's line)
   const reach = (y: number, dx: number, dz: number): number => {
-    if (!inside(c.x, y, c.z)) return 0;
+    if (!inSac(c.x, y, c.z)) return 0;
     let lo = 0, hi = 0.02;
-    while (hi < 1 && inside(c.x + dx * hi, y, c.z + dz * hi)) { lo = hi; hi *= 2; }
-    for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2; if (inside(c.x + dx * m, y, c.z + dz * m)) lo = m; else hi = m; }
+    while (hi < 1 && inSac(c.x + dx * hi, y, c.z + dz * hi)) { lo = hi; hi *= 2; }
+    for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2; if (inSac(c.x + dx * m, y, c.z + dz * m)) lo = m; else hi = m; }
     return lo;
   };
   const top = c.y + sacRadius(w, 0, 1, 0), bottom = c.y - sacRadius(w, 0, -1, 0);
@@ -64,5 +71,13 @@ export function wombRoomOf(w: WombShape): WombRoom {
     path.push([c.x, y, c.z + (f - b) / 2]);
     halves.push([Math.max(1e-4, (reach(y, 1, 0) + reach(y, -1, 0)) / 2), Math.max(1e-4, (f + b) / 2)]);
   }
-  return { path, halves, leanDeg: 0, top, inside: (x, y, z) => inside(x, y, z), pushOut };
+  // (its top over a place: down the upright through it from its top in 4 mm steps to the first step in it, then halved)
+  const topAt = (x: number, z: number): number => {
+    let hi = top + 0.004, lo = hi;
+    for (; lo > bottom; lo -= 0.004) { if (inside(x, lo, z)) break; hi = lo; }
+    if (!(lo > bottom)) return -Infinity;
+    for (let k = 0; k < 10; k++) { const m = (lo + hi) / 2; if (inside(x, m, z)) lo = m; else hi = m; }
+    return lo;
+  };
+  return { path, halves, leanDeg: 0, top, inside: (x, y, z) => inside(x, y, z), pushOut, wall: wall ?? undefined, topAt };
 }

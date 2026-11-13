@@ -73,4 +73,33 @@ describe('her gut over time', () => {
   it('she can not be shorter of water than she has water', () => {
     expect(-stepGut(restingGut(), 24 * 30).waterMl).toBeLessThan(GUT.waterShare * GUT.kg * 1000);
   });
+
+  // (Joshua, 2026-11-13: "Yes, fix the thirst": the marks were counted of her body's water -- half her weight -- where
+  // the research means her weight, and her thirst came on twice too early)
+  it('her thirst is counted against her weight: felt from half a percent of it lost as water, at its most by 2%', () => {
+    const kg: number = GUT.kg, at = (shortMl: number, weight: number = kg) => gutNeeds({ ...restingGut(), waterMl: -shortMl }, weight).thirst;
+    expect(at(0)).toBe(0);
+    expect(at(0.5 * GUT.thirstFrom * kg * 1000)).toBeCloseTo(0, 9);
+    expect(at(GUT.thirstFrom * kg * 1000)).toBeCloseTo(1 / 3, 9);
+    expect(at(GUT.thirstFull * kg * 1000)).toBeCloseTo(1, 9);
+    // 0.6 L short is where a 60 kg woman's thirst is a third of the way, not its most (2% of her body's water)
+    expect(GUT.thirstFull * GUT.waterShare * kg * 1000).toBeCloseTo(600, 9); expect(at(600)).toBeLessThan(0.5);
+    // a heavier body is less thirsty for the same water lost
+    expect(at(900, 90)).toBeLessThan(at(900, 60));
+    // her kidneys hold back by the same mark: the least they can pass by 2% of her weight lost, half-way at 1%
+    expect(urineMlH(-GUT.thirstFull * kg * 1000)).toBeCloseTo(GUT.urineLeastMlKgH * kg, 9);
+    expect(urineMlH(-GUT.thirstFrom * kg * 1000)).toBeCloseTo(((GUT.urineMlKgH + GUT.urineLeastMlKgH) / 2) * kg, 9);
+  });
+
+  it('with nothing drunk her thirst is first felt after about three and a half hours and is at its most after about sixteen', () => {
+    let s: GutState = { ...restingGut(), stomachWaterMl: 0, stomachFoodMl: 0 }, felt = 0, half = 0, most = 0;
+    for (let m = 1; m <= 24 * 60 && !most; m++) {
+      s = stepGut(s, 1 / 60); const t = gutNeeds(s).thirst;
+      if (!felt && t > 0.01) felt = m / 60; if (!half && t >= 0.5) half = m / 60; if (t >= 1) most = m / 60;
+    }
+    expect(felt).toBeGreaterThan(3); expect(felt).toBeLessThan(4);
+    // (research: about 12 hours with no drink until a resting person is thirsty, 7 to 24)
+    expect(half).toBeGreaterThan(7); expect(half).toBeLessThan(12);
+    expect(most).toBeGreaterThan(15); expect(most).toBeLessThan(17.5);
+  });
 });

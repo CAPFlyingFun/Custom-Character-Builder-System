@@ -15,18 +15,26 @@
  *   her deepest breath; her spleen is within her ribs, above her left kidney; her pancreas's neck is level with her
  *   stomach's pylorus at her L1/L2 disc; what lies under her diaphragm rides its domes down together; her stomach, from
  *   empty to as full as she has room for, holds what its number says, its skin smooth, and is in none of the others;
- *   and late in a pregnancy her stomach stays under her diaphragm.
+ *   and late in a pregnancy her stomach stays under her diaphragm;
+ * - HER INSIDES IN A PREGNANCY (Joshua, 2026-11-13: "go ahead and fix and do the last two things you mentioned"): round a
+ *   womb with a back wall, like v2's, her diaphragm risen with her weeks, none of them is in her womb, up through her
+ *   diaphragm or (but for a few points) in another; her liver rests on her womb's top and her gallbladder lies further
+ *   back under it; her colon across her lies behind the wall, under her stomach, and her bowel under her colon; while her
+ *   womb is low her colon rides over it as before.
  */
 import { describe, expect, it } from 'vitest';
 import thorax from '../src/data/thorax/v2.json';
 import pelvis from '../src/data/pelvis/v2.json';
 import torso from '../src/data/torso/v2.json';
-import { BREATH, DIAPHRAGM, diaphragmAt, heartMesh, insideHeart, layThorax, lungMesh, meshVolume, sectionAt, thoraxSpineAt, type ThoraxLandmarks } from '../src/actor/thoracicOrgans';
-import { GALLBLADDER, LIVER, PANCREAS, WINDPIPE, diaphragmDrop, domeDrop, kidneysAt, layUpper, pancreasLine, upperBelly } from '../src/actor/upperOrgans';
+import { BREATH, DIAPHRAGM, DIAPHRAGM_RISE, diaphragmAt, heartMesh, insideHeart, layThorax, lungMesh, lungVolume, meshVolume, sectionAt, thoraxSpineAt, type ThoraxLandmarks } from '../src/actor/thoracicOrgans';
+import { GALLBLADDER, LIVER, PANCREAS, WINDPIPE, bladderBack, diaphragmDrop, domeDrop, kidneysAt, layUpper, pancreasLine, upperBelly, wombFloor } from '../src/actor/upperOrgans';
 import { OVARY, TUBE, layAdnexa } from '../src/actor/adnexa';
 import { layOrgans, type OrganMesh, type PelvisLandmarks } from '../src/actor/pelvicOrgans';
-import { growWomb, type TorsoLandmarks } from '../src/actor/pregnantWomb';
-import { ABDOMEN_DEFAULT_FILL, ABDOMEN_PLACE, BREATH_RIDE, STOMACH, bean, breathRide, inWomb, layAbdomen, layKidneys, layStomach, outOfBlob, outOfWomb, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
+import { WOMB_WALL_SLOPE, growWomb, spineFrontAt, wallAt, type TorsoLandmarks, type WombRoom } from '../src/actor/pregnantWomb';
+import { ABDOMEN_DEFAULT_FILL, ABDOMEN_PLACE, BREATH_RIDE, STOMACH, WOMB_PUSH, bean, breathRide, coiledMass, inWomb, layAbdomen, layKidneys, layStomach, outOfBlob, outOfWomb, pointsClear, shortBehindWall, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
+import { diaphragmRise } from '../src/actor/vitals';
+import { wombFromSkin } from '../src/sarahlab/baby';
+import { wombRoomOf } from '../src/sarahlab/wombRoom';
 
 const T = thorax as unknown as ThoraxLandmarks, mid = T.xiphoid[0];
 /** Whether a point is inside a closed mesh (a ray along +x crossing it an odd number of times). */
@@ -60,6 +68,17 @@ function foldedBack(m: OrganMesh): number {
     if (o === undefined) { edge.set(key, t); continue; }
     const p = N[o], q = N[t];
     if ((p[0] || p[1] || p[2]) && (q[0] || q[1] || q[2]) && p[0] * q[0] + p[1] * q[1] + p[2] * q[2] < -0.2) n++;
+  }
+  return n;
+}
+
+/** How many of a's points lie in b. */
+function within(a: OrganMesh, b: OrganMesh): number {
+  const B = box(b); let n = 0;
+  for (let i = 0; i < a.points.length; i += 3) {
+    const q = [a.points[i], a.points[i + 1], a.points[i + 2]];
+    if (q[0] < B.lo[0] || q[0] > B.hi[0] || q[1] < B.lo[1] || q[1] > B.hi[1] || q[2] < B.lo[2] || q[2] > B.hi[2]) continue;
+    if (inside(b, q)) n++;
   }
   return n;
 }
@@ -156,16 +175,6 @@ describe('her upper belly, organ against organ', () => {
     };
     const belly = { liver: U.liver as OrganMesh, gallbladder: U.gallbladder, spleen: U.spleen as OrganMesh, pancreas: U.pancreas, kidneyL: bean(K[0]), kidneyR: bean(K[1]), stomach: ridden(sweepAny(A.stomach.path, A.stomach.halves, 18, 4), 'stomach'), colon: ridden(sweepAny(A.colon.path, A.colon.halves, 12, 4), 'colon') };
     return { L, belly, chest: { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, 0) } };
-  };
-  /** how many of a's points lie in b */
-  const within = (a: OrganMesh, b: OrganMesh): number => {
-    const B = box(b); let n = 0;
-    for (let i = 0; i < a.points.length; i += 3) {
-      const q = [a.points[i], a.points[i + 1], a.points[i + 2]];
-      if (q[0] < B.lo[0] || q[0] > B.hi[0] || q[1] < B.lo[1] || q[1] > B.hi[1] || q[2] < B.lo[2] || q[2] > B.hi[2]) continue;
-      if (inside(b, q)) n++;
-    }
-    return n;
   };
 
   it('none of them lies in another, at a quiet breath out, a quiet breath in and her deepest breath', () => {
@@ -269,5 +278,148 @@ describe('her upper belly, organ against organ', () => {
       // (what of it her womb's top takes is pushed out of it point by point, as the room draws it)
       outOfWomb(pts, womb); expect(inWomb(pts, womb)).toBe(0);
     }
+  });
+});
+
+describe('her insides in a pregnancy, round a womb with a back wall', () => {
+  const TV = torso as unknown as TorsoLandmarks & { discs: number[] }, P = pelvis as unknown as PelvisLandmarks, laid = layOrgans(P);
+  const opening = laid.vagina.path[0], bladder = { centre: laid.bladder.centre, radii: laid.bladder.radii }, x0 = P.landmarks.symphysisTop[0];
+  const kidneys = layKidneys(TV, x0), wall = { y0: P.landmarks.promontory[1], z0: P.landmarks.promontory[2], slope: WOMB_WALL_SLOPE };
+  /** A belly's skin, for a womb to be read from as the room reads v2's (sarahlab/baby.ts `wombFromSkin`): a dome `depth`
+   * deep in front of her, its middle at height `mid`, `tall` and `wide` its half-sizes. */
+  const skin = (depth: number, mid: number, tall: number, wide: number) => {
+    const pts: number[] = [];
+    for (let y = 0.8; y <= 1.25; y += 0.006) for (let x = -0.24; x <= 0.24; x += 0.006) { const u = (y - mid) / tall, w = x / wide, k = 1 - u * u - w * w; pts.push(x, y, 0.05 + (k > 0 ? depth * Math.sqrt(k) : 0)); }
+    return pts;
+  };
+  /** Wombs like v2's as MEASURED in the room 2026-11-13 (her bump at 73%: its top at 1.171; at 100%: 1.191, half-width
+   * 0.129), and a low one; each with her weeks. */
+  const WOMBS = { low: [0.06, 0.99, 0.12, 0.12, 18], weeks30: [0.12, 1.02, 0.17, 0.15, 30], term: [0.16, 1.03, 0.19, 0.17, 40] } as const;
+  const lay = (name: keyof typeof WOMBS, breath = 0) => {
+    const [depth, mid, tall, wide, weeks] = WOMBS[name], rise = diaphragmRise(weeks, DIAPHRAGM_RISE);
+    const womb: WombRoom = wombRoomOf(wombFromSkin(skin(depth, mid, tall, wide), weeks), wall), floor = wombFloor(womb, T);
+    const upper = upperBelly(T, kidneys, rise, floor), A = layAbdomen(TV, P, opening, bladder, undefined, womb, laid.vagina.path, upper);
+    const L = layThorax(T, breath, rise), U = layUpper(L, kidneys, floor), K = kidneysAt(L, kidneys), blob = { centre: A.intestines.centre, radii: A.intestines.radii };
+    // (her stomach, her colon and her bowel as the room draws them -- sarahlab/abdomenView.ts `build` -- and ridden down
+    // with her diaphragm's domes as its soft bodies are: `ride`)
+    const ridden = (m: OrganMesh, organ: 'stomach' | 'colon' | 'intestines'): OrganMesh => { for (let i = 0; i < m.points.length; i += 3) m.points[i + 1] -= breathRide(organ, m.points[i + 1], T.xiphoid[1]) * domeDrop(L, m.points[i]); return m; };
+    const drawn = (m: OrganMesh, organ: 'stomach' | 'colon'): OrganMesh => { outOfWomb(m.points, womb); outOfBlob(m.points, blob, 0.003); return ridden(m, organ); };
+    const bowel = coiledMass(blob); outOfWomb(bowel.points, womb); outOfBlob(bowel.points, bladder, 0.003);
+    for (let pass = 0; pass < 2; pass++) { if (!pointsClear(bowel.points, { under: upper.under, beans: [...upper.organs, ...A.kidneys], tubes: [...(upper.tubes ?? []), A.stomach, A.colon] }, 0.003)) break; outOfWomb(bowel.points, womb); }
+    const belly: Record<string, OrganMesh> = { liver: U.liver as OrganMesh, gallbladder: U.gallbladder, spleen: U.spleen as OrganMesh, pancreas: U.pancreas, kidneyL: bean(K[0]), kidneyR: bean(K[1]), stomach: drawn(sweepAny(A.stomach.path, A.stomach.halves, 18, 4), 'stomach'), colon: drawn(sweepAny(A.colon.path, A.colon.halves, 12, 4), 'colon'), intestines: ridden(bowel, 'intestines') };
+    return { womb, floor, rise, upper, A, L, belly, chest: { lungL: lungMesh(L, 1), lungR: lungMesh(L, -1), heart: heartMesh(L, 0) } as Record<string, OrganMesh> };
+  };
+  /** her colon's stations across her middle */
+  const across = (A: ReturnType<typeof lay>['A']) => A.colon.path.map((p, k) => ({ p, r: Math.max(A.colon.halves[k][0], A.colon.halves[k][1]) })).filter(({ p }) => Math.abs(p[0] - x0) < 0.05 && p[1] > TV.landmarks.navel - 0.02);
+
+  it('her diaphragm is pushed up with her weeks, 4 cm at term, and her lungs hold less', () => {
+    expect(diaphragmRise(0, DIAPHRAGM_RISE)).toBe(0);
+    expect(diaphragmRise(40, DIAPHRAGM_RISE)).toBeCloseTo(DIAPHRAGM_RISE, 6);
+    expect(diaphragmRise(30, DIAPHRAGM_RISE)).toBeGreaterThan(0.02);
+    const L0 = layThorax(T, 0), L1 = layThorax(T, 0, DIAPHRAGM_RISE);
+    for (const k of [0, 1]) expect(L1.diaphragm.domes[k].top - L0.diaphragm.domes[k].top).toBeCloseTo(DIAPHRAGM_RISE, 4);
+    expect(lungVolume(L1).both).toBeLessThan(lungVolume(L0).both * 0.92);
+    // (no further than a pregnancy pushes it)
+    expect(layThorax(T, 0, 0.2).rise).toBeCloseTo(DIAPHRAGM_RISE, 9);
+    expect(layThorax(T, 0).rise).toBe(0);
+  });
+
+  it('none of them is in her womb, up through her diaphragm or -- but for a few points -- in another', () => {
+    for (const name of ['low', 'weeks30', 'term'] as const) {
+      const { womb, L, belly, chest } = lay(name), all = { ...belly, ...chest };
+      if (name !== 'low') expect(womb.top, `${name}: her womb's top`).toBeGreaterThan(name === 'term' ? 1.18 : 1.12);
+      for (const [organ, m] of Object.entries(belly)) {
+        expect(inWomb(m.points, womb), `${name}: her ${organ} in her womb`).toBe(0);
+        let over = -Infinity; for (let i = 0; i < m.points.length; i += 3) over = Math.max(over, m.points[i + 1] - diaphragmAt(L, m.points[i], m.points[i + 2]));
+        expect(over, `${name}: her ${organ} over her diaphragm`).toBeLessThanOrEqual(0);
+      }
+      for (const a of Object.keys(belly)) for (const b of Object.keys(all)) {
+        if (a === b || (a === 'gallbladder' && b === 'liver') || (a === 'liver' && b === 'gallbladder')) continue;
+        // (a few points: her liver as drawn stands off its own underside as reckoned by a few millimetres at its edges)
+        expect(within(all[a], all[b]) + within(all[b], all[a]), `${name}: her ${a} and her ${b}`).toBeLessThanOrEqual(5);
+      }
+    }
+  }, 120_000);
+
+  it('as she breathes in they ride her diaphragm down together, her liver\'s seat on her womb with them', () => {
+    for (const name of ['weeks30', 'term'] as const) for (const breath of [1, BREATH.most]) {
+      const { L, belly, chest } = lay(name, breath), all = { ...belly, ...chest };
+      for (const [organ, m] of Object.entries(belly)) {
+        let over = -Infinity; for (let i = 0; i < m.points.length; i += 3) over = Math.max(over, m.points[i + 1] - diaphragmAt(L, m.points[i], m.points[i + 2]));
+        expect(over, `${name}, breath ${breath}: her ${organ} over her diaphragm`).toBeLessThanOrEqual(0);
+      }
+      for (const a of Object.keys(belly)) for (const b of Object.keys(all)) {
+        if (a >= b && b in belly) continue;
+        if ((a === 'gallbladder' && b === 'liver') || (a === 'liver' && b === 'gallbladder')) continue;
+        // (a few points; at her hardest breath her left kidney, ridden 5.7 cm down, touches her colon beside it:
+        // MEASURED 2026-11-13, 4 and 7 points)
+        expect(within(all[a], all[b]) + within(all[b], all[a]), `${name}, breath ${breath}: her ${a} and her ${b}`).toBeLessThanOrEqual(breath > 1 ? 10 : 5);
+      }
+    }
+  }, 240_000);
+
+  it('her liver rests on her womb\'s top; her gallbladder lies further back under it at term', () => {
+    const { floor, L, belly, womb } = lay('term'), liver = belly.liver;
+    expect(floor).not.toBeNull();
+    // none of her liver under her womb's top where it stands under her
+    let under = 0; for (let i = 0; i < liver.points.length; i += 3) { const f = floor!(liver.points[i], liver.points[i + 2]); if (f > -Infinity) under = Math.max(under, f - liver.points[i + 1]); }
+    expect(under).toBeLessThanOrEqual(0.0005);
+    // it still holds most of a woman's liver (the room over her womb's top is what it has)
+    expect(meshVolume(liver) * 1e6).toBeGreaterThan(LIVER.grams / LIVER.density * 0.85);
+    const back = bladderBack(layThorax(T, 0, DIAPHRAGM_RISE), floor!);
+    expect(back).toBeGreaterThan(0); expect(back).toBeLessThanOrEqual(GALLBLADDER.backMost + 1e-9);
+    expect(inWomb(belly.gallbladder.points, womb)).toBe(0);
+    let over = -Infinity; const g = belly.gallbladder.points; for (let i = 0; i < g.length; i += 3) over = Math.max(over, g[i + 1] - diaphragmAt(L, g[i], g[i + 2]));
+    expect(over).toBeLessThan(-GALLBLADDER.leastLiver);
+    // with no womb under her liver it lies where it always does
+    expect(bladderBack(layThorax(T, 0), () => -Infinity)).toBe(0);
+  });
+
+  it('her colon across her lies behind the wall, under her stomach, and her bowel under her colon', () => {
+    for (const name of ['weeks30', 'term'] as const) {
+      const { A } = lay(name), cross = across(A), stomachFoot = Math.min(...A.stomach.path.map((q) => q[1]));
+      expect(cross.length, name).toBeGreaterThan(6);
+      for (const { p, r } of cross) {
+        expect(p[2], `${name}: a station across her at x ${p[0].toFixed(3)}, behind the wall`).toBeLessThan(wallAt(wall, p[1]) - r);
+        // (in front of her spine where her spine is: beside it her back's hollows run further back)
+        if (Math.abs(p[0] - x0) < 0.02) expect(p[2] + 1e-9, `${name}: ...and in front of her spine`).toBeGreaterThanOrEqual(spineFrontAt(TV, p[1]) + r);
+        expect(p[1], `${name}: ...under her stomach's line`).toBeLessThan(stomachFoot);
+      }
+      const foot = Math.min(...cross.filter(({ p }) => Math.abs(p[0] - x0) < 0.04).map(({ p, r }) => p[1] - r));
+      expect(A.intestines.centre[1] + A.intestines.radii[1], `${name}: her bowel's top`).toBeLessThanOrEqual(foot + 1e-6);
+      // her stomach is not bent by her womb: it holds its number, its skin smooth
+      expect(tubeVolume(A.stomach) * 1e6, name).toBeCloseTo(ABDOMEN_DEFAULT_FILL.stomachMl, 0);
+      expect(foldedBack(sweepAny(A.stomach.path, A.stomach.halves, 18, 4)), name).toBe(0);
+    }
+  }, 60_000);
+
+  it('packed flat behind her womb, her bowel still shows its loops; at rest nothing of it has changed', () => {
+    const { A } = lay('term'), flat = A.intestines, m = coiledMass(flat);
+    expect(flat.radii[2]).toBeLessThan(0.02);
+    let most = 0; for (let i = 0; i < m.points.length; i += 3) most = Math.max(most, Math.abs(m.points[i + 2] - flat.centre[2]));
+    // (its face stands at least 2 mm off the flat it would be: 7% of 12 mm is under a millimetre)
+    expect(most - flat.radii[2]).toBeGreaterThan(0.002);
+    const rest = layAbdomen(TV, P, opening, bladder, undefined, null, laid.vagina.path, upperBelly(T, kidneys)).intestines;
+    expect(Array.from(coiledMass(rest).points)).toEqual(Array.from(coiledMass(rest, 22, 32, 0.07, 0).points));
+  });
+
+  it('while her womb is low her colon rides over it as before, and her liver and her gallbladder are as with no womb', () => {
+    const { A, womb, floor, L, rise } = lay('low'), cross = across(A);
+    expect(womb.top).toBeLessThan(TV.landmarks.navel);
+    // (her womb's top is nowhere near her liver: laid over it, and with no womb at all, to the last point -- and what her
+    // stomach and her colon are set under is that same liver. Laid on her gallbladder whenever she had a womb, her liver
+    // as drawn stood 7 mm into her stomach with her bump at 0%: MEASURED in the room 2026-11-13)
+    expect(floor).not.toBeNull();
+    const over = layUpper(L, kidneys, floor), bare = layUpper(L, kidneys, null);
+    expect(Array.from(over.liver.points)).toEqual(Array.from(bare.liver.points));
+    expect(Array.from(over.gallbladder.points)).toEqual(Array.from(bare.gallbladder.points));
+    const a = upperBelly(T, kidneys, rise, floor), b = upperBelly(T, kidneys, rise, null);
+    for (const [x, z] of [[-0.06, 0], [-0.03, 0.03], [0, 0.02], [0.03, 0], [0.05, 0.03]]) expect(a.under(x, z)).toBeCloseTo(b.under(x, z), 9);
+    // (in front of the wall's line, where it is laid: nothing of her womb stands there yet)
+    expect(cross.filter(({ p }) => p[2] > wallAt(wall, p[1])).length).toBeGreaterThan(cross.length / 2);
+    // a round fits behind the wall high up, where the wall leans forward of her spine, and not low down
+    const spine = (y: number) => spineFrontAt(TV, y);
+    expect(shortBehindWall(wall, spine, TV.landmarks.navel + 0.06, 0.02, WOMB_PUSH.gap)).toBeLessThan(0);
+    expect(shortBehindWall(wall, spine, TV.landmarks.navel - 0.06, 0.02, WOMB_PUSH.gap)).toBeGreaterThan(0.02);
   });
 });

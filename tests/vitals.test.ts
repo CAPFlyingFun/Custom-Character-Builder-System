@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIVITY, BREATHING, CHEST_SHARE, HEARTBEAT, PREGNANT_FLARE, breathFlare, breathOf, chestShare, peakHeart, pregnancyShare, restingVitals, stepVitals, vitalsFor,
 } from '../src/actor/vitals';
-import { BREATH_SLICES, BREATH_SPAN, breathAt, breathVolumes, createBreathUniforms, layBreathTable } from '../src/sarahlab/breathSkin';
+import { BREATH_GLSL, BREATH_SHAPE, BREATH_SLICES, BREATH_SPAN, breathAt, breathVolumes, createBreathUniforms, layBreathTable } from '../src/sarahlab/breathSkin';
 
 /** Step her vitals `seconds` at `intensity`, 1/30 s a step; the last of them. */
 function run(v = restingVitals(), seconds: number, intensity: number, weeks = 0) {
@@ -169,5 +169,63 @@ describe('her skin breathes', () => {
     // (the open tube's volume change: its walls' sweep; its ends do not move)
     const grew = Math.abs(vol(moved) - vol(P.rest));
     expect(grew / air).toBeGreaterThan(0.97); expect(grew / air).toBeLessThan(1.03);
+  });
+
+  it('her full belly stands out low and round: its top, her back and her sides stay (Joshua, 2026-11-13)', () => {
+    const u = createBreathUniforms(), P = paperBody();
+    layBreathTable(u, P.rest, P.arm, marks);
+    const at = (x: number, y: number, z: number) => breathAt(u, x, y, z, new THREE.Vector3());
+    // with room in her stomach nothing moves
+    expect(at(0, 0.96, 0.12).length()).toBe(0);
+    u.breathFull.value = 0.02;
+    // most low down -- about a quarter of the way up from the top of her pubic bone to the bottom of her breastbone --
+    // and there it is the move's whole size, forward
+    const peak = marks.pubisTop + BREATH_SHAPE.fullPeak * (marks.xiphoid - marks.pubisTop);
+    expect(BREATH_SHAPE.fullPeak).toBeGreaterThan(0.2); expect(BREATH_SHAPE.fullPeak).toBeLessThan(0.35);
+    expect(at(0, peak, 0.12).z).toBeCloseTo(0.02, 5); expect(Math.abs(at(0, peak, 0.12).x)).toBeLessThan(1e-9);
+    // going up it falls away -- about half by two thirds of the way up, as her own small bump does -- and its top stays:
+    // nothing from the bottom of her breastbone up, and next to nothing just under it (no step)
+    let last = 0.02;
+    for (let y = peak + 0.01; y < marks.xiphoid; y += 0.01) { const z = at(0, y, 0.12).z; expect(z).toBeLessThanOrEqual(last + 1e-9); last = z; }
+    const twoThirds = at(0, marks.pubisTop + 0.69 * (marks.xiphoid - marks.pubisTop), 0.12).z / 0.02;
+    expect(twoThirds).toBeGreaterThan(0.45); expect(twoThirds).toBeLessThan(0.7);
+    expect(at(0, marks.xiphoid - 0.01, 0.12).z).toBeLessThan(0.08 * 0.02);
+    for (const y of [marks.xiphoid, 1.25, 1.3, 1.36]) expect(at(0, y, 0.12).length()).toBe(0);
+    // its underside rounds in to nothing at the top of her pubic bone; below it nothing
+    const under = at(0, marks.pubisTop + 0.5 * BREATH_SHAPE.fullPeak * (marks.xiphoid - marks.pubisTop), 0.12).z / 0.02;
+    expect(under).toBeGreaterThan(0.5); expect(under).toBeLessThan(0.75);
+    expect(at(0, marks.pubisTop + 0.002, 0.12).z).toBeLessThan(0.03 * 0.02);
+    for (const y of [marks.pubisTop, 0.85, 0.82]) expect(at(0, y, 0.12).length()).toBe(0);
+    // across her: less beside her midline, and a little apart (her own bump's skin spreads); her sides and her back stay
+    const beside = at(0.06, peak, 0.11), other = at(-0.06, peak, 0.11);
+    expect(beside.z / 0.02).toBeGreaterThan(0.4); expect(beside.z / 0.02).toBeLessThan(0.8);
+    expect(beside.x).toBeGreaterThan(0.001); expect(other.x).toBeCloseTo(-beside.x, 9); expect(other.z).toBeCloseTo(beside.z, 9);
+    for (const [x, y, z] of [[0.15, peak, 0], [-0.15, peak, 0], [0, peak, -0.12], [0.21, peak, 0.02]]) expect(at(x, y, z).length()).toBeLessThan(1e-9);
+    // her breath's own moves are untouched by it: the two add
+    u.breath.value.set(0.01, 0.01, 1, 1.09);
+    const both = at(0, peak, 0.12).z; u.breathFull.value = 0; const breath = at(0, peak, 0.12).z;
+    expect(both - breath).toBeCloseTo(0.02, 6);
+    // and the shader is given the same numbers
+    for (const k of ['fullPeak', 'fullUnder', 'fullOver', 'fullAcross', 'fullSide'] as const) expect(BREATH_GLSL).toContain(BREATH_SHAPE[k].toFixed(4));
+    expect(BREATH_GLSL).toContain('uniform float uBreathFull;');
+  });
+
+  it('her full belly stands out by what her stomach holds beyond its room', () => {
+    const u = createBreathUniforms(), P = paperBody();
+    layBreathTable(u, P.rest, P.arm, marks);
+    const swept = breathVolumes(u, P.rest, P.index);
+    expect(swept.full).toBeGreaterThan(0.005); expect(swept.full).toBeLessThan(swept.belly);
+    const vol = (pts: ArrayLike<number>) => { let v = 0; for (let t = 0; t < P.index.length; t += 3) { const [i, j, k] = [P.index[t], P.index[t + 1], P.index[t + 2]]; if (P.arm[i]) continue;
+      v += (pts[i * 3] * (pts[j * 3 + 1] * pts[k * 3 + 2] - pts[j * 3 + 2] * pts[k * 3 + 1]) - pts[i * 3 + 1] * (pts[j * 3] * pts[k * 3 + 2] - pts[j * 3 + 2] * pts[k * 3]) + pts[i * 3 + 2] * (pts[j * 3] * pts[k * 3 + 1] - pts[j * 3 + 1] * pts[k * 3])) / 6; } return v; };
+    // (the sweep is the move's first order: a move of a few millimetres gains it to the percent, one of centimetres a few
+    // percent more, her skin spreading as it stands out)
+    for (const [give, within] of [[0.00005, 0.02], [0.00055, 0.08]] as const) {
+      u.breathFull.value = give / swept.full;
+      const moved = Float32Array.from(P.rest), o = new THREE.Vector3();
+      for (let i = 0; i < moved.length / 3; i++) { breathAt(u, P.rest[i * 3], P.rest[i * 3 + 1], P.rest[i * 3 + 2], o); moved[i * 3] += o.x; moved[i * 3 + 1] += o.y; moved[i * 3 + 2] += o.z; }
+      // (the open tube's volume change, as above: its walls' sweep)
+      const grew = Math.abs(vol(moved) - vol(P.rest));
+      expect(Math.abs(grew / give - 1)).toBeLessThan(within);
+    }
   });
 });

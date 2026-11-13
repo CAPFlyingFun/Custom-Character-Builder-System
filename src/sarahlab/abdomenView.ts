@@ -15,8 +15,8 @@
  * over them do (sarahlab/thoraxView.ts) -- so each keeps its place against the others at every breath.
  */
 import * as THREE from 'three';
-import { ABDOMEN_DEFAULT_FILL, bean, breathRide, coiledMass, layAbdomen, layKidneys, outOfBlob, outOfWomb, sweepAny, KIDNEY, type AbdomenFill, type AbdomenLayout, type Blob, type Bean, type Tube, type UpperBelly } from '../actor/abdominalOrgans';
-import { upperBelly } from '../actor/upperOrgans';
+import { ABDOMEN_DEFAULT_FILL, bean, breathRide, coiledMass, layAbdomen, layKidneys, outOfBlob, outOfWomb, pointsClear, sweepAny, KIDNEY, type AbdomenFill, type AbdomenLayout, type Blob, type Bean, type Tube, type UpperBelly } from '../actor/abdominalOrgans';
+import { upperBelly, wombFloor } from '../actor/upperOrgans';
 import type { ThoraxLandmarks } from '../actor/thoracicOrgans';
 import type { PelvisLandmarks } from '../actor/pelvicOrgans';
 import type { TorsoLandmarks, WombRoom } from '../actor/pregnantWomb';
@@ -103,8 +103,14 @@ export class AbdomenView {
   private dropSet: unknown = null;
   /** what lies over them in her upper belly at the end of a quiet breath out (her liver's and her diaphragm's underside,
    * her spleen, her pancreas): her stomach and her colon are laid under and off it; none, by her landmarks alone */
-  private readonly upper: UpperBelly | null;
+  private upper: UpperBelly | null = null;
   private readonly xiphoidY: number;
+  /** her rib cage and her kidneys as laid at rest: what is over her belly's organs is laid from them (`build`) */
+  private readonly thorax: ThoraxLandmarks | null;
+  private readonly kidneys: readonly Bean[];
+  /** how far her pregnancy has pushed her diaphragm up, metres (`setRise`), and as these were last laid */
+  private rise = 0;
+  private riseLaid = 0;
 
   /**
    * @param bones her spine's bones (her pelvis bone and those above it), each with her rest frame (metres) as that bone
@@ -113,8 +119,9 @@ export class AbdomenView {
    * @param thorax the inside of her rib cage (actor/thoracicOrgans.ts): what lies over these is laid in it (`upperBelly`)
    */
   constructor(private readonly pelvis: PelvisLandmarks, private readonly torso: TorsoLandmarks & { readonly discs?: readonly number[] }, bones: Record<SpineBone, { bone: THREE.Bone; matrix: THREE.Matrix4 }>, private readonly units: number, private readonly pelvic: PelvicOrgansView, thorax: ThoraxLandmarks | null = null) {
-    // (what lies over them at the end of a quiet breath out: her liver and diaphragm, her spleen, her pancreas)
-    this.upper = thorax ? upperBelly(thorax, layKidneys(torso, pelvis.landmarks.symphysisTop[0])) : null;
+    // (what lies over them at the end of a quiet breath out -- her liver and diaphragm, her spleen, her pancreas -- is
+    // laid with them: `build`)
+    this.thorax = thorax; this.kidneys = layKidneys(torso, pelvis.landmarks.symphysisTop[0]);
     this.xiphoidY = torso.landmarks.xiphoid[1];
     for (const key of Object.keys(bones) as SpineBone[]) {
       const node = new THREE.Object3D(); node.matrixAutoUpdate = false; node.matrix.copy(bones[key].matrix); node.name = 'abdomenOrgans';
@@ -150,6 +157,9 @@ export class AbdomenView {
     this.wombLaid = womb; this.bladderLaid = pl.bladder;
     const bladder: Blob = { centre: pl.bladder.centre, radii: pl.bladder.radii };
     const opening = pl.vagina.path[0];
+    // (what is over them as it is now: her diaphragm risen with her pregnancy, her liver resting on her womb's top)
+    this.riseLaid = this.rise;
+    this.upper = this.thorax ? upperBelly(this.thorax, this.kidneys, this.rise, wombFloor(womb, this.thorax)) : null;
     const L = layAbdomen(this.torso, this.pelvis, opening, bladder, this.fillNow, womb, pl.vagina.path, this.upper);
     this.layout = L;
     const T = ABDOMEN_TUNE;
@@ -170,7 +180,11 @@ export class AbdomenView {
     };
     const intestines: Blob = { centre: L.intestines.centre, radii: L.intestines.radii };
     tube('stomach', L.stomach, 18, 3, [intestines]);
-    { const m = coiledMass(intestines); make('intestines', { points: keepOut(m.points, [bladder]), triangles: m.triangles }, blobCage(intestines.centre, AXES, intestines.radii, T.intestines.tie, MASS.intestines)); }
+    // (her bowel, one soft mass, takes the shape of the room it is left: out of her womb and her bladder, then clear of
+    // what is over and round it -- under her liver, off her pancreas, her spleen, her kidneys and her stomach)
+    { const m = coiledMass(intestines); keepOut(m.points, [bladder]);
+      if (this.upper) for (let pass = 0; pass < 2; pass++) { const n = pointsClear(m.points, { under: this.upper.under, beans: [...this.upper.organs, ...L.kidneys], tubes: [...(this.upper.tubes ?? []), L.stomach, L.colon] }, 0.003); if (!n || !womb) break; outOfWomb(m.points, womb); }
+      make('intestines', { points: m.points, triangles: m.triangles }, blobCage(intestines.centre, AXES, intestines.radii, T.intestines.tie, MASS.intestines)); }
     tube('colon', L.colon, 12, 3, [intestines]);
     tube('rectum', L.rectum, 12, 3, [bladder]);
     for (const k of L.kidneys) { const name: Name = k.side > 0 ? 'kidneyL' : 'kidneyR'; make(name, bean(k), blobCage(k.centre, beanAxes(k), k.radii, T[name].tie, MASS[name])); }
@@ -206,6 +220,9 @@ export class AbdomenView {
     }
   }
 
+  /** HER PREGNANCY PUSHES HER DIAPHRAGM UP (actor/vitals.ts `diaphragmRise`): her stomach and her colon's top hang from it,
+   * that much higher. Laid again when it changes by a millimetre. */
+  setRise(rise: number): void { const r = Math.max(0, Number.isFinite(rise) ? rise : 0); if (Math.abs(r - this.rise) >= 0.001 || (r === 0) !== (this.rise === 0)) this.rise = r; }
   /** The pairs that push on one another (kept again whenever her pelvic organs are laid again). */
   private touch(): void {
     const by = (n: Name) => this.organs.find((o) => o.name === n)?.cage;
@@ -222,7 +239,7 @@ export class AbdomenView {
    * leans; a pose put on in one frame simply carries them (as her pelvic organs, `JUMP_ACCEL`). */
   update(dt: number): void {
     const pl = this.pelvic.laid;
-    if (pl && (this.pelvic.wombRoom !== this.wombLaid || pl.bladder !== this.bladderLaid)) this.build();
+    if (pl && (this.pelvic.wombRoom !== this.wombLaid || pl.bladder !== this.bladderLaid || this.rise !== this.riseLaid)) this.build();
     if (!this.organs.length) return;
     this.touch();
     for (const h of this.holders.values()) {

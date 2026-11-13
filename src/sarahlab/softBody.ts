@@ -232,7 +232,7 @@ export function patchJiggle(material: THREE.Material, uniforms: JiggleUniforms):
     shader.uniforms.uKickUnits = uniforms.kickUnits;
     shader.uniforms.uBellySoft = uniforms.bellySoft;
     shader.uniforms.uPubicAt = uniforms.pubicAt; shader.uniforms.uPubicDir = uniforms.pubicDir;
-    shader.uniforms.uBreath = uniforms.breath; shader.uniforms.uBreathMarks = uniforms.breathMarks; shader.uniforms.uBreathSlices = uniforms.breathSlices;
+    shader.uniforms.uBreath = uniforms.breath; shader.uniforms.uBreathFull = uniforms.breathFull; shader.uniforms.uBreathMarks = uniforms.breathMarks; shader.uniforms.uBreathSlices = uniforms.breathSlices;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${BREATH_GLSL}\nattribute vec3 jiggle;\nattribute vec3 babyPush;\nuniform vec3 uJiggleThighL;\nuniform vec3 uJiggleThighR;\nuniform vec3 uJiggleCalfL;\nuniform vec3 uJiggleCalfR;\nuniform vec3 uJiggleBelly;\nuniform vec3 uJiggleBreastL;\nuniform vec3 uJiggleBreastR;\nuniform vec4 uKickAt[${KICKS}];\nuniform vec4 uKickDir[${KICKS}];\nuniform mat4 uKickRest;\nuniform mat3 uKickUnits;\nuniform vec4 uBellySoft;\nuniform vec4 uPubicAt;\nuniform vec4 uPubicDir;`)
       .replace('#include <morphtarget_vertex>', `#include <morphtarget_vertex>

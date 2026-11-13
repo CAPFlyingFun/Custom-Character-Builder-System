@@ -42,7 +42,7 @@
  * quiet breath out, a quiet breath in and her deepest breath (her gallbladder in its hollow in her liver excepted).
  */
 import type { P3 } from './pelvisMeasure';
-import { insideWomb, spineFrontAt, WOMB_SHAPE, type TorsoLandmarks, type WombRoom } from './pregnantWomb';
+import { insideWomb, spineFrontAt, wallAt, WOMB_SHAPE, type TorsoLandmarks, type WombRoom , type WombWall } from './pregnantWomb';
 import type { OrganMesh, PelvisLandmarks } from './pelvicOrgans';
 
 /** The stomach: about 75 mL empty at rest; comfortably full about 1 L, up to about 1.5 L (stretched to 4 L at most).
@@ -86,10 +86,15 @@ export const ABDOMEN_PLACE = Object.freeze({
    * MEASURED 2026-11-13 in her own body: to 450 mL it is in none of her other organs; at half a litre 7 of its points
    * stand in her gallbladder; from 600 mL its front reaches her belly's skin (7 cm ahead of her spine's front there) and
    * at a litre it stands 2 cm out through it, and down into her bowel -- her belly is 7.4 cm deep inside there, and a
-   * litre is a ball 12 cm across. A woman's belly rounds out for a full stomach (BIOLOGICAL SHAPE); until her belly's
-   * skin gives for hers, it is drawn no fuller than the room she has, and its number goes on counting (actor/gut.ts).
-   * GAME TUNING. */
+   * litre is a ball 12 cm across. A woman's belly rounds out for a full stomach (BIOLOGICAL SHAPE): what hers holds
+   * beyond this her belly's skin gives for (`stomachGiveMl`), and its number goes on counting (actor/gut.ts). It is
+   * still DRAWN no fuller than this: a litre in her is a long J down to her navel that takes her colon down with it,
+   * which is not built. GAME TUNING. */
   stomachRoomMl: 450,
+  /** the share of what her stomach holds beyond `stomachRoomMl` that her belly's skin gives for (`stomachGiveMl`): all
+   * of it -- her ribs and her back do not give, her belly's wall does, low down most (BIOLOGICAL SHAPE; GAME TUNING:
+   * the one number to turn down if a full stomach shows too much) */
+  bellyGive: 1,
   /** the intestines' middle [x, y, z ahead of the spine] and half-sizes, not pregnant */
   intestines: { centre: [0, 0.995, 0.045] as const, radii: [0.078, 0.062, 0.042] as const },
   /** the colon's line, caecum to the left iliac fossa: [x, y, z ahead of the spine's front at that height]. Its top (GAME
@@ -134,7 +139,32 @@ export const ABDOMEN_PLACE = Object.freeze({
   /** her colon kept this far from her stomach where they cross and from her pancreas behind it, and both this far from
    * her spleen */
   offStomach: 0.003,
+  /** late in a pregnancy her colon across her lies behind her womb's wall once that leaves this many fewer of its points
+   * in what is round it than riding over her womb's top does (`layAbdomen`, `colonTrouble`; GAME TUNING: a few points,
+   * so it does not change its way for nothing) */
+  behindBetterBy: 3,
+  /** ...a point of it within this much of her liver's underside or her diaphragm over it counting as in trouble: pressed
+   * up against them (GAME TUNING: her liver as drawn stands up to about a centimetre off its own underside as reckoned) */
+  colonSqueeze: 0.012,
+  /** ...and a station of it goes behind the wall where it is no more than this short of fitting between the wall and the
+   * front of her spine (GAME TUNING: her womb dents what stands through its wall as it is drawn) */
+  behindShort: 0.02,
+  /** half the width of her spine's front, which it lies in front of there (BIOLOGICAL SHAPE: a lumbar vertebra's body is
+   * 4 to 5 cm across); and half the width of her middle over which her colon's underside is then the top of the room left
+   * for her bowel (GAME TUNING) */
+  spineHalf: 0.025,
+  bowelHalf: 0.06,
 });
+
+/**
+ * HER BELLY GIVES FOR A FULL STOMACH (Joshua, 2026-11-13: "go ahead and fix and do the last two things you mentioned" --
+ * of "her belly does not yet round out for a full one"): how much room her belly's skin has to make, millilitres -- what
+ * her stomach holds beyond the room she has for it between her other organs (`ABDOMEN_PLACE.stomachRoomMl`, up to the
+ * most a stomach holds), times `bellyGive`. The room stands her belly out by this much (sarahlab/SarahLabScene.ts
+ * `stepBreath`: her skin's full-belly move -- low and round, its top held, as a small bump of her own is: breathSkin.ts
+ * -- sized by its sweep), so what she wears and her paint ride it.
+ */
+export const stomachGiveMl = (stomachMl: number): number => Math.max(0, Math.min(Number.isFinite(stomachMl) ? stomachMl : 0, STOMACH.mostMl) - ABDOMEN_PLACE.stomachRoomMl) * ABDOMEN_PLACE.bellyGive;
 
 /**
  * HER BREATH CARRIES THEM: the share of her diaphragm's domes' drop (as she breathes in, from the end of a quiet breath
@@ -218,24 +248,27 @@ export function tubeVolume(t: Tube): number {
   return v + e(t.halves[0]) + e(t.halves[t.halves.length - 1]);
 }
 
-/** Her stomach's line for a widest half-size `wide` (`ABDOMEN_PLACE.stomach`): its turn no tighter than its skin allows. */
-export function stomachLine(torso: TorsoLandmarks, wide: number, x0: number, n = 26): P3[] {
+/** Her stomach's line for a widest half-size `wide` (`ABDOMEN_PLACE.stomach`): its turn no tighter than its skin allows.
+ * `lift`: how much higher it hangs (it hangs from her diaphragm, which a pregnancy pushes up: `UpperBelly.rise`);
+ * `forward`: the share of its forward run it keeps (late in a pregnancy it hangs steeper, behind her womb's wall). */
+export function stomachLine(torso: TorsoLandmarks, wide: number, x0: number, lift = 0, forward = 1, n = 26): P3[] {
   const S = ABDOMEN_PLACE.stomach, X = torso.landmarks.xiphoid, R = Math.max(S.turn, S.turnPerWide * wide), steps = 6, pts: P3[] = [];
   const th0 = (S.leanDeg * Math.PI) / 180, th1 = Math.PI / 2 + (S.hookDeg * Math.PI) / 180, z0 = spineFrontAt(torso, X[1] + S.fundus[1]) + S.fundus[2];
   for (let k = 0; k <= steps; k++) {
     const t = k / steps, th = th0 + (th1 - th0) * t;
-    pts.push([x0 + S.fundus[0] + R * (Math.cos(th) - Math.cos(th0)), X[1] + S.fundus[1] - R * (Math.sin(th) - Math.sin(th0)), z0 + S.forward * (1 - (1 - t) ** 2)]);
+    pts.push([x0 + S.fundus[0] + R * (Math.cos(th) - Math.cos(th0)), X[1] + lift + S.fundus[1] - R * (Math.sin(th) - Math.sin(th0)), z0 + S.forward * forward * (1 - (1 - t) ** 2)]);
   }
   return smoothLine(pts, n);
 }
 
-/** The stomach holding `ml`: its line and half-sizes. */
-export function layStomach(torso: TorsoLandmarks, ml: number, x0: number): AbdomenLayout['stomach'] {
+/** The stomach holding `ml`: its line and half-sizes; hung `lift` higher, keeping `forward` of its forward run
+ * (`stomachLine`). */
+export function layStomach(torso: TorsoLandmarks, ml: number, x0: number, lift = 0, forward = 1): AbdomenLayout['stomach'] {
   const v = clamp(ml, STOMACH.emptyMl * 0.4, STOMACH.mostMl);
   // (empty it lies flat front to back; full it rounds out)
   const fill = clamp((v - STOMACH.emptyMl) / (STOMACH.fullMl - STOMACH.emptyMl), 0, 1), flat = STOMACH.flatEmpty + (1 - STOMACH.flatEmpty) * Math.sqrt(fill);
   const tube = (wide: number): Tube => {
-    const path = stomachLine(torso, wide, x0), total = lineLength(path); let d = 0;
+    const path = stomachLine(torso, wide, x0, lift, forward), total = lineLength(path); let d = 0;
     // (a ring's first half-size lies front to back along a line that runs in her frontal plane, as this one does
     // (`sweepAny`'s frame), its second in that plane: flat front to back. They were the other way round: an empty stomach
     // was drawn thin from the front and deep front to back)
@@ -382,6 +415,35 @@ export function pushedIntestines(i: AbdomenLayout['intestines'], womb: WombRoom 
   // (flattened top to bottom and front to back, spread across her: about the same volume)
   const ry = i.radii[1] * flat, rz = i.radii[2] * Math.sqrt(flat), rx = i.radii[0] / Math.sqrt(flat * Math.sqrt(flat)) ;
   return { centre: [i.centre[0], y, i.centre[2] - Math.max(0, back)], radii: [Math.min(rx, i.radii[0] * 1.3), ry, rz], ml: i.ml };
+}
+
+/**
+ * BEHIND HER WOMB (a womb with a back wall: actor/pregnantWomb.ts `WombWall`, v2's): as her womb's top rises over them her
+ * intestines are packed up and back -- behind its wall, in front of her spine, at about her navel's height, under her
+ * upper belly's organs -- flattened front to back to the room there and spread across her (BIOLOGICAL SHAPE: "displaced
+ * upward and backward"; GAME TUNING: `PACKED`). Fully packed by the time her womb's top stands `fullOver` over their foot;
+ * part-way before. What of them still stands in her womb is pushed out of it as it is drawn (`outOfWomb`). Once her colon
+ * lies across her behind the wall too (`layAbdomen`), they are packed under it (`under`).
+ */
+export const PACKED = Object.freeze({ fullOver: 0.2, aboveNavel: 0.0, wider: 1.18, lower: 0.9, gap: 0.004, leastDeep: 0.012 });
+export function packedIntestines(i: AbdomenLayout['intestines'], womb: WombRoom | null, torso: TorsoLandmarks, under = Infinity): AbdomenLayout['intestines'] {
+  if (!womb?.wall) return pushedIntestines(i, womb, torso);
+  const K = PACKED, wall = womb.wall, over = womb.top - (i.centre[1] - i.radii[1]);
+  if (over <= 0) return i;
+  const t = clamp(over / K.fullOver, 0, 1), s = t * t * (3 - 2 * t), mix = (a: number, b: number) => a + (b - a) * s;
+  let y = mix(i.centre[1], torso.landmarks.navel + K.aboveNavel), tall = mix(i.radii[1], i.radii[1] * K.lower);
+  // (UNDER HER COLON, where it lies across her behind her womb's wall (`under`: its underside): the band left for them is
+  // from there down to where her womb's wall meets the front of her spine)
+  if (under < Infinity) {
+    let foot = torso.landmarks.navel;
+    for (let k = 0; k < 3; k++) foot = wall.y0 + (spineFrontAt(torso, foot) - wall.z0) / wall.slope;
+    const top = under - K.gap;
+    tall = Math.max(K.leastDeep, Math.min(tall, (top - foot) / 2)); y = top - tall;
+  }
+  const zw = wallAt(wall, y), zs = spineFrontAt(torso, y);
+  // (its room front to back there: between her spine's front and her womb's wall)
+  const deep = Math.max(K.leastDeep, (zw - zs) / 2 - K.gap);
+  return { centre: [i.centre[0], y, mix(i.centre[2], (zw + zs) / 2)], radii: [mix(i.radii[0], i.radii[0] * K.wider), tall, mix(i.radii[2], Math.min(i.radii[2], deep))], ml: i.ml };
 }
 
 /**
@@ -547,24 +609,104 @@ export function tubeSetOffTube<T extends Tube>(t: T, other: Tube, gap: number, w
 }
 
 /** A tube moved off another (her colon off her stomach where they cross): each station out of the other's ring (its widest
- * half-size there) grown by its own and `gap`, away from the nearest point of the other's line; the moves smoothed. */
-export function tubeOffTube<T extends Tube>(t: T, other: Tube, gap: number): T {
+ * half-size there) grown by its own and `gap`, away from the nearest point of the other's line -- or, given a `way`, that
+ * way and no other (a unit vector: her colon DOWN her womb's wall from under her stomach), as far as it takes, for the
+ * stations `only` names (all of them without it); the moves smoothed. */
+export function tubeOffTube<T extends Tube>(t: T, other: Tube, gap: number, way: P3 | null = null, only: ((k: number) => boolean) | null = null): T {
   const n = t.path.length, d = new Float32Array(3 * n), O = other.path;
-  for (let k = 0; k < n; k++) {
-    const p = t.path[k], r = Math.max(t.halves[k][0], t.halves[k][1]);
+  /** how much nearer the other's line a point is than it may be (over 0: too near), and the nearest point of that line */
+  const short = (p: P3, r: number): [number, P3, number] => {
     let best = Infinity, near: P3 = p, rr = 0;
     for (let i = 0; i + 1 < O.length; i++) {
       const a = O[i], b = O[i + 1], ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1;
       const s = clamp(((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / l2, 0, 1), q: P3 = [a[0] + ab[0] * s, a[1] + ab[1] * s, a[2] + ab[2] * s], e = dist(p, q);
       if (e < best) { best = e; near = q; const h0 = other.halves[i], h1 = other.halves[i + 1]; rr = Math.max(h0[0], h0[1]) * (1 - s) + Math.max(h1[0], h1[1]) * s; }
     }
-    const want = rr + r + gap;
-    if (best >= want) continue;
+    return [rr + r + gap - best, near, best];
+  };
+  for (let k = 0; k < n; k++) {
+    const p = t.path[k], r = Math.max(t.halves[k][0], t.halves[k][1]), [need, near, best] = short(p, r);
+    if (need <= 0) continue;
+    if (way && (!only || only(k))) {
+      const at = (s: number): P3 => [p[0] + way[0] * s, p[1] + way[1] * s, p[2] + way[2] * s];
+      let lo = 0, hi = 0.005; while (short(at(hi), r)[0] > 0 && hi < 0.2) { lo = hi; hi *= 2; }
+      for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2; if (short(at(m), r)[0] > 0) lo = m; else hi = m; }
+      d[3 * k] = way[0] * hi; d[3 * k + 1] = way[1] * hi; d[3 * k + 2] = way[2] * hi;
+      continue;
+    }
     // (away from it; straight down when on its line)
     const u: P3 = best > 1e-6 ? [(p[0] - near[0]) / best, (p[1] - near[1]) / best, (p[2] - near[2]) / best] : [0, -1, 0];
-    d[3 * k] = u[0] * (want - best); d[3 * k + 1] = u[1] * (want - best); d[3 * k + 2] = u[2] * (want - best);
+    d[3 * k] = u[0] * need; d[3 * k + 1] = u[1] * need; d[3 * k + 2] = u[2] * need;
   }
   return smoothedMove(t, d);
+}
+
+/**
+ * A tube LAID BEHIND HER WOMB'S WALL (her colon across her, late in a pregnancy): each station that stands in her womb's
+ * room (as `tubeOutOfWomb` reads it: in the room grown by the station's own size and `gap`) -- of those `only` names, all
+ * of them without it -- is moved straight back until its round is behind the wall, and no further back than the front of
+ * her spine lets it lie (`spineFront(y)`, taken right across her: beside her spine her kidneys and her back's muscles
+ * stand behind that; where the two cannot both be had her spine wins, and her womb dents the tube as it is drawn); the
+ * moves smoothed. A womb without a wall leaves it as it is.
+ */
+export function tubeBehindWall<T extends Tube>(t: T, womb: WombRoom, spineFront: (y: number) => number, gap: number = WOMB_PUSH.gap, only: ((k: number) => boolean) | null = null): T {
+  const wall = womb.wall;
+  if (!wall) return t;
+  const lean = Math.hypot(1, wall.slope), n = t.path.length, d = new Float32Array(3 * n), q = new Float32Array(3);
+  for (let k = 0; k < n; k++) {
+    if (only && !only(k)) continue;
+    const p = t.path[k], r = Math.max(t.halves[k][0], t.halves[k][1]);
+    q[0] = p[0]; q[1] = p[1]; q[2] = p[2];
+    if (!outOfWomb(q, womb, gap + r)) continue;
+    d[3 * k + 2] = Math.max(Math.min(p[2], wallAt(wall, p[1]) - (r + gap) * lean), spineFront(p[1]) + r) - p[2];
+  }
+  return smoothedMove(t, d);
+}
+/** How far short of lying behind her womb's wall a round of radius `r` at height `y` is (metres; 0 or under: it fits
+ * between the wall and the front of her spine -- `tubeBehindWall`). */
+export function shortBehindWall(wall: WombWall, spineFront: (y: number) => number, y: number, r: number, gap: number = WOMB_PUSH.gap): number {
+  return spineFront(y) + r - (wallAt(wall, y) - (r + gap) * Math.hypot(1, wall.slope));
+}
+
+/**
+ * A SOFT MASS'S POINTS CLEARED OF WHAT IS ROUND IT (her bowel -- "one soft mass" -- takes the shape of the room it is
+ * left): in place, each point brought down under a sheet over it (`under`, less `gap`), straight out of each bean and
+ * out of each tube from its line -- twice over, a move out of one being a move toward another. Returns how many moved.
+ */
+export function pointsClear(points: Float32Array, round: { readonly under?: ((x: number, z: number) => number) | null; readonly beans?: readonly Bean[]; readonly tubes?: readonly Tube[] }, gap: number): number {
+  const frames = (round.tubes ?? []).map((t) => sweepAny(t.path, t.halves, 8, 2).frames);
+  const beans = (round.beans ?? []).map((b) => ({ b, f: beanFrame(b) }));
+  let moved = 0;
+  for (let pass = 0; pass < 2; pass++) for (let p = 0; p < points.length; p += 3) {
+    let x = points[p], y = points[p + 1], z = points[p + 2], hit = false;
+    if (round.under) { const top = round.under(x, z) - gap; if (y > top) { y = top; hit = true; } }
+    for (const { b, f } of beans) {
+      const dx = x - b.centre[0], dy = y - b.centre[1], dz = z - b.centre[2];
+      const u = dx * f[0][0] + dy * f[0][1] + dz * f[0][2], v = dx * f[1][0] + dy * f[1][1] + dz * f[1][2], w = dx * f[2][0] + dy * f[2][1] + dz * f[2][2];
+      const e = (u / (b.radii[0] + gap)) ** 2 + (v / (b.radii[1] + gap)) ** 2 + (w / (b.radii[2] + gap)) ** 2;
+      if (e >= 1 || e < 1e-12) continue;
+      const k = 1 / Math.sqrt(e) - 1;
+      x += (u * f[0][0] + v * f[1][0] + w * f[2][0]) * k; y += (u * f[0][1] + v * f[1][1] + w * f[2][1]) * k; z += (u * f[0][2] + v * f[1][2] + w * f[2][2]) * k; hit = true;
+    }
+    for (const F of frames) {
+      // (the station whose round it is deepest in)
+      let best = 1, at = -1, bu = 0, bv = 0;
+      for (let k = 0; k < F.length; k++) {
+        const g = F[k], n = F[Math.min(F.length - 1, k + 1)], q = F[Math.max(0, k - 1)], step = Math.max(dist(g.at, n.at), dist(g.at, q.at), Math.min(g.a, g.b)) + gap;
+        const vx = x - g.at[0], vy = y - g.at[1], vz = z - g.at[2], u = vx * g.n1[0] + vy * g.n1[1] + vz * g.n1[2], v = vx * g.n2[0] + vy * g.n2[1] + vz * g.n2[2], w = vx * g.t[0] + vy * g.t[1] + vz * g.t[2];
+        const ring = (u / (g.a + gap)) ** 2 + (v / (g.b + gap)) ** 2, e = ring + (w / step) ** 2;
+        if (e < best) { best = e; at = k; bu = u; bv = v; }
+      }
+      if (at < 0) continue;
+      // (out across its ring, the way it already stands from its line; straight down when on it)
+      const g = F[at], ring = (bu / (g.a + gap)) ** 2 + (bv / (g.b + gap)) ** 2;
+      if (ring < 1e-9) { y -= Math.min(g.a, g.b) + gap; hit = true; continue; }
+      const k = 1 / Math.sqrt(ring) - 1;
+      if (k > 0) { x += (bu * g.n1[0] + bv * g.n2[0]) * k; y += (bu * g.n1[1] + bv * g.n2[1]) * k; z += (bu * g.n1[2] + bv * g.n2[2]) * k; hit = true; }
+    }
+    if (hit) { points[p] = x; points[p + 1] = y; points[p + 2] = z; if (!pass) moved++; }
+  }
+  return moved;
 }
 
 /** How many of `points` lie in the womb (for tests). */
@@ -589,7 +731,33 @@ export function outOfBlob(points: Float32Array, b: Blob, gap: number): number {
  * what is over them (`under`, its height at x, z: her liver's where her liver is, her diaphragm's elsewhere --
  * actor/upperOrgans.ts `layLiver`'s `bottomAt`), the organs laid beside them there (`organs`: her spleen) and the lines of
  * those laid behind them (`tubes`: her pancreas). */
-export interface UpperBelly { readonly under: (x: number, z: number) => number; readonly organs: readonly Bean[]; readonly tubes?: readonly Tube[] }
+export interface UpperBelly {
+  readonly under: (x: number, z: number) => number; readonly organs: readonly Bean[]; readonly tubes?: readonly Tube[];
+  /** how far a pregnancy has pushed her diaphragm up (metres): what hangs from it -- her stomach, her colon's top -- is
+   * laid that much higher */
+  readonly rise?: number;
+  /** how far her diaphragm's domes come down in a quiet breath (metres): her kidneys ride them down, and what is laid
+   * against a kidney round a womb is kept off where it goes then too */
+  readonly quietDrop?: number;
+}
+
+/**
+ * HOW MUCH OF HER COLON IS IN TROUBLE WITH WHAT IS ROUND IT, one of its two ways round a womb against the other
+ * (`layAbdomen`): how many of its points, as it is drawn (pushed out of her womb one by one: `outOfWomb`), stand within
+ * `squeeze` of the sheet over it (her liver's underside, her diaphragm), in a bean (her kidneys, her spleen) or in another
+ * tube (her stomach, her pancreas) -- and how many of those tubes' points stand in it.
+ */
+export function colonTrouble(t: Tube, round: { readonly womb: WombRoom; readonly under: (x: number, z: number) => number; readonly beans: readonly Bean[]; readonly tubes: readonly Tube[]; readonly squeeze: number }): number {
+  const own = sweepAny(t.path, t.halves, 12, 3), m = own.points, others = round.tubes.map((o) => sweepAny(o.path, o.halves, 12, 3));
+  outOfWomb(m, round.womb);
+  let n = 0;
+  for (let i = 0; i < m.length; i += 3) {
+    const x = m[i], y = m[i + 1], z = m[i + 2];
+    if (y > round.under(x, z) - round.squeeze || round.beans.some((b) => inBean(b, 0, x, y, z) < 1) || others.some((o) => inTube(o.frames, 0, x, y, z))) n++;
+  }
+  for (const o of others) for (let i = 0; i < o.points.length; i += 3) if (inTube(own.frames, 0, o.points[i], o.points[i + 1], o.points[i + 2])) n++;
+  return n;
+}
 
 /**
  * Her belly's organs laid out: holding `fill`, round her womb (`womb`, null not pregnant) and her bladder; `upper`, what lies
@@ -602,14 +770,33 @@ export function layAbdomen(torso: TorsoLandmarks & { readonly discs?: readonly n
   // (her stomach, no fuller than the room she has for it (`stomachRoomMl`), set off her spleen beside it, forward off her
   // pancreas behind it and down under what is over it, all of a piece -- twice, each move undoing a little of the others,
   // and under last: nothing of it through her diaphragm)
-  let stomach = layStomach(torso, upper ? Math.min(fill.stomachMl, A.stomachRoomMl) : fill.stomachMl, x0);
-  if (upper) for (let pass = 0; pass < 2; pass++) {
-    stomach = tubeSetOff(stomach, off, A.offStomach);
-    for (const t of upper.tubes ?? []) stomach = tubeSetOffTube(stomach, t, A.offStomach, [0, 0, 1]);
-    stomach = tubeSetUnder(stomach, upper.under, A.underDiaphragm);
+  const rise = upper?.rise ?? 0, drawnMl = upper ? Math.min(fill.stomachMl, A.stomachRoomMl) : fill.stomachMl;
+  const set = (forward: number): AbdomenLayout['stomach'] => {
+    let t = layStomach(torso, drawnMl, x0, rise, forward);
+    if (upper) for (let pass = 0; pass < 2; pass++) {
+      t = tubeSetOff(t, off, A.offStomach);
+      for (const o of upper.tubes ?? []) t = tubeSetOffTube(t, o, A.offStomach, [0, 0, 1]);
+      t = tubeSetUnder(t, upper.under, A.underDiaphragm);
+    }
+    return t;
+  };
+  let stomach = set(1);
+  // (late in a pregnancy it hangs steeper: as much of its forward run given up as keeps it behind her womb's wall --
+  // found by halving; what her womb still takes of it then is dented as it is drawn)
+  if (upper && womb?.wall) {
+    const inWomb = (t: Tube) => { const m = sweepAny(t.path, t.halves, 12, 3).points; let n = 0; for (let i = 0; i < m.length; i += 3) if (insideWomb(womb, m[i], m[i + 1], m[i + 2])) n++; return n; };
+    if (inWomb(stomach) > 0) {
+      // (with none of its forward run first: late on that is all there is to give, and nothing more is tried. Else to a
+      // sixteenth of its run -- 2.5 mm -- each try a whole setting of it, the last one clear of her womb kept)
+      let clear = set(0);
+      if (inWomb(clear) === 0) { let lo = 0, hi = 1; for (let k = 0; k < 4; k++) { const m = (lo + hi) / 2, t = set(m); if (inWomb(t) > 0) hi = m; else { lo = m; clear = t; } } }
+      stomach = clear;
+    }
   }
   // (her colon the same, and off her stomach, where her transverse colon runs under it, and her pancreas behind it)
   let colon = layColon(torso, fill.colonFill, x0);
+  // (its top hangs under her liver and her spleen: it goes up with her diaphragm as it rides it down with her breath)
+  if (rise > 0) colon = { ...colon, path: colon.path.map((q): P3 => [q[0], q[1] + rise * breathRide('colon', q[1], torso.landmarks.xiphoid[1]), q[2]]) };
   if (upper) for (let pass = 0; pass < 2; pass++) {
     colon = tubeOffBeans(tubeOffTube(tubeUnder(colon, upper.under, A.underDiaphragm), stomach, A.offStomach), off, A.offStomach);
     for (const t of upper.tubes ?? []) colon = tubeOffTube(colon, t, A.offStomach);
@@ -617,10 +804,61 @@ export function layAbdomen(torso: TorsoLandmarks & { readonly discs?: readonly n
   // (a growing womb moves the stomach and the colon round it, each as a whole tube -- and what is over them does not give:
   // pushed up against her liver and her diaphragm they stay under them, and her womb's top dents them from below, their
   // points pushed out of it one by one as they are drawn: `outOfWomb`)
-  stomach = tubeOutOfWomb(stomach, womb); colon = tubeOutOfWomb(colon, womb);
-  if (upper && womb) { stomach = tubeUnder(stomach, upper.under, A.underDiaphragm); colon = tubeUnder(colon, upper.under, A.underDiaphragm); }
+  // (round a womb with a back wall -- v2's -- her stomach is not bent: it hangs behind the wall but for a little of its
+  // foot, which her womb dents as it is drawn)
+  if (!womb?.wall) stomach = tubeOutOfWomb(stomach, womb);
+  const laidColon = colon;
+  let bowelTop = Infinity;
+  colon = tubeOutOfWomb(colon, womb);
+  const roundWomb = colon;
+  if (upper && womb) {
+    if (!womb.wall) stomach = tubeUnder(stomach, upper.under, A.underDiaphragm);
+    // (moved up and back round her womb, her colon is kept off her kidneys, her spleen and her pancreas behind it again,
+    // and under her liver)
+    // (her kidneys ride her breath down further than her colon beside them does: off where they are at the end of a quiet
+    // breath in as well -- MEASURED in the room 2026-11-13, her bump at 100%: 13% of her right kidney in her colon then)
+    const kidneyBeds = layKidneys(torso, x0), sweep = upper.quietDrop ?? 0;
+    const beds = [...off, ...kidneyBeds, ...(sweep > 0 ? kidneyBeds.map((k): Bean => ({ ...k, centre: [k.centre[0], k.centre[1] - sweep, k.centre[2]] })) : [])];
+    for (let pass = 0; pass < 2; pass++) {
+      colon = tubeOffBeans(colon, beds, A.offStomach);
+      for (const t of upper.tubes ?? []) colon = tubeOffTube(colon, t, A.offStomach);
+      colon = tubeUnder(tubeOffTube(colon, stomach, A.offStomach), upper.under, A.underDiaphragm);
+    }
+    // (OVER HER WOMB'S TOP OR BEHIND IT: while her womb's top is low her colon rides up over it, as above. Once it stands
+    // so high that there is no room left between it and her stomach and her liver, her colon across her lies BEHIND her
+    // womb's wall instead -- back off the wall, then down the wall from under her stomach and her pancreas, off her
+    // kidneys and under her liver. Whichever of the two leaves less of it in what is round it, as it is drawn, is the one
+    // she has: `colonTrouble`.)
+    if (womb.wall) {
+      const wall = womb.wall, l = Math.hypot(1, wall.slope), down: P3 = [0, -1 / l, -wall.slope / l], spine = (y: number) => spineFrontAt(torso, y);
+      // (the stations that go behind the wall: HER COLON ACROSS HER -- those where, as it was laid, it runs more across
+      // her than up or down her, stood in her womb's room, and there is room behind the wall for them, or nearly
+      // (`behindShort`). The rest of it goes round her womb as before, beside it and up -- her caecum, as a woman's does)
+      const q = new Float32Array(3), P = laidColon.path, across = P.map((p, k) => {
+        const r = Math.max(laidColon.halves[k][0], laidColon.halves[k][1]), a = P[Math.max(0, k - 1)], b = P[Math.min(P.length - 1, k + 1)];
+        q[0] = p[0]; q[1] = p[1]; q[2] = p[2];
+        return Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) && outOfWomb(q, womb, WOMB_PUSH.gap + r) > 0 && shortBehindWall(wall, spine, p[1], r) <= A.behindShort;
+      }), is = (k: number) => across[k];
+      const back = tubeBehindWall(laidColon, womb, spine, WOMB_PUSH.gap, is);
+      let behind = { ...laidColon, path: laidColon.path.map((_, k) => (across[k] ? back.path[k] : roundWomb.path[k])) };
+      for (let pass = 0; pass < 2; pass++) {
+        behind = tubeOffTube(behind, stomach, A.offStomach, down, is);
+        for (const t of upper.tubes ?? []) behind = tubeOffTube(behind, t, A.offStomach, down, is);
+        behind = tubeBehindWall(tubeUnder(tubeOffBeans(behind, beds, A.offStomach), upper.under, A.underDiaphragm), womb, spine, WOMB_PUSH.gap, is);
+        // (and in front of her spine at her middle, where its way down the wall has taken it back against it)
+        const now = behind;
+        behind = { ...now, path: now.path.map((p, k): P3 => (across[k] && Math.abs(p[0] - x0) < A.spineHalf ? [p[0], p[1], Math.max(p[2], spine(p[1]) + Math.max(now.halves[k][0], now.halves[k][1]))] : p)) };
+      }
+      const round = { womb, under: upper.under, beans: beds, tubes: [stomach, ...(upper.tubes ?? [])], squeeze: A.colonSqueeze };
+      if (across.some(Boolean) && colonTrouble(behind, round) + A.behindBetterBy < colonTrouble(colon, round)) {
+        colon = behind;
+        // (and her bowel is packed under it: the underside of her colon across her is the top of the room left for it)
+        behind.path.forEach((p, k) => { if (across[k] && Math.abs(p[0] - x0) < A.bowelHalf) bowelTop = Math.min(bowelTop, p[1] - Math.max(behind.halves[k][0], behind.halves[k][1])); });
+      }
+    }
+  }
   const rectum = layRectum(pelvis, colon.path[colon.path.length - 1], fill.rectumMl, x0, opening, canal);
-  const intestines = pushedIntestines(layIntestines(torso, fill.intestineMl, x0), womb, torso);
+  const intestines = packedIntestines(layIntestines(torso, fill.intestineMl, x0), womb, torso, bowelTop);
   const kidneys = layKidneys(torso, x0);
   const ureter = (k: Bean): P3[] => {
     const s = k.side, hilum: P3 = [k.centre[0] - s * k.radii[0] * 0.8, k.centre[1] - 0.005, k.centre[2] + 0.006];
@@ -690,14 +928,17 @@ export function bean(b: Bean, dent = 0.28, rows = 14, cols = 18): OrganMesh {
 }
 
 /** The intestines' mass drawn as a coiled lump: an ellipsoid with low bumps over it, as loops of bowel packed together
- * show through the omentum. GAME TUNING (how bumpy). */
-export function coiledMass(b: Blob, rows = 22, cols = 32, bumps = 0.07): OrganMesh {
+ * show through the omentum. GAME TUNING (how bumpy: `bumps` of each half-size, and no shallower than `relief` metres --
+ * packed flat behind a womb its loops still show on its face, where a share of 12 mm would be a smooth plate; just
+ * under what its bumps are deep at rest, so nothing of it changes until it is flattened). */
+export function coiledMass(b: Blob, rows = 22, cols = 32, bumps = 0.07, relief = 0.0028): OrganMesh {
   const pts: number[] = [], tris: number[] = [];
+  const deep = (r: number) => Math.max(bumps, relief / Math.max(r, 1e-6));
   for (let i = 0; i <= rows; i++) {
     const th = (Math.PI * i) / rows, y = Math.cos(th), s = Math.sin(th);
     for (let j = 0; j < cols; j++) {
-      const ph = (2 * Math.PI * j) / cols, k = 1 + bumps * Math.sin(5 * ph + 3 * th) * Math.sin(4 * th + 1.3) * s;
-      pts.push(b.centre[0] + b.radii[0] * s * Math.cos(ph) * k, b.centre[1] + b.radii[1] * y * k, b.centre[2] + b.radii[2] * s * Math.sin(ph) * k);
+      const ph = (2 * Math.PI * j) / cols, w = Math.sin(5 * ph + 3 * th) * Math.sin(4 * th + 1.3) * s;
+      pts.push(b.centre[0] + b.radii[0] * s * Math.cos(ph) * (1 + deep(b.radii[0]) * w), b.centre[1] + b.radii[1] * y * (1 + deep(b.radii[1]) * w), b.centre[2] + b.radii[2] * s * Math.sin(ph) * (1 + deep(b.radii[2]) * w));
     }
   }
   for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) { const a = i * cols + j, bb = i * cols + ((j + 1) % cols), c = a + cols, dd = bb + cols; tris.push(a, bb, c, bb, dd, c); }

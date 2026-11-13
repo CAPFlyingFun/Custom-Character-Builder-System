@@ -27,7 +27,7 @@ import { JointLimits, type JointAngles } from '../actor/jointLimits';
 import { rangeDeg, type RangeLevel } from '../data/jointRange';
 import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
 import { SkinPainter, standingSourceOf, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
-import { ACTIVITY, ACTIVITIES, breathFlare, chestShare, restingVitals, stepVitals, type Activity, type VitalsNow } from '../actor/vitals';
+import { ACTIVITY, ACTIVITIES, breathFlare, chestShare, diaphragmRise, restingVitals, stepVitals, type Activity, type VitalsNow } from '../actor/vitals';
 import { breathAt, breathVolumes, layBreathTable } from './breathSkin';
 import { LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, standingShape, type LineMode } from './levelLine';
 import { ensureRest, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
@@ -102,10 +102,11 @@ import v2Pelvis from '../data/pelvis/v2.json';
 import v2Torso from '../data/torso/v2.json';
 import { AbdomenView } from './abdomenView';
 import { ThoraxView } from './thoraxView';
-import { LUNGS, measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
+import { DIAPHRAGM_RISE, LUNGS, measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
+import { WOMB_WALL_SLOPE } from '../actor/pregnantWomb';
 import v2Thorax from '../data/thorax/v2.json';
 import { wombRoomOf } from './wombRoom';
-import { STOMACH, RECTUM, layKidneys } from '../actor/abdominalOrgans';
+import { STOMACH, RECTUM, layKidneys , stomachGiveMl } from '../actor/abdominalOrgans';
 import { BLADDER } from '../actor/pelvicOrgans';
 import { drawnFill, gutNeeds, hoursToBladderUrge, restingGut, urineMlH, type GutState } from '../actor/gut';
 import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Scene';
@@ -5699,7 +5700,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** a probe's held breath (0 all out .. 1 all in), or null to let her breathe */
   let breathHeld: number | null = null;
   /** her trunk's table and each move's sweep as last laid, and for what shape (breathSkin.ts) */
-  let breathLaid: { key: string; chest: number; belly: number; at: number } | null = null;
+  let breathLaid: { key: string; chest: number; belly: number; full: number; at: number } | null = null;
   let breathArm: { mesh: THREE.SkinnedMesh; share: Float32Array } | null = null;
   let vitalsShownAt = 0;
   /** what of her shape is her pose's now (as her painters read it) */
@@ -5732,7 +5733,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const index = (b.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? b.mesh.geometry.index?.array;
     if (!index) return false;
     const swept = breathVolumes(jiggle, rest, index);
-    breathLaid = { key, chest: swept.chest, belly: swept.belly, at: now };
+    breathLaid = { key, chest: swept.chest, belly: swept.belly, full: swept.full, at: now };
     return swept.chest > 0 && swept.belly > 0;
   }
   /** One step of her breath and her heart; her skin's move and her lungs and heart laid by them. */
@@ -5744,10 +5745,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     B.z = breathFlare(weeks);
     if (babyFrame) { jiggle.kickRest.value.copy(babyFrame.meshToRest); jiggle.kickUnits.value.setFromMatrix4(babyFrame.meshToRest).invert(); }
     const breath = breathHeld ?? now.breath, air = (now.tidalL * breath) / 1000;
-    if (breathingOn && layBreath(performance.now() / 1000) && breathLaid) {
+    // (her full stomach's room, below, is laid on the same table: laid whether or not she is breathing)
+    const laid = layBreath(performance.now() / 1000) ? breathLaid : null;
+    if (breathingOn && laid) {
       const share = chestShareSet ?? chestShare(softDown, pose === 'sit');
-      B.x = (share * air) / breathLaid.chest; B.y = ((1 - share) * air) / breathLaid.belly;
+      B.x = (share * air) / laid.chest; B.y = ((1 - share) * air) / laid.belly;
     } else { B.x = 0; B.y = 0; }
+    // (A FULL STOMACH: her belly gives for what it holds beyond the room she has for it -- her skin's full-belly move,
+    // low and round with its top held (breathSkin.ts), stood out by exactly that much room, so what she wears and her
+    // paint ride it: actor/abdominalOrgans.ts `stomachGiveMl`)
+    jiggle.breathFull.value = laid && laid.full > 0 ? (stomachGiveMl(gut.stomachFoodMl + gut.stomachWaterMl) * 1e-6) / laid.full : 0;
+    // (her pregnancy pushes her diaphragm up: her chest's and her belly's organs are laid for it)
+    { const rise = diaphragmRise(weeks, DIAPHRAGM_RISE); thorax?.setRise(rise); abdomen?.setRise(rise); }
     thorax?.drive(breath, now.beat, now.tidalL / (LUNGS.tidalMl / 1000), now.breathsPerMinute, now.beatsPerMinute);
     // its line, a few times a second
     const t = performance.now();
@@ -6102,7 +6111,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function roomForV2Womb(w: WombShape | null): void {
     v2Womb = w;
     if (!organs || organsGrowWomb) return;
-    try { organs.setOuterWomb(w ? wombRoomOf(w) : null); } catch (error) { console.error("[sarahlab] her organs could not make room for her womb", error); organs.setOuterWomb(null); }
+    // (for her organs her womb's room is the sac in front of its back wall, which leans forward off her spine from her
+    // promontory: actor/pregnantWomb.ts `WombWall`)
+    try { organs.setOuterWomb(w ? wombRoomOf(w, { y0: v2Pelvis.landmarks.promontory[1], z0: v2Pelvis.landmarks.promontory[2], slope: WOMB_WALL_SLOPE }) : null); } catch (error) { console.error("[sarahlab] her organs could not make room for her womb", error); organs.setOuterWomb(null); }
   }
   function bellySkin(): Float32Array | null {
     const b = bodyOf(), f = babyFrame;
@@ -8448,18 +8459,19 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth') (globalThis as unknown as Record<string, unknown>).__sarahLabHands = () => ({ mesh: bodyOf()?.mesh ?? null, fingerSplit, fingerWeights, fingerFills, babyFrame, measure, THREE });
       if (new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth') (globalThis as unknown as Record<string, unknown>).__sarahLabCloth = {
         // her breath and her heart (actor/vitals.ts, breathSkin.ts): what they are, and a breath held for a picture
-        vitals: () => ({ now: vitalsNow, vitals: { ...vitals }, activity, chestShareSet, breathingOn, breathHeld, laid: breathLaid, move: jiggle.breath.value.toArray(), marks: jiggle.breathMarks.value.toArray(), slices: jiggle.breathSlices.value.map((x) => x.toArray().map((y) => +y.toFixed(4))), share: chestShare(softDown, pose === 'sit'), down: softDown.toArray() }),
+        vitals: () => ({ now: vitalsNow, vitals: { ...vitals }, activity, chestShareSet, breathingOn, breathHeld, laid: breathLaid, move: jiggle.breath.value.toArray(), full: jiggle.breathFull.value, marks: jiggle.breathMarks.value.toArray(), slices: jiggle.breathSlices.value.map((x) => x.toArray().map((y) => +y.toFixed(4))), share: chestShare(softDown, pose === 'sit'), down: softDown.toArray() }),
         // her breath's move on her own skin now (breathSkin.ts `breathAt`, as the shader adds it): how far her points go
-        // (mm, the most and where), and the air it sweeps against the air breathed (mL) -- her chest's and belly's apart
+        // (mm, the most and where), and the air it sweeps against the air breathed (mL) -- her chest's and belly's apart;
+        // and her full belly's move the same, against what her stomach holds beyond its room (`giveMl`)
         breathCheck: () => {
           const b = bodyOf();
           if (!b || !babyFrame || !breathLaid) return null;
           const src = standingSourceOf(b.mesh, poseShapesOf(b.mesh)); if (!src) return null;
           const S = standingShape(src), n = S.length / 3, rest = new Float32Array(S.length), mv = new Float32Array(S.length), v = new THREE.Vector3(), o = new THREE.Vector3();
           for (let i = 0; i < S.length; i += 3) v.set(S[i], S[i + 1], S[i + 2]).applyMatrix4(babyFrame.meshToRest).toArray(rest, i);
-          const B = jiggle.breath.value, keep = B.clone();
-          const part = (cx: number, by: number) => {
-            B.set(cx, by, keep.z, keep.w);
+          const B = jiggle.breath.value, keep = B.clone(), keepFull = jiggle.breathFull.value;
+          const part = (cx: number, by: number, f = 0) => {
+            B.set(cx, by, keep.z, keep.w); jiggle.breathFull.value = f;
             let most = 0, at = -1;
             for (let i = 0; i < n; i++) { breathAt(jiggle, rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2], o); o.toArray(mv, i * 3); const l = o.length(); if (l > most) { most = l; at = i; } }
             const index = (b.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? b.mesh.geometry.index!.array;
@@ -8470,10 +8482,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               for (const q of [i, j, k]) swept += (mv[q * 3] * nx + mv[q * 3 + 1] * ny + mv[q * 3 + 2] * nz) / 3; }
             return { mostMm: +(most * 1000).toFixed(2), at: at >= 0 ? Array.from(rest.slice(at * 3, at * 3 + 3), (x) => +x.toFixed(3)) : null, sweptMl: +(Math.abs(swept) * 1e6).toFixed(1) };
           };
-          const chest = part(keep.x, 0), belly = part(0, keep.y), both = part(keep.x, keep.y);
-          B.copy(keep);
+          const chest = part(keep.x, 0), belly = part(0, keep.y), both = part(keep.x, keep.y), full = part(0, 0, keepFull);
+          B.copy(keep); jiggle.breathFull.value = keepFull;
           const now = vitalsNow, breath = breathHeld ?? now?.breath ?? 0;
-          return { airMl: +((now?.tidalL ?? 0) * breath * 1000).toFixed(1), share: chestShareSet ?? chestShare(softDown, pose === 'sit'), chest, belly, both, laid: breathLaid };
+          return { airMl: +((now?.tidalL ?? 0) * breath * 1000).toFixed(1), share: chestShareSet ?? chestShare(softDown, pose === 'sit'), chest, belly, both, full, giveMl: +stomachGiveMl(gut.stomachFoodMl + gut.stomachWaterMl).toFixed(1), laid: breathLaid };
         },
         setVitals: (set: { activity?: Activity | 'auto'; energy?: number; effort?: number; held?: number | null; chest?: number | null; breathing?: boolean }) => {
           if (set.activity !== undefined) activity = set.activity;

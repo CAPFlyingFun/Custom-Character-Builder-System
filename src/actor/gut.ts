@@ -29,7 +29,10 @@ export const GUT = Object.freeze({
   /** Through the colon in about 35 hours (MEASURED: mean colonic transit about 30-40 h, a little longer in women). */
   colonMeanH: 35,
   /** Her body's water: about half her weight in a woman (MEASURED, https://en.wikipedia.org/wiki/Body_water). Thirst
-   * from about 1% of it lost, strong by 2% (MEASURED: thirst at about 1-2% dehydration). */
+   * from about 1% of her WEIGHT lost as water, strong by 2% (MEASURED: thirst at about 1-2% of body mass lost, sources
+   * giving 1 to 3% -- 0.6 and 1.2 L for her 60 kg). Until 2026-11-13 these two were counted of her body's water, half as
+   * much, and her thirst came on twice too early (Joshua, 2026-11-13: "Yes, fix the thirst"): with nothing drunk it is
+   * now first felt after about three and a half hours and at its most after about sixteen, where it was 1 h 45 and 8 h. */
   waterShare: 0.5,
   thirstFrom: 0.01,
   thirstFull: 0.02,
@@ -73,8 +76,8 @@ const moved = (amount: number, half: number, h: number) => amount * (1 - Math.po
 export function urineMlH(waterMl: number, kg: number = GUT.kg): number {
   const usual = GUT.urineMlKgH * kg, least = GUT.urineLeastMlKgH * kg;
   if (waterMl >= 0) return usual + waterMl * (1 - Math.pow(0.5, 1 / GUT.surplusHalfH));
-  // (short of water the kidneys hold it back, down to the least they can pass, by 2% lost)
-  const short = clamp01(-waterMl / (GUT.thirstFull * GUT.waterShare * kg * 1000));
+  // (short of water the kidneys hold it back, down to the least they can pass, by 2% of her weight lost)
+  const short = clamp01(-waterMl / (GUT.thirstFull * kg * 1000));
   return usual + (least - usual) * short;
 }
 
@@ -115,7 +118,8 @@ export const poop = (s: GutState): GutState => ({ ...s, rectumMl: 0 });
 /** What the NPC brain reads, each 0 (none) .. 1 (at its most): hunger, thirst, and the two bathroom needs. */
 export interface GutNeeds { readonly hunger: number; readonly thirst: number; readonly bladder: number; readonly bowel: number }
 export function gutNeeds(s: GutState, kg: number = GUT.kg): GutNeeds {
-  const water = GUT.waterShare * kg * 1000, lost = -s.waterMl / water;
+  // (the share of her weight she is short of, as water: a millilitre a gram)
+  const lost = -s.waterMl / (kg * 1000);
   const [urgeFrom, urgeFull] = BLADDER.urgeMl;
   return {
     hunger: clamp01(1 - (s.stomachFoodMl + 0.5 * s.intestineMl) / GUT.satedMl),

@@ -73,6 +73,13 @@ export const HEART = Object.freeze({ length: 0.12, width: 0.08, thickness: 0.06,
  * the least it stays above its rim at her back however deep the breath; `rimInset`, its rim just inside her ribs. */
 export const DIAPHRAGM = Object.freeze({ quietDrop: 0.016, deepDrop: 0.057, rightHigher: 0.015, domeUp: 0.27, centralBelow: 0.012, centralShare: 0.7, backBelow: 0.03, rimPower: 2, steep: 7, domeOut: 0.52, domeWide: 0.34, domeDeep: 0.6, leastDome: 0.015, rimInset: 0.001 });
 
+/** How far her diaphragm's domes are pushed up by a pregnancy at term, metres. MEASURED: "The diaphram is pushed up by
+ * 4 cm on average" (https://derangedphysiology.com/main/cicm-primary-exam/respiratory-system/Chapter-925/influence-pregnancy-respiratory-function;
+ * LoMauro and Aliverti, "Respiratory physiology of pregnancy", Breathe 2015: the diaphragm displaced upward by up to
+ * 4-5 cm, a woman's functional residual capacity down by about 20%). Her rib cage's bones are not moved (her lower
+ * ribs' widening is drawn on her skin: actor/vitals.ts `breathFlare`). */
+export const DIAPHRAGM_RISE = 0.04;
+
 /** Her breathing at rest: "the typical respiratory rate for a healthy adult at rest is 12-15 breaths per minute", "around
  * two seconds for an inhalation and three seconds exhalation" (MEASURED, https://en.wikipedia.org/wiki/Respiratory_rate):
  * so breathing in takes `inShare` of a breath. `most`: the deepest `breath` laid, in quiet breaths' drops of the
@@ -325,6 +332,8 @@ export interface ThoraxLayout {
   readonly thorax: ThoraxLandmarks;
   /** 0 the end of a quiet breath out .. 1 the end of a quiet breath in .. `BREATH.most` the deepest */
   readonly breath: number;
+  /** how far a pregnancy has pushed her diaphragm's domes up, metres (0 not pregnant) */
+  readonly rise: number;
   /** her midline's x */
   readonly mid: number;
   /** the gap between her lungs and her ribs now */
@@ -383,14 +392,16 @@ export function lungFaceAt(L: ThoraxLayout, side: -1 | 1, y: number): number {
  * HER CHEST LAID OUT at `breath`: 0 the end of a quiet breath out, 1 the end of a quiet breath in, and on to
  * `BREATH.most` for the deepest breath (beyond it, and below 0, held there). Her diaphragm's domes drop
  * `DIAPHRAGM.quietDrop` a quiet breath and its central part less; her heart rides down on it; her lungs follow it down
- * and take up the gap left for her ribs' swing (`lungMesh`).
+ * and take up the gap left for her ribs' swing (`lungMesh`). `rise`: how far a pregnancy has pushed her diaphragm's
+ * domes up (metres, 0 not pregnant .. `DIAPHRAGM_RISE` at term: actor/vitals.ts `diaphragmRise`) -- her heart rides up
+ * on it and her lungs are that much shorter, as a woman's are near term.
  */
-export function layThorax(t: ThoraxLandmarks, breath = 0): ThoraxLayout {
-  const D = DIAPHRAGM, H = HEART, b = clamp(breath, 0, BREATH.most), mid = t.xiphoid[0];
+export function layThorax(t: ThoraxLandmarks, breath = 0, rise = 0): ThoraxLayout {
+  const D = DIAPHRAGM, H = HEART, b = clamp(breath, 0, BREATH.most), mid = t.xiphoid[0], up = clamp(rise, 0, DIAPHRAGM_RISE);
   // her diaphragm: its rim, and its domes this share of her breastbone's length above its tip, dropped by her breath
   const rimFront = t.xiphoid[1], rimBack = Math.max(t.sections[0].y, rimFront - D.backBelow), least = rimBack + D.leastDome;
   const at = sectionAt(t, rimFront), cz = (at.front + at.back) / 2, halfW = (at.left - at.right) / 2, halfD = (at.front - at.back) / 2;
-  const drop = D.quietDrop * b, high = rimFront + D.domeUp * Math.max(0.05, t.sternumTop[1] - rimFront);
+  const drop = D.quietDrop * b - up, high = rimFront + D.domeUp * Math.max(0.05, t.sternumTop[1] - rimFront);
   const floor = Math.max(least, high - D.rightHigher - D.centralBelow - drop * D.centralShare);
   const bare: DiaphragmLay = { centre: [mid, cz], rimFront, rimBack, floor, central: floor, domes: [{ x: 0, z: 0, top: 0, rise: 0, wide: 1, deep: 1 }, { x: 0, z: 0, top: 0, rise: 0, wide: 1, deep: 1 }], drop };
   const dome = (side: -1 | 1, top: number): Dome => {
@@ -428,7 +439,7 @@ export function layThorax(t: ThoraxLandmarks, breath = 0): ThoraxLayout {
     }
     return { side, face: side > 0 ? LUNGS.faceLeft : LUNGS.faceRight, top: Math.min(t.apex, top) };
   };
-  return { thorax: t, breath: b, mid, gap, diaphragm, heart, lungs: [lung(1), lung(-1)] };
+  return { thorax: t, breath: b, rise: up, mid, gap, diaphragm, heart, lungs: [lung(1), lung(-1)] };
 }
 
 /** How her lungs', heart's and diaphragm's meshes are cut: points round and rows up. GAME TUNING (a few hundred points

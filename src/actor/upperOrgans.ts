@@ -33,7 +33,8 @@
 import type { P3 } from './pelvisMeasure';
 import type { OrganMesh } from './pelvicOrgans';
 import { BREATH_RIDE, bean, beanFrame, inBean, smoothLine, sweepAny, type Bean, type Tube, type UpperBelly } from './abdominalOrgans';
-import { diaphragmAt, layThorax, sectionAt, thoraxSpineAt, type ThoraxLandmarks, type ThoraxLayout } from './thoracicOrgans';
+import { DIAPHRAGM, DIAPHRAGM_RISE, diaphragmAt, layThorax, sectionAt, thoraxSpineAt, type ThoraxLandmarks, type ThoraxLayout } from './thoracicOrgans';
+import type { WombRoom } from './pregnantWomb';
 
 /** Her liver. MEASURED (https://en.wikipedia.org/wiki/Liver): "normally weighs approximately 1.5 kilograms", for women
  * 600-1,770 g (1.3 kg here, a woman's middle), about 1.06 g a mL (liver tissue's density); "a width of about 15
@@ -56,8 +57,10 @@ export const LIVER = Object.freeze({ grams: 1300, density: 1.06, width: 0.15, ga
  * depth for its fundus; `gap` below her liver's underside (negative: set up into it, as it lies in its hollow there). Its
  * neck, which ends over her pancreas's neck, is kept off it (`layGallbladder`'s `floor`). MEASURED 2026-11-13: none of it
  * in her stomach, colon or pancreas at any breath (at first 8 cm; at her deepest breath in, her liver brought it 1.9 cm
- * down into her colon, which her breath did not move then). */
-export const GALLBLADDER = Object.freeze({ length: 0.07, fundusR: 0.015, neckR: 0.006, out: 0.045, forward: 0.9, gap: -0.008 });
+ * down into her colon, which her breath did not move then). Late in a pregnancy it lies further back under her liver
+ * (`bladderBack`: BIOLOGICAL SHAPE -- her womb's top pushes her liver and what hangs under it up and back; GAME TUNING:
+ * `leastLiver`, the least of her liver left over it, and `backMost`, the furthest back it goes). */
+export const GALLBLADDER = Object.freeze({ length: 0.07, fundusR: 0.015, neckR: 0.006, out: 0.045, forward: 0.9, gap: -0.008, leastLiver: 0.006, backMost: 0.06 });
 /** Her spleen. MEASURED (https://en.wikipedia.org/wiki/Spleen): "approximately 7 to 14 centimetres in length", "between
  * 30 and 230 grams", "in the left upper quadrant", "underneath the left part of the thoracic diaphragm", "underneath the
  * ninth, tenth, and eleventh ribs", "in contact with the posterior wall of the stomach", "in relation with the upper part
@@ -133,11 +136,12 @@ export function kidneysAt(L: ThoraxLayout, kidneys: readonly Bean[]): Bean[] {
 /** The top of a kidney grown by `gap` over (x, z), or -Infinity where it is not under that point -- or, given a `skirt`
  * (a slope), a skirt falling away from its outline at that slope: what rests on it then comes down beside it in a slope
  * and not a cliff (her liver's underside, cut square at her kidney's outline, drew as a saw's edge). */
-function beanTop(b: Bean, gap: number, x: number, z: number, skirt = 0): number {
-  // (on the line straight up through (x, z): the ellipsoid's measure is a quadratic in y)
-  const [a, u, w] = beanFrame(b), R = [b.radii[0] + gap, b.radii[1] + gap, b.radii[2] + gap], dx = x - b.centre[0], dz = z - b.centre[2];
+function beanTop(b: Bean, gap: number, x: number, z: number, skirt = 0, frame: readonly [P3, P3, P3] = beanFrame(b)): number {
+  // (on the line straight up through (x, z): the ellipsoid's measure is a quadratic in y; `frame`: the bean's own, handed
+  // in by a caller that asks at thousands of places)
+  const dx = x - b.centre[0], dz = z - b.centre[2];
   let A = 0, B = 0, C = -1;
-  for (const [ax, r] of [[a, R[0]], [u, R[1]], [w, R[2]]] as const) { const k = ax[1] / r, c = (dx * ax[0] + dz * ax[2]) / r; A += k * k; B += 2 * k * c; C += c * c; }
+  for (let i = 0; i < 3; i++) { const ax = frame[i], r = b.radii[i] + gap, k = ax[1] / r, c = (dx * ax[0] + dz * ax[2]) / r; A += k * k; B += 2 * k * c; C += c * c; }
   if (A <= 0) return -Infinity;
   const disc = B * B - 4 * A * C;
   if (disc >= 0) return b.centre[1] + (-B + Math.sqrt(disc)) / (2 * A);
@@ -150,17 +154,26 @@ function beanTop(b: Bean, gap: number, x: number, z: number, skirt = 0): number 
  * stations' rounds there (each station's ring turned about the upright through it: its up-and-down half-size high, its
  * wider half-size -- or the way to the next station -- out; near enough, its stations a few millimetres apart). Given a
  * `skirt` (a slope), each round falls away past its outline at that slope (`beanTop`). */
-function tubeTop(t: Tube, gap: number, x: number, z: number, skirt = 0): number {
-  let best = -Infinity;
-  for (let k = 0; k < t.path.length; k++) {
-    const p = t.path[k], n = t.path[Math.min(t.path.length - 1, k + 1)], step = Math.hypot(n[0] - p[0], n[2] - p[2]);
+function tubeTop(t: Tube, gap: number, x: number, z: number, skirt = 0): number { return tubeTopOf(t, gap, skirt)(x, z); }
+/** `tubeTop` for one tube asked at thousands of places (her liver's room over her pancreas): its stations' reaches worked
+ * out once. */
+function tubeTopOf(t: Tube, gap: number, skirt = 0): (x: number, z: number) => number {
+  const n = t.path.length, S = new Float64Array(5 * n);
+  for (let k = 0; k < n; k++) {
+    const p = t.path[k], q = t.path[Math.min(n - 1, k + 1)], step = Math.hypot(q[0] - p[0], q[2] - p[2]);
     // (its two ends are rounded off past their stations: `sweepAny`'s caps)
-    const end = k === 0 || k === t.path.length - 1 ? Math.min(t.halves[k][0], t.halves[k][1]) : 0;
-    const out = Math.max(t.halves[k][0], step) + end + gap, up = t.halves[k][1] + gap, d2 = ((x - p[0]) ** 2 + (z - p[2]) ** 2) / (out * out);
-    if (d2 < 1) best = Math.max(best, p[1] + up * Math.sqrt(1 - d2));
-    else if (skirt > 0) best = Math.max(best, p[1] - skirt * (Math.sqrt(d2) - 1) * out);
+    const end = k === 0 || k === n - 1 ? Math.min(t.halves[k][0], t.halves[k][1]) : 0;
+    S[5 * k] = p[0]; S[5 * k + 1] = p[1]; S[5 * k + 2] = p[2]; S[5 * k + 3] = Math.max(t.halves[k][0], step) + end + gap; S[5 * k + 4] = t.halves[k][1] + gap;
   }
-  return best;
+  return (x, z) => {
+    let best = -Infinity;
+    for (let k = 0; k < 5 * n; k += 5) {
+      const out = S[k + 3], d2 = ((x - S[k]) ** 2 + (z - S[k + 2]) ** 2) / (out * out);
+      if (d2 < 1) best = Math.max(best, S[k + 1] + S[k + 4] * Math.sqrt(1 - d2));
+      else if (skirt > 0) best = Math.max(best, S[k + 1] - skirt * (Math.sqrt(d2) - 1) * out);
+    }
+    return best;
+  };
 }
 /** A mesh moved along `way` (a unit vector) just far enough that none of its points is within `gap` of a kidney; how far. */
 function offBeans(m: OrganMesh, beds: readonly Bean[], way: P3, gap: number): OrganMesh & { readonly moved: number } {
@@ -172,6 +185,46 @@ function offBeans(m: OrganMesh, beds: readonly Bean[], way: P3, gap: number): Or
   const points = Float32Array.from(m.points);
   for (let i = 0; i < points.length; i += 3) { points[i] += way[0] * hi; points[i + 1] += way[1] * hi; points[i + 2] += way[2] * hi; }
   return { points, triangles: m.triangles, moved: hi };
+}
+
+/** A floor under her upper belly's organs: its height at (x, z), rest metres, or -Infinity where there is none. */
+export type Floor = (x: number, z: number) => number;
+/**
+ * HER WOMB'S TOP AS A FLOOR (late in a pregnancy it comes up under her liver, in front of its back wall: actor/
+ * pregnantWomb.ts `WombWall`): its top's height over her upper belly, read once into a table `step` apart -- a `gap` over
+ * it, and falling away past its edge at `OFF_KIDNEYS.skirt` (what rests on it comes down beside it in a slope, not a
+ * cliff) -- so her liver can be laid on it again at every breath for the cost of a look-up. Null without a womb.
+ */
+export function wombFloor(womb: WombRoom | null, t: ThoraxLandmarks, gap = OFF_KIDNEYS.gap, step = 0.006): Floor | null {
+  if (!womb?.topAt) return null;
+  const s = sectionAt(t, t.xiphoid[1]), x0 = s.right - 0.012, z0 = s.back - 0.012, nx = Math.ceil((s.left + 0.012 - x0) / step) + 1, nz = Math.ceil((s.front + 0.05 - z0) / step) + 1;
+  const H = new Float32Array(nx * nz).fill(-1e3);
+  let any = false;
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) { const y = womb.topAt(x0 + i * step, z0 + j * step); if (y > -Infinity) { H[i * nz + j] = y + gap; any = true; } }
+  if (!any) return null;
+  // (its skirt: each place at least as high as its neighbours less the slope's fall to it -- a few passes each way)
+  const fall = OFF_KIDNEYS.skirt * step, diag = fall * Math.SQRT2;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      let h = H[i * nz + j];
+      if (i) { h = Math.max(h, H[(i - 1) * nz + j] - fall); if (j) h = Math.max(h, H[(i - 1) * nz + j - 1] - diag); if (j + 1 < nz) h = Math.max(h, H[(i - 1) * nz + j + 1] - diag); }
+      if (j) h = Math.max(h, H[i * nz + j - 1] - fall);
+      H[i * nz + j] = h;
+    }
+    for (let i = nx - 1; i >= 0; i--) for (let j = nz - 1; j >= 0; j--) {
+      let h = H[i * nz + j];
+      if (i + 1 < nx) { h = Math.max(h, H[(i + 1) * nz + j] - fall); if (j) h = Math.max(h, H[(i + 1) * nz + j - 1] - diag); if (j + 1 < nz) h = Math.max(h, H[(i + 1) * nz + j + 1] - diag); }
+      if (j + 1 < nz) h = Math.max(h, H[i * nz + j + 1] - fall);
+      H[i * nz + j] = h;
+    }
+  }
+  return (x, z) => {
+    const u = (x - x0) / step, v = (z - z0) / step;
+    if (!(u >= 0 && v >= 0 && u <= nx - 1 && v <= nz - 1)) return -Infinity;
+    const i = Math.min(nx - 2, Math.floor(u)), j = Math.min(nz - 2, Math.floor(v)), fu = u - i, fv = v - j;
+    const h = (H[i * nz + j] * (1 - fu) + H[(i + 1) * nz + j] * fu) * (1 - fv) + (H[i * nz + j + 1] * (1 - fu) + H[(i + 1) * nz + j + 1] * fu) * fv;
+    return h < -100 ? -Infinity : h;
+  };
 }
 
 /** Her liver's footprint at `level`: right wall to left tip (x), back to front (z) -- inside her ribs, before her spine. */
@@ -186,7 +239,7 @@ function liverBox(t: ThoraxLandmarks, mid: number) {
  * diaphragm, its thickness running as `LIVER` says and scaled so it holds her liver's volume (grams / density). Its rim
  * closes roundly. `bottomAt(x, z)` its underside (for her gallbladder).
  */
-export function layLiver(L: ThoraxLayout, beds: readonly Bean[] = [], under: readonly Tube[] = [], rows = 18, cols = 40): UpperLayout['liver'] {
+export function layLiver(L: ThoraxLayout, beds: readonly Bean[] = [], under: readonly Tube[] = [], floor: Floor | null = null, rows = 18, cols = 40, then: ((first: { readonly bottomAt: (x: number, z: number) => number }) => Tube | null) | null = null): UpperLayout['liver'] {
   const t = L.thorax, B = liverBox(t, L.mid), cx = (B.right + B.left) / 2, cz = (B.back + B.front) / 2, hx = (B.left - B.right) / 2, hz = (B.front - B.back) / 2;
   // ITS BACK EDGE: beside her spine at her right, where her right lobe fills the hollow of her back, and in front of her
   // spine from just right of it leftward (`LIVER.spineRight`, `spineOff`). Its footprint is a rounded rectangle (a
@@ -207,28 +260,45 @@ export function layLiver(L: ThoraxLayout, beds: readonly Bean[] = [], under: rea
     const across = 1 - (1 - LIVER.leftThin) * Math.pow(u, 1.3), deep = LIVER.backThick - (LIVER.backThick - LIVER.frontThin) * Math.pow(v, 1.4);
     return across * deep * Math.sqrt(Math.max(0, 1 - Math.pow(s, 1 / LIVER.edge * 1.2)));
   };
-  // (its underside rests on her kidneys, and on her pancreas, where they are under it: it is no thicker there than the
-  // room over them)
-  const rests = beds.length + under.length > 0;
+  // (its underside rests on her kidneys, and on her pancreas, where they are under it -- and, late in a pregnancy, on the
+  // top of her womb (`floor`): it is no thicker there than the room over them)
+  const rests = beds.length + under.length > 0 || !!floor, frames = beds.map((b) => beanFrame(b)), tops = under.map((u) => tubeTopOf(u, OFF_KIDNEYS.gap, OFF_KIDNEYS.skirt));
+  /** what else it rests on, laid by where its own underside would otherwise be (`then`: her gallbladder, on her womb) */
+  let more: ((x: number, z: number) => number) | null = null;
   const room = (x: number, z: number) => {
-    let r = Infinity;
-    for (const b of beds) { const t = beanTop(b, OFF_KIDNEYS.liver, x, z, OFF_KIDNEYS.skirt); if (t > -Infinity) r = Math.min(r, top(x, z) - t); }
-    for (const u of under) { const t = tubeTop(u, OFF_KIDNEYS.gap, x, z, OFF_KIDNEYS.skirt); if (t > -Infinity) r = Math.min(r, top(x, z) - t); }
+    let r = Infinity; const over = top(x, z);
+    if (floor) { const t = floor(x, z); if (t > -Infinity) r = over - t; }
+    for (let i = 0; i < beds.length; i++) { const t = beanTop(beds[i], OFF_KIDNEYS.liver, x, z, OFF_KIDNEYS.skirt, frames[i]); if (t > -Infinity) r = Math.min(r, over - t); }
+    for (let i = 0; i < tops.length; i++) { const t = tops[i](x, z); if (t > -Infinity) r = Math.min(r, over - t); }
+    if (more) { const t = more(x, z); if (t > -Infinity) r = Math.min(r, over - t); }
     return Math.max(0, r);
   };
   // its thickness's scale, for her liver's volume: linear in it over her kidneys' room, found by halving where they cut it
-  const want = LIVER.grams / LIVER.density / 1e6, N = 60, cells: { k: number; room: number; area: number }[] = [], area = ((B.left - B.right) / N) * ((B.front - B.back) / N);
+  const want = LIVER.grams / LIVER.density / 1e6, N = 60, cells: { k: number; room: number; area: number; x: number; z: number }[] = [], area = ((B.left - B.right) / N) * ((B.front - B.back) / N);
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
     const x = B.right + ((i + 0.5) / N) * (B.left - B.right), zu = B.back + ((j + 0.5) / N) * (B.front - B.back);
     const ux = (x - cx) / hx, uz = (zu - cz) / hz, s = Math.pow(ux ** 4 + uz ** 4, 0.25), z = laid(x, zu);
-    if (s <= 1) cells.push({ k: shape(x, z, s), room: rests ? room(x, z) : Infinity, area: area * (zu < cz ? drawn(x) : 1) });
+    if (s <= 1) cells.push({ k: shape(x, z, s), room: rests ? room(x, z) : Infinity, area: area * (zu < cz ? drawn(x) : 1), x, z });
   }
   const held = (T: number) => cells.reduce((v, c) => v + Math.min(T * c.k, c.room) * c.area, 0);
-  let lo = 0, hi = 0.05;
-  while (held(hi) < want && hi < 2) { lo = hi; hi *= 2; }
-  for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (held(m) < want) lo = m; else hi = m; }
-  const T = (lo + hi) / 2;
+  const scale = () => {
+    let lo = 0, hi = 0.05;
+    while (held(hi) < want && hi < 2) { lo = hi; hi *= 2; }
+    for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (held(m) < want) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  };
+  let T = scale();
   const thick = (x: number, z: number, s: number) => { const t = T * shape(x, z, s); return rests ? Math.min(t, room(x, z)) : t; };
+  // (what is laid by its underside is laid now, by its underside as it would be without it; where that stands under it its
+  // room is the less -- only those cells are reckoned again -- and its thickness's scale is found once more)
+  if (then && rests) {
+    const tube = then({ bottomAt: (x, z) => { const s = out(x, z); return s >= 1 ? top(x, z) : top(x, z) - thick(x, z, s); } });
+    if (tube) {
+      const at = tubeTopOf(tube, OFF_KIDNEYS.gap, OFF_KIDNEYS.skirt);
+      for (const c of cells) { const t = at(c.x, c.z); if (t > -Infinity) c.room = Math.max(0, Math.min(c.room, top(c.x, c.z) - t)); }
+      more = at; T = scale();
+    }
+  }
   const pts: number[] = [], tris: number[] = [];
   // top: its middle, then rings out to the rim; bottom: the same back in (the rim shared)
   const ring = (s: number, under: boolean) => { for (let j = 0; j < cols; j++) { const [x, z] = at(s, (2 * Math.PI * j) / cols), y = top(x, z); pts.push(x, under ? y - thick(x, z, s) : y, z); } };
@@ -251,8 +321,13 @@ export function layLiver(L: ThoraxLayout, beds: readonly Bean[] = [], under: rea
 /** Her gallbladder under her liver: fundus forward and down, its neck back and up under her liver's middle; `floor`, the
  * top of what lies under her liver there (her pancreas: its height at x, z, -Infinity where there is none), which it is
  * kept off -- set further up into its hollow in her liver. */
-export function layGallbladder(L: ThoraxLayout, liver: UpperLayout['liver'], G: typeof GALLBLADDER = GALLBLADDER, floor: ((x: number, z: number) => number) | null = null): OrganMesh {
-  const B = liverBox(L.thorax, L.mid), x = L.mid - G.out, zf = B.back + (B.front - B.back) * G.forward;
+export function layGallbladder(L: ThoraxLayout, liver: UpperLayout['liver'], G: typeof GALLBLADDER = GALLBLADDER, floor: ((x: number, z: number) => number) | null = null, back = 0): OrganMesh {
+  const t = gallbladderLine(L, liver, G, floor, back);
+  return sweepAny(t.path, t.halves, 16, 4);
+}
+/** Her gallbladder's line and half-sizes (`layGallbladder`); `back`: how far back of its usual place it lies. */
+export function gallbladderLine(L: ThoraxLayout, liver: { readonly bottomAt: (x: number, z: number) => number }, G: typeof GALLBLADDER = GALLBLADDER, floor: ((x: number, z: number) => number) | null = null, back = 0): Tube {
+  const B = liverBox(L.thorax, L.mid), x = L.mid - G.out, zf = B.back + (B.front - B.back) * G.forward - back;
   // its line runs up and back from its fundus, along her liver's underside
   const zn = zf - G.length * 0.75, xn = x + 0.02, fundus: P3 = [x, liver.bottomAt(x, zf) - G.gap - G.fundusR, zf], neck: P3 = [xn, liver.bottomAt(xn, zn) - G.gap - G.neckR, zn];
   const midP: P3 = [(fundus[0] + neck[0]) / 2, Math.min(liver.bottomAt((fundus[0] + neck[0]) / 2, (fundus[2] + neck[2]) / 2) - G.gap - (G.fundusR + G.neckR) / 2, (fundus[1] + neck[1]) / 2), (fundus[2] + neck[2]) / 2];
@@ -260,14 +335,38 @@ export function layGallbladder(L: ThoraxLayout, liver: UpperLayout['liver'], G: 
   const halves = line.map((_, k) => { const f = k / (line.length - 1), r = G.fundusR + (G.neckR - G.fundusR) * smooth(f * 1.15); return [r, r] as const; });
   // (its rounded ends reach a radius past its line's: the floor is looked for under them too)
   const path = floor ? line.map((p, k): P3 => { const r = halves[k][0], f = Math.max(floor(p[0], p[2]), floor(p[0], p[2] - r), floor(p[0], p[2] + r)); return f > -Infinity && p[1] - r < f ? [p[0], f + r, p[2]] : p; }) : line;
-  return sweepAny(path, halves, 16, 4);
+  return { path, halves };
+}
+
+/**
+ * HOW FAR BACK HER GALLBLADDER LIES OVER HER WOMB (metres; 0 with no womb under it): at her front her diaphragm comes down
+ * to her ribs' edge, and a womb's top standing there leaves no room under it -- so her gallbladder lies as far back of its
+ * usual place as it takes to stand on her womb's top (`floor`) with `leastLiver` of her liver over it, under her diaphragm
+ * as it is at the end of a quiet breath out (`L0`: one place for every breath). Looked for along its line as it runs
+ * (`gallbladderLine`: its fundus, and back and in to its neck) in 4 mm steps.
+ */
+export function bladderBack(L0: ThoraxLayout, floor: Floor, G: typeof GALLBLADDER = GALLBLADDER): number {
+  const B = liverBox(L0.thorax, L0.mid), x = L0.mid - G.out, zf = B.back + (B.front - B.back) * G.forward;
+  const fits = (back: number): boolean => {
+    for (let k = 0; k <= 4; k++) {
+      const f = k / 4, px = x + 0.02 * f, pz = zf - back - G.length * 0.75 * f, r = G.fundusR + (G.neckR - G.fundusR) * smooth(f * 1.15);
+      // (its round reaches a radius forward and back of its line: her womb's top is looked for under all of it, and her
+      // diaphragm -- which comes down steeply to her ribs' edge at her front -- over all of it)
+      const under = Math.max(floor(px, pz), floor(px, pz - r), floor(px, pz + r)), over = Math.min(diaphragmAt(L0, px, pz), diaphragmAt(L0, px, pz - r), diaphragmAt(L0, px, pz + r));
+      if (under > -Infinity && under + 2 * r + G.leastLiver > over - LIVER.gap) return false;
+    }
+    return true;
+  };
+  let back = 0;
+  while (back < G.backMost && !fits(back)) back += 0.004;
+  return back;
 }
 
 /** Her spleen under her left ribs, under her diaphragm's left dome, out and forward of her left kidney (`kidneys`: as laid
  * at the end of a quiet breath out) -- laid there at the end of a quiet breath out, and ridden down at this breath with
  * her diaphragm's left dome, as her stomach beside it and her kidney behind it ride (`domeDrop`). */
 export function laySpleen(L: ThoraxLayout, S: typeof SPLEEN = SPLEEN, kidneys: readonly Bean[] = []): UpperLayout['spleen'] {
-  const L0 = quietOf(L.thorax), t = L.thorax, y0 = t.xiphoid[1], s = sectionAt(t, y0), x = s.left - S.inset - S.thickness / 2, z = s.back + S.forward + S.width / 2;
+  const L0 = quietOf(L.thorax, L.rise), t = L.thorax, y0 = t.xiphoid[1], s = sectionAt(t, y0), x = s.left - S.inset - S.thickness / 2, z = s.back + S.forward + S.width / 2;
   const a = S.axis, l = Math.hypot(a[0], a[1], a[2]), up: P3 = [-a[0] / l, -a[1] / l, -a[2] / l];
   const b: Bean = { centre: [x, diaphragmAt(L0, x, z), z], radii: [S.thickness / 2, S.length / 2, S.width / 2], up, side: 1 };
   // (all of it under her diaphragm: brought down until its highest point against the sheet over it is `gap` below; then
@@ -350,12 +449,15 @@ export function layWindpipe(t: ThoraxLandmarks, mid: number): OrganMesh {
 }
 
 const quiet = new WeakMap<ThoraxLandmarks, ThoraxLayout>();
-/** Her chest as laid at the end of a quiet breath out (kept for each rib cage). */
-function quietOf(t: ThoraxLandmarks): ThoraxLayout {
+/** Her chest as laid at the end of a quiet breath out, her diaphragm risen `rise` by a pregnancy (the last one kept for
+ * each rib cage). */
+function quietOf(t: ThoraxLandmarks, rise = 0): ThoraxLayout {
   let L0 = quiet.get(t);
-  if (!L0) { L0 = layThorax(t, 0); quiet.set(t, L0); }
+  if (!L0 || L0.rise !== layRise(rise)) { L0 = layThorax(t, 0, rise); quiet.set(t, L0); }
   return L0;
 }
+/** A rise as `layThorax` keeps it (held to what her diaphragm can rise). */
+const layRise = (rise: number): number => Math.min(DIAPHRAGM_RISE, Math.max(0, Number.isFinite(rise) ? rise : 0));
 /**
  * WHAT LIES UNDER HER DIAPHRAGM RIDES ITS DOMES DOWN, ALL OF A PIECE: how far the dome on that side of her (`x`, her rest
  * frame) has come down since the end of a quiet breath out (metres), eased across her middle between her two domes. Her
@@ -365,7 +467,7 @@ function quietOf(t: ThoraxLandmarks): ThoraxLayout {
  * over it, they slid into one another: the sheet's rim does not move, its domes do).
  */
 export function domeDrop(L: ThoraxLayout, x: number): number {
-  const [l0, r0] = quietOf(L.thorax).diaphragm.domes, [l, r] = L.diaphragm.domes;
+  const [l0, r0] = quietOf(L.thorax, L.rise).diaphragm.domes, [l, r] = L.diaphragm.domes;
   const dl = Math.max(0, l0.top - l.top), dr = Math.max(0, r0.top - r.top);
   return dr + (dl - dr) * smooth((x - r.x) / Math.max(1e-6, l.x - r.x));
 }
@@ -388,15 +490,35 @@ export function joinMeshes(parts: readonly OrganMesh[]): OrganMesh {
  * her liver's underside -- her diaphragm's where her liver is not -- her spleen and her pancreas's line, on her kidneys as
  * they are laid. Her stomach and her colon are laid under and off them.
  */
-export function upperBelly(t: ThoraxLandmarks, kidneys: readonly Bean[]): UpperBelly {
-  const L0 = quietOf(t), pancreas = pancreasLine(L0, PANCREAS, kidneys), liver = layLiver(L0, kidneys, [pancreas]);
-  return { under: (x, z) => liver.bottomAt(x, z), organs: [laySpleen(L0, SPLEEN, kidneys).bean], tubes: [pancreas] };
+export function upperBelly(t: ThoraxLandmarks, kidneys: readonly Bean[], rise = 0, floor: Floor | null = null): UpperBelly {
+  const L0 = quietOf(t, rise), pancreas = pancreasLine(L0, PANCREAS, kidneys), { liver } = liverOver(L0, kidneys, pancreas, floor, floor);
+  return { under: (x, z) => liver.bottomAt(x, z), organs: [laySpleen(L0, SPLEEN, kidneys).bean], tubes: [pancreas], rise: L0.rise, quietDrop: DIAPHRAGM.quietDrop };
 }
-
-/** Her upper belly's organs and her windpipe as laid at this breath (her chest as laid, `layThorax`), on her kidneys
- * (`kidneys`, as laid at the end of a quiet breath out: actor/abdominalOrgans.ts `layKidneys`; none, they are laid as if
- * she had none -- `OFF_KIDNEYS`). */
-export function layUpper(L: ThoraxLayout, kidneys: readonly Bean[] = []): UpperLayout {
-  const beds = kidneysAt(L, kidneys), line = pancreasLine(L, PANCREAS, beds), liver = layLiver(L, beds, [line]);
-  return { liver, gallbladder: layGallbladder(L, liver, GALLBLADDER, (x, z) => tubeTop(line, OFF_KIDNEYS.gap, x, z)), spleen: laySpleen(L, SPLEEN, kidneys), pancreas: sweepAny(line.path, line.halves, 16, 4), windpipe: layWindpipe(L.thorax, L.mid) };
+/**
+ * HER LIVER AND HER GALLBLADDER OVER WHAT THEY REST ON: her kidneys (`beds`), her pancreas (`line`) and, late in a
+ * pregnancy, her womb's top as it is at this breath (`seat`; `floor`, as it is at the end of a quiet breath out, places
+ * her gallbladder: `bladderBack`). Where her womb's top has come up under her liver her gallbladder lies ON her womb,
+ * further back where there is room for it under her diaphragm, and her liver on her gallbladder -- which is laid by her
+ * liver's underside as it would be without it (`layLiver`'s `then`: one laying of her liver, not two). While her womb is
+ * low -- no part of her gallbladder standing on it -- both are laid exactly as with no womb at all. One laying for what
+ * is drawn (`layUpper`) and for what her stomach and her colon are set under (`upperBelly`): laid two ways, her liver as
+ * drawn stood in her stomach (MEASURED in the room 2026-11-13, her bump at 0%: 13% of her stomach in her liver, 7 mm).
+ */
+function liverOver(L: ThoraxLayout, beds: readonly Bean[], line: Tube, seat: Floor | null, floor: Floor | null): { liver: UpperLayout['liver']; bladder: Tube } {
+  const under = (x: number, z: number) => Math.max(tubeTop(line, OFF_KIDNEYS.gap, x, z), seat ? seat(x, z) : -Infinity);
+  const back = floor ? bladderBack(quietOf(L.thorax, L.rise), floor) : 0;
+  const onWomb = (t: Tube) => !!seat && t.path.some((p, k) => { const r = t.halves[k][0]; return Math.max(seat(p[0], p[2]), seat(p[0], p[2] - r), seat(p[0], p[2] + r)) >= p[1] - r - 1e-9; });
+  const liver = seat ? layLiver(L, beds, [line], seat, 18, 40, (first) => { const t = gallbladderLine(L, first, GALLBLADDER, under, back); return onWomb(t) ? t : null; }) : layLiver(L, beds, [line]);
+  return { liver, bladder: gallbladderLine(L, liver, GALLBLADDER, under, back) };
+}
+export function layUpper(L: ThoraxLayout, kidneys: readonly Bean[] = [], floor: Floor | null = null): UpperLayout {
+  const beds = kidneysAt(L, kidneys), line = pancreasLine(L, PANCREAS, beds);
+  // (HER LIVER'S SEAT ON HER WOMB RIDES HER BREATH WITH THE REST: as she breathes in, her womb's top under her liver is
+  // taken to give by what her diaphragm's dome over it has come down -- a womb is pushed down and forward by a breath,
+  // and what lies under her diaphragm rides its domes all of a piece (`domeDrop`). Held where it is at a breath out, her
+  // liver had nowhere to go but into her stomach: MEASURED in the room 2026-11-13, her bump at 100%, her hardest breath
+  // held in: 8% of her stomach in her liver, 23 mm deep.)
+  const seat: Floor | null = floor ? (x, z) => floor(x, z) - domeDrop(L, x) : null;
+  const { liver, bladder } = liverOver(L, beds, line, seat, floor);
+  return { liver, gallbladder: sweepAny(bladder.path, bladder.halves, 16, 4), spleen: laySpleen(L, SPLEEN, kidneys), pancreas: sweepAny(line.path, line.halves, 16, 4), windpipe: layWindpipe(L.thorax, L.mid) };
 }

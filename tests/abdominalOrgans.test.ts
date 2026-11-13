@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import torso from '../src/data/torso/skeleton.json';
 import pelvis from '../src/data/pelvis/skeleton.json';
-import { ABDOMEN_PLACE, KIDNEY, RECTUM, STOMACH, inWomb, layAbdomen, layStomach, outOfWomb, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
+import { ABDOMEN_PLACE, KIDNEY, RECTUM, STOMACH, inWomb, layAbdomen, layStomach, outOfWomb, stomachGiveMl, sweepAny, tubeVolume } from '../src/actor/abdominalOrgans';
 import { BLADDER, layOrgans, type PelvisLandmarks } from '../src/actor/pelvicOrgans';
 import { growWomb, type TorsoLandmarks } from '../src/actor/pregnantWomb';
 import { eat, gutNeeds, hoursToBladderUrge, pee, restingGut, stepGut, urineMlH } from '../src/actor/gut';
@@ -76,7 +76,10 @@ describe('what her gut holds over time', () => {
   it('her kidneys make about 1 mL per kg an hour, more with water to spare, filling her bladder to the urge in hours', () => {
     expect(urineMlH(0, 60)).toBeCloseTo(60, 5);
     expect(urineMlH(500, 60)).toBeGreaterThan(60);
-    expect(urineMlH(-600, 60)).toBeCloseTo(24, 5);
+    // (the least they can pass by 2% of her weight lost as water, 1.2 L: until 2026-11-13 this mark was counted of her
+    // body's water and stood at 0.6 L -- Joshua, "Yes, fix the thirst")
+    expect(urineMlH(-1200, 60)).toBeCloseTo(24, 5);
+    expect(urineMlH(-600, 60)).toBeCloseTo(42, 5);
     const h = hoursToBladderUrge(restingGut());
     expect(h).toBeGreaterThan(3); expect(h).toBeLessThan(5);
     const s = stepGut(eat(restingGut(), 0, 500), 4);
@@ -92,5 +95,19 @@ describe('what her gut holds over time', () => {
     for (let d = 0; d < 3; d++) { s = eat(s, 700, 250); s = stepGut(s, 8); s = eat(s, 700, 250); s = stepGut(s, 16); }
     expect(s.rectumMl).toBeGreaterThan(RECTUM.feelMl);
     expect(gutNeeds(s).bowel).toBeGreaterThan(0);
+  });
+});
+
+describe('her belly gives for a full stomach', () => {
+  it('by what her stomach holds beyond the room she has for it, and no more than a stomach holds', () => {
+    // (Joshua, 2026-11-13: "go ahead and fix and do the last two things you mentioned" -- her belly rounds out for a full one)
+    expect(stomachGiveMl(STOMACH.emptyMl)).toBe(0);
+    expect(stomachGiveMl(250)).toBe(0);
+    expect(stomachGiveMl(ABDOMEN_PLACE.stomachRoomMl)).toBe(0);
+    expect(stomachGiveMl(STOMACH.fullMl)).toBeCloseTo((STOMACH.fullMl - ABDOMEN_PLACE.stomachRoomMl) * ABDOMEN_PLACE.bellyGive, 9);
+    expect(stomachGiveMl(STOMACH.mostMl + 2000)).toBeCloseTo(stomachGiveMl(STOMACH.mostMl), 9);
+    expect(stomachGiveMl(Number.NaN)).toBe(0);
+    // it grows with every millilitre past the room she has: nothing jumps
+    for (let ml = 0; ml < STOMACH.mostMl; ml += 50) expect(stomachGiveMl(ml + 50) - stomachGiveMl(ml)).toBeLessThanOrEqual(50 * ABDOMEN_PLACE.bellyGive + 1e-9);
   });
 });
