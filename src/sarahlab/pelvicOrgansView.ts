@@ -269,7 +269,11 @@ export class PelvicOrgansView {
   private layAdnexa(): void {
     for (const a of this.adnexa) { a.mesh.removeFromParent(); a.mesh.geometry.dispose(); }
     this.adnexa = [];
-    const uterus = this.organs.find((o) => o.name === 'uterus'), womb = this.outer ?? this.layout?.uterus;
+    // (v2's own womb only once it has grown past her small one -- before that its sac is small and low in front, and her
+    // ovaries and tubes are where they are without a pregnancy: beside her small womb, which is laid even when not drawn)
+    const uterus = this.organs.find((o) => o.name === 'uterus'), small = this.layout?.uterus;
+    const fundus = small ? Math.max(...small.path.map((p) => p[1])) : -Infinity, outer = this.outer && this.outer.top > fundus + 0.02 ? this.outer : null;
+    const womb = outer ?? small;
     if (!womb) return;
     let laid: ReturnType<typeof layAdnexa>;
     try { laid = layAdnexa(womb); } catch { return; }
@@ -279,7 +283,7 @@ export class PelvicOrgansView {
       const mesh = new THREE.Mesh(g, this.adnexaMaterials[name]);
       mesh.name = `organ:${name}`; mesh.frustumCulled = false; mesh.visible = this.innerOn;
       this.group.add(mesh);
-      this.adnexa.push({ mesh, rest: m.points, skin: !this.outer && uterus ? skinToCage(uterus.cage, m.points, 4) : null, out: new Float32Array(m.points.length) });
+      this.adnexa.push({ mesh, rest: m.points, skin: !outer && uterus ? skinToCage(uterus.cage, m.points, 4) : null, out: new Float32Array(m.points.length) });
     }
   }
   /** The room her womb takes, whichever womb she has: v2's own, or the one grown here (null: not pregnant). */

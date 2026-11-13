@@ -35,7 +35,9 @@ describe('her breath and her heart', () => {
 
   it('working, a breath grows first in size, then in rate, and never past 50 a minute', () => {
     const walk = vitalsFor(ACTIVITY.walk, 1), run6 = vitalsFor(0.6, 1), sprint = vitalsFor(1, 1);
-    expect(walk.tidalL).toBeGreaterThan(1); expect(walk.breathsPerMinute).toBeGreaterThan(17); expect(walk.breathsPerMinute).toBeLessThan(24);
+    expect(walk.tidalL).toBeGreaterThan(1); expect(walk.breathsPerMinute).toBeGreaterThan(15); expect(walk.breathsPerMinute).toBeLessThan(24);
+    // running, 30-40 a minute; at her hardest near 50
+    { const r = vitalsFor(ACTIVITY.run, 1); expect(r.breathsPerMinute).toBeGreaterThan(30); expect(r.breathsPerMinute).toBeLessThan(40); }
     // at 0.6 of her hardest a breath is as big as it gets: half her vital capacity
     expect(run6.tidalL).toBeCloseTo(BREATHING.tidalOfVital * BREATHING.vitalL, 6);
     expect(sprint.tidalL).toBeCloseTo(run6.tidalL, 6);
@@ -53,14 +55,18 @@ describe('her breath and her heart', () => {
     expect(now.effort).toBeGreaterThan(0.45); expect(now.effort).toBeLessThan(0.6);
     now = run(v, 150, ACTIVITY.run);
     expect(now.effort).toBeGreaterThan(0.79);
-    expect(now.energy).toBeLessThan(0.3);
+    // a hard run tires her over a quarter of an hour; her hardest over minutes
+    expect(now.energy).toBeGreaterThan(0.8);
+    now = run(v, 600, ACTIVITY.run);
+    expect(now.energy).toBeLessThan(0.4); expect(now.energy).toBeGreaterThan(0);
+    { const f = restingVitals(); const s5 = run(f, 420, ACTIVITY.sprint); expect(s5.energy).toBeLessThan(0.05); expect(run(restingVitals(), 240, ACTIVITY.sprint).energy).toBeGreaterThan(0.2); }
     const runHeart = now.beatsPerMinute;
     expect(runHeart).toBeGreaterThan(150);
     // stopping: a minute on, her heart has come well down but not to rest, and she is still winded
     const stopped = run(v, 60, ACTIVITY.rest);
     expect(runHeart - stopped.beatsPerMinute).toBeGreaterThan(12);
     expect(stopped.beatsPerMinute).toBeGreaterThan(90);
-    expect(stopped.breathsPerMinute).toBeGreaterThan(20);
+    expect(stopped.breathsPerMinute).toBeGreaterThan(17);
     // five minutes on, nearly rested
     const later = run(v, 300, ACTIVITY.rest);
     expect(later.energy).toBeGreaterThan(stopped.energy);

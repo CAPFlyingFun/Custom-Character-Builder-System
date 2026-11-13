@@ -25,8 +25,8 @@
  * hardest); breathing in takes `inRest` of a breath at rest (two seconds of five, thoracicOrgans.ts `BREATH.inShare`) and
  * `inHard` at her hardest. */
 export const BREATHING = Object.freeze({
-  tidalL: 0.5, perMinute: 14, vitalL: 3.1, tidalOfVital: 0.55, mostLPerMin: 90, mostPerMinute: 50,
-  tidalCurve: 0.6, ventCurve: 1.4, inRest: 0.4, inHard: 0.48,
+  tidalL: 0.5, perMinute: 14, vitalL: 3.1, tidalOfVital: 0.55, mostLPerMin: 80, mostPerMinute: 50,
+  tidalCurve: 0.6, ventCurve: 1.6, inRest: 0.4, inHard: 0.48,
 });
 
 /** Her heart. MEASURED: 70 a minute at rest (thoracicOrgans.ts `PULSE.perMinute`); a woman's peak heart rate 206 - 0.88
@@ -48,11 +48,13 @@ export const PREGNANT_BREATH = Object.freeze({ tidalShare: 0.4, perMinute: 2, he
  * a steady pace over a minute or two of steady work, and a fit heart drops by well over 12 beats in the first minute
  * after stopping -- Cole et al., NEJM 1999): `riseS`, the time her effort takes to climb most of the way (63%) to what
  * she is doing; `fallS`, to come back down; `threshold`, the share of her hardest she can keep up without tiring;
- * `drainS`, how long her hardest takes to empty her energy from full; `refillS`, how long resting takes to fill it
+ * `drainS`, how long her hardest takes to empty her energy from full, and `drainPower`, how much faster the work drains it
+ * the nearer her hardest it is (a person keeps up her hardest for some minutes and a hard run for a quarter of an hour or
+ * more: her RUN empties her in about 14 minutes, her SPRINT in 5, a JOG all but never); `refillS`, how long resting takes to fill it
  * from empty; `winded`, how much of her effort spent energy keeps up after she stops; `quickMost` and `shallowMost`, how
  * much quicker and how much shallower her breaths are with no energy left; `depthS`, how long a breath's size takes to
  * follow (so a breath does not jump in the middle). */
-export const STAMINA = Object.freeze({ riseS: 30, fallS: 90, threshold: 0.5, drainS: 90, refillS: 120, winded: 0.6, quickMost: 0.35, shallowMost: 0.15, depthS: 3 });
+export const STAMINA = Object.freeze({ riseS: 30, fallS: 90, threshold: 0.5, drainS: 300, drainPower: 2, refillS: 120, winded: 0.6, quickMost: 0.2, shallowMost: 0.15, depthS: 3 });
 
 /** What she can be doing, as an intensity (a share of her hardest). GAME TUNING (an easy walk is about a third of a
  * person's most, a run most of it). */
@@ -143,7 +145,7 @@ export function stepVitals(v: Vitals, dt: number, intensity: number, body: Vital
   // her energy: working above her threshold drains it (the harder her body is working, the faster); doing less than it,
   // it fills again from the moment she eases off (the less she does, the faster)
   const threshold = S.threshold - PREGNANT_BREATH.thresholdDrop * p;
-  if (want >= threshold) v.energy -= (h / S.drainS) * (Math.max(0, v.effort - threshold) / (1 - threshold));
+  if (want >= threshold) v.energy -= (h / S.drainS) * Math.pow(Math.max(0, v.effort - threshold) / (1 - threshold), S.drainPower);
   else v.energy += (h / S.refillS) * ((threshold - want) / threshold);
   v.energy = clamp(v.energy, 0, 1);
   // what her breath and heart feel: her effort, or her spent energy keeping her winded, whichever is more

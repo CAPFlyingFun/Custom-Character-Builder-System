@@ -150,6 +150,38 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - After anything changes how the room shapes her before her bones (a new kind of shape field, a morph that is her pose's
   or her motion's), look at `standingSourceOf` and `MOTION_SHAPES`: her standing shape has to stay what she is standing.
 
+## Her breath and her heartbeat
+
+- Her skin breathes and her breath and heart follow what she does and the energy she has left (Joshua, 2026-11-13:
+  "link up the outer skin to the lungs during breathing so the chest and belly would naturally move in and out per
+  breath and synced to like stamina"). `actor/vitals.ts` (pure): ACTIVITY (rest, walk, jog, run, sprint) sets her effort,
+  which lags it; above her threshold her ENERGY drains (a hard run empties her in about 14 minutes, her hardest in about
+  5), easing off refills it; spent energy keeps her winded. Her breath grows first in size (to about half her vital
+  capacity) then in rate; her heart from 70 to 206 - 0.88 x her age (Gulati 2010). Pregnant at term: a breath 40% bigger,
+  2 more a minute, her heart 12 higher. Every number's source is in its comment.
+- Her chest's share of each breath is MEASURED by how she lies (Bai et al. 2024: standing 59.5%, sitting 54.5%, on her
+  back 43.2%, on her front 47.8%), constant with work (Aliverti 1997). Pregnancy moves it no one way in the research
+  (Gilroy 1988: her rib cage takes the extra; LoMauro 2019: her diaphragm's share grows), so it is kept, and her lower
+  ribs' widening in pregnancy is drawn instead (`breathFlare`). The room's CHEST button can fix it (50-80%).
+- `sarahlab/breathSkin.ts`: her chest's front forward, its sides out (down to her lowest ribs at her sides), her belly's
+  front forward; her back and her arms stay. Laid by where each point is in her rest frame (no attribute: her body has
+  none left), in the vertex shader with her other soft moves (`patchJiggle`) and on the CPU the same (`breathAt` in
+  `jiggleAt`), so what she wears and her paint ride it. Her trunk's width is measured from her own skin when her shape
+  changes (`layBreathTable`, her arms' skin left out by their bones), and each move sweeps exactly its share of the air
+  (`breathVolumes`; MEASURED in the room 2026-11-13: 690.9 mL breathed, 690.9 swept; a quiet breath at term moves her
+  skin 6 mm at the most, a running breath 15 mm).
+- Her lungs, heart and the organs under her diaphragm are drawn from her vitals (`ThoraxView.drive`).
+
+## Her organs
+
+- Her lungs, heart and diaphragm (`actor/thoracicOrgans.ts`); under her diaphragm her liver, gallbladder, spleen and
+  pancreas, and her windpipe (`actor/upperOrgans.ts`, laid again with her diaphragm as she breathes; drawn by
+  `thoraxView.ts`); her stomach, bowel, rectum and kidneys (`actor/abdominalOrgans.ts`); her womb, canal and bladder
+  (`actor/pelvicOrgans.ts`), and her ovaries and tubes beside whichever womb she has (`actor/adnexa.ts`, drawn by
+  `pelvicOrgansView.ts`). All under X-RAY. The spleen, pancreas and gallbladder were placed where they touch her other
+  organs least (MEASURED 2026-11-13): her spleen against her left kidney's upper pole and her pancreas at L2, where her
+  transverse colon, laid high, leaves it room.
+
 ## Verification
 
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local
