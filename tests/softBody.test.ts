@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  attachJiggle, bellyTune, bounceShare, breastTune, createJiggleUniforms, jiggleAt, jiggleOf, kickAt, KICKS, jiggleWeights, patchJiggle, restingMass, setPush, setPushExtra, stepMass,
-  JIGGLE_SOURCES, PUSH_ATTRIBUTE, UNITS_PER_METRE, type Mass, type MassTune,
+  attachJiggle, bellyTune, blendLegs, bounceShare, breastTune, createJiggleUniforms, jiggleAt, jiggleOf, kickAt, KICKS, jiggleWeights, legWeight, packLegs, patchJiggle, restingMass, setPush, setPushExtra, shareLegs, stepMass,
+  JIGGLE_SOURCES, LEG_RIGHT_OFFSET, PUSH_ATTRIBUTE, UNITS_PER_METRE, type Mass, type MassTune,
 } from '../src/sarahlab/softBody';
 import { walkSwayAccel, WALK_SWAY_M } from '../src/sarahlab/sarahLabTool';
 
@@ -211,5 +211,72 @@ describe('soft body: the skin', () => {
     expect(shader.uniforms.uKickAt).toBe(uniforms.kickAt); expect(v).toContain(`uniform vec4 uKickAt[${KICKS}]`);
     expect(shader.uniforms.uJiggleBelly).toBe(uniforms.belly);
     expect(material.customProgramCacheKey()).toContain('jiggle');
+  });
+});
+
+describe('soft body: her legs\' weights, packed in the breasts\' channels', () => {
+  /** three of her vertices: her left leg's (thigh 0.3, calf 0.05), her right leg's (thigh 0.4), and one that is no leg's */
+  const hers = () => { const w = new Float32Array(3 * 3); packLegs(w, new Float32Array([0.3, 0.05, -0.4, 0, 0, 0])); return w; };
+  const springs = () => { const u = createJiggleUniforms(); u.thighL.value.set(0.004, -0.002, 0.001); u.thighR.value.set(-0.003, 0.001, 0.006); u.calfL.value.set(0, 0.002, 0); return u; };
+
+  it('read back as they were packed: her left leg\'s above 0, her right leg\'s below, and 0 for what is no leg\'s', () => {
+    const w = hers();
+    expect(legWeight(w[1])).toBeCloseTo(0.3, 6); expect(legWeight(w[2])).toBeCloseTo(0.05, 6);
+    expect(w[4]).toBeCloseTo(-(0.4 + LEG_RIGHT_OFFSET), 5);
+    expect(legWeight(w[4])).toBeCloseTo(-0.4, 6); expect(legWeight(w[5])).toBe(0); // (her right leg's, with no calf's weight)
+    expect(legWeight(w[7])).toBe(0); expect(legWeight(0.6)).toBe(0); // none, and a breast's own
+  });
+
+  it('a point lying on one of her vertices carries that vertex\'s weights exactly, and her springs move the two as one', () => {
+    const w = hers(), out = new Float32Array(2 * 3);
+    blendLegs(out, w, [0, 1, 2, 1, 2, 0], [1, 0, 0, 1, 0, 0], 2);
+    expect(Array.from(out)).toEqual(Array.from(w.slice(0, 6)));
+    const u = springs(), a = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 };
+    for (const v of [0, 1]) {
+      jiggleAt({ weights: w, uniforms: u, push: new Float32Array(9) }, v, a); jiggleAt({ weights: out, uniforms: u, push: new Float32Array(6) }, v, b);
+      expect(Math.hypot(a.x, a.y, a.z)).toBeGreaterThan(1e-4);
+      expect(b).toEqual(a);
+    }
+  });
+
+  it('a point inside one of her triangles moves as her skin is drawn there -- which a blend of the packed numbers does not', () => {
+    // her right leg: three vertices with thigh weights 0.4, 0.2 and none
+    const w = new Float32Array(3 * 3); packLegs(w, new Float32Array([-0.4, 0, -0.2, 0, 0, 0]));
+    const bary = [0.5, 0.3, 0.2], out = new Float32Array(3);
+    blendLegs(out, w, [0, 1, 2], bary, 1);
+    expect(legWeight(out[1])).toBeCloseTo(-(0.5 * 0.4 + 0.3 * 0.2), 6);
+    const u = springs(), at = { x: 0, y: 0, z: 0 }, one = { x: 0, y: 0, z: 0 }, drawn = { x: 0, y: 0, z: 0 };
+    for (let k = 0; k < 3; k++) { jiggleAt({ weights: w, uniforms: u, push: new Float32Array(9) }, k, one); drawn.x += bary[k] * one.x; drawn.y += bary[k] * one.y; drawn.z += bary[k] * one.z; }
+    jiggleAt({ weights: out, uniforms: u, push: new Float32Array(3) }, 0, at);
+    expect(at.x).toBeCloseTo(drawn.x, 7); expect(at.y).toBeCloseTo(drawn.y, 7); expect(at.z).toBeCloseTo(drawn.z, 7);
+    // (the packed numbers blended: 8.26 of her LEFT thigh's spring)
+    expect(legWeight(bary[0] * w[1] + bary[1] * w[4] + bary[2] * w[7])).toBeGreaterThan(8);
+  });
+
+  it('a point carries one leg\'s: across her middle, the leg with more of it', () => {
+    const w = hers(), out = new Float32Array(2 * 3);
+    blendLegs(out, w, [0, 1, 2, 0, 1, 2], [0.5, 0.3, 0.2, 0.2, 0.7, 0.1], 2);
+    expect(legWeight(out[1])).toBeCloseTo(0.5 * 0.3, 6); expect(legWeight(out[2])).toBeCloseTo(0.5 * 0.05, 6); // her left
+    expect(legWeight(out[4])).toBeCloseTo(-0.7 * 0.4, 6); expect(legWeight(out[5])).toBe(0); // her right
+  });
+
+  it('a point with no leg\'s weight keeps what it had', () => {
+    const w = hers(), out = new Float32Array(3); out[1] = 0.7; // (a breast's own weight)
+    blendLegs(out, w, [2, 2, 2], [1, 0, 0], 1);
+    expect(out[1]).toBeCloseTo(0.7, 6); expect(out[2]).toBe(0);
+  });
+
+  it('her legs\' weights taken a share of, a vertex at a time, and packed again: a copy, her breasts\' own left as they are', () => {
+    const w = hers(); w[7] = 0.7; // (her third vertex: a breast's own weight)
+    const eased = shareLegs(w, [0.25, 0.5, 0.25]);
+    expect(legWeight(eased[1])).toBeCloseTo(0.25 * 0.3, 6); expect(legWeight(eased[2])).toBeCloseTo(0.25 * 0.05, 6);
+    expect(legWeight(eased[4])).toBeCloseTo(-0.5 * 0.4, 6); expect(legWeight(eased[5])).toBe(0);
+    expect(eased[7]).toBeCloseTo(0.7, 6);
+    // all of them: hers to the number; none of them: no leg's weight left
+    expect(Array.from(shareLegs(w, [1, 1, 1]))).toEqual(Array.from(w));
+    const none = shareLegs(w, [0, 0, 0]);
+    for (const k of [1, 2, 4, 5]) expect(none[k]).toBe(0);
+    expect(none[7]).toBeCloseTo(0.7, 6);
+    expect(legWeight(w[1])).toBeCloseTo(0.3, 6); expect(legWeight(w[4])).toBeCloseTo(-0.4, 6);
   });
 });

@@ -286,6 +286,47 @@ export function packLegs(weights: Float32Array, legs: Float32Array): void {
     weights[i * 3 + 1] = -(Math.abs(t) + off); weights[i * 3 + 2] = -(Math.abs(c) + off);
   }
 }
+/** A packed leg weight read back: the weight, below 0 her right leg's -- and 0 for a number that is no leg's (no weight, or
+ * a breast's own). */
+export function legWeight(packed: number): number {
+  return packed >= 0 ? 0 : -packed >= LEG_RIGHT_OFFSET ? packed + LEG_RIGHT_OFFSET : -packed;
+}
+/**
+ * HER LEGS' WEIGHTS AT A POINT LYING IN ONE OF HER TRIANGLES (her opening's rebuilt area, vulvaMesh.ts): `src` the
+ * triangle's three vertices and `bary` how much of each, three a point; `packed` her jiggle weights, three a vertex.
+ * Each leg's weights are read back, blended as her skin itself is drawn at that place, and packed again into `out`'s
+ * breast channels (three a point) -- a blend of the packed numbers themselves is no weight, her right leg's standing 10
+ * further down. A point carries one leg's: where a triangle has a vertex on each (her middle), the leg with more of it.
+ * A point with no leg's weight keeps what `out` has.
+ */
+export function blendLegs(out: Float32Array, packed: ArrayLike<number>, src: ArrayLike<number>, bary: ArrayLike<number>, n: number): void {
+  for (let p = 0; p < n; p++) {
+    let tL = 0, tR = 0, cL = 0, cR = 0;
+    for (let k = 0; k < 3; k++) {
+      const b = bary[p * 3 + k], s = src[p * 3 + k] * 3, t = legWeight(packed[s + 1]), c = legWeight(packed[s + 2]);
+      if (t > 0) tL += b * t; else tR -= b * t;
+      if (c > 0) cL += b * c; else cR -= b * c;
+    }
+    const right = tR + cR > tL + cL, t = right ? tR : tL, c = right ? cR : cL;
+    if (!(t > 0 || c > 0)) continue;
+    const off = right ? LEG_RIGHT_OFFSET : 0;
+    out[p * 3 + 1] = -(t + off); out[p * 3 + 2] = -(c + off);
+  }
+}
+/**
+ * Her packed weights with each vertex's legs' taken `share` of (one a vertex: 1 all of them .. 0 none), packed again --
+ * a copy; her belly's and her breasts' own are left as they are.
+ */
+export function shareLegs(packed: ArrayLike<number>, share: ArrayLike<number>): Float32Array {
+  const out = Float32Array.from(packed);
+  for (let v = 0; v < share.length; v++) {
+    const s = share[v], t = legWeight(out[v * 3 + 1]), c = legWeight(out[v * 3 + 2]);
+    if (s >= 1 || (!t && !c)) continue;
+    const off = t < 0 || c < 0 ? LEG_RIGHT_OFFSET : 0, ts = Math.abs(t) * Math.max(0, s), cs = Math.abs(c) * Math.max(0, s);
+    if (ts > 0 || cs > 0) { out[v * 3 + 1] = -(ts + off); out[v * 3 + 2] = -(cs + off); } else { out[v * 3 + 1] = 0; out[v * 3 + 2] = 0; }
+  }
+  return out;
+}
 /** Each leg's bones: thigh (hip joint), shin (knee joint), foot (ankle joint). */
 export interface LegBones { readonly left: readonly [THREE.Bone, THREE.Bone, THREE.Bone]; readonly right: readonly [THREE.Bone, THREE.Bone, THREE.Bone] }
 /** GAME TUNING: how much of each leg's soft tissue follows its mass -- along the thigh (0 hip .. 1 knee) and calf (0 knee .. 1

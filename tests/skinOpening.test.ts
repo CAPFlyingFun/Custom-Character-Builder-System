@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { VULVA_OPEN, skinDome, skinOpenAcross, skinOpenShape } from '../src/sarahlab/vulvaMesh';
+import { edgeShare } from '../src/sarahlab/vulvaPatch';
 
 // HER SKIN-MADE OPENING OPENED AS HER LIPS WERE (Joshua, 2026-11-11): his scale, and his dome.
 describe('her skin-made opening, opened on Joshua\'s scale', () => {
@@ -72,5 +73,33 @@ describe('her skin-made opening, opened on Joshua\'s scale', () => {
     expect(VULVA_OPEN.legUnder).toBe(false);
     // (her legs\' rule still holds it off her legs beyond them)
     expect(VULVA_OPEN.legClear).toBeGreaterThan(0);
+  });
+  it('its skin rides her legs\' springs where it meets her own: all of them at its edge, less the further in, none past the band', () => {
+    // (Joshua, 2026-11-12: "When walking, there is taring on both thighs" -- its edge stood still beside her thigh's skin)
+    // a flat sheet of her skin, 11 x 11 points 5 mm apart: the area its middle 8 x 8 squares, the squares round them hers
+    // to draw; a seam of her texture up its middle (two vertices a point there, one for each side); and a hole in her skin
+    // in the middle of the area (one square no triangle of hers fills)
+    const N = 11, step = 0.005, rest: number[] = [], key: number[] = [], area: number[] = [], keep: number[] = [];
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { rest.push(x * step, y * step, 0); key.push(y * N + x); }
+    const at = (x: number, y: number) => y * N + x, seam = (y: number) => N * N + y;
+    for (let y = 0; y < N; y++) { rest.push(5 * step, y * step, 0); key.push(at(5, y)); }
+    const right = (x: number, y: number) => (x === 5 ? seam(y) : at(x, y));
+    for (let y = 0; y + 1 < N; y++) for (let x = 0; x + 1 < N; x++) {
+      if (x === 4 && y === 5) continue;
+      const v = x >= 5 ? right : at, inside = x >= 1 && x < 9 && y >= 1 && y < 9;
+      (inside ? area : keep).push(v(x, y), v(x + 1, y), v(x, y + 1), v(x + 1, y), v(x + 1, y + 1), v(x, y + 1));
+    }
+    const share = edgeShare(rest, key, area, keep, 0.012);
+    // its edge, where her own triangles begin; and her skin beyond it
+    for (let k = 1; k <= 9; k++) for (const v of [at(k, 1), at(k, 9), at(1, k), at(9, k)]) expect(share[v]).toBe(1);
+    expect(share[at(0, 0)]).toBe(1); expect(share[at(10, 4)]).toBe(1);
+    // 5 and 10 mm in from its edge: less and less; 15 and 20 mm in: none
+    expect(share[at(2, 5)]).toBeLessThan(1); expect(share[at(3, 5)]).toBeLessThan(share[at(2, 5)]); expect(share[at(3, 5)]).toBeGreaterThan(0);
+    expect(share[at(4, 5)]).toBe(0); expect(share[at(5, 5)]).toBe(0);
+    // her seam is no edge of it, and neither is the hole: by how far in the point is
+    expect(share[seam(5)]).toBe(0); expect(share[seam(2)]).toBe(share[at(5, 2)]); expect(share[at(5, 2)]).toBeCloseTo(share[at(2, 5)], 6);
+    expect(share[seam(1)]).toBe(1); expect(share[at(4, 6)]).toBe(0);
+    // and the band itself: well short of her lips, on her opening's own skin (6.6 cm out beside her split at the least)
+    expect(VULVA_OPEN.legSpringBand).toBeGreaterThan(0.005); expect(VULVA_OPEN.legSpringBand).toBeLessThan(0.066 - VULVA_OPEN.width);
   });
 });

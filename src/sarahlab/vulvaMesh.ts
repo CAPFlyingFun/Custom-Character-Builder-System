@@ -5,8 +5,8 @@
  * her build) is read back from her body each time it changes, so at rest the area is exactly her skin, only finer.
  */
 import * as THREE from 'three';
-import { bakeVulva, type VulvaBake } from './vulvaPatch';
-import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, SOFT_REF_ATTRIBUTE, UNITS_PER_METRE, patchJiggle, patchWombSoft, setPushExtra } from './softBody';
+import { bakeVulva, edgeShare, type VulvaBake } from './vulvaPatch';
+import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, SOFT_REF_ATTRIBUTE, UNITS_PER_METRE, blendLegs, patchJiggle, patchWombSoft, setPushExtra, shareLegs } from './softBody';
 import { birthAreaCentre } from './birthArea';
 import { sacRadius, type WombShape } from './baby';
 import { footAt, layBeyond, laySeatSkin, roundMove, roundOf, riseRing, sleeveTube, tubeOut, tubePlace, type SkinBeyond } from '../actor/skinSeat';
@@ -57,6 +57,16 @@ export const VULVA_OPEN = Object.freeze({
    * opening's now). Measured: her opening's own skin then reaches 6.6 to 7.7 cm out beside her split, where it reached 2.2.
    */
   legMask: 0, legUnder: false,
+  /**
+   * GAME TUNING: how far in from the area's edge her legs' springs reach into it (metres over her skin, along her own
+   * triangles' edges; softBody.ts, vulvaPatch.ts `edgeShare`): all of them AT the edge, where each of its points is one
+   * of her own vertices and must move as it does (Joshua, 2026-11-12: "When walking, there is taring on both thighs"),
+   * eased to none this far in -- well short of her lips (her opening's own skin reaches 6.6 to 7.7 cm out beside her
+   * split), so her lips and the skin her doors stand on carry none, as they did. MEASURED 2026-11-12: none in the 23
+   * rings nearest her split of the area's 33, and at most 0.06 of a spring's move as far out as her opening's edge may
+   * walk (`room`).
+   */
+  legSpringBand: 0.02,
   /** BIOLOGICAL SHAPE: the canal's length (metres) and how far its deep end leans forward of straight up her body
    * (degrees) -- the curve of Carus */
   canal: 0.08, canalLean: 15,
@@ -222,6 +232,9 @@ export interface VulvaPatch {
   /** the lips' soft sheet (VULVA_OPEN.sheet) */
   readonly sheet: THREE.SkinnedMesh;
   readonly bake: VulvaBake;
+  /** (a probe's) her springs' weights as her own skin drawn behind the area takes them: hers, three a vertex, her legs'
+   * eased to none in from the area's edge as the area's own are (null: she has no springs) */
+  readonly springs: Float32Array | null;
   /** read her shape (and her baby's push) back onto the area if either changed; true when it did */
   sync(): boolean;
   /** her own skin back (false) or the rebuilt area (true): for comparing the two */
@@ -455,8 +468,26 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   readExtras();
   // her springs (softBody.ts): the belly's and breasts' weights, and her baby's push, read back with her shape
   const jig = g.getAttribute(JIGGLE_ATTRIBUTE) as THREE.BufferAttribute | undefined;
-  // (her legs' weights ride the breasts' channels coded negative: a blend of them is no weight, so the area keeps none)
-  if (jig) { const j = new Float32Array(P * 3); sampleInto(j, jig.array, 3, bake.src, bake.bary, P); for (let q = 0; q < P; q++) { if (j[q * 3 + 1] < 0) j[q * 3 + 1] = 0; if (j[q * 3 + 2] < 0) j[q * 3 + 2] = 0; } geom.setAttribute(JIGGLE_ATTRIBUTE, new THREE.BufferAttribute(j, 3)); }
+  // HER LEGS' SPRINGS, WHERE THE AREA MEETS HER SKIN (Joshua, 2026-11-12: "When walking, there is taring on both
+  // thighs"). The area carried none of them, and its edge stood still while her own skin beside it rode her thigh's
+  // spring -- skin a thigh's spring moves most of the way, since her opening's skin reaches her groin creases (`legMask`,
+  // 2026-11-11). MEASURED 2026-11-12, walking (the room's `springSeams`): her skin up to 8.5 mm off the area's edge, her
+  // thighs' springs at 9.5 and 10.0 mm; her far side seen through the crack under anything worn (her own skin is not
+  // drawn behind the area then), and bare, her own skin behind the area standing out through it in pale chips. So her
+  // skin under the area keeps all of her legs' springs at the area's edge and less the further in, none from
+  // `legSpringBand` on (`edgeShare`), and BOTH the area and her own skin behind it take her springs through that: every
+  // point of the area's edge lies on one of her own vertices (all 189) and moves as it does, and the area and her skin
+  // behind it move as one. MEASURED with it, at the same moments of her walk: 0.000 mm apart at the edge, and the area
+  // within 0.011 mm of her skin behind it at every one of its 6,191 points.
+  // (her legs' weights ride the breasts' channels packed negative, and a blend of the packed numbers is no weight: they
+  // are taken off, then read back, blended and packed again -- softBody.ts `blendLegs`)
+  const springs = jig ? shareLegs(jig.array, edgeShare(rest, key, bake.area, bake.keep, VULVA_OPEN.legSpringBand)) : null;
+  if (jig && springs) {
+    const j = new Float32Array(P * 3); sampleInto(j, jig.array, 3, bake.src, bake.bary, P);
+    for (let q = 0; q < P; q++) { if (j[q * 3 + 1] < 0) j[q * 3 + 1] = 0; if (j[q * 3 + 2] < 0) j[q * 3 + 2] = 0; }
+    blendLegs(j, springs, bake.src, bake.bary, P);
+    geom.setAttribute(JIGGLE_ATTRIBUTE, new THREE.BufferAttribute(j, 3));
+  }
   const pushOf = () => g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined;
   const push = new Float32Array(P * 3);
   if (pushOf()) geom.setAttribute(PUSH_ATTRIBUTE, new THREE.BufferAttribute(push, 3));
@@ -565,8 +596,10 @@ void main() {
   body.userData.coverMask = undefined;
   // (the backing: her geometry's own attributes shared, its own list of triangles, chosen as the opening is laid)
   const backGeom = new THREE.BufferGeometry();
+  // (all but her springs' weights, which are its own: hers at the area's edge and eased in from it, as the area's are)
+  if (springs) backGeom.setAttribute(JIGGLE_ATTRIBUTE, new THREE.BufferAttribute(springs, 3));
   const shareBody = () => {
-    for (const name of Object.keys(g.attributes)) if (backGeom.getAttribute(name) !== g.getAttribute(name)) backGeom.setAttribute(name, g.getAttribute(name));
+    for (const name of Object.keys(g.attributes)) if (!(springs && name === JIGGLE_ATTRIBUTE) && backGeom.getAttribute(name) !== g.getAttribute(name)) backGeom.setAttribute(name, g.getAttribute(name));
     backGeom.morphAttributes = g.morphAttributes; backGeom.morphTargetsRelative = g.morphTargetsRelative;
   };
   shareBody();
@@ -2918,7 +2951,7 @@ void main() {
   };
   const api: VulvaPatch = {
     pathSoft: true,
-    mesh, tube, sheet, bake, sync, solo: false, backing: true, trim: true, round: true,
+    mesh, tube, sheet, bake, springs, sync, solo: false, backing: true, trim: true, round: true,
     relayOut() { openApplied = -1; sync(); },
     settle() { if (seatWaiting || openApplied !== open) { openApplied = -1; return sync(); } return false; },
     resyncWeights() {

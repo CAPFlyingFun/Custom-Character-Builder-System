@@ -120,7 +120,7 @@ import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, 
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
 import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { PUBIC_PRESS, pubicPressWant, setPush, jiggleOf as jiggleOfMesh, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type SoftBellyWant } from './softBody';
+import { JIGGLE_ATTRIBUTE, PUBIC_PRESS, PUSH_ATTRIBUTE, pubicPressWant, setPush, jiggleAt, jiggleOf as jiggleOfMesh, legWeight, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type Jiggle, type SoftBellyWant } from './softBody';
 import { createVulvaPatch, VULVA_OPEN, VULVA_TRY, type VulvaPatch } from './vulvaMesh';
 import { BIRTH_THIGHS_FIELD, birthThighsField } from './birthThighs';
 import { BIRTH_SEAT_FIELD, birthSeatField } from './birthSeat';
@@ -8532,6 +8532,74 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         birthSeat: (on: boolean, squat?: number) => { birthSeatOn = on; if (typeof squat === 'number') birthSeatSquat = squat; applyLook(); return on; },
         birthTweak: (t: Partial<BirthSpec> | null) => { birthTweak = t; applyLook(); return true; },
         birthRoom: (on: boolean) => { birthRoomOn = on; birthRoomFor = ''; applyLook(); return { watched: birthRoom?.watched ?? null, largestMm: birthRoom ? +(birthRoom.largest * 1000).toFixed(1) : null, partsMm: birthRoom ? Object.fromEntries(Object.entries(birthRoom.parts).map(([k2, v2]) => [k2, +(v2 * 1000).toFixed(1)])) : null }; },
+        // WHERE HER SPRINGS PULL APART WHAT IS ONE SKIN (Joshua, 2026-11-12: "When walking, there is taring on both
+        // thighs"), as they stand now. `area`: her opening's rebuilt area against her skin round it -- its outline points
+        // lie on her own vertices (`onHers`; `between` the ones that do not): how far apart her springs put the two there
+        // (mm) and at how many by more than a tenth, and how far apart her shape and her bones alone put them as she is
+        // posed (`posedMm`); how far her legs' springs alone move her skin there (what an area
+        // carrying none of their weights stands off by); the most of a leg's weight the area carries at each ring (0 her
+        // split .. her outline; 1 all of the spring's move); and how far her springs put the area's points from her own
+        // skin drawn behind it, at each point's own place in her triangle (`behindMm`, and at how many by more than a
+        // tenth). `hers`: her own seams -- the points that are one point in her model, several copies for her texture --
+        // how far apart her springs put a point's copies (mm), at how many, where the worst is (rest frame, metres) and
+        // the leg weights its copies carry. `springsMm`: the springs.
+        springSeams: () => {
+          const b = bodyOf(), j = b ? jiggleOfMesh(b.mesh) : null;
+          if (!b || !j) return null;
+          const mm = 1000 / GEOMETRY_PER_METRE, u = j.uniforms, A = new THREE.Vector3(), B = new THREE.Vector3();
+          const legsAt = (wt: ArrayLike<number>, i: number, o: THREE.Vector3) => { const t = legWeight(wt[i * 3 + 1]), c = legWeight(wt[i * 3 + 2]); return o.set(0, 0, 0).addScaledVector((t < 0 ? u.thighR : u.thighL).value, Math.abs(t)).addScaledVector((c < 0 ? u.calfR : u.calfL).value, Math.abs(c)); };
+          const len = (k: 'thighL' | 'thighR' | 'calfL' | 'calfR') => +(u[k].value.length() * 1000).toFixed(2);
+          let area: Record<string, unknown> | null = null;
+          const vg = vulva?.mesh.geometry, w = vg?.getAttribute(JIGGLE_ATTRIBUTE)?.array as Float32Array | undefined;
+          if (vulva && vg && w) {
+            const bk = vulva.bake, P = bk.count, mine: Jiggle = { weights: w, uniforms: u, push: (vg.getAttribute(PUSH_ATTRIBUTE)?.array as Float32Array | undefined) ?? new Float32Array(P * 3) };
+            let R = 0; for (let p = 0; p < P; p++) R = Math.max(R, bk.ring[p]);
+            const rings = new Array<number>(R + 1).fill(0);
+            let onHers = 0, between = 0, apart = 0, over = 0, legs = 0, posed = 0, posedOver = 0;
+            model?.updateMatrixWorld(true); b.mesh.skeleton.update();
+            for (let p = 0; p < P; p++) {
+              const r = bk.ring[p];
+              rings[r] = Math.max(rings[r], Math.abs(legWeight(w[p * 3 + 1])), Math.abs(legWeight(w[p * 3 + 2])));
+              if (r !== R) continue;
+              let s2 = -1; for (let k = 0; k < 3; k++) if (bk.bary[p * 3 + k] > 0.9999) s2 = bk.src[p * 3 + k];
+              if (s2 < 0) { between++; continue; }
+              onHers++;
+              jiggleAt(j, s2, A); jiggleAt(mine, p, B);
+              const d = A.distanceTo(B) * mm; apart = Math.max(apart, d); if (d > 0.1) over++;
+              legs = Math.max(legs, legsAt(j.weights, s2, A).length() * mm);
+              // (and as her shape and her bones alone put the two, before her springs)
+              const dp = b.mesh.getVertexPosition(s2, A).distanceTo(vulva.mesh.getVertexPosition(p, B)) * mm; posed = Math.max(posed, dp); if (dp > 0.1) posedOver++;
+            }
+            let behind = 0, behindOver = 0;
+            if (vulva.springs) {
+              const back: Jiggle = { weights: vulva.springs, uniforms: u, push: j.push }, C = new THREE.Vector3();
+              for (let p = 0; p < P; p++) {
+                B.set(0, 0, 0);
+                for (let k = 0; k < 3; k++) { jiggleAt(back, bk.src[p * 3 + k], C); B.addScaledVector(C, bk.bary[p * 3 + k]); }
+                jiggleAt(mine, p, A);
+                const d = A.distanceTo(B) * mm; behind = Math.max(behind, d); if (d > 0.1) behindOver++;
+              }
+            }
+            area = { outline: onHers + between, onHers, between, apartMm: +apart.toFixed(3), over01mm: over, posedMm: +posed.toFixed(3), posedOver01mm: posedOver, legsAloneMm: +legs.toFixed(3), behindMm: +behind.toFixed(3), behindOver01mm: behindOver, points: P, rings: rings.map((x) => +(x / GEOMETRY_PER_METRE).toFixed(3)) };
+          }
+          let hers: Record<string, unknown> | null = null;
+          const base = shaped.find((x) => x.mesh === b.mesh)?.fields.basePos, rest = babyFrame?.meshToRest;
+          if (base) {
+            const n = Math.floor(base.length / 3), first = new Map<string, number>();
+            let copies = 0, apart = 0, over = 0, at = -1, other = -1;
+            for (let i = 0; i < n; i++) {
+              const k = `${Math.round(base[i * 3] * 1e6)},${Math.round(base[i * 3 + 1] * 1e6)},${Math.round(base[i * 3 + 2] * 1e6)}`, f = first.get(k);
+              if (f === undefined) { first.set(k, i); continue; }
+              copies++;
+              jiggleAt(j, f, A); jiggleAt(j, i, B);
+              const d = A.distanceTo(B) * mm; if (d > 0.1) over++;
+              if (d > apart) { apart = d; at = f; other = i; }
+            }
+            const wOf = (i: number) => [legWeight(j.weights[i * 3 + 1]), legWeight(j.weights[i * 3 + 2])].map((x) => +(x / GEOMETRY_PER_METRE).toFixed(3));
+            hers = { copies, apartMm: +apart.toFixed(3), over01mm: over, at: at >= 0 && rest ? A.fromArray(base, at * 3).applyMatrix4(rest).toArray().map((x) => +x.toFixed(3)) : null, weights: at >= 0 ? [wOf(at), wOf(other)] : null };
+          }
+          return { springsMm: { thighL: len('thighL'), thighR: len('thighR'), calfL: len('calfL'), calfR: len('calfR') }, area, hers };
+        },
         // which of her points have come to her middle as posed (pelvis frame |x| < 6 mm) that stood well off it, and where they stood
         // her seams as drawn: points that are one point in her model (several copies for the texture) and how far apart
         // her skinning and shape fields have pulled the copies (world units), the worst and how many past 0.5 / 2 mm

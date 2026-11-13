@@ -374,3 +374,39 @@ export function bakeVulva(rest: ArrayLike<number>, key: ArrayLike<number>, indic
     sampleFlat(u: number, s: number, out: Float64Array) { const at = locate(u, s, null, true); out[0] = tris[at.t]; out[1] = tris[at.t + 1]; out[2] = tris[at.t + 2]; out[3] = at.w[0]; out[4] = at.w[1]; out[5] = at.w[2]; },
   };
 }
+
+/**
+ * HOW MUCH OF HER LEGS' SPRINGS HER SKIN UNDER THE AREA KEEPS (softBody.ts): one number a vertex of hers, 1 for every
+ * vertex that is not the area's alone. `area`: the area's own triangles of her body (the ones it is drawn in place of)
+ * and `keep` the rest of hers, the ones she draws (`VulvaBake`); `key` and `rest` as `bakeVulva` takes them. A point of
+ * the area's that one of her drawn triangles has too -- its EDGE -- is her own skin's, and keeps all of them; in from
+ * the edge a point keeps less the further over her skin it lies from it (metres, along her triangles' edges), eased,
+ * and none from `band` on. The rebuilt area's points and her own skin drawn behind it both take her springs through
+ * these numbers, so the three move as one skin.
+ */
+export function edgeShare(rest: ArrayLike<number>, key: ArrayLike<number>, area: ArrayLike<number>, keep: ArrayLike<number>, band: number): Float32Array {
+  const out = new Float32Array(Math.floor(rest.length / 3)).fill(1);
+  // the area's points (a seam's vertices one point) and their links
+  const nbr = new Map<number, Map<number, number>>();
+  for (let t = 0; t + 2 < area.length; t += 3) for (let c = 0; c < 3; c++) {
+    const a = area[t + c], b = area[t + ((c + 1) % 3)], ka = key[a], kb = key[b];
+    if (ka === kb) continue;
+    const l = Math.hypot(rest[a * 3] - rest[b * 3], rest[a * 3 + 1] - rest[b * 3 + 1], rest[a * 3 + 2] - rest[b * 3 + 2]);
+    (nbr.get(ka) ?? nbr.set(ka, new Map()).get(ka)!).set(kb, l); (nbr.get(kb) ?? nbr.set(kb, new Map()).get(kb)!).set(ka, l);
+  }
+  // from its edge in over her skin, no further than the band (Dijkstra, a small binary heap)
+  const dist = new Map<number, number>(), heap: [number, number][] = [];
+  const push = (e: [number, number]) => { heap.push(e); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop()!; if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  for (let t = 0; t < keep.length; t++) { const k = key[keep[t]]; if (nbr.has(k) && !dist.has(k)) { dist.set(k, 0); push([0, k]); } }
+  while (heap.length) {
+    const [d, k] = pop();
+    if (d > (dist.get(k) ?? Infinity) || d >= band) continue;
+    for (const [o, l] of nbr.get(k) ?? []) if (d + l < (dist.get(o) ?? Infinity)) { dist.set(o, d + l); push([d + l, o]); }
+  }
+  for (let t = 0; t < area.length; t++) {
+    const v = area[t], d = dist.get(key[v]) ?? Infinity, x = d <= 0 ? 0 : band > 0 ? Math.min(1, d / band) : 1;
+    out[v] = 1 - x * x * (3 - 2 * x);
+  }
+  return out;
+}

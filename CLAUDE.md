@@ -85,6 +85,23 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - A drawing sheet's marks are carried back to her skin by its corner squares and `sheets.json` (the sheets' script),
   each to its pixel's own place on her legs-apart skin, as the room looks that pixel up.
 
+## Her opening's area and her skin round it
+
+- Her opening's rebuilt area (`vulvaMesh.ts`) is drawn in place of her own skin there, and every point of its edge is
+  one of her own vertices: WHATEVER MOVES HER SKIN MOVES THAT EDGE THE SAME. Her springs move her skin in the shader
+  (`softBody.ts`: her belly, her breasts, each thigh and calf), so her skin under the area keeps all of her legs'
+  springs at the area's edge and less the further in, none `VULVA_OPEN.legSpringBand` in (`vulvaPatch.ts`
+  `edgeShare`) -- her lips and the skin her doors stand on carry none -- and BOTH the area and her own skin drawn
+  behind it take her springs through those numbers. Her legs' weights are packed into the breasts' channels and
+  are read back before they are blended (`blendLegs`, `shareLegs`). Without them the edge stood still beside her
+  thigh's skin and tore as she walked (Joshua, 2026-11-12: "When walking, there is taring on both thighs"; MEASURED
+  8.5 mm apart): her far side seen through it under anything worn (her own skin is not drawn behind the area then),
+  and bare, her own skin behind the area standing out through it in pale chips.
+- After anything changes where the area's edge lies or what her springs weigh, measure her walking: the room's
+  `springSeams` probe (MEASURED 2026-11-12, her thighs' springs at 9.5 and 10.0 mm: the area's edge 0.000 mm from her
+  skin at all 189 of its points, the area within 0.011 mm of her skin behind it at all 6,191, and the copies along
+  her own texture seams 0.008 mm apart).
+
 ## Verification
 
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local
