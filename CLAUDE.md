@@ -53,7 +53,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   opening's doors) takes that colour. Looks are painted over it (PAINT SKIN), never baked light.
 - **A garment's cut is his drawing, and is drawn with her legs apart** (Joshua, 2026-11-12: "I draw how I want it
   to look like and your shape should be close"; "I think we need to design the bottom with the legs apart and when
-  they close, should hopefully look right. We are doing it backwards"). He draws on her own DRAWING SHEETS
+  they close, should hopefully look right. We are doing it backwards"). A strap is one smooth curve in her groove
+  ("the front strap isn't a smooth curve. It should naturally curve in her groove from her pelvis to her upper
+  thigh/hips"): no corner where it leaves a panel. He draws on her own DRAWING SHEETS
   (`scripts/probe-body-sheets.mjs`: "so that way I can draw directly on her model so the proportions match exactly").
   His reference pictures and marked-up sheets never go in the repo.
 - **Her bikini's top and bottom are one set, matched by default** (Joshua, 2026-11-12: "match up the bikini top and

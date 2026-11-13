@@ -104,16 +104,32 @@ export const BAND_M = 0.005;
  * 0.8965 at 0.092, 0.9225 at 0.122, 0.9685 at 0.1575); the panel's top corners are at x 0.054, y 0.862; and between
  * them his line is on the UNDERSIDE of her bump, in front of the crease where it rests on her mons -- 1 cm in front
  * reclined (y 0.849, z 0.042 at her middle), 2 cm in front standing with her legs apart (y 0.853, z 0.052), her bump
- * lying differently on her mons in each. `TOP_FOLD` (guide points: places on her skin) is his fold line, and between
- * the corners the line midway between his reclined one and his standing one (5 mm of her skin from each: no line on
- * her skin is at the edge of her bump in both poses).
+ * lying differently on her mons in each. The first build laid that line through guide points on her REST skin (his
+ * fold line, and between the corners the line midway between his reclined one and his standing one -- 5 mm of her
+ * skin from each: no line on her skin is at the edge of her bump in both poses) and carried them to her legs-apart
+ * skin.
+ *
+ * ITS FRONT IS ONE SMOOTH CURVE IN HER GROOVE (Joshua, 2026-11-12, of that first build: "the front strap isn't a
+ * smooth curve. It should naturally curve in her groove from her pelvis to her upper thigh/hips"). MEASURED on the
+ * first build's waistband, on her legs-apart skin (`frontTurn`, below: the turning of the line's own 2 mm steps over
+ * 1.2 cm of it): beside each of the panel's corners, 6.6 cm from her middle, the line turned 62 degrees a centimetre
+ * on her left and 68 on her right (12 at the most further out along the strap), back and forth
+ * across the hollow where her bump, her mons and her thigh meet -- a shelf 2 cm long between the panel and the strap,
+ * in every view. `TOP_FRONT` is that same line (guide points on her LEGS-APART skin, as `LEG_FUNNEL` is: how far from
+ * `APART_MID_X`, the height, how far forward; her two sides' averaged, which were 4.0 mm apart at the median and 6.4 at
+ * the most), smoothed along its length over `TOP_ROUND_M` between `TOP_ROUND_FROM_M` and `TOP_ROUND_TO_M` from her
+ * middle (GAME TUNING) and read off every 1.5 to 2 cm. MEASURED on what that gives: it turns 19 degrees a centimetre
+ * at the most on her left and 27 on her right, and lies within 4.7 mm of the first build's line (where the corner
+ * was; 1.1 mm at the median). `frontTurn` is MEASURED again each time this is generated (`log`).
  * Then (GAME TUNING) round her hip at 0.986 (guide points: no view sees her side well); arched over each cheek to
  * 0.996 and down into the notch at 0.955 at her middle (back-view picks). The notch is 2.3 cm higher than his
  * mannequin drawing's own proportions put it (0.932): her cleft runs 4 cm higher than his mannequin's, whose notch
  * sits at the top of its cleft; here it is still a notch, 4 cm under the arches, and all but the shallow top of her
  * cleft is covered.
  */
-export const TOP_FOLD = [[0.0, 0.851, 0.047], [0.017, 0.851, 0.045], [0.025, 0.852, 0.042], [0.034, 0.8535, 0.038], [0.044, 0.858, 0.038], [0.054, 0.862, 0.0345], [0.0655, 0.8745, 0.039], [0.092, 0.8965, 0.037], [0.122, 0.9225, 0.0235], [0.1575, 0.9685, -0.0095]];
+export const TOP_FRONT = [[0, 0.8457, 0.0612], [0.0159, 0.8467, 0.0603], [0.03, 0.8494, 0.0564], [0.0433, 0.8544, 0.0536], [0.056, 0.8602, 0.0525], [0.0671, 0.868, 0.0543], [0.0777, 0.8775, 0.057], [0.0888, 0.8872, 0.0586], [0.1034, 0.9005, 0.0554], [0.1176, 0.9124, 0.0481], [0.1302, 0.9241, 0.038], [0.1407, 0.9362, 0.0261], [0.1493, 0.9482, 0.0127], [0.156, 0.9596, -0.0023], [0.1613, 0.9687, -0.0193]];
+/** GAME TUNING (metres along the waistband from her middle): the smoothing `TOP_FRONT` was read off with -- a Gaussian this wide, between these two places (eased in and out over 1.5 cm). */
+export const TOP_ROUND_M = 0.012, TOP_ROUND_FROM_M = 0.025, TOP_ROUND_TO_M = 0.105;
 export const TOP_SIDE = [[0.166, 0.979, -0.045], [0.168, 0.986, -0.082], [0.164, 0.991, -0.115], [0.152, 0.994, -0.15]];
 export const TOP_BACK = [[0.135, 0.995], [0.09, 0.996], [0.05, 0.990], [0.026, 0.975], [0.008, 0.960], [0.0, 0.955]];
 /**
@@ -122,10 +138,12 @@ export const TOP_BACK = [[0.135, 0.995], [0.09, 0.996], [0.05, 0.990], [0.026, 0
  */
 export const SIDE_BAND_M = 0.015;
 /**
- * A LEG OPENING: the band's lower edge, from behind her hip round it, down the fold and on under the panel's top
- * corner -- the waistband's own curve between two of its control points (`BAND_FROM`, the panel's corner, to `BAND_TO`,
- * behind her hip), each sample moved `SIDE_BAND_M` along her skin away from it (`bandLower`: worked out on each of her
- * sides from that side's own curve, her two hips not being mirror images, and MEASURED again when this is generated);
+ * A LEG OPENING: the band's lower edge, from behind her hip round it and down her groove toward the panel -- the
+ * waistband's own curve between two of its control points (`BAND_FROM`, 7.5 cm from her middle: 1.5 cm out from where
+ * the panel's corner was, so the strap's lower edge sweeps into the panel's side in one curve and the two never meet
+ * in a corner; to `BAND_TO`, behind her hip), each sample moved `SIDE_BAND_M` along her skin away from it (`bandLower`:
+ * worked out on each of her sides from that side's own curve, her two hips not being mirror images, its guide points
+ * counted from its front end on both, and MEASURED again when this is generated);
  * then the front panel's side and the strap, AS JOSHUA DREW THEM WITH HER LEGS APART (2026-11-12: "I think we need to
  * design the bottom with the legs apart and when they close, should hopefully look right. We are doing it backwards"),
  * on her own drawing sheets -- reclined and legs apart at 100%, from underneath at 45 degrees.
@@ -147,8 +165,8 @@ export const SIDE_BAND_M = 0.015;
  * and up across her cheek to behind her hip in one line, a little bowed, as his mannequin drawing's wing is
  * (`LEG_BACK`, back-view picks of her rest skin, GAME TUNING).
  */
-/** The control points of the waistband's left half (`TOP_FOLD` then `TOP_SIDE`) the side band runs between, and how far apart its lower edge's guide points are taken (metres). GAME TUNING. */
-export const BAND_FROM = 5, BAND_TO = TOP_FOLD.length + TOP_SIDE.length - 1, BAND_STEP_M = 0.02;
+/** The control points of the waistband's left half (`TOP_FRONT` then `TOP_SIDE`) the side band runs between, and how far apart its lower edge's guide points are taken (metres). GAME TUNING. */
+export const BAND_FROM = 5, BAND_TO = TOP_FRONT.length + TOP_SIDE.length - 1, BAND_STEP_M = 0.02;
 export const LEG_FUNNEL = [[0.0515, 0.8541, 0.045], [0.0444, 0.848, 0.038], [0.0405, 0.843, 0.031], [0.0375, 0.8383, 0.024], [0.034, 0.8318, 0.017], [0.0307, 0.8239, 0.010], [0.0279, 0.8178, 0.003], [0.0253, 0.813, -0.005], [0.0234, 0.8103, -0.014], [0.0223, 0.8096, -0.024], [0.0211, 0.8098, -0.035], [0.02, 0.8104, -0.047], [0.0189, 0.8117, -0.060], [0.0176, 0.8146, -0.075], [0.0164, 0.8178, -0.090], [0.0153, 0.8218, -0.105], [0.0143, 0.8268, -0.120], [0.0141, 0.8329, -0.135], [0.0137, 0.8408, -0.150], [0.0121, 0.8503, -0.162]];
 /** MEASURED: the middle of his funnel on her legs-apart skin (her bones carry her crotch 2 mm to her right of her rest middle). */
 export const APART_MID_X = 0.001;
@@ -423,7 +441,7 @@ function onSkin(curve, project) {
  * from its triangle's corners and smoothed along the curve, crossed with the curve's direction) -- then laid again
  * three times so each is that far from its own sample in a straight line, her skin there being nearly flat.
  */
-function bandLower(top, a, b, tools, at, tris, nrm) {
+function bandLower(top, a, b, tools, at, tris, nrm, frontLast = false) {
   const n = top.length, idx = [];
   for (let i = a; ; i = (i + 1) % n) { idx.push(i); if (i === b) break; if (idx.length > n) throw new Error('the side band\'s ends are not on the waistband'); }
   const c = idx.map((i) => top[i]);
@@ -439,36 +457,66 @@ function bandLower(top, a, b, tools, at, tris, nrm) {
     q = q.map((v, k) => { const off = sub(v, c[k]); return tools.project(add(c[k], scale(off, SIDE_BAND_M / (len(off) || 1)))); });
     q = q.map((v, k) => (k === 0 || k === q.length - 1 ? v : tools.project(add(add(scale(q[k - 1], 0.25), scale(v, 0.5)), scale(q[k + 1], 0.25)))));
   }
-  // guide points for the leg opening's curve: one every `BAND_STEP_M` along it
+  // guide points for the leg opening's curve: one every `BAND_STEP_M` along it, counted from its FRONT end on both of
+  // her sides (`frontLast`: the samples run back to front), so the strap meets the panel the same way on each
+  if (frontLast) q.reverse();
   const guides = [q[0]];
   let run = 0;
   for (let k = 1; k < q.length; k += 1) { run += len(sub(q[k], q[k - 1])); if (run >= BAND_STEP_M) { guides.push(q[k]); run = 0; } }
+  if (frontLast) guides.reverse();
   return guides;
+}
+
+/**
+ * How sharply the waistband's front turns along one of her sides (`dir` 1: her left, the curve's own way from her
+ * front's middle; -1: her right, back from it): the most, in degrees a centimetre, between `from` and `to` metres from
+ * her middle -- the turning between each of its steps and the next, summed over six steps and taken per centimetre of
+ * the line they are spread along (1.2 cm of it).
+ */
+function frontTurn(top, dir, from = 0.02, to = 0.12) {
+  const n = top.length, at = (k) => top[((dir * k) % n + n) % n], turns = [], run = [0];
+  for (let k = 1; run[run.length - 1] < to + 0.02 && k < n - 1; k += 1) {
+    const a = sub(at(k), at(k - 1)), b = sub(at(k + 1), at(k));
+    turns.push((Math.acos(Math.max(-1, Math.min(1, dot(a, b) / ((len(a) * len(b)) || 1)))) * 180) / Math.PI);
+    run.push(run[run.length - 1] + len(a));
+  }
+  let most = 0;
+  for (let k = 3; k + 3 <= turns.length; k += 1) {
+    if (run[k + 1] < from || run[k + 1] > to) continue;
+    // (the six turns about this step, over the length of the line they are spread along)
+    most = Math.max(most, (turns.slice(k - 3, k + 3).reduce((s, v) => s + v, 0) / (run[k + 3] - run[k - 3])) * 0.01);
+  }
+  return most;
 }
 
 function designCurves(tools, apart, tris) {
   const { pick, project } = tools;
-  // every control point is a place on her REST skin (a pick from in front or behind, or the skin nearest a guide point),
-  // and her right side's are her left's across her middle; each is then carried to that same skin with her legs apart
+  // a control point of her sides and her back is a place on her REST skin (a pick from behind, or the skin nearest a
+  // guide point), her right side's her left's across her middle, each then carried to that same skin with her legs apart;
+  // the waistband's front, the funnel and the strap are places on her LEGS-APART skin already (her right side's her
+  // left's across `APART_MID_X`)
   const front = ([x, y]) => pick(FRONT, [MID_X + x, y, 0]), back = ([x, y]) => pick(BACK, [MID_X + x, y, 0]);
   const guide = ([x, y, z]) => project([MID_X + x, y, z]);
   const across = (p) => project(mirror(p));
+  const apartGuide = (side) => ([x, y, z]) => apart.tools.project([APART_MID_X + side * x, y, z]);
   const lay = (ctrl) => onSkin(catmullClosed(ctrl, STEP_M), apart.tools.project);
   // the waistband: her front's middle, round her left to her back's middle, and back round her right
-  const left = [...TOP_FOLD.map(guide), ...TOP_SIDE.map(guide), ...TOP_BACK.map(back)];
-  const inner = left.slice(1, -1), top = lay([left[0], ...inner, left[left.length - 1], ...inner.slice().reverse().map(across)].map(apart.carry));
+  const frontL = TOP_FRONT.map(apartGuide(1)), frontR = TOP_FRONT.map(apartGuide(-1));
+  const restL = [...TOP_SIDE.map(guide), ...TOP_BACK.map(back)], sideL = restL.map(apart.carry), sideR = restL.slice(0, -1).map(across).map(apart.carry);
+  const left = [...frontL, ...sideL], right = [...frontR, ...sideR];
+  const top = lay([...left, ...sideR.slice().reverse(), ...frontR.slice(1).reverse()]);
   // the side bands' lower edges, each from its own side of the waistband (which runs front to back on her left and back
   // to front on her right)
-  const nearest = (p) => { const q = apart.carry(p); let best = 0, bd = Infinity; top.forEach((c, i) => { const d = len(sub(c, q)); if (d < bd) { bd = d; best = i; } }); return best; };
+  const nearest = (q) => { let best = 0, bd = Infinity; top.forEach((c, i) => { const d = len(sub(c, q)); if (d < bd) { bd = d; best = i; } }); return best; };
   const bandL = bandLower(top, nearest(left[BAND_FROM]), nearest(left[BAND_TO]), apart.tools, apart.at, tris, apart.nrm);
-  const bandR = bandLower(top, nearest(across(left[BAND_TO])), nearest(across(left[BAND_FROM])), apart.tools, apart.at, tris, apart.nrm);
+  const bandR = bandLower(top, nearest(right[BAND_TO]), nearest(right[BAND_FROM]), apart.tools, apart.at, tris, apart.nrm, true);
   // her left leg's opening: the band from behind her hip down to the panel, the panel's side and the strap, and up across
   // her cheek; and her right's, run the other way round so both go the same way about her
   // (the funnel's side and the strap are places on her legs-apart skin already: his own lines there)
   // (and only from where they are clear of the band: nearer the waistband than the band is wide, the band's own lower
   // edge is the leg opening, round under the panel's corner)
   const waist = segments([top]);
-  const funnel = (side) => LEG_FUNNEL.map(([x, y, z]) => apart.tools.project([APART_MID_X + side * x, y, z])).filter((p) => waist.distance(p, 0.1) > SIDE_BAND_M);
+  const funnel = (side) => LEG_FUNNEL.map(apartGuide(side)).filter((p) => waist.distance(p, 0.1) > SIDE_BAND_M);
   const seat = LEG_BACK.map(back);
   const legL = [...bandL.slice().reverse(), ...funnel(1), ...seat.map(apart.carry)];
   const legR = [...seat.map(across).map(apart.carry).reverse(), ...funnel(-1).reverse(), ...bandR.slice().reverse()];
@@ -946,6 +994,7 @@ export async function designAthleticBottom({ log = console.log, pose = POSE_BIN,
   const { curves, bands } = designCurves(tools, apart, tris);
   const lengths = curves.map((c) => c.reduce((s, p, i) => s + len(sub(c[(i + 1) % c.length], p)), 0));
   log(`body: ${vertices} vertices, ${count} points, ${measured.entries} of them carried with her legs apart (${pose}); outline: waistband ${lengths[0].toFixed(3)} m, leg openings ${lengths[1].toFixed(3)} and ${lengths[2].toFixed(3)} m (${curves.map((c) => c.length).join(' / ')} samples)`);
+  log(`waistband's front: between 2 and 12 cm from her middle it turns ${frontTurn(curves[0], 1).toFixed(0)} degrees a centimetre at the most on her left and ${frontTurn(curves[0], -1).toFixed(0)} on her right`);
 
   // from here on her skin is her skin with her legs apart
   const graph = skinGraph(count, tris), segs = segments(curves);

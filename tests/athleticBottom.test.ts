@@ -88,14 +88,14 @@ const LANDMARKS: readonly { name: string; at: [number, number, number]; covered:
 // 6 mm under its lower one. The band is narrower than her triangles are wide there, so no vertex of hers says it: the
 // field is asked at the place.
 const BAND: readonly { name: string; mid: [number, number, number]; over: [number, number, number]; under: [number, number, number] }[] = [
-  { name: 'along the fold under her bump, her left', mid: [0.0942, 0.8818, 0.0556], over: [0.0853, 0.8905, 0.0609], under: [0.1031, 0.8731, 0.0502] },
-  { name: 'at the front of her hip, her left', mid: [0.1374, 0.9204, 0.0292], over: [0.1327, 0.9311, 0.0360], under: [0.1421, 0.9098, 0.0224] },
-  { name: 'at her side, her left', mid: [0.1596, 0.9577, -0.0153], over: [0.1586, 0.9697, -0.0091], under: [0.1606, 0.9458, -0.0215] },
-  { name: 'behind her hip, her left', mid: [0.1622, 0.9742, -0.0969], over: [0.1604, 0.9874, -0.0945], under: [0.1640, 0.9611, -0.0994] },
-  { name: 'along the fold under her bump, her right', mid: [-0.0937, 0.8830, 0.0552], over: [-0.0859, 0.8924, 0.0611], under: [-0.1014, 0.8736, 0.0494] },
-  { name: 'at the front of her hip, her right', mid: [-0.1361, 0.9237, 0.0316], over: [-0.1313, 0.9343, 0.0385], under: [-0.1409, 0.9131, 0.0248] },
-  { name: 'at her side, her right', mid: [-0.1603, 0.9597, -0.0153], over: [-0.1589, 0.9719, -0.0096], under: [-0.1617, 0.9475, -0.0210] },
-  { name: 'behind her hip, her right', mid: [-0.1570, 0.9782, -0.1188], over: [-0.1547, 0.9913, -0.1166], under: [-0.1594, 0.9651, -0.1210] },
+  { name: 'along the fold under her bump, her left', mid: [0.1040, 0.8912, 0.0536], over: [0.0965, 0.9010, 0.0591], under: [0.1115, 0.8814, 0.0480] },
+  { name: 'at the front of her hip, her left', mid: [0.1422, 0.9292, 0.0228], over: [0.1383, 0.9398, 0.0302], under: [0.1462, 0.9187, 0.0155] },
+  { name: 'at her side, her left', mid: [0.1628, 0.9636, -0.0281], over: [0.1627, 0.9766, -0.0246], under: [0.1629, 0.9505, -0.0316] },
+  { name: 'behind her hip, her left', mid: [0.1590, 0.9762, -0.1104], over: [0.1568, 0.9893, -0.1080], under: [0.1613, 0.9631, -0.1128] },
+  { name: 'along the fold under her bump, her right', mid: [-0.1012, 0.8900, 0.0541], over: [-0.0941, 0.8999, 0.0600], under: [-0.1084, 0.8802, 0.0482] },
+  { name: 'at the front of her hip, her right', mid: [-0.1413, 0.9279, 0.0251], over: [-0.1368, 0.9386, 0.0320], under: [-0.1459, 0.9173, 0.0182] },
+  { name: 'at her side, her right', mid: [-0.1628, 0.9629, -0.0249], over: [-0.1621, 0.9755, -0.0200], under: [-0.1636, 0.9504, -0.0298] },
+  { name: 'behind her hip, her right', mid: [-0.1616, 0.9768, -0.1062], over: [-0.1598, 0.9901, -0.1042], under: [-0.1633, 0.9636, -0.1082] },
 ];
 
 describe('her athletic bikini bottom, designed on her skin (Joshua, 2026-11-12)', () => {
