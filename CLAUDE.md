@@ -102,6 +102,29 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   skin at all 189 of its points, the area within 0.011 mm of her skin behind it at all 6,191, and the copies along
   her own texture seams 0.008 mm apart).
 
+## Her sides under her arms
+
+- Her sides hold still under her arms (Joshua, 2026-11-12: "make sure we can lock the skin from stretching especially if
+  trying to paint"; of the ways the test showed him, "I'd do A", locked for good, the soft one): on her TRUNK below her
+  armpits her arm's bones keep their share at her armpit's own height and lose it over the 2 cm under it, none from there
+  down, and her raised-arm shapes (armRaiseL/R) fade the same (`scripts/sarahV2SideLock.mjs`, `SIDE_LOCK`: GAME TUNING). It
+  is IN the room's body file and its KTX2 twin -- her skin, and the bikini top's lower strap, which takes the fade of her
+  skin under it. The approved archive is as it was, and `tests/sarahV2SideLock.test.ts` holds the room's file to "the
+  archive's numbers with the rule laid on them, and nothing else".
+- MEASURED in the room (a line painted level at the strap's height, 1.244 m, with ARMS at 90, then her arms brought down):
+  the line within 2.6 mm at every arm position (66.7 before); her skin under the strap 3.1 mm up with her arms level (46.3
+  before). The bikini top's strap under her arms rose 50.5 mm with them (78.7 at the most) and now 0.8 (3.4): a level line.
+- What it costs: a crease in the 2 cm under her armpit while her arms are raised, and the same under her BUILD -- a longer
+  or shorter upper arm is taken up by the few edges at her armpit's apex (`tests/bodyBuildView.test.ts` pins it: the worst
+  edge at +26 cm 6.36x before and 9.25x now, at -13 cm 2.96x and 5.90x; inside his 3.5x bar from -7 cm to +9 cm).
+- Whatever is worn on her side has to move as her skin does there. Paint, cloth laid on her and parts made from her skin
+  do; a part with weights of its own must take the lock (the script gives every part in her file the fade of the nearest
+  point of her trunk's skin, evened along the part). The light tee's own file is left as it is: it stands off her side
+  and rides up with her arms as a tee does (MEASURED in the script's header).
+- A file that carries the lock is refused a second one. After anything writes her file again from the archive
+  (`scripts/sarahV2Recovery/body-slim.mjs`) or rewrites her armpits' weights, lay it again; to lay it with other numbers,
+  start from the file as it was before (git: 5b07495).
+
 ## Verification
 
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local

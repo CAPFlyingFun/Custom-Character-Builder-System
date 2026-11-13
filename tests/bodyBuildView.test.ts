@@ -393,6 +393,13 @@ describe('her build on her real body', () => {
    *    across single 8 mm edges, and that skin is as close to the arm's axis as the arm's own, so neither its weights
    *    nor its position can tell it apart; at −50% that edge closes to 0.03×. (The torso skin it used to drag at the
    *    elbow is now held by the fade, and no longer passes through itself; see the crossings test.)
+   *    SINCE HER SIDES WERE LOCKED UNDER HER ARMS (Joshua, 2026-11-12: "I'd do A"; `scripts/sarahV2SideLock.mjs`) her
+   *    arm's weight ends within 2 cm of her armpit, so what a longer or shorter upper arm used to spread down her side
+   *    is taken by the few edges at her armpit's apex (rest y 1.247 m: her arm's weight 0.51 at one end, none at the
+   *    other). The pins rose with it -- the lock's known cost, the same crease her raised arms show, MEASURED before
+   *    and after at the worst edge: +26 cm 6.36× to 9.25×, −13 cm (−50%) 2.96× to 5.90×, +13 cm 3.40× to 4.24× (four
+   *    edges past the bar), +9 cm 2.54× to 2.75×, −7 cm 1.85× to 3.40×; her skin as a whole is unchanged (99.9% of her
+   *    edges at +26 cm: 2.90× before, 2.95× now).
    *  - head: a head size is a bone scale and nothing else, and her weights blend sharply where her face meets her neck.
    *  - small: all of the above at their minimum together, worst at the back of an armpit.
    */
@@ -427,9 +434,9 @@ describe('her build on her real body', () => {
     /** Measured worst [max, min] where this model cannot meet the bar; see above. */
     const PINNED: Record<string, readonly [number, number]> = {
       'neck+': [9.95, 0.44], 'neck-': [4.5, 0.056],
-      'upperArm+': [6.4, 0.29], 'upperArm-': [3.0, 0.032],
+      'upperArm+': [9.3, 0.275], 'upperArm-': [5.95, 0.032],
       'head+': [3.9, 0.14], 'head-': [3.85, 0.11],
-      big: [8.85, 0.48], small: [3.85, 0.027],
+      big: [9.8, 0.48], small: [6.1, 0.027],
     };
     const dominant = (v: number): string => {
       const parts: string[] = [];

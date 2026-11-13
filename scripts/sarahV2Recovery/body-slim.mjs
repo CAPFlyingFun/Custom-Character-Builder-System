@@ -31,6 +31,10 @@
  * NORMAL change, on the accessors' own int16 grid; every morph target is a change FROM the base, so each belly size
  * carries the fix with it. The check below holds every other array to exact equality and those two to the fix.
  *
+ * AFTER THIS, HER SIDE LOCK IS LAID AGAIN (Joshua, 2026-11-12: "I'd do A"): the room's file carries her sides held still
+ * under her arms (`scripts/sarahV2SideLock.mjs`), which this script, writing her from the archive, does not. Run that
+ * after this one, and `body-ktx2.mjs` after both; `tests/sarahV2SideLock.test.ts` fails until it is.
+ *
  *   node scripts/sarahV2Recovery/body-slim.mjs [--out public/models/sarah-v2-body-slim.glb] [--skin <dir>] [--mesh-fix <file.json>]
  */
 import { NodeIO } from '@gltf-transform/core';

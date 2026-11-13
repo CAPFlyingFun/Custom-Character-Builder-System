@@ -67,6 +67,12 @@ export function sarahModelPath(entry: { readonly id: string; readonly path: stri
  * garments the room no longer draws from it (both rises of leggings, each replaced by its own fitted file, and the
  * grown tee, with their trims), proving every part it keeps -- her body, the whole bikini, every morph target and
  * vertex order -- identical. 37.4 MB to 18.1 MB.
+ *
+ * Since 2026-11-12 the room's file differs from the approved one in ONE more thing, by his choice (Joshua: "make sure we
+ * can lock the skin from stretching especially if trying to paint"; "I'd do A"): HER SIDES HOLD STILL UNDER HER ARMS. On
+ * her trunk below her armpits her arm's bones lose their share over the 2 cm under each armpit and her raised-arm shapes
+ * fade the same -- her skin's weights and the bikini top's lower strap's (`scripts/sarahV2SideLock.mjs`, which says what
+ * was measured; `tests/sarahV2SideLock.test.ts` holds the file to the archive with that rule laid on it).
  */
 
 /**

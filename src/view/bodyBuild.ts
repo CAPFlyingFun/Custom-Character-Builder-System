@@ -40,6 +40,9 @@
  * beside the elbow and folded through itself and her inner arm. Measured on her: the arm's own
  * skin lies within 6.0 cm of its axis, the torso skin it weights is 5.9–13 cm off it near the
  * shoulder and 9 cm or more beside the elbow, so the field is whole within 6.5 cm and gone by 9.
+ * (Since 2026-11-12 her side from 2 cm under each armpit down carries none of her arm at all -- her sides were locked
+ * there, `scripts/sarahV2SideLock.mjs` -- so this fade now has only her chest's side above that to hold, and a longer
+ * or shorter upper arm is taken up at her armpit's apex: `tests/bodyBuildView.test.ts` pins what that costs.)
  *
  * A GIRTH region (waist, hips) moves only the mesh: D = σ·m·g(y)·(x − x_c, 0, e_z·(z − z_c)),
  * m the vertex's weight on the member bones, g a cos² bump about a peak height, e_z the back's
