@@ -356,6 +356,24 @@ import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
  */
 const POSE_SHAPE_FIELDS: readonly string[] = Object.freeze([BIRTH_THIGHS_FIELD, BIRTH_GAP_FIELD, BIRTH_SEAT_FIELD, BIRTH_ROOM_FIELD, BIRTH_NORMALS_FIELD, BIRTH_KNEES_FIELD, KNEE_TURN_FIELD, HIP_TURN_FIELD, BIRTH_CONTACT_FIELD]);
 
+/**
+ * Whether a part of a modelled garment is a CORD: a closed tube, every edge of it shared by two of its triangles, where
+ * a panel of cloth is a sheet with an edge of its own. MEASURED 2026-11-12 on her bikini top (her body file's thirteen
+ * `bikini` parts): its two cups are one sheet with 3,928 open edges, and the cord round each cup, the string between
+ * them, the strings round her neck and back and the bow's five parts have none.
+ */
+function isCord(geometry: THREE.BufferGeometry): boolean {
+  const p = geometry.getAttribute('position'), index = geometry.index;
+  if (!p || !index) return false;
+  // the copies of a vertex (a seam in its normals) are one point
+  const pointOf = new Int32Array(p.count), seen = new Map<string, number>();
+  for (let i = 0; i < p.count; i++) { const k = `${Math.round(p.getX(i) * 1e5)},${Math.round(p.getY(i) * 1e5)},${Math.round(p.getZ(i) * 1e5)}`; let q = seen.get(k); if (q === undefined) { q = seen.size; seen.set(k, q); } pointOf[i] = q; }
+  const edges = new Map<number, number>(), n = seen.size, I = index.array;
+  for (let t = 0; t + 2 < I.length; t += 3) for (let e = 0; e < 3; e++) { const a = pointOf[I[t + e]], b = pointOf[I[t + (e + 1) % 3]]; if (a === b) continue; const k = Math.min(a, b) * n + Math.max(a, b); edges.set(k, (edges.get(k) ?? 0) + 1); }
+  for (const count of edges.values()) if (count === 1) return false;
+  return edges.size > 0;
+}
+
 const M = UNITS_PER_METRE;
 /** What the story bake leaves out (`bakeForStory`): her vulva's own parts, inside her and under what she wears. */
 const STORY_LEAVES_OUT = new Set(['sarahVulva', 'sarahVagina', 'sarahLips', 'sarahOuterRing']);
@@ -2244,7 +2262,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       { const t = trimShown(name, wornGarments(outfit, garments)); if (t !== null) mesh.visible = t; }
       if (mesh.userData.replacedByRecovered) mesh.visible = false;
       // while a birth is under way her bottoms are off (leggings, the bikini, a swimsuit): bottomsOff()
-      if (bottomsOff() && (LOWER_GARMENTS.includes(name) || mesh.userData.recoveredLeggings)) mesh.visible = false;
+      if (bottomsOff() && (LOWER_GARMENTS.includes(name.endsWith('Trim') ? name.slice(0, -4) : name) || mesh.userData.recoveredLeggings)) mesh.visible = false;
       // the cloth experiment draws the light tee as cloth: the fitted one stands aside (and keeps its fabric on)
       if ((clothWorn() || garmentRoom) && name === 'shirtSpandexLite') mesh.visible = false;
       if (cloth && name === 'shirtSpandexLite') cloth.mesh.visible = clothOn && !clothSeated && shownNow('shirtSpandexLite') && view === 'all' && !garmentRoom;
@@ -2502,7 +2520,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   /** A painted outfit's paint goes on with it (and comes off when a modelled one is chosen). */
   function wearPaint(): void {
-    fabric?.wearOutfit(recovered ? OUTFITS[outfit]?.paint ?? null : null, recovered ? OUTFITS[outfit]?.fabrics : undefined);
+    fabric?.wearOutfit(recovered ? OUTFITS[outfit]?.paint ?? null : null, recovered ? OUTFITS[outfit]?.fabrics : undefined, recovered ? OUTFITS[outfit]?.trims : undefined);
     // the new tee's settings: the save's, or the outfit's own
     adoptGarment(pendingClothes?.garment ?? null);
     // saved clothes put on with this outfit go on over its defaults
@@ -3599,11 +3617,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const frames = (n: number) => new Promise<void>((done) => frameWaiters.push({ left: n, done }));
   /**
    * THE BUILT-IN OUTFITS' PICTURES, for `npm run bake:outfits` (scripts/bakeOutfitThumbs.mjs), which opens the room with
-   * `?bake=outfits`: each outfit the room offers is put on her in turn and pictured the way a saved one is.
+   * `?bake=outfits`: each outfit the room offers (or each of those named) is put on her in turn and pictured the way a
+   * saved one is.
    */
-  async function bakeOutfitPictures(): Promise<{ name: string; path: string; picture: string | null }[]> {
+  async function bakeOutfitPictures(only?: readonly string[]): Promise<{ name: string; path: string; picture: string | null }[]> {
     const out: { name: string; path: string; picture: string | null }[] = [];
     for (const i of offeredOutfits(garments)) {
+      // (`only`: just the outfits named, when one's look has changed)
+      if (only && !only.includes(OUTFITS[i].name)) continue;
       wornFrom = null; pendingClothes = null; nextSource = null;
       dress(i);
       for (let tries = 0; tries < 600 && !(outfit === i && wantedOutfit === null && model?.visible); tries++) await frames(1);
@@ -7614,6 +7635,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       recovered = hooks.nativeOutfitPreview !== true && SARAH_LAB_MODELS[modelIndex].id === 'v2-body' && approvedSkin?.geometry.attributes.position.count === 115710 && approvedSkin.skeleton.bones.length === 68;
       // (the modelled brief, its data taken for the cloth, out of her model: never drawn, never shaped)
       const briefOut: THREE.SkinnedMesh[] = [];
+      let bikiniTrim: THREE.Material | null = null;
       if (recovered) {
         loadedModel.updateMatrixWorld(true);
         loadedModel.traverse(n => {
@@ -7630,6 +7652,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               if ((BIKINI_BOTTOM_SOURCE === 'cloth' || BIKINI_BOTTOM_SOURCE === 'paint') && (briefData = takeBrief(m))) briefOut.push(m);
               else if (BIKINI_BOTTOM_FROM_SKIN && cutBriefToStrings(m)) briefTies = m;
               else m.userData.replacedByRecovered = true;
+            } else if (!Array.isArray(m.material) && isCord(m.geometry)) {
+              // HER TOP'S CORDS ARE ITS EDGING (Joshua, 2026-11-12: "match up the bikini top and bottom together"): the
+              // cord round each cup, the strings and their bow wear the set's edging as the bottom's edging layer does
+              // (`bikiniTrim`, the fabric editor's TRIM); her cups, the only sheets of it, its fabric
+              bikiniTrim ??= Object.assign(m.material.clone(), { name: 'bikiniTrim' });
+              m.material = bikiniTrim;
             }
           }
         });
@@ -9585,6 +9613,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (a probe's) which of her paint layers are drawn from a designed garment's field (fabricMaterial.ts), the levels
         // set by hand for a look, and her points' slip as it is kept for it (skinSlip.ts)
         paintFieldLevels: (levels: number[]) => { const b = bodyOf()?.mesh; if (!b) return false; setFabricFieldLevels((Array.isArray(b.material) ? b.material[0] : b.material) as THREE.Material, levels); return true; },
+        // (a probe's) what she has on as a save would keep it -- her garments' fabrics, and each paint layer's fabric and
+        // style -- and whether a set's two halves are kept in one fabric (the editor's TOP + BOTTOM MATCH)
+        wornFabrics: () => { const c = fabric?.clothes(); return c && fabric ? { match: fabric.setMatched(), garments: c.garments, layers: c.layers.map((l) => (l ? { fabric: l.choice.fabric, stitch: l.choice.stitch, template: l.template?.id ?? null } : null)) } : null; },
         paintFieldState: () => { const b = bodyOf()?.mesh; if (!b) return null; const m = (Array.isArray(b.material) ? b.material[0] : b.material) as THREE.Material, g = b.geometry; const areaSlip = vulva?.mesh.geometry.getAttribute('fabricSlip') as THREE.BufferAttribute | undefined; let areaLongest = 0; if (areaSlip) for (let i = 0; i < areaSlip.count; i++) areaLongest = Math.max(areaLongest, Math.hypot(areaSlip.getX(i), areaSlip.getY(i), areaSlip.getZ(i)));
           return { field: fabricFieldState(m), slip: fabric?.slipState() ?? null, area: vulva ? { visible: vulva.mesh.visible, points: vulva.mesh.geometry.getAttribute('position').count, slip: !!areaSlip, longest: areaLongest, attributes: Object.keys(vulva.mesh.geometry.attributes).length } : null, attributes: Object.keys(g.attributes).length, shaderAttributes: (ctx.renderer.gl.info.programs ?? []).map((q) => Object.keys(q.getAttributes() as object)).sort((x, y) => y.length - x.length)[0] ?? [], attributeLimit: ctx.renderer.gl.getContext().getParameter(ctx.renderer.gl.getContext().MAX_VERTEX_ATTRIBS) as number, material: m.name, count: g.getAttribute('position').count }; },
         bodyMeshes: (hideBody?: boolean) => { const b = bodyOf()?.mesh; if (b && hideBody !== undefined) b.visible = !hideBody; const out: string[] = []; model?.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh && m.visible) out.push(`${m.name}:${m.geometry.getAttribute('position').count}${m === b ? '*' : ''}:${(m.material as THREE.Material).name}`); }); return out; },

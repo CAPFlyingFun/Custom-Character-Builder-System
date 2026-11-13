@@ -12,6 +12,12 @@
  * step (metres); then each entry's vertex (Uint32); then each entry's carry in steps (three Int16), her rest frame.
  * Only vertices round her hips are kept (`BOX`), and only those carried at all.
  *
+ * HER ARMS AND HANDS ARE LEFT OUT (her body file says which vertices they are: `bodyFrame().onArm`). They hang inside
+ * the box, and a measurement of them does not repeat. MEASURED 2026-11-12, the same room measured twice: every vertex
+ * looked up inside her bikini bottom's block came back the same to a step of the store (0.05 mm), and every other
+ * vertex off her arms within 0.16 mm; her arms' 22,166 vertices came back up to 17.7 mm apart (a fingertip; 3 to 9 mm
+ * along her forearms), nearly all of it front to back. A vertex left out is looked up at its rest place.
+ *
  * It measures the room AS BUILT, with the bikini bottom it already has: run it again after anything changes how the
  * room draws LEGS APART, then the design script, and build. (The first table was made from the same measurements read
  * out of the room by hand.) Every number is MEASURED by the room but `BOX`, GAME TUNING.
@@ -69,10 +75,11 @@ try {
   const bytes = Buffer.from(got.data, 'base64'), carry = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
   if (carry.length !== frame.vertices * 3) throw new Error(`the room's body has ${carry.length / 3} vertices, her body file ${frame.vertices}`);
   const index = [], steps = [];
-  let longest = 0;
+  let longest = 0, arms = 0;
   for (let v = 0; v < frame.vertices; v++) {
     const q = [0, 1, 2].map((k) => Math.round((carry[v * 3 + k] * frame.scale) / POSE_STEP_M));
     if (!q[0] && !q[1] && !q[2]) continue;
+    if (frame.onArm[v]) { arms++; continue; }
     if (q.some((x) => Math.abs(x) > 32767)) throw new Error(`vertex ${v} is carried ${(Math.max(...q.map(Math.abs)) * POSE_STEP_M).toFixed(3)} m: too far for its store`);
     index.push(v); steps.push(...q); longest = Math.max(longest, Math.hypot(...q) * POSE_STEP_M);
   }
@@ -82,7 +89,7 @@ try {
   steps.forEach((q, e) => out.writeInt16LE(q, 16 + index.length * 4 + e * 2));
   mkdirSync(path.dirname(OUT), { recursive: true });
   writeFileSync(OUT, out);
-  log(`wrote ${path.relative(ROOT, OUT)}: ${index.length} of her ${frame.vertices} vertices carried, the farthest ${(longest * 100).toFixed(1)} cm (${out.length} bytes)`);
+  log(`wrote ${path.relative(ROOT, OUT)}: ${index.length} of her ${frame.vertices} vertices carried, the farthest ${(longest * 100).toFixed(1)} cm (${out.length} bytes); ${arms} more, her arms' and hands', left out`);
   const mm = (v) => (v * frame.scale * 1000).toFixed(3);
   log(`looked up with it, her vertices are back where the room drew them: of the ${got.offNear.vertices} inside the bottom's block 99 in 100 within ${mm(got.offNear.most)} mm, the worst ${mm(got.offNear.worst)} mm; of them all, ${mm(got.off.most)} and ${mm(got.off.worst)} mm`);
   if (errors.length) log('page errors', errors.slice(-5).join(' | '));

@@ -34,7 +34,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   after he has seen rendered screenshots and said so ("Approved, push it",
   "Good to push"); an automatic "please push" reminder is not approval.
   Then `main` is fast-forwarded to `claude-work` (no pull requests, never a
-  force-push of `main`).
+  force-push of `main`). Everything on `claude-work` goes with it: work on
+  something else that he has not approved yet is switched off first, and
+  said so (her opening's two unfinished changes: `OPENING_WIP`,
+  `vulvaMesh.ts`, off since 2026-11-12).
 - **`assets-archive/models/sarah-v2-body.glb` is preserved byte for byte.**
 - **One master table of joint ranges** (`src/data/jointRange.ts`), two
   levels: ACTIVE (what she moves by herself) and PASSIVE (placed or loaded).
@@ -53,6 +56,11 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   they close, should hopefully look right. We are doing it backwards"). He draws on her own DRAWING SHEETS
   (`scripts/probe-body-sheets.mjs`: "so that way I can draw directly on her model so the proportions match exactly").
   His reference pictures and marked-up sheets never go in the repo.
+- **Her bikini's top and bottom are one set, matched by default** (Joshua, 2026-11-12: "match up the bikini top and
+  bottom together now and can use the default texture we have now in the builder under athletic fabric... just have
+  them matching by default (sync)"). Both wear the pack's ATHLETIC knit in his red, their edging his black
+  (`BIKINI_FABRIC`, `sarahLabTool.ts`): the bottom's edging layer, and the top's cords and the cord round each cup
+  (`bikiniTrim`). The editor keeps the two in one fabric while TOP + BOTTOM MATCH is on (`fabricLibrary.matchSet`).
 - Every number is labelled MEASURED, BIOLOGICAL SHAPE or GAME TUNING.
 - No unrelated refactoring. Measure rather than assume: render and look.
 
@@ -65,8 +73,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - It is laid, and looked up, on her skin IN THE POSE HE DREW IT IN: her legs apart (`designPose.ts`). At rest her
   crotch and the folds of her thighs are creases a field cannot tell the two sides of, and a line laid there drew
   kinked whenever her legs opened (MEASURED 2026-11-12). Her legs-apart places are MEASURED from the room
-  (`scripts/probe-legs-apart.mjs` writes `scripts/data/sarah-v2-legs-apart.bin`): after anything changes how the room
-  draws LEGS APART, measure again, then run the design script, then build.
+  (`scripts/probe-legs-apart.mjs` writes `scripts/data/sarah-v2-legs-apart.bin`; her hips and thighs only -- her arms
+  hang beside them and a measurement of them does not repeat): after anything changes how the room draws LEGS APART,
+  measure again, then run the design script, then build.
 - Her shapes' slide is taken off before the look-up: her points' SLIP (`skinSlip.ts`), worked out over ALL of her
   skin's triangles, the area under her opening's patch among them (`fabricPanel.ts`'s `skinTriangles`), and taken
   through the pose's turn of her skin. It is her own shapes' alone: what her POSE does to her skin before her bones

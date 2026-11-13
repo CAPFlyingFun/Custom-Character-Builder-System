@@ -33,7 +33,8 @@
  *   1. HER SKIN, at rest, in metres (+y up, +z her front, +x her left), as `traceBikiniBottom.mjs` reads it; the copies of
  *      a vertex split along a texture seam welded into one point; her arms left out of the design's ray picks and
  *      nearest-point searches (her hands hang beside her hips). And HER SKIN WITH HER LEGS APART: each point's rest
- *      place and its carry (`POSE_BIN`, below). Everything from step 2's curves on is worked out on that skin.
+ *      place and its carry (`POSE_BIN`, below; her arms and hands have none: they are measured out of it). Everything
+ *      from step 2's curves on is worked out on that skin.
  *   2. THE OUTLINE as three closed curves on her skin: the waistband round her, and the two leg openings. Each is laid
  *      through CONTROL POINTS (below; her left side, mirrored across her middle for her right): a point of her REST
  *      skin seen from in front or behind (the first skin a ray from that side meets at that x and height), or her rest
@@ -273,8 +274,8 @@ function invert(a) {
   return r;
 }
 
-/** Her body file's vertex count, and her rest frame from her mesh's own units (metres = units * scale + offset): what scripts/probe-legs-apart.mjs measures in. */
-export async function bodyFrame() { const { vertices, toMetres } = await load(BODY_GLB); return { vertices, ...toMetres }; }
+/** Her body file's vertex count, her rest frame from her mesh's own units (metres = units * scale + offset), and which of her vertices are her arms' and hands' (`onArm`: 1 for each of those): what scripts/probe-legs-apart.mjs measures in, and leaves out. */
+export async function bodyFrame() { const { vertices, toMetres, onArm } = await load(BODY_GLB); return { vertices, ...toMetres, onArm }; }
 
 /** The copies of a vertex split along a texture seam are one point (within 0.01 mm, as `traceBikiniBottom.mjs`). */
 function weld(pos) {

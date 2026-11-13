@@ -39,9 +39,10 @@ export const POSE_SMOOTH_ROUNDS = 20, POSE_SMOOTH_M = 0.003;
 /** GAME TUNING: the most a turn may stretch her skin along any line (MEASURED 2026-11-12: with her legs apart her skin's turn takes an area of it to between 0.40 and 2.44 of its size); a fit beyond it is not used. */
 export const POSE_TURN_MOST = 6;
 /**
- * GAME TUNING: rounds `settleCarry` takes. MEASURED 2026-11-12 on her legs apart: after twelve every vertex is looked up
- * within 0.12 mm of where the room drew it (99 in 100 within the step the carry is stored in); after four, the worst
- * was still 2.5 mm off.
+ * GAME TUNING: rounds `settleCarry` takes. MEASURED 2026-11-12 in the room with her legs apart
+ * (scripts/probe-legs-apart.mjs, twice): after twelve, the room's own look-up puts the 13,984 vertices it looks up
+ * inside her bikini bottom's block back where it drew them within 0.038 mm for 99 in 100 of them (under the 0.05 mm
+ * step a carry is stored in) and 0.197 mm at the worst.
  */
 export const POSE_SETTLE_ROUNDS = 12;
 

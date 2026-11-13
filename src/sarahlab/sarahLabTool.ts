@@ -559,6 +559,15 @@ export function uncoveredSkinIndices(indices: ArrayLike<number>, coverage: Array
 export const SARAH_RED = '#be0f2a', SARAH_LEGGINGS = '#3a3b52';
 /** GAME TUNING round MEASURED: the athletic bikini bottom's red and its edging's black, from Joshua's reference (2026-11-12). */
 export const BIKINI_RED = '#c42a3c', BIKINI_EDGING = '#1c1416';
+/**
+ * HER BIKINI IS ONE SET (Joshua, 2026-11-12: "match up the bikini top and bottom together now and can use the default
+ * texture we have now in the builder under athletic fabric... just have them matching by default (sync)"). Its top and
+ * its painted bottom wear the pack's ATHLETIC knit dyed that red, and their edging that black: the bottom's edging
+ * layer, and on the top its cords and the cord round each cup (`bikiniTrim`, which the room names when she is loaded).
+ * The editor keeps the two matched while its TOP + BOTTOM MATCH is on (`fabricPanel.ts`).
+ */
+export const BIKINI_FABRIC = Object.freeze({ family: 'athletic' as const, colour: 0, tint: BIKINI_RED });
+export const BIKINI_EDGING_FABRIC = Object.freeze({ family: 'athletic' as const, colour: 0, tint: BIKINI_EDGING });
 /** One layer of a built-in outfit: a template and its fabric, a pack colour or a custom one (`tint`, fabricTint.ts). */
 export interface PaintedLayer { readonly template: string; readonly fabric: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string } }
 /** A modelled garment's fabric in a built-in outfit, as the editor's FABRIC would set it. */
@@ -566,15 +575,18 @@ export type OutfitFabric = PaintedLayer['fabric'];
 /**
  * A built-in outfit. `procedural`: its tee is the PROCEDURAL GARMENT (`garment/roomGarment.ts`) in that construction,
  * simulated as cloth and wearing the light tee's own material (so `garments` names the light tee, whose file carries
- * the material and its FABRIC, and `fabrics` dyes it), in place of the light tee and its cloth copy.
+ * the material and its FABRIC, and `fabrics` dyes it), in place of the light tee and its cloth copy. `trims`: a
+ * modelled garment's edging in a fabric of its own, where it has an edging (`<garment>Trim`); without one its edging
+ * follows its fabric (the editor's MATCH).
  */
-export interface BuiltInOutfit { readonly name: string; readonly garments: readonly Garment[]; readonly paint?: readonly PaintedLayer[]; readonly fabrics?: Partial<Record<Garment, OutfitFabric>>; readonly procedural?: 'raglan' | 'setIn' }
+export interface BuiltInOutfit { readonly name: string; readonly garments: readonly Garment[]; readonly paint?: readonly PaintedLayer[]; readonly fabrics?: Partial<Record<Garment, OutfitFabric>>; readonly trims?: Partial<Record<Garment, OutfitFabric>>; readonly procedural?: 'raglan' | 'setIn' }
 export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'tee + leggings', garments: ['shirtAthletic', 'leggings'] },
   { name: 'top + low leggings', garments: ['shirtAthletic', 'leggingsLow'] },
-  // (its bottom painted: the athletic bottom's black edging under its red, his reference's colours -- MEASURED off it, its
-  // lit red about (220, 47, 64) and its edging about (23, 11, 12) -- while the top stays green until the bottom is settled)
-  { name: 'bikini', garments: ['bikini'], ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { paint: [{ template: 'athleticBottomEdge', fabric: { family: 'jersey' as const, colour: 0, tint: BIKINI_EDGING } }, { template: 'athleticBottom', fabric: { family: 'jersey' as const, colour: 0, tint: BIKINI_RED } }] } : {}) },
+  // (HER SET: its bottom painted -- the athletic bottom's black edging under its red, his reference's colours, MEASURED
+  // off it: its lit red about (220, 47, 64) and its edging about (23, 11, 12) -- and its top in the same knit and
+  // colours, its cords the edging's black: BIKINI_FABRIC above)
+  { name: 'bikini', garments: ['bikini'], ...(BIKINI_BOTTOM_SOURCE === 'paint' ? { paint: [{ template: 'athleticBottomEdge', fabric: BIKINI_EDGING_FABRIC }, { template: 'athleticBottom', fabric: BIKINI_FABRIC }], fabrics: { bikini: BIKINI_FABRIC }, trims: { bikini: BIKINI_EDGING_FABRIC } } : {}) },
   { name: 'swimsuit', garments: ['swimsuit'] },
   { name: 'none', garments: [] },
   { name: 'spandex + high leggings', garments: ['shirtSpandexHigh', 'leggings'] },

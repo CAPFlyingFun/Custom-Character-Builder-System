@@ -7,10 +7,11 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, statSync } from 'node:fs';
 import {
-  DEFAULT_CHOICE, FABRIC_COLOURS, FABRIC_FAMILIES, PAINT_FILLS, base64ToBytes, bytesToBase64, colourName, opacityOf, swatchRect, tileUnits, trimPick,
+  DEFAULT_CHOICE, FABRIC_COLOURS, FABRIC_FAMILIES, PAINT_FILLS, base64ToBytes, bytesToBase64, colourName, matchSet, opacityOf, samePick, setMatches, swatchRect, tileUnits, trimPick,
+  type FabricChoice, type FabricSet,
 } from '../src/sarahlab/fabricLibrary';
 import { PAINT_LAYER_COUNT, clearLayer, dab, fillLayer, packLayer, unpackLayer, vertexNeighbours } from '../src/sarahlab/bodyPaint';
-import { coverMask } from '../src/sarahlab/sarahLabTool';
+import { BIKINI_EDGING, BIKINI_EDGING_FABRIC, BIKINI_FABRIC, BIKINI_RED, OUTFITS, coverMask } from '../src/sarahlab/sarahLabTool';
 
 describe('the fabric pack', () => {
   it('serves all ten atlases at full resolution, a plain and a trim for each of five families', () => {
@@ -63,6 +64,87 @@ describe('the fabric pack', () => {
   });
 });
 
+describe("a set's two halves in one fabric (Joshua, 2026-11-12: \"match up the bikini top and bottom together... just have them matching by default (sync)\")", () => {
+  const red = { family: 'athletic', colour: 0, tint: '#c42a3c' } as const, black = { family: 'athletic', colour: 0, tint: '#1c1416' } as const, blue = { family: 'jersey', colour: 14 } as const;
+  const choice = (c: Partial<FabricChoice>): FabricChoice => ({ ...DEFAULT_CHOICE, ...c });
+  const set = (top: Partial<FabricChoice>, fill: Partial<FabricChoice> | null, edging: Partial<FabricChoice> | null): FabricSet => ({ top: choice(top), fill: fill && choice(fill), edging: edging && choice(edging) });
+
+  it('dresses her bikini as one set: the top and the painted bottom in the athletic knit dyed his red, their edgings its black', () => {
+    const bikini = OUTFITS.find((o) => o.name === 'bikini')!;
+    expect(BIKINI_FABRIC).toEqual({ family: 'athletic', colour: 0, tint: BIKINI_RED });
+    expect(BIKINI_EDGING_FABRIC).toEqual({ family: 'athletic', colour: 0, tint: BIKINI_EDGING });
+    expect(bikini.garments).toEqual(['bikini']);
+    // bottom first: the edging under the fill
+    expect(bikini.paint).toEqual([{ template: 'athleticBottomEdge', fabric: BIKINI_EDGING_FABRIC }, { template: 'athleticBottom', fabric: BIKINI_FABRIC }]);
+    expect(bikini.fabrics).toEqual({ bikini: BIKINI_FABRIC });
+    expect(bikini.trims).toEqual({ bikini: BIKINI_EDGING_FABRIC });
+    // the set its painted pieces make with the top is the one the editor keeps matched, and it goes on matched
+    const pieces = GARMENT_SETS.bikini;
+    expect(pieces).toEqual({ fabric: 'athleticBottom', edging: 'athleticBottomEdge' });
+    for (const id of Object.values(pieces)) expect(COVERAGE_TEMPLATES.some((t) => t.id === id), id).toBe(true);
+    const worn = set({ fabric: bikini.fabrics!.bikini!, match: false, trim: bikini.trims!.bikini! }, { fabric: bikini.paint![1].fabric }, { fabric: bikini.paint![0].fabric });
+    expect(setMatches(worn, true)).toBe(true);
+  });
+
+  it('tells one fabric from another by family, colour and dye', () => {
+    expect(samePick(red, { ...red })).toBe(true);
+    expect(samePick(red, black)).toBe(false);
+    expect(samePick(red, { family: 'jersey', colour: 0, tint: red.tint })).toBe(false);
+    expect(samePick({ family: 'athletic', colour: 8 }, { family: 'athletic', colour: 8 })).toBe(true);
+    expect(samePick(null, null)).toBe(true);
+    expect(samePick(red, null)).toBe(false);
+  });
+
+  it('hands a fabric picked on the top to the bottom, and its edging to the bottom\'s edging', () => {
+    const next = matchSet('top', set({ fabric: blue, match: false, trim: black, stitch: 1.5 }, { fabric: red }, { fabric: black, opacity: 0.8 }), true);
+    expect(next.fill).toEqual(choice({ fabric: blue, stitch: 1.5 }));
+    // (the edging keeps what is its own: its cover)
+    expect(next.edging).toEqual(choice({ fabric: black, stitch: 1.5, opacity: 0.8 }));
+    expect(setMatches(next, true)).toBe(true);
+    // MATCH on the top (its edging follows its fabric) takes the painted edging with it
+    const matched = matchSet('top', set({ fabric: blue, match: true, trim: black }, { fabric: red }, { fabric: black }), true);
+    expect(matched.edging!.fabric).toEqual(blue);
+    expect(matched.fill!.fabric).toEqual(blue);
+  });
+
+  it('hands a fabric picked on the bottom to the top, and the bottom\'s edging to the top\'s cords', () => {
+    const fromFill = matchSet('fill', set({ fabric: red, match: false, trim: black }, { fabric: blue, stitch: 0.75 }, { fabric: black }), true);
+    expect(fromFill.top).toEqual(choice({ fabric: blue, match: false, trim: black, stitch: 0.75 }));
+    expect(fromFill.edging!.fabric).toEqual(black);
+    const fromEdging = matchSet('edging', set({ fabric: red, match: true, trim: null }, { fabric: red }, { fabric: blue }), true);
+    expect(fromEdging.top).toEqual(choice({ fabric: red, match: false, trim: blue }));
+    expect(trimPick(fromEdging.top)).toEqual(blue);
+    expect(fromEdging.fill!.fabric).toEqual(red);
+    expect(setMatches(fromEdging, true)).toBe(true);
+  });
+
+  it('hands nothing on from a half with no fabric: paint has no look of its own to go back to', () => {
+    // the top put back in its ORIGINAL material: her bottom stays as it is
+    const original = matchSet('top', set({ fabric: null }, { fabric: red }, { fabric: black }), true);
+    expect(original.fill!.fabric).toEqual(red);
+    expect(original.edging!.fabric).toEqual(black);
+    // a layer set to NONE: her top stays as it is
+    const none = matchSet('fill', set({ fabric: red, match: false, trim: black }, { fabric: null }, { fabric: black }), true);
+    expect(none.top.fabric).toEqual(red);
+  });
+
+  it('leaves a top with no edging of its own out of the edging, and a half that is not on her alone', () => {
+    const plain = matchSet('edging', set({ fabric: red }, { fabric: red }, { fabric: blue }), false);
+    expect(plain.top).toEqual(choice({ fabric: red }));
+    expect(plain.edging!.fabric).toEqual(blue);
+    expect(setMatches(plain, false)).toBe(true);
+    const noEdging = matchSet('top', set({ fabric: blue, match: false, trim: black }, { fabric: red }, null), true);
+    expect(noEdging.edging).toBeNull();
+    expect(noEdging.fill!.fabric).toEqual(blue);
+  });
+
+  it('starts unmatched for a look saved with the halves apart (her top in its own green over the red bottom)', () => {
+    expect(setMatches(set({ fabric: null }, { fabric: { family: 'jersey', colour: 0, tint: '#c42a3c' } }, { fabric: { family: 'jersey', colour: 0, tint: '#1c1416' } }), true)).toBe(false);
+    expect(setMatches(set({ fabric: red, match: false, trim: black }, { fabric: red }, { fabric: blue }), true)).toBe(false);
+    expect(setMatches(set({ fabric: red, match: true }, { fabric: red }, { fabric: red }), true)).toBe(true);
+  });
+});
+
 describe('body paint', () => {
   // a strip of 6 vertices along x, two triangles per square
   const rest = new Float32Array([0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0]);
@@ -106,7 +188,7 @@ describe('body paint', () => {
 });
 
 import { BODY_REGIONS, REGION_GROUPS, groupRegions, mapBody, mirrorIndex, regionNumber } from '../src/sarahlab/bodyRegions';
-import { COVERAGE_TEMPLATES, coverage, withDial } from '../src/sarahlab/paintTemplates';
+import { COVERAGE_TEMPLATES, GARMENT_SETS, coverage, withDial } from '../src/sarahlab/paintTemplates';
 
 describe('the body map', () => {
   // a toy skeleton facing +z, her left toward +x: 0 pelvis, 1 spine, 2 chest, 3 neck, 4 head, 5 shoulderL, 6 elbowL,

@@ -8,6 +8,7 @@
  * offers on Sarah and picture her (`bakeOutfitPictures` in SarahLabScene.ts: the same camera and size a saved outfit's
  * picture is taken with), then writes them to public/sarahlab/outfits/<outfit>.jpg, where the OUTFIT cards read them.
  * Run it again when an outfit is added or its look changes, then build. A fresh browser, so the LIGHT theme.
+ * ONLY=<outfit names, comma separated> pictures just those (ONLY=bikini), and leaves the other cards as they are.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -41,7 +42,9 @@ try {
   await page.goto(`${server.resolvedUrls.local[0]}?open=CharacterRoom&bake=outfits`);
   await page.waitForFunction(() => typeof globalThis.__sarahLabBakeOutfits === 'function' && (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
   log('the room is up: picturing each outfit (a minute or more each on a software renderer)');
-  const pictures = await page.evaluate(() => globalThis.__sarahLabBakeOutfits(), null, { timeout: 0 });
+  const only = process.env.ONLY ? process.env.ONLY.split(',').map((n) => n.trim()).filter(Boolean) : null;
+  const pictures = await page.evaluate((names) => globalThis.__sarahLabBakeOutfits(names ?? undefined), only, { timeout: 0 });
+  if (only && pictures.length !== only.length) { failed = true; log(`FAIL: asked for ${only.join(', ')}, the room pictured ${pictures.map((p) => p.name).join(', ') || 'none'}`); }
   for (const { name, path: file, picture } of pictures) {
     const m = /^data:image\/jpeg;base64,(.+)$/.exec(picture ?? '');
     if (!m) { failed = true; log(`FAIL ${name}: no picture`); continue; }

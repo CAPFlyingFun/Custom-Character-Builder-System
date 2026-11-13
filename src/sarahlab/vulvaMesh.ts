@@ -15,6 +15,20 @@ import { footAt, layBeyond, laySeatSkin, roundMove, roundOf, riseRing, sleeveTub
  * GAME TUNING for the opening (Joshua's references, 2026-10-30: at crowning the whole area round the opening domes out
  * several centimetres, so the opening stands level with her thighs or in front of them, not sunk between them).
  */
+/**
+ * HER OPENING'S WORK IN PROGRESS, OFF (2026-11-12). Two changes made after v0.9.13 that Joshua has not approved yet are
+ * kept in the code and switched off here, so that other work reaching `main` (her bikini set, which he approved) takes
+ * her opening there as he approved it:
+ *   - her dome fading out sooner round her opening (2026-11-11; `domeReach` 3.5 cm and `domeFoot` in place of 6 cm and
+ *     the birth's own foot): "not yet seen by Joshua";
+ *   - the birth's push carried by her rim (2026-11-12, his "the birth bulge offset seemed to go inside instead of
+ *     outside"): still to do -- a gap at her canal's far end, tears at her rim's top corners, a narrower opening at
+ *     half open.
+ * `true` when that work is taken up again. Off, her dome is laid exactly as v0.9.13 laid it.
+ */
+export const OPENING_WIP: boolean = false;
+/** GAME TUNING: her dome's reach as approved (v0.9.13), metres past her rim: what is used while `OPENING_WIP` is off. */
+const DOME_REACH_APPROVED = 0.06;
 /** a probe's tries at a few of VULVA_OPEN's numbers, before one is settled on (empty: VULVA_OPEN's own) */
 export const VULVA_TRY: { backDepth?: number; backMargin?: number; domeReach?: number; rimEven?: number; dome?: number; domeFoot?: number } = {};
 
@@ -1633,8 +1647,8 @@ void main() {
       const inPlane = (q: number) => { const dx = pos[q * 3] - Cb.x, dy = pos[q * 3 + 1] - Cb.y, dz = pos[q * 3 + 2] - Cb.z, k = dx * out.x + dy * out.y + dz * out.z; return Math.hypot(dx - k * out.x, dy - k * out.y, dz - k * out.z); };
       let r0 = 0; for (let j = 0; j < M; j++) if (base[j] >= 0) r0 += inPlane(base[j]) / Math.max(1, nb);
       // (the dome's own reach; a birth's push its own, as much as the push is the more -- its lean says how much)
-      const dr = VULVA_TRY.domeReach ?? VULVA_OPEN.domeReach, pushShare = VULVA_OPEN.bulgeLean > 0 ? domeLean / VULVA_OPEN.bulgeLean : 0;
-      const df = VULVA_TRY.domeFoot ?? VULVA_OPEN.domeFoot;
+      const dr = VULVA_TRY.domeReach ?? (OPENING_WIP ? VULVA_OPEN.domeReach : DOME_REACH_APPROVED), pushShare = VULVA_OPEN.bulgeLean > 0 ? domeLean / VULVA_OPEN.bulgeLean : 0;
+      const df = VULVA_TRY.domeFoot ?? (OPENING_WIP ? VULVA_OPEN.domeFoot : VULVA_OPEN.bulgeFootM);
       const reach = (dr + (VULVA_OPEN.bulgeReach - dr) * pushShare) * perMetre, footW = (df + (VULVA_OPEN.bulgeFootM - df) * pushShare) * perMetre, dEdge = edgeDistances();
       // MORE AT THE BOTTOM THAN THE TOP (Joshua, 2026-11-03: "a slight bottom bulge... 70% more bottom half... 30% top
       // half"): her perineum gives and bulges, her pubic bone above does not. The same dome, `1 - bulgeLean` of it at the
@@ -1653,7 +1667,8 @@ void main() {
         // outside and didn't actually offset outwards" (Joshua, 2026-11-12; MEASURED: her rim 0.0 cm out at a 2 or a 5 cm
         // bulge). So the rim always carries the whole of it, and her skin falls away from it to the area's edge)
         const fromRim = Math.max(0, inPlane(p) - r0), toEdge = Math.max(0, dEdge[p] - VULVA_OPEN.edgeTrim * perMetre), span2 = fromRim + toEdge;
-        const rimToEdge = span2 > 1e-12 ? toEdge / span2 : 1, rimShare = rimToEdge * rimToEdge * (3 - 2 * rimToEdge);
+        // (work in progress, off: `OPENING_WIP` -- with none of it, her dome is as it was approved)
+        const rimToEdge = span2 > 1e-12 ? toEdge / span2 : 1, rimShare = OPENING_WIP ? rimToEdge * rimToEdge * (3 - 2 * rimToEdge) : 0;
         const h = H * perMetre * Math.max(dome * smooth(VULVA_OPEN.edgeTrim * perMetre, VULVA_OPEN.edgeTrim * perMetre + footW, dEdge[p]), rimShare * (1 - domeLean * upness));
         if (h <= 0) continue;
         pos[p * 3] += out.x * h; pos[p * 3 + 1] += out.y * h; pos[p * 3 + 2] += out.z * h;

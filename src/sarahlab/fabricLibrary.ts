@@ -113,6 +113,38 @@ export function trimPick(choice: FabricChoice): FabricPick | null {
   return choice.match ? choice.fabric : choice.trim;
 }
 
+/** Whether two picks are one fabric: the same family, colour and dye (two of none are; one of none and a fabric are not). */
+export const samePick = (a: FabricPick | null, b: FabricPick | null): boolean => (!a || !b ? a === b : a.family === b.family && a.colour === b.colour && (a.tint ?? '') === (b.tint ?? ''));
+
+/**
+ * A SET'S TWO HALVES IN ONE FABRIC (Joshua, 2026-11-12, of her bikini: "match up the bikini top and bottom together...
+ * just have them matching by default (sync)"). A set is a modelled garment (`top`: her bikini top) and the painted
+ * pieces that are its other half (`paintTemplates.GARMENT_SETS`): `fill`, which wears the garment's fabric, and
+ * `edging`, which wears its edging's -- either null when it is not on her. `trim`: whether the garment has an edging of
+ * its own (cords, a binding: its `<garment>Trim`).
+ *
+ * `matchSet` hands the fabric of the half that was just changed (`from`) to the other: the garment's fabric and the
+ * fill are one, the garment's edging and the painted edging are one (so MATCH on the garment, its edging following its
+ * fabric, takes the painted edging with it), and one stitch size. A half with no fabric chosen (the garment in its
+ * ORIGINAL material, a layer set to NONE) hands nothing on: paint has no look of its own to go back to.
+ */
+export interface FabricSet { readonly top: FabricChoice; readonly fill: FabricChoice | null; readonly edging: FabricChoice | null }
+export function matchSet(from: 'top' | 'fill' | 'edging', set: FabricSet, trim: boolean): FabricSet {
+  let top = set.top;
+  if (from === 'fill' && set.fill?.fabric) top = { ...top, fabric: set.fill.fabric, stitch: set.fill.stitch };
+  if (from === 'edging' && trim && set.edging?.fabric) top = { ...top, match: false, trim: set.edging.fabric, stitch: set.edging.stitch };
+  const edge = trim ? trimPick(top) : null;
+  return {
+    top,
+    fill: set.fill && top.fabric ? { ...set.fill, fabric: top.fabric, stitch: top.stitch } : set.fill,
+    edging: set.edging && edge ? { ...set.edging, fabric: edge, stitch: top.stitch } : set.edging,
+  };
+}
+/** Whether a set is in one fabric now: what the editor's TOP + BOTTOM MATCH starts as when clothes go on. */
+export function setMatches(set: FabricSet, trim: boolean): boolean {
+  return (!set.fill || samePick(set.top.fabric, set.fill.fabric)) && (!set.edging || !trim || samePick(trimPick(set.top), set.edging.fabric));
+}
+
 /**
  * PAINTED ON (Joshua, 2026-10-19: "clothing needs to sit over the body, and/or be painted on"; 2026-10-20: paint is
  * "a separate, editable paint layer" with a brush and an eraser). A FILL lays one garment's footprint at once: the

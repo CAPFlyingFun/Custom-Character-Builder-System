@@ -390,6 +390,16 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   Object.freeze({ id, name, group, params: Object.freeze(params), ...(construction ? { construction } : {}) })));
 
 /**
+ * A SET: a modelled garment and the painted pieces that are its other half (Joshua, 2026-11-12, of her bikini: "match
+ * up the bikini top and bottom together... just have them matching by default (sync)"). By the garment's material
+ * name: `fabric`, the template of the painted piece that wears the garment's fabric, and `edging`, the template of the
+ * one that wears its edging's. The editor keeps them in one fabric while its TOP + BOTTOM MATCH is on (`fabricPanel.ts`).
+ */
+export const GARMENT_SETS: Readonly<Record<string, { readonly fabric: string; readonly edging: string }>> = Object.freeze({
+  bikini: Object.freeze({ fabric: 'athleticBottom', edging: 'athleticBottomEdge' }),
+});
+
+/**
  * WHAT KIND OF PIECE a template makes (Joshua, 2026-10-22: "Select TOP or BOTTOM directly"): the editor names a paint
  * layer by it, so the default outfit's tee reads TOP and its leggings BOTTOM, and offers the styles of the same kind
  * first. Legwear (stockings, socks) is its own kind: it goes under shorts or a skirt, not instead of them.

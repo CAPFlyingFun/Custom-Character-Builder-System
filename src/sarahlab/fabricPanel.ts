@@ -17,6 +17,13 @@
  *             (or folding the editor, or another tab) puts every piece back as it was.
  *   SAVE   -- the room's outfit operations (`outfitPanel.ts`, handed in by the room).
  *
+ * A SET'S TWO HALVES MATCH (Joshua, 2026-11-12, of her bikini: "match up the bikini top and bottom together... just
+ * have them matching by default (sync)"). A modelled garment and the painted pieces that are its other half
+ * (`paintTemplates.GARMENT_SETS`: her bikini's top, and her painted bottom and its edging) are kept in one fabric while
+ * TOP + BOTTOM MATCH is on: a fabric, a colour or a stitch size picked on either half goes on both, the top's edging
+ * and the bottom's alike. It is on whenever the two are in one fabric as they go on (a built-in set; a saved look that
+ * matched), off for a look saved with them apart; pressed on, the other half takes the selected piece's fabric.
+ *
  * BREAST and NAVEL DETAIL through the clothes are one setting for the whole outfit, each AUTO (every piece's own fabric
  * and construction decides, `detailMaterials.ts`) or MANUAL, with its own RESET TO AUTO (Joshua, 2026-10-22). The same
  * setting is shown here and in the BODY tab (`detailControl`), so the two can never disagree.
@@ -28,8 +35,8 @@ import * as THREE from 'three';
 import type { ShapeFields } from '../view/bodyShapeView';
 import {
   DEFAULT_CHOICE, FABRIC_FAMILIES, OPACITY_RANGE, STITCH_RANGE, SWATCH_HEX, base64ToBytes, bytesToBase64, colourName,
-  fabricFamily, opacityOf, swatchRect, tileUnits, trimPick, type FabricChoice, type FabricFamilyId, type FabricLayout,
-  type FabricPick, type OutfitConfig, type PaintTool,
+  fabricFamily, matchSet as matchedSet, opacityOf, setMatches, swatchRect, tileUnits, trimPick, type FabricChoice, type FabricFamilyId, type FabricLayout,
+  type FabricPick, type FabricSet, type OutfitConfig, type PaintTool,
 } from './fabricLibrary';
 import { ensureRest, fabricFieldWorn, fabricSlip, fieldCells, setDetailKeep, setFabricLayer, setHang, setRegionOverlay, setUnder, type FabricLayer } from './fabricMaterial';
 import { layCarried, poseTurns, settleCarry } from './designPose';
@@ -44,7 +51,7 @@ import { TINT_BASE_COLOUR, readTint, tintLabel, tintPixels } from './fabricTint'
 import { HEM_LIFT_FLAT, HEM_LIFT_RIBBED, TunicDrape } from './tunicDrape';
 import { AUTO_DETAIL, type DetailOverride, type SavedClothes } from './characterSaves';
 import {
-  COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, designedField, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
+  COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, GARMENT_SETS, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, designedField, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
   withDial, type CoverageParams, type DesignedField, type PieceKind,
 } from './paintTemplates';
 
@@ -79,6 +86,8 @@ export const FABRIC_ACTION = Object.freeze({
   trimFamily: (id: FabricFamilyId) => `sarahlab:fabric:trim-family:${id}`,
   trimColour: (i: number) => `sarahlab:fabric:trim-colour:${i}`,
   match: 'sarahlab:fabric:match',
+  /** TOP + BOTTOM MATCH: a set's two halves kept in one fabric. */
+  setMatch: 'sarahlab:fabric:set-match',
   tool: (t: PaintTool) => `sarahlab:fabric:tool:${t}`,
   region: (id: string) => `sarahlab:fabric:region:${id}`,
   side: (s: RegionSide) => `sarahlab:fabric:side:${s}`,
@@ -182,9 +191,12 @@ export interface FabricPanel {
    * painted outfit filled and this one does not are cleared; layers painted by hand are left alone unless this outfit
    * needs them. Null takes a painted outfit off. Its detail goes back to AUTO. False if her body is not ready yet.
    * `garments` dresses the outfit's modelled garments in their fabrics (a garment the last outfit dressed and this one
-   * does not goes back to its own look; fabrics picked by hand on other garments are left alone).
+   * does not goes back to its own look; fabrics picked by hand on other garments are left alone), and `trims` their
+   * edgings in a fabric of their own (without one a garment's edging follows its fabric).
    */
-  wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick }[] | null, garments?: Readonly<Record<string, FabricPick | undefined>>): boolean;
+  wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick }[] | null, garments?: Readonly<Record<string, FabricPick | undefined>>, trims?: Readonly<Record<string, FabricPick | undefined>>): boolean;
+  /** Whether a set's two halves are kept in one fabric (TOP + BOTTOM MATCH). */
+  setMatched(): boolean;
   /** Every paint layer and garment fabric off (a blank NEW OUTFIT); the detail back to AUTO. */
   clearAll(): boolean;
   /**
@@ -414,7 +426,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     sync(); refreshTargets(); touched();
   }));
   const fabricHeading = heading('FABRIC');
-  designBox.append(styleBox, fabricHeading, families, colours, trimBox, opacity.wrap, stitch.wrap, removeRow);
+  // a set's two halves in one fabric (the header says how): shown on either half of a set she has on
+  const setMatchButton = button('TOP + BOTTOM MATCH', FABRIC_ACTION.setMatch, () => { setMatch = !setMatch; if (setMatch) matchSet(target); draw(); void apply(); touched(); });
+  const setMatchRow = row(); setMatchRow.append(setMatchButton);
+  designBox.append(styleBox, fabricHeading, setMatchRow, families, colours, trimBox, opacity.wrap, stitch.wrap, removeRow);
 
   // ---- PAINT
   const paintBox = el('div', 'display:flex;flex-direction:column;gap:8px');
@@ -560,8 +575,36 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   function set(change: Partial<FabricChoice>): void {
     const next = { ...current(), ...change };
     if (target.kind === 'layer') paintChoices[target.index] = next; else garmentChoices.set(target.name, next);
+    if (setMatch) matchSet(target);
     draw(); void apply(); touched();
   }
+  // ------------------------------------------------------------ a set's two halves in one fabric
+  /** TOP + BOTTOM MATCH (the header): on, a change to either half of a set goes on both. */
+  let setMatch = true;
+  /** The sets she has on: each one's garment, whether that has an edging of its own, and its painted pieces' layers (-1: not on her). */
+  function setsOn(): { garment: string; trim: boolean; fill: number; edging: number }[] {
+    const out: { garment: string; trim: boolean; fill: number; edging: number }[] = [];
+    for (const [garment, s] of Object.entries(GARMENT_SETS)) {
+      const w = hooks.worn().find((x) => x.name === garment);
+      const fill = templates.findIndex((x) => x?.id === s.fabric), edging = templates.findIndex((x) => x?.id === s.edging);
+      if (w && (fill >= 0 || edging >= 0)) out.push({ garment, trim: w.trim, fill, edging });
+    }
+    return out;
+  }
+  /** The set a piece is half of, if she has both halves on. */
+  const setOf = (t: Target) => setsOn().find((s) => (t.kind === 'garment' ? t.name === s.garment : t.index === s.fill || t.index === s.edging)) ?? null;
+  const choicesOf = (s: { garment: string; fill: number; edging: number }): FabricSet => ({ top: garmentChoices.get(s.garment) ?? DEFAULT_CHOICE, fill: s.fill >= 0 ? paintChoices[s.fill] : null, edging: s.edging >= 0 ? paintChoices[s.edging] : null });
+  /** The other half of `from`'s set takes its fabric (`fabricLibrary.matchSet`). */
+  function matchSet(from: Target): void {
+    const s = setOf(from);
+    if (!s) return;
+    const was = choicesOf(s), next = matchedSet(from.kind === 'garment' ? 'top' : from.index === s.fill ? 'fill' : 'edging', was, s.trim);
+    if (next.top !== was.top) garmentChoices.set(s.garment, next.top);
+    if (s.fill >= 0 && next.fill) paintChoices[s.fill] = next.fill;
+    if (s.edging >= 0 && next.edging) paintChoices[s.edging] = next.edging;
+  }
+  /** Whether every set she has on is in one fabric now: what TOP + BOTTOM MATCH starts as when clothes go on. */
+  const setsMatch = (): boolean => setsOn().every((s) => setMatches(choicesOf(s), s.trim));
   let notify = false;
   /** Tell the room, once per burst of changes. */
   function touched(): void {
@@ -744,6 +787,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       }
     }
     removeRow.style.display = onLayer && kindOf(i) ? 'flex' : 'none';
+    setMatchRow.style.display = setOf(target) ? 'flex' : 'none';
+    press(setMatchButton, setMatch);
     const fabricShown = !onLayer || !!kindOf(i);
     fabricHeading.style.display = families.style.display = fabricShown ? '' : 'none';
     families.style.display = fabricShown ? 'flex' : 'none';
@@ -1137,12 +1182,12 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   const outfitLayers: boolean[] = Array.from({ length: PAINT_LAYER_COUNT }, () => false);
   // ...and which garments it dressed
   const outfitGarments = new Set<string>();
-  function wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick }[] | null, garments: Readonly<Record<string, FabricPick | undefined>> = {}): boolean {
+  function wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick }[] | null, garments: Readonly<Record<string, FabricPick | undefined>> = {}, trims: Readonly<Record<string, FabricPick | undefined>> = {}): boolean {
     const p = bodyPaint(), map = regionMap();
     if (!p || !map) return false;
     for (const name of outfitGarments) if (!garments[name]) garmentChoices.delete(name);
     outfitGarments.clear();
-    for (const [name, pick] of Object.entries(garments)) if (pick) { garmentChoices.set(name, { ...DEFAULT_CHOICE, fabric: pick }); outfitGarments.add(name); }
+    for (const [name, pick] of Object.entries(garments)) if (pick) { const trim = trims[name]; garmentChoices.set(name, { ...DEFAULT_CHOICE, fabric: pick, ...(trim ? { match: false, trim } : {}) }); outfitGarments.add(name); }
     for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
       const want = layers?.[i], t = want ? COVERAGE_TEMPLATES.find((x) => x.id === want.template) : undefined;
       if (want && t) {
@@ -1158,6 +1203,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       }
     }
     override = AUTO_DETAIL;
+    setMatch = setsMatch();
     void apply(); refreshTargets(); selectFirst();
     return true;
   }
@@ -1169,6 +1215,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     for (let i = 0; i < PAINT_LAYER_COUNT; i++) { p.clear(i); templates[i] = null; paintChoices[i] = DEFAULT_CHOICE; details[i] = DEFAULT_LAYER_DETAIL; outfitLayers[i] = false; }
     garmentChoices.clear(); outfitGarments.clear();
     override = AUTO_DETAIL;
+    setMatch = true;
     void apply(); refreshTargets(); selectFirst(); touched();
     return true;
   }
@@ -1206,6 +1253,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     garmentChoices.clear(); outfitGarments.clear();
     for (const [k, v] of Object.entries(saved.garments)) garmentChoices.set(k, v);
     override = saved.detail ?? AUTO_DETAIL;
+    setMatch = setsMatch();
     void apply(); refreshTargets(); selectFirst();
     return true;
   }
@@ -1229,6 +1277,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     strokeStart, strokeMove, strokeEnd,
     exportConfig,
     wearOutfit,
+    setMatched: () => setMatch,
     clearAll,
     navelFlatten,
     frame() { bridge?.update(); drape?.update(); layHang(); layUnder(); laySlip(); },
