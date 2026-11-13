@@ -91,11 +91,11 @@ const BAND: readonly { name: string; mid: [number, number, number]; over: [numbe
   { name: 'along the fold under her bump, her left', mid: [0.1040, 0.8912, 0.0536], over: [0.0965, 0.9010, 0.0591], under: [0.1115, 0.8814, 0.0480] },
   { name: 'at the front of her hip, her left', mid: [0.1422, 0.9292, 0.0228], over: [0.1383, 0.9398, 0.0302], under: [0.1462, 0.9187, 0.0155] },
   { name: 'at her side, her left', mid: [0.1628, 0.9636, -0.0281], over: [0.1627, 0.9766, -0.0246], under: [0.1629, 0.9505, -0.0316] },
-  { name: 'behind her hip, her left', mid: [0.1590, 0.9762, -0.1104], over: [0.1568, 0.9893, -0.1080], under: [0.1613, 0.9631, -0.1128] },
+  { name: 'behind her hip, her left', mid: [0.1638, 0.9731, -0.0894], over: [0.1624, 0.9864, -0.0873], under: [0.1652, 0.9598, -0.0915] },
   { name: 'along the fold under her bump, her right', mid: [-0.1012, 0.8900, 0.0541], over: [-0.0941, 0.8999, 0.0600], under: [-0.1084, 0.8802, 0.0482] },
   { name: 'at the front of her hip, her right', mid: [-0.1413, 0.9279, 0.0251], over: [-0.1368, 0.9386, 0.0320], under: [-0.1459, 0.9173, 0.0182] },
   { name: 'at her side, her right', mid: [-0.1628, 0.9629, -0.0249], over: [-0.1621, 0.9755, -0.0200], under: [-0.1636, 0.9504, -0.0298] },
-  { name: 'behind her hip, her right', mid: [-0.1616, 0.9768, -0.1062], over: [-0.1598, 0.9901, -0.1042], under: [-0.1633, 0.9636, -0.1082] },
+  { name: 'behind her hip, her right', mid: [-0.1539, 0.9788, -0.1266], over: [-0.1510, 0.9918, -0.1245], under: [-0.1568, 0.9658, -0.1287] },
 ];
 
 describe('her athletic bikini bottom, designed on her skin (Joshua, 2026-11-12)', () => {

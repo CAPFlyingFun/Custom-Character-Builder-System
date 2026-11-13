@@ -167,6 +167,14 @@ export const SIDE_BAND_M = 0.015;
  */
 /** The control points of the waistband's left half (`TOP_FRONT` then `TOP_SIDE`) the side band runs between, and how far apart its lower edge's guide points are taken (metres). GAME TUNING. */
 export const BAND_FROM = 5, BAND_TO = TOP_FRONT.length + TOP_SIDE.length - 1, BAND_STEP_M = 0.02;
+/**
+ * MEASURED on the first build (places on her legs-apart skin; her left, her right): the back-most guide point of each
+ * side band's lower edge, where it hands over to the wing across her cheek. Each band's lower edge still ends there, so
+ * the lines round her hips and across her seat are the ones he approved (Joshua, 2026-11-12: "The back and sides are
+ * good") while its front is laid again: with it, MEASURED, they are within 1.4 mm of the first build's at her sides
+ * and 1.6 mm behind her hips (without it the leg openings moved 5.0 and 5.6 mm there).
+ */
+export const BAND_BACK = [[0.1525, 0.9702, -0.138], [-0.1417, 0.9773, -0.1568]];
 export const LEG_FUNNEL = [[0.0515, 0.8541, 0.045], [0.0444, 0.848, 0.038], [0.0405, 0.843, 0.031], [0.0375, 0.8383, 0.024], [0.034, 0.8318, 0.017], [0.0307, 0.8239, 0.010], [0.0279, 0.8178, 0.003], [0.0253, 0.813, -0.005], [0.0234, 0.8103, -0.014], [0.0223, 0.8096, -0.024], [0.0211, 0.8098, -0.035], [0.02, 0.8104, -0.047], [0.0189, 0.8117, -0.060], [0.0176, 0.8146, -0.075], [0.0164, 0.8178, -0.090], [0.0153, 0.8218, -0.105], [0.0143, 0.8268, -0.120], [0.0141, 0.8329, -0.135], [0.0137, 0.8408, -0.150], [0.0121, 0.8503, -0.162]];
 /** MEASURED: the middle of his funnel on her legs-apart skin (her bones carry her crotch 2 mm to her right of her rest middle). */
 export const APART_MID_X = 0.001;
@@ -441,7 +449,7 @@ function onSkin(curve, project) {
  * from its triangle's corners and smoothed along the curve, crossed with the curve's direction) -- then laid again
  * three times so each is that far from its own sample in a straight line, her skin there being nearly flat.
  */
-function bandLower(top, a, b, tools, at, tris, nrm, frontLast = false) {
+function bandLower(top, a, b, tools, at, tris, nrm, backAt, frontLast = false) {
   const n = top.length, idx = [];
   for (let i = a; ; i = (i + 1) % n) { idx.push(i); if (i === b) break; if (idx.length > n) throw new Error('the side band\'s ends are not on the waistband'); }
   const c = idx.map((i) => top[i]);
@@ -458,11 +466,17 @@ function bandLower(top, a, b, tools, at, tris, nrm, frontLast = false) {
     q = q.map((v, k) => (k === 0 || k === q.length - 1 ? v : tools.project(add(add(scale(q[k - 1], 0.25), scale(v, 0.5)), scale(q[k + 1], 0.25)))));
   }
   // guide points for the leg opening's curve: one every `BAND_STEP_M` along it, counted from its FRONT end on both of
-  // her sides (`frontLast`: the samples run back to front), so the strap meets the panel the same way on each
+  // her sides (`frontLast`: the samples run back to front), so the strap meets the panel the same way on each -- and
+  // the last of them where the first build's lower edge handed over to the wing (`backAt`: the sample nearest it; a
+  // counted guide point nearer that than half a step gives way to it)
   if (frontLast) q.reverse();
-  const guides = [q[0]];
-  let run = 0;
-  for (let k = 1; k < q.length; k += 1) { run += len(sub(q[k], q[k - 1])); if (run >= BAND_STEP_M) { guides.push(q[k]); run = 0; } }
+  let end = q.length - 1, nearest = Infinity;
+  q.forEach((v, k) => { const d = len(sub(v, backAt)); if (d < nearest) { nearest = d; end = k; } });
+  const guides = [q[0]], along = [0];
+  let run = 0, far = 0;
+  for (let k = 1; k <= end; k += 1) { const step = len(sub(q[k], q[k - 1])); run += step; far += step; if (run >= BAND_STEP_M) { guides.push(q[k]); along.push(far); run = 0; } }
+  if (far - along[along.length - 1] < BAND_STEP_M / 2 && guides.length > 1) guides.pop();
+  if (guides[guides.length - 1] !== q[end]) guides.push(q[end]);
   if (frontLast) guides.reverse();
   return guides;
 }
@@ -508,8 +522,8 @@ function designCurves(tools, apart, tris) {
   // the side bands' lower edges, each from its own side of the waistband (which runs front to back on her left and back
   // to front on her right)
   const nearest = (q) => { let best = 0, bd = Infinity; top.forEach((c, i) => { const d = len(sub(c, q)); if (d < bd) { bd = d; best = i; } }); return best; };
-  const bandL = bandLower(top, nearest(left[BAND_FROM]), nearest(left[BAND_TO]), apart.tools, apart.at, tris, apart.nrm);
-  const bandR = bandLower(top, nearest(right[BAND_TO]), nearest(right[BAND_FROM]), apart.tools, apart.at, tris, apart.nrm, true);
+  const bandL = bandLower(top, nearest(left[BAND_FROM]), nearest(left[BAND_TO]), apart.tools, apart.at, tris, apart.nrm, BAND_BACK[0]);
+  const bandR = bandLower(top, nearest(right[BAND_TO]), nearest(right[BAND_FROM]), apart.tools, apart.at, tris, apart.nrm, BAND_BACK[1], true);
   // her left leg's opening: the band from behind her hip down to the panel, the panel's side and the strap, and up across
   // her cheek; and her right's, run the other way round so both go the same way about her
   // (the funnel's side and the strap are places on her legs-apart skin already: his own lines there)
