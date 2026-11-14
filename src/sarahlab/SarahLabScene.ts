@@ -693,7 +693,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let legAnchors: { thighL: Anchor; thighR: Anchor; calfL: Anchor; calfR: Anchor } | null = null;
   /** her legs' bones (thigh, shin, foot each side), for their follow weights */
   const legBonesOf = (root: THREE.Object3D | null = model): LegBones | null => {
-    const sk = root && findSkinnedMesh(root), j = measure?.joints;
+    // (hers, not her baby's: `herSkinned`)
+    const sk = root && findSkinnedMesh(root, babyHolder), j = measure?.joints;
     if (!sk || !j) return null;
     const b = sk.skeleton.bones, foot = (k: THREE.Bone) => k.children.find((c) => (c as THREE.Bone).isBone) as THREE.Bone | undefined;
     const fl = foot(b[j.kneeL]), fr = foot(b[j.kneeR]);
@@ -1530,6 +1531,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const material = mesh && ((Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial);
     return mesh && material ? { mesh, material } : null;
   }
+  /**
+   * HER OWN SKINNED MESH: the one her bones are read off. Her model also carries her BABY once it is loaded (its holder
+   * hangs from her spine), and its skeleton has more bones than hers -- 71 to v2's 68 -- so "the skinned mesh with the
+   * most bones in her model" was her baby's from then on, and what read her joints there read its bones. MEASURED
+   * 2026-11-14 with her baby loaded, her belly at 150%: the angle between her thighs read 169 degrees standing, in LEGS
+   * APART, in SQUAT and in RECLINE alike (on her own bones 11, 54, 112 and 104), so her pose's opening stood at its most
+   * through every birth, whatever her legs did. The same lookup is what a garment's file is bound to as it is first put
+   * on (`wearPart`). Nothing under her baby's holder is hers.
+   */
+  function herSkinned(): THREE.SkinnedMesh | null { return model ? findSkinnedMesh(model, babyHolder) : null; }
   /** The file's own map, kept the first time anything else is laid on her. */
   const ownMap = (material: THREE.MeshStandardMaterial) => (material.userData.ownMap ??= material.map) as THREE.Texture | null;
   /** A map set up as the file's own is: sRGB, glTF's flipY, its sampler, its transform. */
@@ -2610,7 +2621,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
 
   /** Put a fetched file's meshes on her (bound to her live skeleton, hidden until an outfit shows them). */
   function wearPart(part: RecoveredPart, scene: THREE.Object3D): void {
-    const skin = model ? findSkinnedMesh(model) : null;
+    const skin = herSkinned();
     if (!skin || scene.userData.isPlaceholder || partMeshes.has(part)) { release(scene); return; }
     if (isShirtPart(part)) {
       // one imported shirt in memory: the one she is putting on replaces the last
@@ -4449,7 +4460,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (onStrip) strip.setWalked(walked);
     if (!model || !rig || !measure) return;
     walkOffset.set(0, 0, 0);
-    const skin = findSkinnedMesh(model);
+    const skin = herSkinned();
     if (isBirthPose(pose) && skin) { placeBirth(skin); return; }
     model.quaternion.identity();
     if (sitAmount <= 0 || !skin) {
@@ -4764,7 +4775,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** A step of her walk on her feet (`advance`, before her pose is laid on her bones). */
   function stepFeet(dt: number): void {
     stageClock += Math.max(0, dt);
-    const sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
+    const sk = bodyOf()?.mesh ?? herSkinned();
     if (!sk || !rig || !measure) return;
     const f = feetFor(sk);
     if (!f) return;
@@ -8336,7 +8347,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** how far her torso leans from upright (degrees; back positive, forward negative): her pelvis to her chest, in the
    * world, signed by whether her chest is behind or in front of her hips as her front faces */
   function torsoTilt(): number {
-    const sk = model && findSkinnedMesh(model);
+    const sk = herSkinned();
     if (!sk || !measure) return 0;
     const b = sk.skeleton.bones, p = b[measure.joints.pelvis]?.getWorldPosition(new THREE.Vector3()), c = b[measure.joints.chest]?.getWorldPosition(new THREE.Vector3());
     if (!p || !c) return 0;
@@ -8363,7 +8374,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** the angle between her two thighs (degrees): hip to knee each side, in the world */
   function thighSpread(): number {
-    const sk = model && findSkinnedMesh(model);
+    const sk = herSkinned();
     if (!sk || !measure) return 0;
     const b = sk.skeleton.bones, j = measure.joints, w = (i: number) => b[i].getWorldPosition(new THREE.Vector3());
     const l = w(j.kneeL).sub(w(j.hipL)), r = w(j.kneeR).sub(w(j.hipR));
@@ -8690,7 +8701,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const across = avg((i) => Math.abs(fl[i * 2 + 1]) < 0.008 && fl[i * 2] > 0.01).sub(avg((i) => Math.abs(fl[i * 2 + 1]) < 0.008 && fl[i * 2] < -0.01));
           across.addScaledVector(along, -across.dot(along)).normalize();
           const n = along.clone().cross(across).normalize();
-          const sk = findSkinnedMesh(model!); if (sk && measure) { const bones = sk.skeleton.bones, j = measure.joints, h = bones[j.hipL].getWorldPosition(new THREE.Vector3()).add(bones[j.hipR].getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5); if (n.dot(A.clone().sub(h)) < 0) n.negate(); }
+          const sk = herSkinned(); if (sk && measure) { const bones = sk.skeleton.bones, j = measure.joints, h = bones[j.hipL].getWorldPosition(new THREE.Vector3()).add(bones[j.hipR].getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5); if (n.dot(A.clone().sub(h)) < 0) n.negate(); }
           // the gap between her left and right (her body outside the rebuilt area) at each height out of the plane, at a few places along the split
           const cut = new Uint8Array(b.mesh.geometry.getAttribute('position').count), kept = new Uint8Array(cut.length);
           for (const i of vulva.bake.keep) kept[i] = 1;
@@ -8758,7 +8769,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         },
         vulvaAxes: () => {
           if (!vulva || !model || !measure) return null; model.updateMatrixWorld(true);
-          const sk = findSkinnedMesh(model)!, bones = sk.skeleton.bones, j = measure.joints;
+          const sk = herSkinned()!, bones = sk.skeleton.bones, j = measure.joints;
           const hip = bones[j.hipL].getWorldPosition(new THREE.Vector3()).add(bones[j.hipR].getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5);
           const knee = bones[j.kneeL].getWorldPosition(new THREE.Vector3()).add(bones[j.kneeR].getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5);
           const head = bones[j.head].getWorldPosition(new THREE.Vector3());
@@ -9285,7 +9296,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         kneeTurn: (on?: boolean) => { if (on !== undefined && on !== kneeTurnOn) { kneeTurnOn = on; birthRoomFor = ''; applyLook(); } return { on: kneeTurnOn, stats: kneeTurn?.stats ?? null }; },
         birthContact: (on?: boolean) => { if (on !== undefined && on !== birthContactOn) { birthContactOn = on; birthRoomFor = ''; applyLook(); } return { on: birthContactOn, valve: +contactValve.x.toFixed(3), stats: birthContact?.stats ?? null, legMeshes: skinned.filter((m) => { const a = (m.geometry as THREE.BufferGeometry).getAttribute('jiggle'); if (!a) return false; for (let i = 0; i < a.count; i++) if (a.getY(i) < 0) return true; return false; }).length, legs: Object.fromEntries(Object.entries(legMasses).map(([k, m]) => [k, +(Math.hypot(m.x, m.y, m.z) * 1000).toFixed(2)])) }; },
         vulvaBulge: (b: number) => { if (!vulva) return null; vulva.setBulge(b); return vulva.bulge; },
-        vulva: (on: boolean, wire = false) => { if (!vulva) return null; vulva.show(on); vulva.wire(on && wire); const sk = model && findSkinnedMesh(model), m = vulva.mesh, c = new THREE.Vector3(), v = new THREE.Vector3(); let k = 0;
+        vulva: (on: boolean, wire = false) => { if (!vulva) return null; vulva.show(on); vulva.wire(on && wire); const sk = herSkinned(), m = vulva.mesh, c = new THREE.Vector3(), v = new THREE.Vector3(); let k = 0;
           model?.updateMatrixWorld(true);
           for (let i = 0; i < vulva.bake.count; i++) if (vulva.bake.ring[i] === 0) { m.getVertexPosition(i, v); m.localToWorld(v); c.add(v); k++; }
           c.divideScalar(Math.max(1, k));
@@ -9298,7 +9309,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // the view aimed at a point off the middle of her hips (metres, world: across, up, forward), from a yaw, pitch and distance (cm)
         // the view aimed at her left knee joint (yaw, pitch, distance in cm), for a close look at the bend
         aimKnee: (yaw: number, pitch: number, distance: number, toAnkle = 0) => {
-          const sk = model && findSkinnedMesh(model);
+          const sk = herSkinned();
           if (!sk || !measure) return null;
           const k = sk.skeleton.bones[measure.joints.kneeL].getWorldPosition(new THREE.Vector3());
           // (and down her shin toward her ankle by `toAnkle`, 0..1: her knee bone's child is her foot's)
@@ -9437,7 +9448,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return orbit.target.toArray().map((x) => +(x / M).toFixed(3));
         },
         aim: (yaw: number, pitch: number, distance: number, dx = 0, dy = 0, dz = 0) => {
-          const sk = model && findSkinnedMesh(model);
+          const sk = herSkinned();
           if (!sk || !measure) return null;
           const bones = sk.skeleton.bones, j = measure.joints, h = bones[j.hipL].getWorldPosition(new THREE.Vector3()).add(bones[j.hipR].getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5);
           orbit.yaw = yaw; orbit.pitch = pitch; orbit.distance = distance; orbit.target.set(h.x + dx * M, h.y + dy * M, h.z + dz * M); turning = false;
@@ -9488,7 +9499,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const lens = new THREE.OrthographicCamera((-w * k) / 2, (w * k) / 2, (h * k) / 2, (-h * k) / 2, 0.5 * M, 60 * M);
           const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, yaw, 0, 'YXZ')), at = new THREE.Vector3(centre[0], centre[1], centre[2]).multiplyScalar(M);
           if (about === 'pelvis') {
-            const sk = findSkinnedMesh(model);
+            const sk = herSkinned();
             if (!sk || !measure) return null;
             // how her pose carries her pelvis: its bone as it is now against as it was bound, in the room
             const carried = new THREE.Matrix4().copy(sk.matrixWorld).multiply(sk.bindMatrixInverse).multiply(new THREE.Matrix4().multiplyMatrices(sk.skeleton.bones[0].matrixWorld, sk.skeleton.boneInverses[0])).multiply(sk.bindMatrix);
@@ -10175,7 +10186,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           }); return out.sort((p, q) => p[0] - q[0]); });
         },
         walkFeet: (soles = false) => {
-          const f = walkFeet, sk = bodyOf()?.mesh ?? (model ? findSkinnedMesh(model) : null);
+          const f = walkFeet, sk = bodyOf()?.mesh ?? herSkinned();
           if (!f?.fresh || !sk || !model) return null;
           model.updateMatrixWorld(true);
           const p = new THREE.Vector3(), at = (i: number) => { sk.skeleton.bones[i].getWorldPosition(p); return [+(p.x / M).toFixed(4), +(p.y / M).toFixed(4), +(p.z / M + walked).toFixed(4)]; };

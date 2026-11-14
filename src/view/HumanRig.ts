@@ -177,14 +177,20 @@ export class HumanRigError extends Error {
  * academic on them; it takes the one with the most bones so that a future
  * export which skins a prop — a clipboard, a badge on its own chain — to a
  * short private skeleton cannot win the traversal by being first.
+ *
+ * `skip`: something hung inside the human that is not the human -- nothing under it is looked at. "The most bones" is
+ * the human's own only while nothing with MORE bones hangs in it: the room's mother carries her baby from one of her
+ * bones, and the baby's skeleton has 71 bones to her 68 (SarahLabScene.ts `herSkinned`).
  */
-export function findSkinnedMesh(root: THREE.Object3D): THREE.SkinnedMesh | null {
+export function findSkinnedMesh(root: THREE.Object3D, skip: THREE.Object3D | null = null): THREE.SkinnedMesh | null {
   let best: THREE.SkinnedMesh | null = null;
-  root.traverse((node) => {
+  const walk = (node: THREE.Object3D): void => {
+    if (node === skip) return;
     const skin = node as THREE.SkinnedMesh;
-    if (skin.isSkinnedMesh !== true || skin.skeleton === undefined) return;
-    if (best === null || skin.skeleton.bones.length > best.skeleton.bones.length) best = skin;
-  });
+    if (skin.isSkinnedMesh === true && skin.skeleton !== undefined && (best === null || skin.skeleton.bones.length > best.skeleton.bones.length)) best = skin;
+    for (const child of node.children) walk(child);
+  };
+  walk(root);
   return best;
 }
 
