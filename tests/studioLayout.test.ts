@@ -7,7 +7,7 @@
  * default, remembered on the device, never throwing when storage does.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { STUDIO_FOLD_ACTION, STUDIO_ROLE, STUDIO_SECTIONS, studioLayout, studioSectionAction } from '../src/sarahlab/studioLayout';
+import { PILL_REACH, STUDIO_FOLD_ACTION, STUDIO_ROLE, STUDIO_SECTIONS, studioLayout, studioSectionAction } from '../src/sarahlab/studioLayout';
 import { DEFAULT_THEME, STUDIO_THEME_KEY, THEME_TOKENS, readTheme, storeTheme, themeCss } from '../src/sarahlab/studioTheme';
 
 function room() {
@@ -139,5 +139,23 @@ describe('the themes', () => {
     expect(readTheme(broken)).toBe('light');
     expect(() => storeTheme(broken, 'dark')).not.toThrow();
     expect(readTheme(null)).toBe('light');
+  });
+
+  // (Joshua, 2026-11-13: "it's hard to press certain buttons like (LIGHT/DARK)": 34 px tall, in 3 px of glass)
+  it('a pill\'s button answers to a finger well outside the box it shows, and shows a press as it lands', () => {
+    const root = room();
+    studioLayout(root, { changed: () => undefined });
+    const css = [...document.querySelectorAll('style')].map((s) => s.textContent ?? '').join('\n');
+    expect(css).toMatch(/\.sl-pill>button\{position:relative;[^}]*min-height:34px/);
+    expect(css).toContain(`.sl-pill>button::after{content:'';position:absolute;inset:-${PILL_REACH.upDown}px -${PILL_REACH.between}px}`);
+    expect(css).toContain(`.sl-pill>button:first-child::after{left:-${PILL_REACH.edge}px}`);
+    expect(css).toContain(`.sl-pill>button:last-child::after{right:-${PILL_REACH.edge}px}`);
+    expect(css).toMatch(/\.sl-pill>button:active:not\(:disabled\)\{background:/);
+    // a finger's pad wants 44 px: the button's 34 and the reach above and below it
+    expect(34 + 2 * PILL_REACH.upDown).toBeGreaterThanOrEqual(44);
+    // the reach covers the pill's own glass (3 px) on every side, so a touch on the glass is the button's; between two
+    // buttons (2 px apart) each takes its half, so neither reaches onto the other
+    expect(PILL_REACH.upDown).toBeGreaterThanOrEqual(3); expect(PILL_REACH.edge).toBeGreaterThanOrEqual(3);
+    expect(PILL_REACH.between * 2).toBeLessThanOrEqual(2);
   });
 });

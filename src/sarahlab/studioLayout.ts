@@ -71,6 +71,18 @@ export interface StudioLayoutOptions {
 
 const CLASS = 'sl-studio';
 const S = `.${CLASS}`;
+/**
+ * THE FINGER'S TARGET ON A PILL'S BUTTON IS BIGGER THAN THE BUTTON LOOKS (Joshua, 2026-11-13: "it's hard to press
+ * certain buttons like (LIGHT/DARK) like it's glitching or lagging, but other buttons respond right away"). MEASURED
+ * the same day: the press itself costs 3 to 8 ms and fetches nothing; the button was 34 px tall (a finger's pad wants
+ * 44) inside a pill of glass 3 px wider all round, and a touch on that glass, or just past the pill, was taken by the
+ * stage and turned her instead. Each button now answers to a touch this far outside its own box -- over the pill's
+ * glass and a little past its edge -- with nothing of its look changed: 52 px tall. Between two buttons of one pill
+ * each takes its half of the 2 px gap, and no more: a touch on a button's own edge is that button's. (The stage also
+ * leaves a touch on a pill's glass alone: SarahLabScene's `pointerdown`.) A press is shown the moment it lands
+ * (`:active`).
+ */
+export const PILL_REACH = Object.freeze({ upDown: 9, edge: 3, between: 1 });
 /** The layout. Sizes are for a phone first: 932 × 430 landscape, 430 × 932 upright. */
 const LAYOUT_CSS = `
 ${S}{--sl-rail:calc(62px + env(safe-area-inset-left));--sl-insp:clamp(250px,30vw,340px);--sl-rail-h:calc(60px + env(safe-area-inset-bottom));--sl-insp-h:42%;--sl-head-h:50px;
@@ -106,7 +118,11 @@ ${S} .sl-bottom{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom)
 ${S} .sl-corner{position:absolute;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:6px}
 ${S} .sl-pill{display:flex;align-items:center;gap:2px;padding:3px;border-radius:12px;background:var(--sl-glass);border:1px solid var(--sl-glass-line);box-shadow:0 5px 22px var(--sl-shadow);
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-${S} .sl-pill>button{min-width:36px;min-height:34px;padding:5px 9px;border:0;border-radius:9px;background:transparent;color:var(--sl-ink);font:700 11px system-ui,sans-serif;letter-spacing:.03em;cursor:pointer}
+${S} .sl-pill>button{position:relative;min-width:36px;min-height:34px;padding:5px 9px;border:0;border-radius:9px;background:transparent;color:var(--sl-ink);font:700 11px system-ui,sans-serif;letter-spacing:.03em;cursor:pointer}
+${S} .sl-pill>button::after{content:'';position:absolute;inset:-${PILL_REACH.upDown}px -${PILL_REACH.between}px}
+${S} .sl-pill>button:first-child::after{left:-${PILL_REACH.edge}px}
+${S} .sl-pill>button:last-child::after{right:-${PILL_REACH.edge}px}
+${S} .sl-pill>button:active:not(:disabled){background:var(--sl-on-soft)}
 ${S} .sl-pill>button[aria-pressed="true"]{background:var(--sl-accent);color:var(--sl-chrome)}
 ${S} .sl-pill>button:disabled{opacity:.35;cursor:default}
 ${S}[data-orient="portrait"] .sl-rail{top:auto;right:0;width:auto;height:var(--sl-rail-h);flex-direction:row;justify-content:space-around;align-items:stretch;gap:0;

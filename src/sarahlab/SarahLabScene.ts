@@ -2821,9 +2821,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     root.style.cssText = 'position:absolute;inset:0;font:600 13px system-ui,sans-serif;color:var(--sl-ink,#e8e2d8);touch-action:none;user-select:none;-webkit-user-select:none';
     // (any touch wakes the sound of her steps, as a phone requires before it plays anything: footsteps.ts)
     root.addEventListener('pointerdown', () => { if (sneakersOn) tileSteps.unlock(); }, { capture: true });
+    // (a phone's browser shows a button as pressed -- `:active`, studioLayout.ts -- only where something listens for touches)
+    root.addEventListener('touchstart', () => {}, { passive: true });
     // the orbit: the whole screen under the controls
     root.addEventListener('pointerdown', (e) => {
-      if ((e.target as HTMLElement).closest('button,input,select,summary')) return;
+      // (a touch on a pill's glass, between or beside its buttons, is a press that missed: it does not turn her --
+      // Joshua, 2026-11-13: "it's hard to press certain buttons like (LIGHT/DARK)"; studioLayout.ts `PILL_REACH`)
+      if ((e.target as HTMLElement).closest('button,input,select,summary,.sl-pill')) return;
       root.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       // painting her skin's map (FACE · PAINT SKIN): one finger is the brush, a second takes over as turn and zoom
