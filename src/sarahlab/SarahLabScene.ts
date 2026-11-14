@@ -7111,7 +7111,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her baby drawn through it even without SEE BABY: hidden inside her by her own body until it comes out of her (only
     // the baby: its sac, her womb's wall, its placenta and cord stay as SEE BABY has them)
     if (!babyRoot) loadBaby();
-    else if (!babyHolder && babyFrame) { const was = babyShown; showBaby(true); if (!was) showBaby(false); }
+    // (shown for a moment to be made, and SEE BABY's button said HIDE BABY from then on with her body not seen through --
+    // MEASURED 2026-11-14, until the next button pressed: its line is written again once it is hidden)
+    else if (!babyHolder && babyFrame) { const was = babyShown; showBaby(true); if (!was) { showBaby(false); refresh(); } }
     // (its placenta too, until it comes away for the afterbirth: from then it is drawn, as her baby is -- this runs on a
     // still frame as well, when the cords are not laid again, and once hid it there: a paused room had no placenta)
     if (babyHolder && !babyShown) { babyHolder.visible = true; for (const m of [babySac, babyWall, ...babyOwnSacs, ...placentaMeshes, ...cordMeshes]) if (m) m.visible = false; birthNow.placentas.forEach((p, k) => { if (placentaMeshes[k] && p.separate > 0) placentaMeshes[k].visible = true; }); }
