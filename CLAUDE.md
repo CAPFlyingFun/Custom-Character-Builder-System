@@ -379,7 +379,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   150%: PREGNANT · ON at 1:39.9, OFF at 1:40.1 with "BIRTH · born"; her newborn on her at 1:45 and her afterbirth at 2:05
   drawn as before; dragged back to 1:00, ON; RESET, ON and "BIRTH · not started"; PREGNANT pressed once it is born, the
   birth put back and ON; pressed in labour, the birth put back and OFF, BIRTH dimmed. Twins: ON once the first is born
-  ("baby A born · B next", 1:40 of 3:18) and at 2:32; OFF at 2:33 with "born · 2 of 2"; RESET, ON.
+  ("baby A born · B next", 1:40 of 3:18) and at 2:32; OFF at 2:33 with "born · 2 of 2"; RESET, ON. Triplets: ON once
+  the first is born (1:40 of 4:01), once the second is ("baby B born · C next", 2:33) and at 3:25; OFF at 3:26 with
+  "born · 3 of 3"; dragged back to 2:48, ON; RESET, ON.
 - **It begins where she is** (of a birth played from BIRTH OPENING at 40%, her belly at 150%: "the opening didn't sync up
   as when I tried it, I set the start at 40% opening before I pressed it"). By hand BIRTH OPENING opens her opening and
   her cervix together. A birth then took what was set as a floor under all of it: MEASURED on v0.9.22, four seconds in
