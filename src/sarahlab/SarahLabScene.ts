@@ -43,8 +43,8 @@ import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorK
 import { GarmentPanel } from './garmentPanel';
 import { FaceMotion } from './faceMotion';
 import { patchHairMaterial } from './hairMaterial';
-import { SARAH_LOOK } from './sarahLook';
-import { PREGNANCY_DEFAULT, PREGNANCY_RANGE, pregnancyOf, pregnantLine, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
+import { lookOpenedOn } from './sarahLook';
+import { PREGNANCY_OPENING, PREGNANCY_RANGE, pregnancyOf, pregnantLine, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
 import { BUILD_INFO } from '../ui/buildInfo';
 import { graphicsNote, pictureLost } from './lostPictures';
@@ -343,7 +343,7 @@ import {
   SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, OUTFITS, outfitLine, modelLine, nextModel, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
-  type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn,
+  type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn, outfitNamed, modelName, modelsOnMenu,
   BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE,
 } from './sarahLabTool';
 import { blendJointTurns, sitEase, stepSit } from './poseBlend';
@@ -620,8 +620,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let seated = 0;
   /** Breast dimensions moved together, as by an aspect-ratio lock: a flag only, never a value. */
   const linked = new Set<BodyControl>();
-  // she opens as Joshua set her (sarahLook.ts, 2026-10-24): 73%, her navel a little out, his tee and leggings
-  let bump = SARAH_LOOK?.body.bump ?? 100;
+  // THE ROOM OPENS ON THE FEMALE BASE MODEL (Joshua, 2026-11-13: "let's remove the word Sarah and keep everything
+  // generic"; "probably should set at 0% by default"): her approved body at 0%, not pregnant, in the room's first outfit.
+  // A probe and the story's bake open on Sarah as he set her (sarahLook.ts `lookOpenedOn`: 73%, her navel a little out,
+  // his tee and leggings) -- what was measured was measured on her
+  const opening = lookOpenedOn(globalThis.location?.search ?? '');
+  let bump = opening?.body.bump ?? 0;
   /**
    * HER BELLY SETTLES AS SHE LIES BACK (Joshua, 2026-11-01: "when a pregnant woman lies back... the belly appears to
    * shrink because the weight shifts more inward"; "fully laying back will shrink the belly 60% of normal... a formula
@@ -1163,14 +1167,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // the v2 clothes (v1) falls back to the first modelled outfit it has as it loads
   // ...and since 2026-10-27 in the NEW TEE (Joshua: "Make the new shirt the default"): her look was saved in the light
   // tee's cloth copy, which is now the second option, so it opens in the new tee, with the look's own fabrics
-  const lookOutfit = OUTFITS.findIndex((o) => o.name === SARAH_LOOK?.clothes.outfit);
+  const lookOutfit = outfitNamed(opening?.clothes.outfit);
   let outfit = lookOutfit >= 0 && lookOutfit !== SIM_TEE_OUTFIT ? lookOutfit : SARAH_DEFAULT_OUTFIT;
   let modelIndex = SARAH_LAB_DEFAULT_MODEL;
   // the body's own proportions (Joshua, 2026-10-15): all approved values to start, so she
   // looks exactly as approved until a control moves
-  let body: BodyShape = SARAH_LOOK ? parseShape(SARAH_LOOK.body.shape) : defaultBodyShape();
+  let body: BodyShape = opening ? parseShape(opening.body.shape) : defaultBodyShape();
   // HER PREGNANCY (pregnancy.ts, Joshua 2026-11-05): PREGNANT on or off and her weeks as typed, kept with her body
-  let pregnancy: Pregnancy = SARAH_LOOK ? pregnancyOf(SARAH_LOOK.body) : PREGNANCY_DEFAULT;
+  let pregnancy: Pregnancy = opening ? pregnancyOf(opening.body) : PREGNANCY_OPENING;
   let shaped: { mesh: THREE.SkinnedMesh; fields: ShapeFields }[] = [];
   // HER BUILD (Joshua, 2026-10-26: "a height adjuster so you can raise or shorten the length of the legs, hips, arms,
   // hands and more basic body controls"; actor/bodyBuild.ts, view/bodyBuild.ts): measured on her approved v2 body once
@@ -1363,7 +1367,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // the library outfit she last put on (her changes to it save as hers), and saved clothes waiting for their outfit to load
   let wornFrom: string | null = null;
   // ...and in his fabrics, put on as her outfit is dressed the first time
-  let pendingClothes: Omit<SavedClothes, 'outfit'> | null = SARAH_LOOK ? (({ outfit: _name, ...rest }) => rest)(SARAH_LOOK.clothes) : null;
+  let pendingClothes: Omit<SavedClothes, 'outfit'> | null = opening ? (({ outfit: _name, ...rest }) => rest)(opening.clothes) : null;
   let characters: CharacterPanel | null = null;
   // the outfit editor's SAVE workspace, and where the clothes going on now came from (a character, a shared outfit, a
   // new one); null is the built-in outfit itself
@@ -1957,7 +1961,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   function refresh(): void {
     refreshDevice();
-    if (fields.status) fields.status.textContent = statusLine(loaded && model?.visible === true, failed, garments, hasBelly, modelIndex) + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
+    if (fields.status) {
+      const shown = loaded && model?.visible === true;
+      fields.status.textContent = statusLine(shown, failed, garments, hasBelly, modelIndex, !!characters?.name().trim()) + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
+      // (which model stands there, once she does: what a probe waits for -- the line's words are for people, and change)
+      if (shown && !failed) fields.status.dataset.model = SARAH_LAB_MODELS[modelIndex].id; else delete fields.status.dataset.model;
+    }
     refreshSkin();
     const bumpField = fields[SARAH_LAB_FIELD.bump], fingerField = fields[SARAH_LAB_FIELD.fingers];
     if (bumpField) bumpField.textContent = bumpLine(bump);
@@ -2079,7 +2088,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     { const p = profileOf(body); for (const pr of BUILD_PROFILES) lit(buttons[`profile-${pr.id}`], p === pr.id); }
     for (const t of SIZE_TILT_PRESETS_DEG) lit(buttons[`tilt${t}`], body.bellyTilt === t);
     if (buttons.outfit) buttons.outfit.textContent = `OUTFIT · ${outfitName(wantedOutfit ?? outfit)}${wantedOutfit !== null ? ' …' : ''}`;
-    if (buttons.model) buttons.model.textContent = modelLine(modelIndex);
+    if (buttons.model) {
+      buttons.model.textContent = modelLine(modelIndex);
+      // one model on the menu is no choice: no button until there is another (Joshua, 2026-11-13: "once we add in the
+      // Male model, can just add two buttons (Male/Female)"); a probe still steps through them all
+      buttons.model.style.display = modelsOnMenu() > 1 || new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth' ? '' : 'none';
+    }
     if (buttons.pregnant) { buttons.pregnant.textContent = pregnantLine(pregnancy); lit(buttons.pregnant, pregnant()); }
     if (buttons.opening) { buttons.opening.textContent = openingLine(skeletonOpening); buttons.opening.style.display = v2OrganBones ? '' : 'none'; lit(buttons.opening, skeletonOpening); }
     if (buttons.baby) { buttons.baby.textContent = !pregnant() ? 'SEE BABY · not pregnant' : babyShown ? (babyCount > 1 ? 'HIDE BABIES' : 'HIDE BABY') : (babyCount > 1 ? 'SEE BABIES' : 'SEE BABY'); lit(buttons.baby, babyShown); }
@@ -2101,7 +2115,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     for (const a of VIEW_ANGLES) { const b = buttons[`view-${a.id}`]; if (b) b.setAttribute('aria-pressed', String(!turning && Math.abs(Math.atan2(Math.sin(yaw - a.yaw), Math.cos(yaw - a.yaw))) < 0.03)); }
     if (buttons.turn) buttons.turn.setAttribute('aria-pressed', String(turning));
     if (buttons.theme) buttons.theme.textContent = theme === 'light' ? '☾ DARK' : '☀ LIGHT';
-    if (nameLine) nameLine.textContent = characters?.name().trim() || 'Sarah';
+    // (a character not yet given a name goes by her model's: the room names no one itself)
+    if (nameLine) nameLine.textContent = characters?.name().trim() || modelName(SARAH_LAB_MODELS[modelIndex].id);
     // the outfit's new tee on or off with the outfit
     syncGarment();
   }
@@ -2667,7 +2682,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her shoes as the save has them (a save from before them, or one of the room's outfits, leaves her feet as they are)
     if (saved.shoes && (saved.shoes === 'sneakers') !== sneakersOn) setSneakers(saved.shoes === 'sneakers');
     const { outfit: name, ...rest } = saved;
-    const index = OUTFITS.findIndex((o) => o.name === name);
+    // (a save from before the outfits lost "Sarah" from their names still finds its outfit: `outfitNamed`)
+    const index = outfitNamed(name);
     pendingClothes = rest;
     if (index >= 0 && index !== outfit) dress(index);
     else {
@@ -3402,7 +3418,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       wearable: () => offeredOutfits(garments).sort((a, b) => Number(b === SARAH_DEFAULT_OUTFIT) - Number(a === SARAH_DEFAULT_OUTFIT)).map((i) => ({ name: OUTFITS[i].name, thumb: assetUrl(outfitThumbPath(OUTFITS[i].name)) })),
       thumbnail: () => thumbnail(),
       wearBuiltin: (name) => {
-        const index = OUTFITS.findIndex((o) => o.name === name);
+        const index = outfitNamed(name);
         if (index < 0) return;
         wornFrom = null; pendingClothes = null; nextSource = null;
         dress(index);
@@ -3656,7 +3672,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     studio = studioLayout(root, {
       first: 'body',
       theme,
-      eyebrow: 'Sarah Lab',
+      eyebrow: 'Character Builder',
       changed: () => {
         // an editor listens to her only while its section is open: a finger on her otherwise turns her
         fabric?.setActive(studio?.open === 'fabric' && !studio.folded);
@@ -3803,7 +3819,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // SIT as the room sits her: its correctives, and her bump's tilt handed to her thighs (`seated` 1)
         seat: (on) => { pose = on ? 'sit' : 'tpose'; seated = on ? 1 : 0; sitAmount = on ? 1 : 0; sitMoving = false; applyLook(); applyMotion(); },
         facts: {
-          look: SARAH_LOOK?.clothes.outfit ?? null, outfit: OUTFITS[outfit].name, bump, shape: serializeShape(body), pregnancy, bellyCurve, refine,
+          look: opening?.clothes.outfit ?? null, outfit: OUTFITS[outfit].name, bump, shape: serializeShape(body), pregnancy, bellyCurve, refine,
           skin: { chosen: skinId, worn: skinWorn, own: b.material.map === ownMap(b.material), painted: !!painted },
           cloth: { on: clothOn, wanted: clothWanted, made: !!cloth }, fittedTee: !!fittedTee(), fittedLaid, keep,
           teeDetail: fitted ? fitted.spots.fitted(keep, fitted.navel) : null,
@@ -3855,7 +3871,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     crop.getContext('2d')?.drawImage(whole, x, y, w, h, 0, 0, crop.width, crop.height);
     const blob = await new Promise<Blob | null>((resolve) => crop.toBlob(resolve, 'image/jpeg', 0.92));
     if (!blob) return;
-    const name = `${(characters?.name() || 'sarah').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'sarah'}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.jpg`;
+    // (a picture of a character with no name of her own is the model's: nothing is named for Sarah by the room)
+    const name = `${(characters?.name() || 'female-base-model').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'female-base-model'}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.jpg`;
     // a share sheet that will not open this late after the tap: the picture is downloaded instead
     if (await savePicture(blob, name) === 'failed') {
       const url = URL.createObjectURL(blob), a = document.createElement('a');
@@ -7842,7 +7859,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const zeroData = entry.id === 'v2-body' && hooks.nativeOutfitPreview !== true ? loadZeroRefine(assets.assetUrl(ZERO_REFINE_PATH)) : Promise.resolve(null);
     void assets.loadModel(path, () => new THREE.Object3D(), { meter, onDownloaded: askForClothes }).then(async (loadedModel) => {
       if (disposed || path !== sarahModelPath(SARAH_LAB_MODELS[modelIndex], skin)) { release(loadedModel); return; }
-      if (loadedModel.userData.isPlaceholder === true) { failed = true; failLoad('Sarah', () => loadSarah()); refresh(); return; }
+      if (loadedModel.userData.isPlaceholder === true) { failed = true; failLoad('the model', () => loadSarah()); refresh(); return; }
       try {
         rig = new HumanRig(loadedModel);
         measure = measureHuman(rig.bind);
@@ -8270,7 +8287,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       }
       loaded = true;
       dress(outfit, true);
-    }).catch(error => { console.error('[sarahlab] model/outfit preparation failed', error); failed = true; loaded = false; failLoad('Sarah', () => loadSarah()); refresh(); });
+    }).catch(error => { console.error('[sarahlab] model/outfit preparation failed', error); failed = true; loaded = false; failLoad('the model', () => loadSarah()); refresh(); });
   }
 
   /** One frame of her: her walk, her pose, her springs, what is laid on her, and the cloth tee over her. */

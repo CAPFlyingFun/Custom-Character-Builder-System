@@ -53,7 +53,7 @@ try {
   const hook = (n, ...a) => page.evaluate(([k, b]) => JSON.parse(JSON.stringify(globalThis.__sarahLabCloth[k](...b) ?? null)), [n, a]);
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
   let outfit = '';
   for (let n = 0; n < 24; n++) { outfit = await text('sarahlab:outfit'); if (outfit.includes(OUTFIT) && !outfit.includes('…')) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); }

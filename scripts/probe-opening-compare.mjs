@@ -96,7 +96,7 @@ try {
     }
   };
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
   const MODELS = (process.env.MODELS ?? 'v2,skeleton').split(',');
   if (MODELS.includes('v2')) {

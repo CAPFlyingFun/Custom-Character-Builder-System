@@ -363,6 +363,20 @@ describe('the Sarah Lab', () => {
     expect(statusLine(true, false, [], true, 1)).toBe('model v2 · belly slider · no clothes in this file yet');
     expect(modelLine(0)).toBe('MODEL · v1');
     expect(modelLine(1)).toBe('MODEL · v2');
+    // (Joshua, 2026-11-13: "disable all other models and call it like it's supposed to 'Female Base Model'"; "let's
+    // remove the word Sarah and keep everything generic")
+    const { modelsOnMenu, nextModel, modelName } = labTool;
+    const base = SARAH_LAB_MODELS.findIndex((m) => m.id === 'v2-body');
+    expect(modelLine(base)).toBe('MODEL · Female Base Model');
+    expect(statusLine(true, false, ['a', 'b'], true, base)).toBe('Female Base Model · belly slider · 2 garments');
+    // (left off when it is already the line above: a character with no name of her own goes by her model's)
+    expect(statusLine(true, false, ['a', 'b'], true, base, false)).toBe('belly slider · 2 garments');
+    expect(statusLine(false, false, [], false, base)).toBe('loading Female Base Model…');
+    for (let i = 0; i < SARAH_LAB_MODELS.length; i++) expect(statusLine(false, false, [], false, i)).not.toMatch(/sarah/i);
+    // one model on the menu: MODEL has nowhere else to step, from any model
+    expect(modelsOnMenu()).toBe(1);
+    for (let i = 0; i < SARAH_LAB_MODELS.length; i++) expect(nextModel(i)).toBe(base);
+    expect(modelName('v2-body')).toBe('Female Base Model'); expect(modelName('skeleton')).toBe('skeleton');
     expect(SARAH_LAB_MODELS.map((m) => m.path)).toEqual(['models/sarah-base.glb', 'models/sarah-v2.glb', 'models/sarah-v2-arms.glb', 'models/sarah-v2-body-slim.glb', 'models/sarah-skeleton.glb']);
   });
 });

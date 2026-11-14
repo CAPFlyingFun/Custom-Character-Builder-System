@@ -114,7 +114,7 @@ try {
   const context = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   page.on('pageerror', (e) => log('pageerror:', e.message));
-  const read = () => page.evaluate(() => ({ status: document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '', outfit: document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? '' })).catch(() => ({ status: '', outfit: '' }));
+  const read = () => page.evaluate(() => ({ model: document.querySelector('[data-field="sarahlab-status"]')?.dataset.model ?? '', outfit: document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? '' })).catch(() => ({ model: '', outfit: '' }));
   const press = (a) => page.evaluate((x) => { const b = document.querySelector(`[data-action="${x}"]`); b?.click(); return b ? (b.textContent ?? '').trim() : null; }, a);
   const quiet = async (ms = 4000, most = 300_000) => { const t0 = Date.now(); for (;;) { const n = srv.requests.length; await page.waitForTimeout(ms); if ((srv.requests.length === n && srv.requests.every((e) => e.status !== 0)) || Date.now() - t0 > most) return; } };
   /** What the page says is kept, and what the cache store holds. */
@@ -126,7 +126,7 @@ try {
   });
   const short = (d) => ({ line: d.line, notice: d.notice, worker: d.worker, kept: Object.fromEntries(Object.entries(d.kept).map(([k, v]) => [k, { files: v.files, mb: v.mb }])) });
   const saved = async (most = 400_000) => { const t0 = Date.now(); for (;;) { const d = await device(); if (/whole room is saved|does not keep/.test(d.line) || Date.now() - t0 > most) return d; await page.waitForTimeout(1500); } };
-  const dressed = async (most = 300_000) => { const t0 = Date.now(); for (;;) { const s = await read(); if (s.status.startsWith('model v2-body') && s.outfit && !s.outfit.includes('…')) return (Date.now() - t0) / 1000; if (Date.now() - t0 > most) return 0; await page.waitForTimeout(700); } };
+  const dressed = async (most = 300_000) => { const t0 = Date.now(); for (;;) { const s = await read(); if (s.model === 'v2-body' && s.outfit && !s.outfit.includes('…')) return (Date.now() - t0) / 1000; if (Date.now() - t0 > most) return 0; await page.waitForTimeout(700); } };
   const visit = async (name) => {
     const mark = srv.requests.length; await page.goto('about:blank');
     const t0 = Date.now(), going = page.goto(srv.url, { waitUntil: 'commit', timeout: 60_000 }).catch((e) => log(name, 'navigation:', String(e.message).split('\n')[0]));

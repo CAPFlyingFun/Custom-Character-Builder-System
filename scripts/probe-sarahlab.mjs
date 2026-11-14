@@ -112,7 +112,7 @@ async function main() {
     const status = '[data-field="sarahlab-status"]';
     // The Lab opens on the newest v2 (v2-body); the checks below were written on v1, the
     // only model with clothes, so step MODEL round to it (v2-body -> the skeleton -> v1).
-    await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent ?? '').startsWith('model v2-body'), status, { timeout: 180_000 })
+    await page.waitForFunction((sel) => document.querySelector(sel)?.dataset.model === 'v2-body', status, { timeout: 180_000 })
       .then(() => check(true, 'the Lab opened on v2-body'))
       .catch(async () => check(false, `the Lab opened on v2-body: ${await page.textContent(status)}`));
     if (process.env.SARAH_BODY_SHAPE) {

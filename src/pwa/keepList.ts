@@ -46,6 +46,9 @@ export const NOT_AHEAD: readonly RegExp[] = Object.freeze([
   /-ktx2\.glb$/, /^libs\/basis\//,
   // her bake for the story player: TMB-Story's, never the room's
   /^models\/sarah-v2-story\.glb$/,
+  // the bodies her approved one was built from, off the MODEL button since 2026-11-13 ("disable all other models"):
+  // only a probe steps to them now. And two files no part of the room asks for (the first Sarah, a badge)
+  /^models\/sarah-base\.glb$/, /^models\/sarah-v2\.glb$/, /^models\/sarah-v2-arms\.glb$/, /^models\/sarah\.glb$/, /^models\/badge\.glb$/,
   // the Home Screen's own (the browser asks for them when it wants them, without a revision)
   /^icons\//, /^manifest\.webmanifest$/,
 ]);

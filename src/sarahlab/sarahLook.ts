@@ -54,3 +54,16 @@ const readable = (s: CharacterSave | undefined): s is Look => !!s?.body && !!s.c
  * and the room then opens on its own defaults rather than not at all.
  */
 export const SARAH_LOOK: Look | null = readable(saved) ? saved : null;
+
+/**
+ * THE LOOK THE ROOM OPENS ON, by its address. The room itself opens on the FEMALE BASE MODEL as she is -- her approved
+ * body at 0%, not pregnant, in the room's first outfit -- and names no character (Joshua, 2026-11-13: "let's remove the
+ * word Sarah and keep everything generic"; of where her belly starts: "probably should set at 0% by default"): null.
+ * A probe (`?probe=`) and the story's bake (`?bake=story`) still open on Sarah as he set her: what was measured in the
+ * room was measured on her, and the story player's Sarah is baked from her. `?look=sarah` asks for her by name.
+ */
+export function lookOpenedOn(search: string): Look | null {
+  let asked: URLSearchParams;
+  try { asked = new URLSearchParams(search); } catch { return null; }
+  return asked.has('probe') || asked.get('bake') === 'story' || asked.get('look') === 'sarah' ? SARAH_LOOK : null;
+}

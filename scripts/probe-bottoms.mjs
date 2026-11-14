@@ -32,9 +32,9 @@ try {
   const outfitText = () => page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? '');
   const shot = (name) => page.screenshot({ path: path.join(SHOTS, name), clip: { x: 200, y: 150, width: 600, height: 600 }, timeout: 300_000 }).then(() => log('shot', name));
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
-  const OUTFITS = (process.env.OUTFITS ?? 'bikini|Sarah · red tee + charcoal leggings|painted tee + low leggings|painted swimsuit|painted leotard').split('|');
+  const OUTFITS = (process.env.OUTFITS ?? 'bikini|red tee + charcoal leggings|painted tee + low leggings|painted swimsuit|painted leotard').split('|');
   const POSES = (process.env.POSES ?? 'stand,recline').split(',');
   const VIEWS = (process.env.VIEWS ?? 'front:0:0.05:70:95,side:1.57:0.05:70:95,low:0:-0.6:70:90').split(',');
   for (const [k, want] of OUTFITS.entries()) {

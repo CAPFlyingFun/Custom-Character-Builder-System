@@ -70,6 +70,23 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   have stuff that can carry over easily"). The NPC brain's part here (P6) is where each need starts, where it ends and
   how fast it moves in real time, by age, sex, pregnancy and newborn, each number with its unit, kind and source. Who
   controls a character, a story director, objects that offer things and scenes are the game's, in the game's own repo.
+- **One model on the menu, called what it is, and nothing on screen says "Sarah"** (Joshua, 2026-11-13: "disable all
+  other models and call it like it's supposed to "Female Base Model", once we add in the Male model, can just add two
+  buttons (Male/Female) model"; "let's remove the word Sarah and keep everything generic"; of where her belly starts:
+  "probably should set at 0% by default"). The room opens on the FEMALE BASE MODEL: her approved body at 0%, not
+  pregnant, in the room's first outfit, with no character named (`sarahLook.ts` `lookOpenedOn`, `PREGNANCY_OPENING`).
+  MODEL is not shown while there is one model to choose (`sarahLabTool.ts` `SARAH_LAB_MODELS_OFF_MENU`, `modelsOnMenu`;
+  `MODEL_NAMES` is what a model is called on screen): the bodies hers was built from stay in the list for a saved look
+  made on one and for a probe (`?probe=cloth` steps to them), and are not fetched ahead (`NOT_AHEAD`). Names in the code
+  and of files stay as they are (`sarahlab/`, `sarah-v2-body.glb`): it is what the room SHOWS that is generic.
+  - A probe (`?probe=`), the story's bake (`?bake=story`) and `?look=sarah` still open on Sarah as he set her
+    (`SARAH_LOOK`: 73%, pregnant, her red spandex tee): what was measured in the room was measured on her, and the
+    story player's Sarah is baked from her.
+  - A script waits for her by the status line's `data-model` (`[data-field="sarahlab-status"]`, `v2-body` once she is
+    shown), never by its words: the words are for the screen and change.
+  - A save that holds an outfit's old name ("Sarah · red raglan tee + charcoal leggings") still opens in that outfit
+    (`outfitNamed`, `OUTFIT_FORMER_NAMES`). An outfit's card picture is of the base model as the room opens her
+    (`scripts/bakeOutfitThumbs.mjs`): bake them again when what the room opens on changes.
 - **A fault found is fixed, and he is told at once** (Joshua, 2026-11-13, of her thirst coming on twice too early: "if
   you see any future issues, please plan to automatically fix them and let me know so if I want to hold off, I can"): on
   `claude-work`, as a small change of its own with its test, and reported with what it changes so he can hold it.

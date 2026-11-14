@@ -38,7 +38,7 @@ try {
   const close = async (name, side = 0) => { const v = VIEW[poseNow] ?? VIEW.stand; await hook('aim', v[0] + side, v[1], v[2], v[3], v[4], v[5]); await run(0.15); await shot(name); };
   const LOOK = Number(process.env.LOOK ?? 1), LOOKS = (process.env.LOOKS ?? '0,1,2,v2').split(',');
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
   // DRESSED first: nothing of her opening through her leggings
   if (!process.env.SKIP_DRESSED) { await hook('opening', true, LOOK); await press('sarahlab:recline'); await run(2.5); poseNow = 'recline'; await close('dressed-recline.png'); await hook('aim', 0.0001, 0.1, 230, 0, 0, 0); await run(0.2); await shot('dressed-recline-whole.png', { x: 150, y: 40, width: 700, height: 800 }); await press('sarahlab:stand'); await run(1.5); poseNow = 'stand'; }

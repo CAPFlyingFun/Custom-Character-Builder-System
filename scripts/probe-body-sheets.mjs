@@ -90,7 +90,7 @@ try {
   const hook = (n, ...a) => page.evaluate(([k, b]) => JSON.parse(JSON.stringify(globalThis.__sarahLabCloth[k](...b) ?? null)), [n, a]);
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
   // her plain body, or the outfit asked for: OUTFIT pressed until it reads so (the dressing settled); her hair and her sneakers off
   let outfit = '';

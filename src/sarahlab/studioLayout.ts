@@ -156,7 +156,7 @@ export function studioLayout(root: HTMLElement, opts: StudioLayoutOptions): Stud
   const head = el('div', 'sl-head');
   const titles = el('div');
   titles.style.minWidth = '0';
-  const eyebrow = el('div', 'sl-eyebrow'); eyebrow.textContent = opts.eyebrow ?? 'Sarah Lab';
+  const eyebrow = el('div', 'sl-eyebrow'); eyebrow.textContent = opts.eyebrow ?? 'Character Builder';
   const title = el('div', 'sl-title'); title.dataset.role = STUDIO_ROLE.title;
   titles.append(eyebrow, title);
   const foldButton = el('button', 'sl-fold');

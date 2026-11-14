@@ -6,7 +6,8 @@
  * bundles; and that another site's cache is never touched (every capflyingfun.github.io site shares one store).
  */
 import { describe, expect, it } from 'vitest';
-import { KEPT_CACHE, fetchedAhead, inShell, stamped, unchanging, type KeepList } from '../src/pwa/keepList';
+import { KEPT_CACHE, NOT_AHEAD, fetchedAhead, inShell, stamped, unchanging, type KeepList } from '../src/pwa/keepList';
+import { SARAH_LAB_MODELS, SARAH_LAB_MODELS_OFF_MENU } from '../src/sarahlab/sarahLabTool';
 import { createKeeper, kindOf, type Asked, type KeptCaches } from '../src/pwa/keeper';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -255,12 +256,16 @@ describe('the site\'s own files', () => {
   const walk = (dir: string, out: string[] = []): string[] => { for (const e of readdirSync(dir)) { const full = join(dir, e); if (statSync(full).isDirectory()) walk(full, out); else out.push(full.slice(root.length + 1).split('\\').join('/')); } return out; };
   const files = walk(root);
   it('what is not fetched ahead is named for a reason that still holds: each rule matches a file that exists', () => {
-    for (const rule of [/-ktx2\.glb$/, /^libs\/basis\//, /^models\/sarah-v2-story\.glb$/, /^icons\//, /^manifest\.webmanifest$/]) expect(files.some((f) => rule.test(f)), String(rule)).toBe(true);
-    // her body, her clothes, her skins and the fabrics are fetched ahead
-    for (const f of ['models/sarah-v2-body-slim.glb', 'models/sarah-v2-spandex-lite.glb', 'models/skins/sarah-v2-skin-even-2048.webp', 'fabrics/athletic-plain.jpg', 'models/sarah-base.glb']) {
+    for (const rule of NOT_AHEAD) expect(files.some((f) => rule.test(f)), String(rule)).toBe(true);
+    // her body, her clothes, her hair, her skeleton (X-RAY), her baby, her skins and the fabrics are fetched ahead
+    for (const f of ['models/sarah-v2-body-slim.glb', 'models/sarah-v2-spandex-lite.glb', 'models/sarah-v2-hair.glb', 'models/sarah-skeleton.glb', 'models/sarah-baby.glb', 'models/skins/sarah-v2-skin-even-2048.webp', 'fabrics/athletic-plain.jpg']) {
       expect(files).toContain(f); expect(fetchedAhead(f), f).toBe(true);
     }
     expect(fetchedAhead('models/sarah-v2-body-slim-ktx2.glb')).toBe(false);
+    // the bodies no longer on the MODEL button (Joshua, 2026-11-13: "disable all other models") are not: 32 MB a phone need not hold
+    for (const f of ['models/sarah-base.glb', 'models/sarah-v2.glb', 'models/sarah-v2-arms.glb']) { expect(files).toContain(f); expect(fetchedAhead(f), f).toBe(false); }
+    // ...and every model MODEL can step to is
+    for (const m of SARAH_LAB_MODELS) expect(fetchedAhead(m.path), m.id).toBe(!SARAH_LAB_MODELS_OFF_MENU.has(m.id) || m.id === 'skeleton');
     // a file nobody has thought about is held by default
     expect(fetchedAhead('models/some-new-dress.glb')).toBe(true);
   });

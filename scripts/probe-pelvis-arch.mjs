@@ -29,7 +29,7 @@ try {
   const run = (s) => page.evaluate((x) => globalThis.__sarahLabCloth.animate(x), s);
   const status = () => page.evaluate(() => document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '');
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
   for (let k = 0; k < 8 && !(await status()).startsWith('model skeleton'); k++) { await press('sarahlab:model'); await page.waitForFunction(() => /^model /.test(document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? ''), null, { timeout: 300_000 }); await page.waitForTimeout(5000); }
   log('status', (await status()).slice(0, 60));

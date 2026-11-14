@@ -100,8 +100,18 @@ export const SARAH_LAB_DEFAULT_MODEL = SARAH_LAB_MODELS.findIndex((m) => m.id ==
  * NOT ON THE MODEL BUTTON (Joshua, 2026-11-09, of her bare skeleton: "Remove it as an option once it is in V2"). Her
  * skeleton now lives inside v2 (X-RAY shows it), so MODEL no longer steps to the bare one. It stays in the list: a saved
  * look made on it still opens, and a probe (`?probe=cloth`) still steps to it, to compare v2 against.
+ *
+ * ONE MODEL IS ON IT NOW (Joshua, 2026-11-13: "How about we disable all other models and call it like it's supposed to
+ * 'Female Base Model', once we add in the Male model, can just add two buttons (Male/Female) model"): her approved body.
+ * v1, v2 and v2-arms, which it was built from, stay in the list for a saved look made on one and for a probe, and are
+ * no longer stepped to; with one model to choose from the room shows no MODEL button (`modelsOnMenu`).
  */
-export const SARAH_LAB_MODELS_OFF_MENU: ReadonlySet<string> = new Set(['skeleton']);
+export const SARAH_LAB_MODELS_OFF_MENU: ReadonlySet<string> = new Set(['skeleton', 'v1', 'v2', 'v2-arms']);
+/** How many models MODEL can step between: the room shows the button only when there is a choice. */
+export const modelsOnMenu = (): number => SARAH_LAB_MODELS.filter((m) => !SARAH_LAB_MODELS_OFF_MENU.has(m.id)).length;
+/** What a model is called on screen. Her approved body is the FEMALE BASE MODEL; the others go by their ids (a probe's). */
+export const MODEL_NAMES: Readonly<Record<string, string>> = Object.freeze({ 'v2-body': 'Female Base Model' });
+export const modelName = (id: string): string => MODEL_NAMES[id] ?? id;
 /** The model MODEL steps to from `index`: the next one on the menu (`all`: the next one, on it or not). */
 export function nextModel(index: number, all = false): number {
   const n = SARAH_LAB_MODELS.length;
@@ -116,14 +126,14 @@ export function openingLine(skeleton: boolean): string {
 }
 
 export function modelLine(index: number): string {
-  return `MODEL · ${SARAH_LAB_MODELS[((index % SARAH_LAB_MODELS.length) + SARAH_LAB_MODELS.length) % SARAH_LAB_MODELS.length].id}`;
+  return `MODEL · ${modelName(SARAH_LAB_MODELS[((index % SARAH_LAB_MODELS.length) + SARAH_LAB_MODELS.length) % SARAH_LAB_MODELS.length].id)}`;
 }
 
 export const sarahLabTool: DevTool = {
   id: SARAH_LAB_TOOL_ID,
-  title: 'Sarah Lab (base model)',
+  title: 'Character Room (base model)',
   description:
-    "Sarah rebuilt from the base mannequin, to try before she goes live: the BUMP slider runs from twice full term (twins and more, her breasts growing with it) to "
+    "The base model rebuilt from the base mannequin, to try before she goes live: the BUMP slider runs from twice full term (twins and more, her breasts growing with it) to "
     + 'nearly flat, its own weight sags the belly past full term, BOUNCE (or WALK) shows it and her breasts move, FINGERS curls all ten, MODEL switches between v1 and the newer v2 to compare, OUTFIT cycles the clothes grown from her body (on v1 a red tee over black leggings; on v2 a white tank over grey maternity leggings, over the belly or under it; a bikini, a swimsuit, none), and STAND, '
     + 'WALK and SIT pose her. Drag to turn round her, pinch or scroll to come closer. Not used by the story or the game.',
   sceneId: SARAH_LAB_SCENE_ID,
@@ -624,9 +634,9 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   // ...and THE NEW TEE, the procedural garment drafted from her (Joshua, 2026-10-27: "Make the new shirt the default,
   // and the other shirt as the second option to compare"): a raglan tee simulated as cloth, in her red, over the same
   // painted leggings. The light tee's cloth copy (CLOTH SIM) stays the next outfit, to compare
-  { name: 'Sarah · red raglan tee + charcoal leggings', garments: ['shirtSpandexLite'], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 0, tint: SARAH_LEGGINGS } }], fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0, tint: SARAH_RED } }, procedural: 'raglan' },
-  { name: 'Sarah · red spandex tee + charcoal leggings', garments: ['shirtSpandexLite'], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 0, tint: SARAH_LEGGINGS } }], fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0, tint: SARAH_RED } } },
-  { name: 'Sarah · red tee + charcoal leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 0, tint: SARAH_LEGGINGS } }, { template: 'teeShort', fabric: { family: 'jersey', colour: 0, tint: SARAH_RED } }] },
+  { name: 'red raglan tee + charcoal leggings', garments: ['shirtSpandexLite'], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 0, tint: SARAH_LEGGINGS } }], fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0, tint: SARAH_RED } }, procedural: 'raglan' },
+  { name: 'red spandex tee + charcoal leggings', garments: ['shirtSpandexLite'], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 0, tint: SARAH_LEGGINGS } }], fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0, tint: SARAH_RED } } },
+  { name: 'red tee + charcoal leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 0, tint: SARAH_LEGGINGS } }, { template: 'teeShort', fabric: { family: 'jersey', colour: 0, tint: SARAH_RED } }] },
   { name: 'painted tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeShort', fabric: { family: 'jersey', colour: 0 } }] },
   { name: 'painted tee + low leggings', garments: [], paint: [{ template: 'leggingsUnder', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeShort', fabric: { family: 'jersey', colour: 0 } }] },
   { name: 'painted U-neck tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeU', fabric: { family: 'jersey', colour: 0 } }] },
@@ -634,21 +644,37 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'painted swimsuit', garments: [], paint: [{ template: 'swimsuit', fabric: { family: 'athletic', colour: 14 } }] },
   { name: 'painted leotard', garments: [], paint: [{ template: 'bodysuit', fabric: { family: 'athletic', colour: 15 } }] },
 ];
-/** Sarah's own red tee and charcoal leggings, all painted: nothing to download. */
-export const PAINTED_DEFAULT_OUTFIT = OUTFITS.findIndex((o) => o.name === 'Sarah · red tee + charcoal leggings');
+/**
+ * NAMES THE BUILT-IN OUTFITS HAD (Joshua, 2026-11-13: "let's remove the word Sarah and keep everything generic"): the
+ * three in her red tee were "Sarah · ..." until then, and a character or a look saved before holds that name. A saved
+ * name is looked up through here (`outfitNamed`), so what was saved still opens in the outfit it was saved in.
+ */
+export const OUTFIT_FORMER_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  'Sarah · red raglan tee + charcoal leggings': 'red raglan tee + charcoal leggings',
+  'Sarah · red spandex tee + charcoal leggings': 'red spandex tee + charcoal leggings',
+  'Sarah · red tee + charcoal leggings': 'red tee + charcoal leggings',
+});
+/** The built-in outfit of this name, or of a name it used to have; -1 for none. */
+export function outfitNamed(name: string | null | undefined): number {
+  if (!name) return -1;
+  const now = OUTFIT_FORMER_NAMES[name] ?? name;
+  return OUTFITS.findIndex((o) => o.name === now);
+}
+/** The red tee and charcoal leggings, all painted: nothing to download. */
+export const PAINTED_DEFAULT_OUTFIT = OUTFITS.findIndex((o) => o.name === 'red tee + charcoal leggings');
 /**
  * The outfit the room opens in on the approved v2 body: the NEW TEE, the procedural raglan tee simulated as cloth, in
  * her red, over the painted charcoal leggings (Joshua, 2026-10-27: "Make the new shirt the default"). Until then it was
  * the modelled spandex tee, light (2026-10-23: "use that shirt ChatGPT used, but ... compress it"), whose cloth copy
  * is now the second option (SIM_TEE_OUTFIT).
  */
-export const SARAH_DEFAULT_OUTFIT = OUTFITS.findIndex((o) => o.name === 'Sarah · red raglan tee + charcoal leggings');
+export const SARAH_DEFAULT_OUTFIT = OUTFITS.findIndex((o) => o.name === 'red raglan tee + charcoal leggings');
 /**
  * The light tee simulated as cloth (CLOTH SIM), the room's default until 2026-10-27, when Joshua made the new
  * procedural tee the default and kept this one "as the second option to compare". A look saved in it (her own,
  * `sarahLook.ts`) opens in the new tee, with its fabrics.
  */
-export const SIM_TEE_OUTFIT = OUTFITS.findIndex((o) => o.name === 'Sarah · red spandex tee + charcoal leggings');
+export const SIM_TEE_OUTFIT = OUTFITS.findIndex((o) => o.name === 'red spandex tee + charcoal leggings');
 /** Painted outfits are masks on the approved v2 body's own vertices: offered only where that body is (its recovered shirts are listed). */
 export const paintedOutfitsAvailable = (available: readonly Garment[]): boolean => available.includes('shirtRelaxedHigh');
 /**
@@ -1052,12 +1078,21 @@ export function fingersLine(curlPercent: number): string {
   return p === 0 ? 'FINGERS · open' : p === 100 ? 'FINGERS · fist' : `FINGERS · ${p}% curled`;
 }
 
-export function statusLine(loaded: boolean, failed: boolean, garments: readonly string[], hasBelly: boolean, model = 0): string {
+/**
+ * The line under her name: which model she is and what it carries. The model on the menu goes by its name (Joshua,
+ * 2026-11-13: "call it like it's supposed to 'Female Base Model'"; no character is named by the room itself: "let's
+ * remove the word Sarah and keep everything generic"); `named` false leaves that name off, for when it is already the
+ * line above (a character not yet given a name of her own).
+ */
+export function statusLine(loaded: boolean, failed: boolean, garments: readonly string[], hasBelly: boolean, model = 0, named = true): string {
   const m = SARAH_LAB_MODELS[((model % SARAH_LAB_MODELS.length) + SARAH_LAB_MODELS.length) % SARAH_LAB_MODELS.length];
+  const called = MODEL_NAMES[m.id];
   if (failed) return `${m.path} did not load`;
-  if (!loaded) return `loading Sarah ${m.id}…`;
+  if (!loaded) return `loading ${called ?? m.id}…`;
   const g = garments.length ? `${garments.length} garment${garments.length === 1 ? '' : 's'}` : 'no clothes in this file yet';
-  return `${m.id === 'v1' ? 'base model' : `model ${m.id}`} · ${hasBelly ? 'belly slider' : 'no belly slider'} · ${g}`;
+  const rest = `${hasBelly ? 'belly slider' : 'no belly slider'} · ${g}`;
+  if (called) return named ? `${called} · ${rest}` : rest;
+  return `${m.id === 'v1' ? 'base model' : `model ${m.id}`} · ${rest}`;
 }
 
 // ------------------------------------------------------------ the bump's weight

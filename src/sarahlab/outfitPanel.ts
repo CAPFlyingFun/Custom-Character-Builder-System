@@ -138,7 +138,7 @@ export function outfitPanel(hooks: OutfitPanelHooks): OutfitPanel {
   let pendingNew: string | null = null;
 
   // SAVE AS NEW
-  const sharedName = input(OUTFIT_FIELD.sharedName, 'Outfit name (Sarah Casual...)');
+  const sharedName = input(OUTFIT_FIELD.sharedName, 'Outfit name (Casual, Work...)');
   const saveShared = button('SAVE AS SHARED', OUTFIT_ACTION.saveShared, () => undefined);
   confirmable(saveShared, () => 'SAVE AS SHARED', () => {
     const n = sharedName.value.trim();
@@ -153,7 +153,7 @@ export function outfitPanel(hooks: OutfitPanelHooks): OutfitPanel {
     say(replacing ? `Replaced the shared outfit "${saved.name}". Characters based on it keep their own changes.` : `Saved "${saved.name}" as a shared outfit any character can wear.${source.kind === 'shared' || source.kind === 'personal' ? '' : ' The outfit you started from is unchanged.'}`);
     refresh();
   });
-  const character = input(OUTFIT_FIELD.character, 'Character (Sarah, Lena...)');
+  const character = input(OUTFIT_FIELD.character, 'Character (her name)');
   const savePersonal = button('SAVE TO CHARACTER', OUTFIT_ACTION.savePersonal, () => undefined);
   const personalHas = (n: string) => !!hooks.read().characters.find((c) => c.name.toLowerCase() === n.toLowerCase())?.clothes;
   confirmable(savePersonal, () => 'SAVE TO CHARACTER', () => {
@@ -243,7 +243,7 @@ export function outfitPanel(hooks: OutfitPanelHooks): OutfitPanel {
     changesNote.textContent = can ? (changed ? 'Your changes are not saved yet.' : 'Nothing changed since it was saved.')
       : source.kind === 'builtin' ? 'A built-in outfit is never overwritten: SAVE AS NEW keeps your version, and the original stays available.'
         : 'Not saved yet: use SAVE AS NEW.';
-    if (!character.value && document.activeElement !== character) character.placeholder = hooks.characterName() ? `Character (${hooks.characterName()})` : 'Character (Sarah, Lena...)';
+    if (!character.value && document.activeElement !== character) character.placeholder = hooks.characterName() ? `Character (${hooks.characterName()})` : 'Character (her name)';
     // NEW OUTFIT's choices: blank, every built-in, every shared outfit
     const book = hooks.read();
     const keep = start.value;

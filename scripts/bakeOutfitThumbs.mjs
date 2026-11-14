@@ -5,9 +5,11 @@
  *     npm run bake:outfits
  *
  * Builds, serves dist/, opens the character room with `?bake=outfits` and asks the room itself to put each outfit it
- * offers on Sarah and picture her (`bakeOutfitPictures` in SarahLabScene.ts: the same camera and size a saved outfit's
+ * offers on her and picture her (`bakeOutfitPictures` in SarahLabScene.ts: the same camera and size a saved outfit's
  * picture is taken with), then writes them to public/sarahlab/outfits/<outfit>.jpg, where the OUTFIT cards read them.
- * Run it again when an outfit is added or its look changes, then build. A fresh browser, so the LIGHT theme.
+ * She is pictured as the room opens her: the Female Base Model at 0%, not pregnant (Joshua, 2026-11-13: "remove the
+ * word Sarah and keep everything generic"; the cards before were of Sarah at 73%). Run it again when an outfit is
+ * added, its look changes, or what the room opens on does; then build. A fresh browser, so the LIGHT theme.
  * ONLY=<outfit names, comma separated> pictures just those (ONLY=bikini), and leaves the other cards as they are.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -40,7 +42,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 932, height: 430 }, deviceScaleFactor: 2 });
   page.on('pageerror', (e) => { failed = true; log(`page error: ${e.message}`); });
   await page.goto(`${server.resolvedUrls.local[0]}?open=CharacterRoom&bake=outfits`);
-  await page.waitForFunction(() => typeof globalThis.__sarahLabBakeOutfits === 'function' && (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => typeof globalThis.__sarahLabBakeOutfits === 'function' && document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   log('the room is up: picturing each outfit (a minute or more each on a software renderer)');
   const only = process.env.ONLY ? process.env.ONLY.split(',').map((n) => n.trim()).filter(Boolean) : null;
   const pictures = await page.evaluate((names) => globalThis.__sarahLabBakeOutfits(names ?? undefined), only, { timeout: 0 });

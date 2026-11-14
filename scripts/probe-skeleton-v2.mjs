@@ -49,7 +49,7 @@ try {
   };
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('[data-role="sarah-lab-hud"]', { timeout: 240_000 });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 240_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 240_000 });
   await page.waitForFunction(() => globalThis.__sarahLabCloth?.skeletonDepths?.(50) !== null, null, { timeout: 240_000, polling: 2000 });
   // (her clothes off: OUTFIT three times is none)
   for (let k = 0; k < 3; k++) await press('sarahlab:outfit');

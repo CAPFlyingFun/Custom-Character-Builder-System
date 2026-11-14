@@ -37,7 +37,7 @@ try {
     for (const v of close) { await hook('aim', YAW[v], 0.05, 110, 0, 0.2, 0); await run(0.15); await shot(`${tag}-close-${v}.png`, { x: 200, y: 100, width: 600, height: 700 }); }
   };
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForTimeout(6000);
   for (let k = 0; k < 3; k++) await press('sarahlab:outfit');
   await page.waitForTimeout(8000);

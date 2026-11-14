@@ -36,8 +36,10 @@ export interface Pregnancy {
   readonly deliveryWeek: number | null;
 }
 
-/** The approved body: pregnant (as she always started), nothing typed. */
+/** The approved body: pregnant (as she always started), nothing typed. What a save from before holds, said or not. */
 export const PREGNANCY_DEFAULT: Pregnancy = Object.freeze({ pregnant: true, week: null, weekAtBump: null, firstWeekBump: null, deliveryBump: null, deliveryWeek: null });
+/** As the room opens her now: not pregnant, nothing typed (Joshua, 2026-11-13: she opens at her START size, 0%, not pregnant). */
+export const PREGNANCY_OPENING: Pregnancy = Object.freeze({ ...PREGNANCY_DEFAULT, pregnant: false });
 
 /**
  * What may be typed. GAME TUNING: a week is 1 to 42 (the chart runs to 42), a belly % is the belly slider's own 0 to 200,

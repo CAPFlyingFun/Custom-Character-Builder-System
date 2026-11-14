@@ -83,7 +83,8 @@ export function characterPanel(hooks: CharacterPanelHooks): CharacterPanel {
   const now = () => new Date().toISOString();
 
   // ---------------------------------------------------------------- characters
-  const name = input(CHARACTER_FIELD.name, 'Character name (Sarah, Lena...)', 'Sarah');
+  // (no name of the room's own: the model is generic -- Joshua, 2026-11-13 -- and a character's name is the one typed)
+  const name = input(CHARACTER_FIELD.name, 'Character name', '');
   const save = (scope: SaveScope) => {
     const n = name.value.trim();
     if (!n) { say('Type a name first.'); return; }

@@ -25,7 +25,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => log('pageerror', e.message));
   await page.goto(server.resolvedUrls.local[0] + '?probe=cloth', { waitUntil: 'load' });
-  await page.waitForFunction(() => (document.querySelector('[data-field="sarahlab-status"]')?.textContent ?? '').startsWith('model v2-body'), null, { timeout: 300_000 });
+  await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
   await page.waitForFunction(() => globalThis.__sarahLabCloth?.skeletonLandmarks?.() != null, null, { timeout: 300_000, polling: 2000 });
   const cloud = (process.env.CLOUD ?? '').split(',').filter(Boolean);
   const res = await page.evaluate(([c]) => globalThis.__sarahLabCloth.skeletonLandmarks(c.length ? c : undefined, 1), [cloud]);
