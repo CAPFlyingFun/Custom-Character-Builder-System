@@ -47,6 +47,7 @@ import { SARAH_LOOK } from './sarahLook';
 import { PREGNANCY_DEFAULT, PREGNANCY_RANGE, pregnancyOf, pregnantLine, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
 import { BUILD_INFO } from '../ui/buildInfo';
+import { graphicsNote, pictureLost } from './lostPictures';
 import { IRIS_CHOICES, browsLine, eyesLine, lipsLine, mouthLine, nextEyeMode } from './faceChoices';
 /**
  * THE SARAH LAB — Sarah rebuilt from Joshua's base mannequin, on a turntable,
@@ -454,6 +455,16 @@ export interface SarahLabHooks {
    * device's storage; without it the panel keeps them for the session only.
    */
   readonly characters?: { read(): CharacterBook; write(book: CharacterBook): void };
+  /**
+   * What of the room is kept on this device (pwa/onDevice.ts; Joshua, 2026-11-13: "load everything at one time and hold
+   * it locally especially if I have it saved as a PWA"): the Library's line, and what should be noticed over the stage
+   * (the page was loaded again by the phone, a newer version is ready). Without it the room says nothing of either.
+   */
+  readonly device?: { line(): string; note(): string; watch(changed: () => void): void };
+  /** Her files are asked for once this resolves (on a device's first visit: once they can be kept as they land). */
+  readonly beforeLoad?: Promise<void>;
+  /** She is in and drawn, the loading card gone: the page may fetch the rest of the room ahead of need. */
+  readonly onReady?: () => void;
 }
 
 export type SarahLabWire = (ctx: SceneContext) => SarahLabHooks;
@@ -1522,6 +1533,51 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (skinFetched && skinFetched.texture !== keep) skinFetched.texture.dispose();
     if (skinFetched?.texture !== keep) skinFetched = null;
   }
+  /**
+   * THE PHONE TOOK THE GRAPHICS AWAY AND GAVE THEM BACK (lostPictures.ts). Counted, and said over the stage; then, a
+   * moment after they are back, what can not come back by itself is put right. Her file's own pictures and her clothes'
+   * are looked at, and any the browser dropped is decoded again from the file it came in (kept on the device: nothing is
+   * downloaded) and laid where it was -- she is not loaded again, and nothing else about her changes. And the skin she
+   * wears, when it is one fetched for her, is fetched and laid afresh: a picture of that size is the first thing a
+   * phone short of memory fails to take.
+   */
+  const graphics = { lost: 0, restored: 0, redecoded: 0, gone: 0 };
+  let reviveTimer: ReturnType<typeof setTimeout> | 0 = 0;
+  /** How long after the graphics are back she is looked at, ms: the 3D library has drawn her again by then. */
+  const GRAPHICS_REVIVE_MS = 600;
+  const onGraphicsLost = (): void => { graphics.lost++; refreshDevice(); };
+  const onGraphicsRestored = (): void => {
+    graphics.restored++; refreshDevice();
+    if (reviveTimer) clearTimeout(reviveTimer);
+    reviveTimer = setTimeout(reviveGraphics, GRAPHICS_REVIVE_MS);
+  };
+  function reviveGraphics(): void {
+    reviveTimer = 0;
+    if (disposed) return;
+    // every picture drawn in the room: hers, her clothes', her hair's, her shoes', her baby's
+    const maps = new Set<THREE.Texture>();
+    three.traverse((object) => {
+      const of = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      for (const material of (of ? (Array.isArray(of) ? of : [of]) : []) as THREE.MeshStandardMaterial[]) {
+        for (const t of [material.map, material.normalMap, material.roughnessMap, material.metalnessMap, material.aoMap, material.emissiveMap, material.alphaMap, material.userData?.ownMap as THREE.Texture | undefined]) if (t?.isTexture) maps.add(t);
+      }
+    });
+    const lost = [...maps].filter((t) => pictureLost(t.image));
+    // a picture of his own laid on her as her skin has no file here to come from again: she goes back to the skin she
+    // opens in, and the notice says a picture is gone
+    const upload = skinUpload && pictureLost(skinUpload.texture.image) ? skinUpload : null;
+    if (upload) { graphics.gone++; skinUpload = null; if (skinId === 'upload') { skinId = DEFAULT_SKIN; applySkin(); } upload.texture.dispose(); refreshDevice(); }
+    const fromFiles = lost.filter((t) => t !== upload?.texture);
+    if (fromFiles.length > 0) {
+      void assets.redecodePictures(fromFiles).then((failed) => {
+        if (disposed) return;
+        graphics.redecoded += fromFiles.length - failed; graphics.gone += failed;
+        refreshDevice();
+      });
+    }
+    const b = bodyOf();
+    if (b && skinFetched && b.material.map === skinFetched.texture && skinId === skinFetched.id) applySkin(true);
+  }
   /** The brush's copy goes; her material gets back the map it was copied from. */
   function dropPainter(): void {
     if (!painted) return;
@@ -1530,14 +1586,24 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     painted.painter.dispose();
     painted = null; skinPainting = false;
   }
-  /** Put the chosen skin on her, fetching a candidate the first time; a fresh map is a fresh start for the brush. */
-  function applySkin(): void {
+  /**
+   * Put the chosen skin on her, fetching a candidate the first time (`fresh`: fetching it again even so -- after the
+   * phone restarted the graphics, `reviveGraphics`); a fresh map is a fresh start for the brush.
+   */
+  function applySkin(fresh = false): void {
     const b = bodyOf();
     if (!b) return;
     const own = ownMap(b.material), request = ++skinRequest;
     const wear = (t: THREE.Texture | null, id: SkinId) => {
       dropPainter();
       if (b.material.map !== t) { b.material.map = t; b.material.needsUpdate = true; }
+      // THE FILE'S OWN SKIN IS NOT LEFT IN GRAPHICS MEMORY WHEN ANOTHER IS PUT ON (Joshua, 2026-11-13: "not sure if it
+      // could be a phone memory thing as well"). MEASURED the same day, counted where the graphics make and let go of
+      // each picture: opened in EVEN, the file's own skin is never there (the 3D library takes a picture into graphics
+      // memory the first time it is drawn); but once ORIGINAL had been worn and EVEN put back, its 21.3 MB stayed --
+      // 193 MB of textures where there had been 172. It is let go here. Its picture stays with the page, so ORIGINAL
+      // goes back on with no download: it is taken in again the first time it is drawn.
+      if (own && t !== own) own.dispose();
       skinWorn = id; skinState = 'ready';
       if (id !== 'upload') { try { localStore()?.setItem(SKIN_KEY, id); } catch { /* a private window: the choice is not kept */ } }
       // (her doors' outsides take her skin's tone: the skin she wears now)
@@ -1546,7 +1612,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     };
     if (skinId === 'original') { wear(own, 'original'); freeFetched(); return; }
     if (skinId === 'upload') { if (skinUpload) { wear(skinUpload.texture, 'upload'); freeFetched(); } else { skinId = 'original'; wear(own, 'original'); } return; }
-    if (skinFetched?.id === skinId) { wear(skinFetched.texture, skinId); return; }
+    if (!fresh && skinFetched?.id === skinId) { wear(skinFetched.texture, skinId); return; }
     const choice = SKIN_CHOICES.find((c) => c.id === skinId);
     if (!choice?.path) { skinId = 'original'; wear(own, 'original'); return; }
     skinState = 'loading'; refresh();
@@ -1879,7 +1945,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const unused = chart.unused.map((u) => u === 'week' ? ' · the typed week is not used: it must be past week 12 and its belly % between her week 1 and delivery' : ' · her delivery % is not used: it must be above her week 1').join('');
     line.textContent = `her week now ${weekText(here)} (${from})${pinned}${unused}`;
   }
+  /** The Library's line of what is kept on this device, and the notice over the stage (there only when it says something). */
+  function refreshDevice(): void {
+    const line = fields[SARAH_LAB_FIELD.device], notice = fields[SARAH_LAB_FIELD.notice];
+    if (line) { const text = hooks.device?.line() ?? ''; if (line.textContent !== text) line.textContent = text; line.style.display = text ? '' : 'none'; }
+    if (notice) {
+      const text = `${hooks.device?.note() ?? ''}${graphicsNote(graphics)}`.replace(/ · $/, '');
+      if (notice.textContent !== text) notice.textContent = text;
+      notice.style.display = text ? '' : 'none';
+    }
+  }
   function refresh(): void {
+    refreshDevice();
     if (fields.status) fields.status.textContent = statusLine(loaded && model?.visible === true, failed, garments, hasBelly, modelIndex) + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
     refreshSkin();
     const bumpField = fields[SARAH_LAB_FIELD.bump], fingerField = fields[SARAH_LAB_FIELD.fingers];
@@ -3291,6 +3368,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // the section's own title says CHARACTERS: the drawer's is not needed there
     characters.element.querySelector('summary')?.style.setProperty('display', 'none');
     right.appendChild(characters.element);
+    // what of the room is kept on this device (Joshua, 2026-11-13: "load everything at one time and hold it locally"):
+    // the Library's last line, kept told by the page (pwa/onDevice.ts)
+    if (hooks.device) {
+      const kept = document.createElement('div');
+      kept.dataset.tab = 'library';
+      kept.dataset.field = SARAH_LAB_FIELD.device;
+      kept.style.cssText = 'font:600 11px/1.5 system-ui,sans-serif;letter-spacing:.02em;color:var(--sl-muted,#9aa0a8);padding:10px 2px 2px;margin-top:6px;border-top:1px solid var(--sl-line,#ffffff1f)';
+      fields[SARAH_LAB_FIELD.device] = kept;
+      right.appendChild(kept);
+      hooks.device.watch(() => { if (!disposed) refreshDevice(); });
+    }
     // BREAST & NAVEL DETAIL through her clothes: the outfit editor's own setting, shown here too (filled in once the
     // editor exists, below), so the BODY tab and BODY PAINT can never disagree (Joshua, 2026-10-22)
     const bodyDetail = document.createElement('details');
@@ -3604,7 +3692,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     fields.cloth = document.createElement('div');
     fields.cloth.dataset.field = SARAH_LAB_FIELD.cloth;
     fields.cloth.style.cssText = 'font:600 10px system-ui,sans-serif;color:var(--sl-accent-deep,#2f6f5e);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none';
-    info.append(eyebrow, nameLine, fields.status, fields.cloth);
+    // what should be noticed, there only when there is something (it may run to a second line: it is the exception)
+    const notice = document.createElement('div');
+    notice.dataset.field = SARAH_LAB_FIELD.notice;
+    notice.style.cssText = 'font:700 10px/1.3 system-ui,sans-serif;color:var(--sl-danger,#d46a53);margin-top:1px;display:none';
+    fields[SARAH_LAB_FIELD.notice] = notice;
+    info.append(eyebrow, nameLine, fields.status, fields.cloth, notice);
     const history = pill();
     buttons.undoBody = pillButton('↶', SARAH_LAB_ACTION.undoBody, () => travelBody(-1), 'Undo body change');
     buttons.redoBody = pillButton('↷', SARAH_LAB_ACTION.redoBody, () => travelBody(1), 'Redo body change');
@@ -8455,7 +8548,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       placeCamera();
       buildHud();
       frame(size.width, size.height);
-      loadSarah();
+      { const canvas = ctx.renderer.gl?.domElement as HTMLCanvasElement | undefined;
+        canvas?.addEventListener?.('webglcontextlost', onGraphicsLost); canvas?.addEventListener?.('webglcontextrestored', onGraphicsRestored); }
+      // (kept on the device: her files wait for the page's worker on a first visit, pwa/onDevice.ts `ready`)
+      if (hooks.beforeLoad) { const load = () => { if (!disposed) loadSarah(); }; void hooks.beforeLoad.then(load, load); } else loadSarah();
       // a bake of the built-in outfits' card pictures asks for it by address (scripts/bakeOutfitThumbs.mjs)
       if (new URLSearchParams(globalThis.location?.search ?? '').get('bake') === 'outfits') (globalThis as unknown as Record<string, unknown>).__sarahLabBakeOutfits = bakeOutfitPictures;
       // ...and a bake of her for the story player (scripts/sarahV2Recovery/story-sarah.mjs)
@@ -10315,7 +10411,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     },
 
     update(frame: FrameInfo) {
-      if (readyIn > 0 && --readyIn === 0 && readyBatch === batch) meter.ready();
+      if (readyIn > 0 && --readyIn === 0 && readyBatch === batch) { meter.ready(); hooks.onReady?.(); }
       for (let k = frameWaiters.length - 1; k >= 0; k--) if (--frameWaiters[k].left <= 0) frameWaiters.splice(k, 1)[0].done();
       if (card) {
         const covered = `${Math.round(studio?.stage.bottom.getBoundingClientRect().height ?? 0) + 10}px`;
@@ -10338,6 +10434,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
 
     dispose() {
       disposed = true;
+      { const canvas = ctx.renderer.gl?.domElement as HTMLCanvasElement | undefined;
+        canvas?.removeEventListener?.('webglcontextlost', onGraphicsLost); canvas?.removeEventListener?.('webglcontextrestored', onGraphicsRestored); }
+      if (reviveTimer) { clearTimeout(reviveTimer); reviveTimer = 0; }
       tileSteps.dispose();
       if (creaseTimer) clearTimeout(creaseTimer);
       crease.dispose();

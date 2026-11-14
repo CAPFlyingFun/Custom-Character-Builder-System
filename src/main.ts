@@ -14,6 +14,9 @@ import { createSarahLabScene } from './sarahlab';
 import { CHARACTER_BOOK_KEY, CHARACTER_BOOK_VERSION, EMPTY_BOOK, sanitizeBook, type CharacterBook } from './sarahlab/characterSaves';
 import { createStorageRoot } from './persistence/StorageRoot';
 import { localStorageKeyValueStore } from './persistence/localStorageStore';
+import { assetUrl, publicTable } from './assets/assets';
+import { aheadFiles, deviceLine, deviceNote, startOnDevice } from './pwa/onDevice';
+import { BUILD_INFO } from './ui/buildInfo';
 
 const MAX_STEP = 1 / 20;
 
@@ -24,10 +27,23 @@ async function start(): Promise<void> {
   const renderer = new Renderer(host);
   const storage = createStorageRoot(localStorageKeyValueStore());
   const skin = new URLSearchParams(location.search).get('skin') === 'ktx2' ? 'ktx2' : null;
+  // THE ROOM KEPT ON THIS DEVICE (Joshua, 2026-11-13: "load everything at one time and hold it locally especially if I
+  // have it saved as a PWA"): the service worker and what it keeps (src/pwa). Nothing on a development server.
+  const table = publicTable();
+  const device = startOnDevice({
+    build: `${BUILD_INFO.version}+${BUILD_INFO.commit}`,
+    enabled: import.meta.env.PROD,
+    files: aheadFiles(table.revisions, table.sizes, (path) => new URL(assetUrl(path), document.baseURI).href),
+    workerUrl: new URL('sw.js', document.baseURI).href,
+  });
   const make = createSarahLabScene(() => ({
     // (there is nowhere to go back to: the room is the whole page)
-    onBack: () => location.reload(),
+    onBack: () => { device.reloadAsked(); location.reload(); },
     skin,
+    device: { line: () => deviceLine(device.state()), note: () => deviceNote(device.state()), watch: (changed) => device.watch(changed) },
+    // on a device's first visit her files wait a moment for the worker, so they are kept as they land
+    beforeLoad: device.ready,
+    onReady: () => device.roomReady(),
     characters: (() => {
       const store = storage.open<CharacterBook>({ key: CHARACTER_BOOK_KEY, version: CHARACTER_BOOK_VERSION, defaults: EMPTY_BOOK, sanitize: (raw) => sanitizeBook(raw) });
       return { read: () => store.read(), write: (book: CharacterBook) => store.write(book) };

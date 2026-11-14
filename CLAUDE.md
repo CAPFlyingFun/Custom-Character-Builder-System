@@ -276,6 +276,75 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   render running beside it: a laying 22 ms before, 8 ms now, over a womb as without; her belly's organs laid round a term
   womb 80 ms a change of womb (her stomach's fit behind the wall tries none of its forward run first).
 
+## Kept on the device (the room as an app)
+
+- **The site keeps its own files on the device, in stages** (Joshua, 2026-11-13: "what it should do, is load everything at
+  one time and hold it locally especially if I have it saved as a PWA... It's about holding and loading the model, clothing,
+  etc at once or in stages"). A service worker (`src/pwa/sw.ts`; all it decides is in `keeper.ts`) built into `sw.js` with
+  the build's own list of files (`vite.config.ts` `keepOnDevice`), and a manifest and icons (`public/manifest.webmanifest`,
+  `public/icons/`, drawn by `scripts/makeIcons.mjs`), so the room can be saved to a Home Screen as an app. The stages
+  (`onDevice.ts`): the page and its code as the worker is installed; what she wears as the room loads it (on a device's
+  first visit her files wait up to 2.5 s for the worker, so they are kept as they land and none is fetched twice); then
+  everything else she can wear or be, fetched ahead once she is in and drawn, the small files first. The Library's last
+  line says how far it is.
+- MEASURED 2026-11-13 behind a stand-in for GitHub Pages (`scripts/probe-on-device.mjs`: Pages' cache headers, 20 Mbit/s,
+  60 ms a request; the build machine draws with a software renderer, so its seconds compare builds and are not a
+  phone's). v0.9.20, which kept nothing: a first visit 34.3 MB in 16 files; a visit again fetched her 15.45 MB body in
+  full a second time (the browser's own cache had kept every small file and not the big one); with no internet she
+  never appeared. Now: a first visit fetches 34.0 MB for the room, then 42.7 MB more ahead of need, and 77 MB is kept
+  (46 files; "the whole room is saved here (42 files, 76 MB)"); a visit again, and the page loaded again in the same
+  tab, fetch 0 MB (one question to the server: has the page changed); a turn of the screen and LIGHT / DARK ask for
+  nothing, then as before; a new build (new code, one changed skin) fetches 1.2 MB, shows itself at once, and the old
+  code and the old skin are gone from the device; with no internet she stands dressed. Her seconds to dressed there:
+  24.7 on the first visit, 13.7 to 16.0 after.
+- **What the worker answers with depends on what may change behind an address** (`keeper.ts` `kindOf`). The page is asked
+  of the server first, past the browser's ten-minute copy, so a new build shows the moment it is live; the page kept
+  here answers with no network, or none in 3 s. A file that can not change behind its address -- Vite's bundles, and a
+  public file asked for with `?r=` its revision (`assetUrl`) -- is answered from the device and fetched once. Anything
+  else of the site's is network first. So a public file has to be asked for through `assetUrl` to be kept for good.
+- **What is kept is one build's.** The page kept is the one fetched when the worker was installed, with the bundles it
+  names (a page naming other bundles is refused); files of an older build go only when a page of the worker's own build
+  says hello (`tidy`), so a page still open from the build before keeps what it may yet ask for. Every
+  capflyingfun.github.io site shares one cache store: this site's is `character-builder-kept-*`, and no other is read or
+  removed. A cache store that fails costs only the keeping: every request still goes to the network.
+- A public file the room does not ask for by itself is named in `NOT_AHEAD` (`keepList.ts`: the KTX2 pilot, the story
+  bake, the Home Screen's own) and is not fetched ahead; a file not named there is. After adding a public file, think
+  which it is.
+- **The room says what a phone did to it** (the notice under her name, there only when it has something to say): "page
+  loaded again ×N" (`countLoad`: the phone dropped the page and loaded it afresh, or it was loaded again by hand),
+  "graphics restarted ×N" (below), "update ready: reopen". Nothing of what Joshua's phone does on a turn of the screen
+  could be tried on the build machine: these lines are how his phone says which it was.
+- After anything changes what is kept or how: `tests/keeper.test.ts`, `tests/onDevice.test.ts`, then the probe.
+
+## On a phone
+
+- **Her pictures and the phone's graphics memory** (Joshua, 2026-11-13, of her skin gone black when the screen was turned
+  and turned back: "like it wasn't refreshing the skin texture on rotation... not sure if it could be a phone memory
+  thing as well"). Not reproduced on the build machine by turning the screen. Reproduced by what a phone short of memory
+  does: its graphics taken away and given back WITH HER DECODED PICTURES DROPPED (`lostPictures.ts`: a model file's
+  pictures are handed to the 3D library already decoded, and a phone keeps a decoded picture with its graphics) -- her
+  normal map and roughness gone, her skin drew dark and mottled. Now, a moment after the graphics are back
+  (`reviveGraphics`), every picture in the room is looked at (`pictureLost`), each one dropped is decoded again from the
+  model file it came in (`assets.ts` `redecodePictures`: the file comes off the device; the picture's place in graphics
+  memory is let go first, or a fresh picture can not be poured into it), and the skin she wears, when it is one fetched
+  for her, is fetched and laid afresh. MEASURED in the room: her skin right again, nothing asked of the network, the
+  notice "graphics restarted ×1 (2 of her pictures decoded again)". A picture with no file here to come from (one of his
+  own laid on her, a painting not saved) can not be brought back: the notice says so.
+- **The file's own skin is not left in graphics memory when another is put on** (`applySkin` `wear`). MEASURED 2026-11-13
+  in the room, counted where the graphics make and let go of each picture (a JS-side count of what her materials name
+  had said 87 MB with the file's own skin among it: wrong both ways): opened in EVEN she holds 172 MB of textures in 18,
+  and the file's own skin is not among them (a picture is taken into graphics memory the first time it is drawn); once
+  ORIGINAL had been worn and EVEN put back, its 21.3 MB stayed -- 193 MB in 19. Now 172 MB whichever she has worn.
+- **A FINDING, NOT YET ACTED ON**: more than half of those 172 MB is not pictures. The 3D library keeps a mesh's morphs
+  as one table of 32-bit numbers: the room's largest is 8192 x 29 x 20, 72.5 MB, and a second is 15 MB -- against 43 MB
+  for her skin and her normal map together.
+- **The finger's target on the stage's small buttons is bigger than the button looks** (Joshua, 2026-11-13: "it's hard to
+  press certain buttons like (LIGHT/DARK) like it's glitching or lagging"; `studioLayout.ts` `PILL_REACH`). MEASURED: the
+  press itself costs 3 to 8 ms and fetches nothing; the button was 34 px tall in 3 px of glass, and a touch on that
+  glass or just past it turned her instead. Each button now answers 9 px above and below its box (52 px), and the stage
+  leaves a touch on a pill's glass alone. MEASURED in the room: every button's own box is its own at all 25 points
+  tried, and a real touch 2 px above LIGHT/DARK and 6 px below it both change the theme.
+
 ## Verification
 
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local

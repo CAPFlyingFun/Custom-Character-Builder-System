@@ -65,6 +65,7 @@ export interface Assets {
     options?: LoadModelOptions,
   ): Promise<THREE.Object3D>;
   loadTexture(path: string): Promise<THREE.Texture | null>;
+  redecodePictures(textures: readonly THREE.Texture[]): Promise<number>;
   assetBytes(path: string): number | null;
   enableKtx2(renderer: THREE.WebGLRenderer): void;
 }
@@ -123,6 +124,17 @@ export function assetBytes(path: string): number | null {
   }
 }
 
+/**
+ * Every file the build saw in `public/`: its content revision and what it weighs, keyed as `assetUrl` takes a path.
+ * For what is kept on the device ahead of need (`pwa/onDevice.ts`). Empty where the build wrote no table. Never throws.
+ */
+export function publicTable(): { revisions: Readonly<Record<string, string>>; sizes: Readonly<Record<string, number>> } {
+  let revisions: Record<string, string> = {}, sizes: Record<string, number> = {};
+  try { revisions = __PUBLIC_REV__ ?? {}; } catch { /* no table: a bare tsc, a runner that does not write it */ }
+  try { sizes = __PUBLIC_SIZE__ ?? {}; } catch { /* the same */ }
+  return { revisions, sizes };
+}
+
 export async function loadModel(
   path: string,
   placeholderFactory: () => THREE.Object3D,
@@ -141,6 +153,7 @@ export async function loadModel(
       if (signal?.aborted) throw abortError();
       const gltf = meter || signal || options.onDownloaded ? await loadMetered(clean, url, meter, signal, downloaded) : await gltfLoader.loadAsync(url);
       downloaded();
+      rememberPictures(gltf, clean);
       return gltf.scene;
     } catch (error) {
       if (signal?.aborted || (error as Error)?.name === 'AbortError') { meter?.drop(clean); throw error; }
@@ -168,7 +181,100 @@ export async function loadTexture(path: string): Promise<THREE.Texture | null> {
   }
 }
 
-export const assets: Assets = { assetUrl, loadModel, loadTexture, assetBytes, enableKtx2 };
+/**
+ * WHERE A MODEL'S PICTURES CAME FROM, kept so that one can be decoded again (sarahlab/lostPictures.ts: a phone that
+ * restarts a page's graphics can drop the decoded pictures with them, and a model file's pictures are handed to the 3D
+ * library already decoded). Keyed by the picture itself -- its `Source`, which every copy of a texture shares -- and
+ * holding nothing but the file's path and the image's number in it: the file is only asked for again if a picture is
+ * ever lost, and then it comes off the device (pwa/keeper.ts).
+ */
+const pictureOrigins = new WeakMap<THREE.Source<unknown>, { readonly path: string; readonly image: number }>();
+function rememberPictures(gltf: GLTF, path: string): void {
+  try {
+    const textures = (gltf.parser.json as { textures?: { source?: number; extensions?: Record<string, { source?: number } | undefined> }[] }).textures ?? [];
+    for (const [object, reference] of gltf.parser.associations) {
+      const texture = object as THREE.Texture, index = (reference as { textures?: number }).textures;
+      if (texture.isTexture !== true || index === undefined || !texture.source) continue;
+      const def = textures[index];
+      // (a picture kept as WebP or AVIF names its image in that extension)
+      const image = def?.source ?? def?.extensions?.EXT_texture_webp?.source ?? def?.extensions?.EXT_texture_avif?.source;
+      if (image !== undefined) pictureOrigins.set(texture.source, { path, image });
+    }
+  } catch { /* a file without the table: its pictures can not be decoded again, that is all */ }
+}
+
+/**
+ * One image out of a `.glb`'s own bytes: the bytes of the picture as it was packed (a PNG, a WebP, a JPEG) and its
+ * kind. Null for an image the file does not hold inside itself, or for bytes that are not a `.glb`.
+ */
+export function glbImage(glb: ArrayBuffer, index: number): { bytes: Uint8Array; mimeType: string } | null {
+  try {
+    const view = new DataView(glb);
+    // 'glTF', its version, its length; then chunks: a length, a kind ('JSON' or 'BIN'), and that many bytes
+    if (view.byteLength < 20 || view.getUint32(0, true) !== 0x46546c67) return null;
+    let json: { images?: { bufferView?: number; mimeType?: string }[]; bufferViews?: { buffer?: number; byteOffset?: number; byteLength: number }[]; buffers?: { uri?: string }[] } | null = null;
+    let bin: Uint8Array | null = null;
+    for (let at = 12; at + 8 <= view.byteLength;) {
+      const length = view.getUint32(at, true), kind = view.getUint32(at + 4, true), start = at + 8;
+      if (start + length > view.byteLength) return null;
+      if (kind === 0x4e4f534a && !json) json = JSON.parse(new TextDecoder().decode(new Uint8Array(glb, start, length)));
+      else if (kind === 0x004e4942 && !bin) bin = new Uint8Array(glb, start, length);
+      at = start + length;
+    }
+    const image = json?.images?.[index], part = image?.bufferView === undefined ? undefined : json?.bufferViews?.[image.bufferView];
+    // (only a picture in the file's own bytes: its first buffer, with no address of its own)
+    if (!image || !part || !bin || (part.buffer ?? 0) !== 0 || json?.buffers?.[0]?.uri) return null;
+    const from = part.byteOffset ?? 0;
+    if (!(part.byteLength > 0) || from + part.byteLength > bin.byteLength) return null;
+    return { bytes: bin.subarray(from, from + part.byteLength), mimeType: image.mimeType ?? 'image/png' };
+  } catch { return null; }
+}
+
+/**
+ * Decode again, from the model files they came in, the pictures of `textures` -- for pictures the browser has dropped
+ * (lostPictures.ts). Each file is asked for once (it is kept on the device), each picture decoded as the 3D library
+ * decoded it the first time, and every one of `textures` drawn from it is told to take it. Returns how many of
+ * `textures` could not be helped: not from a model file loaded here, or the file or the picture could not be had.
+ */
+export async function redecodePictures(textures: readonly THREE.Texture[]): Promise<number> {
+  const files = new Map<string, Promise<ArrayBuffer | null>>();
+  const file = (path: string): Promise<ArrayBuffer | null> => {
+    let asked = files.get(path);
+    if (!asked) { asked = fetch(assetUrl(path)).then((r) => (r.ok ? r.arrayBuffer() : null), () => null); files.set(path, asked); }
+    return asked;
+  };
+  const fresh = new Map<THREE.Source<unknown>, Promise<boolean>>();
+  const again = (source: THREE.Source<unknown>): Promise<boolean> => {
+    let done = fresh.get(source);
+    if (!done) {
+      done = (async () => {
+        const origin = pictureOrigins.get(source);
+        if (!origin || !/\.glb$/i.test(origin.path)) return false;
+        const glb = await file(origin.path), part = glb ? glbImage(glb, origin.image) : null;
+        if (!part) return false;
+        // (as three's ImageBitmapLoader decodes a model's picture: its colours and its alpha left exactly as packed)
+        const picture = await createImageBitmap(new Blob([part.bytes as BlobPart], { type: part.mimeType }), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+        (source.data as { close?: () => void } | null)?.close?.();
+        source.data = picture;
+        return true;
+      })().catch(() => false);
+      fresh.set(source, done);
+    }
+    return done;
+  };
+  let failed = 0;
+  await Promise.all(textures.map(async (texture) => {
+    if (!(await again(texture.source))) { failed++; return; }
+    // let go of what the graphics hold for it first: after the restart the 3D library made its place there from the
+    // dropped picture -- a place of no size, which a picture can not be poured into (MEASURED 2026-11-13: told only
+    // that it had changed, her skin stayed dark) -- so its place is made afresh, at the fresh picture's size
+    texture.dispose();
+    texture.needsUpdate = true;
+  }));
+  return failed;
+}
+
+export const assets: Assets = { assetUrl, loadModel, loadTexture, assetBytes, enableKtx2, redecodePictures };
 
 /**
  * The model fetched by us and parsed by GLTFLoader, so every byte is counted once, as it arrives. A `.glb` is one

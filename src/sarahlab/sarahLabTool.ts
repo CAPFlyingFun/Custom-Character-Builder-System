@@ -251,6 +251,11 @@ export const SARAH_LAB_FIELD = Object.freeze({
   /** the room's name and build at the top (`labTitle`) */
   title: 'sarahlab-title',
   status: 'sarahlab-status',
+  /** what should be noticed over the stage, shown only when there is something: the phone loaded the page again, its
+   * graphics were restarted, a newer version is ready (pwa/onDevice.ts `deviceNote`, the room's `graphicsNote`) */
+  notice: 'sarahlab-notice',
+  /** the Library's last line: what of the room is kept on this device (pwa/onDevice.ts `deviceLine`) */
+  device: 'sarahlab-device',
   /** the baby's week, length and weight while SEE BABY is on */
   baby: 'sarahlab-baby',
   /** `${birth}<control>`: a BIRTH control's line (holdCm, firmness, headPush); its slider follows it */

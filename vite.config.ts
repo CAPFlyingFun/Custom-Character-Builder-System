@@ -2,7 +2,9 @@ import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, posix, relative, sep } from 'node:path';
+import { build as buildAlone } from 'vite';
 import { defineConfig, type Plugin } from 'vitest/config';
+import { inShell, stamped, type KeepList } from './src/pwa/keepList';
 
 const { version } = JSON.parse(readFileSync('./package.json', 'utf8')) as { version: string };
 
@@ -147,10 +149,46 @@ const versionStamp: Plugin = {
   },
 };
 
+/**
+ * THE SERVICE WORKER, BUILT WITH THE SITE (Joshua, 2026-11-13: "load everything at one time and hold it locally
+ * especially if I have it saved as a PWA"). `src/pwa/sw.ts` is built by itself into `sw.js` at the site's root -- a
+ * worker answers for the folder it is served from -- with THIS BUILD'S LIST OF FILES written into it: the page and the
+ * bundles it names (kept before the worker counts as installed), and every public file at the address the room asks
+ * for it (its path with its content revision, `PUBLIC_REV`), which is what the worker's tidying keeps.
+ *
+ * Because the list is in the worker, every build's `sw.js` differs, and the browser -- which asks the server for
+ * `sw.js` whenever the room is opened, past every cache -- installs the new one. That is the whole update mechanism.
+ *
+ * Built after the site's own bundle is written (`closeBundle`), as one plain script with nothing imported (a worker
+ * that imports is not understood everywhere), by a build of its own with no config file -- so it can not come back
+ * through this plugin. Not in dev: a development server keeps nothing (`onDevice.ts`).
+ */
+const keepOnDevice = (): Plugin => {
+  let shell: string[] = [], outDir = 'dist';
+  return {
+    name: 'character-builder-keep-on-device',
+    apply: 'build',
+    configResolved(config) { outDir = config.build.outDir; },
+    generateBundle(_options, bundle) { shell = ['', ...Object.keys(bundle).filter(inShell).sort()]; },
+    async closeBundle() {
+      if (shell.length === 0) return;
+      const list: KeepList = { build: `${version}+${HEAD}`, shell, files: Object.keys(PUBLIC_REV).sort().map((path) => stamped(path, PUBLIC_REV[path])) };
+      await buildAlone({
+        configFile: false, logLevel: 'warn', publicDir: false,
+        define: { __KEEP_LIST__: JSON.stringify(list) },
+        build: {
+          outDir, emptyOutDir: false, copyPublicDir: false, target: 'es2020',
+          lib: { entry: 'src/pwa/sw.ts', formats: ['iife'], name: 'characterBuilderKeeper', fileName: () => 'sw.js' },
+        },
+      });
+    },
+  };
+};
+
 export default defineConfig({
   // Relative base so the build works from a GitHub Pages project path.
   base: './',
-  plugins: [versionStamp],
+  plugins: [versionStamp, keepOnDevice()],
   server: { allowedHosts: ['terminal.local'] },
   define: {
     __APP_VERSION__: JSON.stringify(version),
