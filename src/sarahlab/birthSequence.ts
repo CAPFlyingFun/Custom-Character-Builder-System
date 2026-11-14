@@ -22,6 +22,9 @@
  * The two buttons are MOMENTS on this clock (`BirthEvents`, FAST seconds): a cut or a placenta asked for sooner than its
  * own time. Dragged back before one, it has not happened yet (the scene forgets it); with none, each comes on its own.
  *
+ * WHEN one can be played at all, and WHERE it begins when she is open already (BIRTH OPENING set by hand first), are
+ * at the foot of this file: `BIRTH_NEEDS`, `birthNeeds`; `birthBeginsAt`, `BirthEvents.openFrom`, `BirthMoment.held`.
+ *
  * TWINS AND TRIPLETS (P3, Joshua 2026-11-04: "use the same event/animation... it just counts the babies and knows if it
  * should play it once, twice, or more"): ONE labour, then the same pushing, crowning and birth once per baby in turn
  * (`count`). After a baby is born and lifted onto her, her opening eases back and she rests (`MULTIPLE_TIMING.between`);
@@ -110,8 +113,12 @@ export interface BirthMoment {
   readonly seconds: number;
   /** how hard she is contracting now (0 resting .. 1 the peak) */
   readonly contraction: number;
-  /** her cervix (0 shut .. 1 ten centimetres) */
+  /** her cervix (0 shut .. 1 ten centimetres): never less than she was open as the birth began (`BirthEvents.openFrom`) */
   readonly cervix: number;
+  /** how open her opening is held, at the least, by where the birth began (`BirthEvents.openFrom`): that, until her
+   * first baby's head comes out through it; none once its head is out -- from there her opening is the birth's (as wide
+   * as what is passing through it, easing back after) */
+  readonly held: number;
   /** her baby's head taken from its place in her womb onto the top of her cervix (0 .. 1) */
   readonly engage: number;
   /** her baby's head down her canal: 0 its middle at the top of her cervix, 1 at her opening; past 1 out of her, in
@@ -174,11 +181,14 @@ export interface BabyBirth {
 }
 
 /** A cut or a placenta asked for sooner than its own time: the moment it was asked (FAST seconds), or null. `cuts`: every
- * CUT CORD pressed (a press cuts each cord out of her by then that is not cut yet). */
-export interface BirthEvents { readonly cutAt?: number | null; readonly cuts?: readonly number[]; readonly placentaAt?: number | null }
+ * CUT CORD pressed (a press cuts each cord out of her by then that is not cut yet). `openFrom`: how open she was as the
+ * birth began (0..1 of ten centimetres: BIRTH OPENING, set by hand before it) -- `BirthMoment.cervix` and `.held`. */
+export interface BirthEvents { readonly cutAt?: number | null; readonly cuts?: readonly number[]; readonly placentaAt?: number | null; readonly openFrom?: number | null }
 
 const smooth = (a: number, b: number, v: number): number => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+/** How open she was as the birth began (0 where none is given). */
+const openFromOf = (events: BirthEvents): number => (typeof events.openFrom === 'number' && Number.isFinite(events.openFrom) ? clamp01(events.openFrom) : 0);
 
 /** One baby's turn, FAST seconds: when it starts turning head down and settling (its rest before), its pushing,
  * crowning, birth (its head out), after (all of it out), its navel out, its own cut. */
@@ -287,13 +297,15 @@ export function birthAt(seconds: number, pace: BirthPace = 'fast', events: Birth
   let lastBorn = -1;
   for (let i = 0; i < n; i++) if (babies[i].born) lastBorn = i;
   let stage: BirthStage, contraction = A.contraction, cervix = 1;
+  // (how open she was as it began: her cervix is never less, and her opening not until her first baby's head is out)
+  const from = openFromOf(events);
   if (t < P.pushing) {
     stage = 'labour';
     const k = Math.floor(t / T.labourEvery), ph = (t - k * T.labourEvery) / T.labourEvery;
     contraction = squeeze(ph, T.labourLong);
     // her cervix a step with each contraction, rising through the squeeze and holding after it
     const stepOf = (1 - T.cervixFrom) / T.labourCount, during = smooth(0, T.labourLong, ph);
-    cervix = T.cervixFrom + stepOf * (k + during);
+    cervix = Math.max(from, T.cervixFrom + stepOf * (k + during));
   } else if (t < AP.pushing) stage = 'after';
   else if (t < AP.crowning) stage = 'pushing';
   else if (t < AP.birth) stage = 'crowning';
@@ -322,13 +334,56 @@ export function birthAt(seconds: number, pace: BirthPace = 'fast', events: Birth
   for (let k = 0; k < n; k++) if (placentas[k].separate > 0) pk = k;
   const pl = placentas[pk];
   const delivered = babies.reduce((sum, b) => sum + b.closing, 0) / n;
-  return { stage, seconds: real, contraction: clamp01(contraction), cervix: clamp01(cervix), engage: clamp01(A.engage), down: A.down, turnDeg: A.turnDeg, shoulderTiltDeg: A.shoulderTiltDeg, progress: clamp01(t / P.total), onHer: babies[0].onHer, stretch: shown.stretch, closing,
+  // (held where it began until her first baby's head is born: over the seconds its head takes to come out)
+  const held = from * (1 - smooth(P.babies[0].birth, P.babies[0].birth + T.headOut, t));
+  return { stage, seconds: real, contraction: clamp01(contraction), cervix: clamp01(cervix), held, engage: clamp01(A.engage), down: A.down, turnDeg: A.turnDeg, shoulderTiltDeg: A.shoulderTiltDeg, progress: clamp01(t / P.total), onHer: babies[0].onHer, stretch: shown.stretch, closing,
     cut: babies[0].cut, cutAt: babies[0].cutAt, placentaFor: v, separate: pl.separate, placentaDown: pl.placentaDown, bowl: pl.bowl, afterbirth,
     count: n, active, babies: babies.map(({ contraction: _c, ...b }) => b), placentas, delivered };
 }
 
 /** The birth's whole length in seconds at `pace`, for `count` babies. */
 export const birthLength = (pace: BirthPace = 'fast', count = 1): number => birthPlan({}, count).total * (pace === 'realistic' ? REALISTIC_STRETCH : 1);
+
+/**
+ * WHERE A BIRTH BEGINS WHEN SHE IS OPEN ALREADY (Joshua, 2026-11-14, of a birth played with BIRTH OPENING set by hand
+ * first: "the opening didn't sync up as when I tried it, I set the start at 40% opening before I pressed it"). By hand
+ * BIRTH OPENING opens her opening and her cervix together; a birth begun from there goes on from there (`openFrom`, a
+ * share of ten centimetres):
+ *
+ *   - her cervix is never less than that (`birthAt`'s `cervix`): labour takes it on, it does not start over from a
+ *     centimetre;
+ *   - its clock starts at the contraction in which her labour's own cervix passes that -- what of labour is behind her
+ *     is not played -- and never later than the contraction in which her baby's head begins to settle onto her cervix
+ *     (it has to come down first);
+ *   - her opening is held at least that open until her first baby's head is born (`BirthMoment.held`), and from there
+ *     it is the birth's: as wide as what passes through it, easing back after.
+ *
+ * The seconds on the birth's clock, at `pace`, such a birth begins at (0: from the start).
+ */
+export function birthBeginsAt(openFrom: number, pace: BirthPace = 'fast'): number {
+  const T = BIRTH_TIMING, from = clamp01(Number.isFinite(openFrom) ? openFrom : 0), stepOf = (1 - T.cervixFrom) / T.labourCount;
+  // (the contraction that takes her past it: none of them while she is no more open than labour starts her)
+  const passes = from <= T.cervixFrom ? 0 : Math.floor((from - T.cervixFrom) / stepOf + 1e-9);
+  // (the last contraction that begins before its head starts to settle)
+  const settles = Math.floor((T.labourCount * T.labourEvery * (1 - T.engageShare)) / T.labourEvery + 1e-9);
+  return Math.max(0, Math.min(passes, settles, T.labourCount - 1)) * T.labourEvery * (pace === 'realistic' ? REALISTIC_STRETCH : 1);
+}
+
+/**
+ * WHEN A BIRTH CAN BE PLAYED (Joshua, 2026-11-14: "It should be only when pregnancy is on and the belly size is greater
+ * than 90%"; 2026-11-02: from RECLINE or SQUAT -- LEGS APART is her pre-labour stance). GAME TUNING: his numbers.
+ */
+export const BIRTH_NEEDS = Object.freeze({ bellyOver: 90, poses: Object.freeze(['recline', 'squat']) as readonly string[] });
+/** Whether she can give birth at all as she is, whatever her pose: pregnant, and her belly's size (its %, pregnancy.ts
+ * `bellySize`) over `BIRTH_NEEDS.bellyOver`. A birth is played only while this holds. */
+export const canBirth = (pregnant: boolean, bellySize: number): boolean => pregnant && bellySize > BIRTH_NEEDS.bellyOver;
+/** Why a birth can not begin now -- the line the room shows for it -- or null when it can. */
+export function birthNeeds(pregnant: boolean, bellySize: number, pose: string): string | null {
+  if (!pregnant) return 'BIRTH · not pregnant (PREGNANT · ON)';
+  if (!canBirth(pregnant, bellySize)) return `BIRTH · her belly over ${BIRTH_NEEDS.bellyOver}% first (now ${Number.isFinite(bellySize) ? Math.round(bellySize) : 0}%)`;
+  if (!BIRTH_NEEDS.poses.includes(pose)) return 'BIRTH · from RECLINE or SQUAT';
+  return null;
+}
 
 /** Her cervix as a gameplay reading (Joshua, 2026-11-02: "a stat that says like 'Open 2.7cm - not yet'"). */
 export function cervixLine(cervix: number): string {

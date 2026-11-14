@@ -123,7 +123,7 @@ import { StepWatch, TileSteps } from './footsteps';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
-import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape } from './baby';
+import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape, footOffDeg } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { JIGGLE_ATTRIBUTE, PUBIC_PRESS, PUSH_ATTRIBUTE, pubicPressWant, setPush, jiggleAt, jiggleOf as jiggleOfMesh, legWeight, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type Jiggle, type SoftBellyWant } from './softBody';
 import { createVulvaPatch, VULVA_OPEN, VULVA_TRY, type VulvaPatch } from './vulvaMesh';
@@ -146,8 +146,8 @@ import { BIRTH_NORMALS_FIELD, createBirthNormals, type BirthNormals } from './bi
 const BIRTH_KNEES_FIELD = 'shape:birthKnees';
 /** BIOLOGICAL SHAPE: a baby's head at term is about 9.5 cm across (its biparietal diameter) on a 51 cm baby; a smaller
  * baby's in proportion. And a contraction lifts her womb up and forward a little (metres at the peak; GAME TUNING). */
-/** The poses a birth may run in (Joshua, 2026-11-02). */
-const BIRTH_POSES_OK: readonly string[] = ['recline', 'squat'];
+/** The poses a birth may run in (Joshua, 2026-11-02): birthSequence.ts `BIRTH_NEEDS`, with what else a birth needs. */
+const BIRTH_POSES_OK: readonly string[] = BIRTH_NEEDS.poses;
 /** GAME TUNING: where her baby lies on her once born (her rest metres): along her front down her middle (within `across`
  * of it), its head end where she is at height `top` (under her breasts) and its bottom `span` below; its middle out from
  * that line by `depth` of its own curled depth (it lies flatter once out of the curl) and `over` of how far her belly
@@ -327,7 +327,8 @@ const AFTERBIRTH = Object.freeze({
 import { BIRTH_CONTACT_FIELD, createBirthContact, type BirthContact } from './birthContact';
 import { KNEE_TURN_FIELD, createKneeTurn, type KneeTurn } from './kneeTurn';
 import { HIP_TURN_FIELD, createHipTurn, type HipTurn } from './hipTurn';
-import { birthAt, birthLength, birthLine, REALISTIC_STRETCH, type BirthMoment, type BirthPace, type BirthTurn } from './birthSequence';
+import { BIRTH_NEEDS, birthAt, birthBeginsAt, birthLength, birthLine, birthNeeds, canBirth, REALISTIC_STRETCH, type BirthMoment, type BirthPace, type BirthTurn } from './birthSequence';
+import { easeLegsOpen, legSpreadDeg, legsOpen } from './legsOpen';
 /** GAME TUNING: all of it within `near` of a knee, none past `far` (metres); `passes` of `lambda` each */
 const KNEE_SMOOTH = Object.freeze({ near: 0.06, far: 0.12, passes: 60, lambda: 0.6, restore: 0 });
 import { DEFAULT_VULVA_KEEP } from './detailMaterials';
@@ -999,9 +1000,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // canal as drawn this frame, and her baby's head's middle (its model's units)
   let birthTimeInput: HTMLInputElement | null = null;
   let birthClock: number | null = null, birthRunning = false, birthPace: BirthPace = 'fast', birthNow: BirthMoment | null = null;
+  /** the birth's line as last written while none is begun (`showIdleBirth`) */
+  let birthIdleShown = '';
+  /** how open her legs' spread has her as last given to her opening (0..1), and the percent of it BIRTH OPENING's line shows */
+  let legsOpenSet = 0, legsShown = 0;
   /** CUT CORD and DELIVER PLACENTA, as moments on the birth's clock (FAST seconds; null: on their own time); with twins
    * and triplets every CUT CORD pressed is kept (`cuts`: each press cuts every cord out of her by then) */
-  const birthEvents: { cutAt: number | null; cuts: number[]; placentaAt: number | null } = { cutAt: null, cuts: [], placentaAt: null };
+  // (`openFrom`: how open she was as it began -- BIRTH OPENING, set by hand before it: `beginBirth`)
+  const birthEvents: { cutAt: number | null; cuts: number[]; placentaAt: number | null; openFrom: number } = { cutAt: null, cuts: [], placentaAt: null, openFrom: 0 };
   /** the birth's clock in FAST seconds */
   const birthFast = (): number => (birthClock ?? 0) / (birthPace === 'realistic' ? REALISTIC_STRETCH : 1);
   /** a moment asked for later than where the timeline now stands has not happened yet (dragged back before it) */
@@ -1994,10 +2000,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const bumpField = fields[SARAH_LAB_FIELD.bump], fingerField = fields[SARAH_LAB_FIELD.fingers];
     if (bumpField) bumpField.textContent = bumpLine(bump, herChart(babyCount, pregnancy).deliveryBump);
     if (fingerField) fingerField.textContent = fingersLine(curl);
-    { const f2 = fields[SARAH_LAB_FIELD.birthOpen];
-      // (the probes set the opening too: the slider follows whatever she is)
+    { // (the probes set the opening too: the slider follows whatever she is)
       if (vulva) birthOpenPct = Math.round(vulva.open * 100);
-      if (f2) f2.textContent = birthOpenLine(birthOpenPct, vulva?.heldTo ?? null);
+      showBirthOpen();
       if (birthOpenInput && Number(birthOpenInput.value) !== birthOpenPct) birthOpenInput.value = String(birthOpenPct); }
     { const f4 = fields[SARAH_LAB_FIELD.foldBack];
       // (only her skeleton has the doors yet: on another body it is not shown)
@@ -2121,7 +2126,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (buttons.opening) { buttons.opening.textContent = openingLine(skeletonOpening); buttons.opening.style.display = v2OrganBones ? '' : 'none'; lit(buttons.opening, skeletonOpening); }
     if (buttons.baby) { buttons.baby.textContent = !pregnant() ? 'SEE BABY · not pregnant' : babyShown ? (babyCount > 1 ? 'HIDE BABIES' : 'HIDE BABY') : (babyCount > 1 ? 'SEE BABIES' : 'SEE BABY'); lit(buttons.baby, babyShown); }
     // (an unavailable action never looks like one that works: a baby's controls dimmed while she is not pregnant)
-    for (const b of [buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick, ...birthButtons]) if (b) { b.disabled = !pregnant(); b.style.opacity = pregnant() ? '1' : '.4'; }
+    for (const b of [buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) if (b) { b.disabled = !pregnant(); b.style.opacity = pregnant() ? '1' : '.4'; }
+    // (a birth's own: only while she can give birth -- pregnant, her belly over 90% -- or one is under way)
+    { const can = birthClock !== null || canBirth(pregnant(), sized());
+      for (const b of birthButtons) if (b) { b.disabled = !can; b.style.opacity = can ? '1' : '.4'; }
+      if (birthTimeInput) { birthTimeInput.disabled = !can; birthTimeInput.style.opacity = can ? '1' : '.4'; }
+      showIdleBirth(); }
     if (buttons.babies) buttons.babies.textContent = `BABIES · ${BABIES_NAME[babyCount]}`;
     if (buttons.babyLie) buttons.babyLie.textContent = `LIE · ${babyLie === 'auto' ? 'AUTO' : babyLie === 'random' ? 'RANDOM' : LIE_NAME[babyLie].toUpperCase()}`;
     if (babyNote) { babyNote.textContent = babyShown ? `${babyCount > 1 ? 'BABIES' : 'BABY'} · ${babyLoading ? 'loading…' : babyRoot ? `${babyLine(onChart(), body.babyWeight, babyCount)}${babyCurled < 0.995 ? ` · drawn ${Math.round((1 - babyCurled) * 100)}% smaller to fit` : ''}${babyAutoDepth >= 0.5 ? ` · depth +${Math.round(babyAutoDepth)}% to fit` : ''}${babyBalanceDeg >= 0.05 ? ` · sags ${babyBalanceDeg.toFixed(1)}°` : ''} · ${babyRoots().map((r, i) => `${babyCount > 1 ? `${'ABC'[i]} ` : ''}${LIE_NAME[(r.userData.lie as Lie | undefined) ?? 'head']}`).join(', ')}` : 'not loaded'}` : ''; babyNote.style.display = babyShown ? '' : 'none'; }
@@ -3183,8 +3193,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       birthButtons = [run, pace, reset, cut, deliver, hands];
       // its TIMELINE: drag to any moment of it (it pauses there; BIRTH ▶ carries on from it)
       birthTimeInput = slider(SARAH_LAB_FIELD.birthTime, 0, (v) => {
+        const at = (v / 1000) * birthLength(birthPace, babyCount);
+        // (dragged with no birth begun, it begins one there -- if one can begin: `beginBirth`)
+        if (!beginBirth(at)) { if (birthTimeInput) birthTimeInput.value = '0'; return; }
         if (!BIRTH_POSES_OK.includes(pose)) return;
-        birthClock = (v / 1000) * birthLength(birthPace, babyCount); birthRunning = false; run.textContent = 'BIRTH ▶'; trimBirthEvents();
+        birthClock = at; birthRunning = false; run.textContent = 'BIRTH ▶'; trimBirthEvents();
       }, 1000, 'pose');
       { const f = fields[SARAH_LAB_FIELD.birthTime]; if (f) f.textContent = 'TIMELINE · drag to any moment'; } }
     // a painted shirt's length, for every painted shirt she puts on (its drape follows: tunicDrape.ts)
@@ -7008,12 +7021,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * with her legs as they do not), so shut she is her own skin, closed, as v2 is; they are drawn once her opening has
    * begun to open (`V2_DOORS.from` of BIRTH OPENING), and never under what she wears.
    */
+  /** v2's own canal held by her skeleton: its top at the middle of her pelvis, where her skeleton's canal has it
+   * (`applyOpening` sets it so) -- her doors' canal, or her skin-made opening's. */
+  const canalHeld = (): boolean => skeletonOpening && !organsGrowWomb && !!vulva && (skinMadeOpening || !!organs);
   function doorsSeen(): boolean { return doorsOpening() && !!vulva && !organsGrowWomb && !vulva.dressed && vulva.drawnOpen > V2_DOORS.from; }
   function applyOpening(): void {
     const mine = doorsOpening() && !!organs && !organsGrowWomb && !!vulva, look = OPENING_LOOKS[openingLook % OPENING_LOOKS.length];
     // (held by her skeleton either way: her doors' canal, or her skin's own canal with its top where her skeleton's is --
     // that measured, so her organs need not be laid for it)
-    const held = skeletonOpening && !organsGrowWomb && !!vulva && (skinMadeOpening || !!organs);
+    const held = canalHeld();
     vulva?.setSkeletonOpening(mine, { lips: look.lips, tint: look.tint, reach: look.reach });
     // (and her own canal -- what her baby comes down -- held by her bone: its top at the middle of her pelvis, where the
     // skeleton's canal has it)
@@ -7082,6 +7098,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * it has them now (her baby itself is laid by `birthPlace`, as her babies are placed).
    */
   function stepBirth(dt: number): void {
+    // (a birth is played only while she can give birth: PREGNANT switched off, or her belly brought to 90% or under,
+    // puts it back to before it began -- the line says which)
+    if (birthClock !== null && !canBirth(pregnant(), sized())) { birthControl('reset'); if (birthButtons[0]) birthButtons[0].textContent = 'BIRTH ▶'; refresh(); }
     if (birthClock === null || (!vulva && !organs)) { birthNow = null; birthPath = null; organs?.setPassing(null); seatHeld = 0; return; }
     // (out of a birth pose it waits where it is)
     if (birthRunning && BIRTH_POSES_OK.includes(pose)) birthClock += dt;
@@ -7157,6 +7176,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     { const pd = birthNow.placentaDown, sm = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
       open = Math.max(open, AFTERBIRTH.open * sm(0.85, 1.2, pd) * (1 - sm(1.75, 2, pd))); }
     const bulge = 0.6 * (d > L - 0.07 ? Math.min(1, (d - (L - 0.07)) / (0.07 - 0.5 * R)) : 0) * (d > L ? Math.max(0, 1 - (d - L) / R) : 1);
+    // (and no less open than the birth began, BIRTH OPENING set by hand, until her first baby's head is born: `held`)
+    open = Math.max(open, birthNow.held);
     vulva.setBirthDrive({ open, bulge: Math.max(0, bulge), cervix: birthNow.cervix });
     }
     // her belly settling smaller once her baby is born (a step at a time: her shape is laid again each step)
@@ -7190,10 +7211,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     });
     return pts.length ? Float32Array.from(pts) : null;
   }
-  /** Whether her baby's body is laid along her canal's turn (`birthAlong`): down the one canal that comes behind her pubic
-   * arch and forward under it -- her skeleton's, on her skeleton and in v2 with her skeleton's opening. Down v2's own
-   * canal, which is short and nearly straight, it is one stiff length as it always was (v2 is the baseline). */
-  const alongCanal = (): boolean => babyAlongOn && (!vulva || seatOpening());
+  /**
+   * Whether her baby's body is laid along her canal's turn (`birthAlong`): down a canal that comes behind her pubic arch
+   * and forward under it -- her skeleton's, on her skeleton and in v2 with her skeleton's opening; and v2's own canal
+   * WHILE HER SKELETON HOLDS ITS TOP at the middle of her pelvis (`canalHeld`: her opening made from her own skin, the
+   * room's own since 2026-11-11). That canal is 15 cm long and turns, and her baby was still one stiff length down it
+   * (Joshua, 2026-11-14: "the baby wasn't bending down the tube") -- MEASURED that day, RECLINE at 150%, the joints of
+   * its back and legs against her canal's middle line carried on (the probe's `bodyOnWay`): stiff, up to 19.9 cm off it
+   * in her canal and 30.1 cm above it; laid along, never more than 5.9 and 4.8.
+   * Down v2's own canal left to itself, short and nearly straight, it is one stiff length as it always was.
+   */
+  const alongCanal = (): boolean => babyAlongOn && (!vulva || seatOpening() || canalHeld());
   /** How far its root was moved to keep its head where its birth has it, its body laid along her canal (`birthAlong`): world. */
   const birthAlongOff = new WeakMap<THREE.Object3D, THREE.Vector3>();
   /** The middle of its head, in the world (null before its body is read). */
@@ -7483,12 +7511,39 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** BIRTH: begun (from the start) or paused and on again; reset takes it back to before it began. */
   function birthControl(cmd: 'run' | 'reset' | 'pace'): void {
-    if (cmd === 'reset') { birthRest = null; birthOutLines.length = 0; birthRests.length = 0; birthCentreOffs.length = 0; placeBassinet(false); twinHandShare = 0; for (const c of cordOuts) if (c) { c.cut = false; c.outerLaid = false; c.stumpLaid = false; c.remnantLaid = false; for (const t of [c.outerMesh, c.stumpMesh, c.remnantMesh]) if (t) t.visible = false; } cordCut = false; birthEvents.cutAt = null; birthEvents.cuts = []; birthEvents.placentaAt = null; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); organs?.setPassing(null); organs?.setCervix(birthOpenPct / 100); applyLook(); const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = birthLine(null); return; }
+    if (cmd === 'reset') { birthRest = null; birthOutLines.length = 0; birthRests.length = 0; birthCentreOffs.length = 0; placeBassinet(false); twinHandShare = 0; for (const c of cordOuts) if (c) { c.cut = false; c.outerLaid = false; c.stumpLaid = false; c.remnantLaid = false; for (const t of [c.outerMesh, c.stumpMesh, c.remnantMesh]) if (t) t.visible = false; } cordCut = false; birthEvents.cutAt = null; birthEvents.cuts = []; birthEvents.placentaAt = null; birthEvents.openFrom = 0; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); organs?.setPassing(null); organs?.setCervix(birthOpenPct / 100); applyLook(); showIdleBirth(true); return; }
     if (cmd === 'pace') { const was = birthPace; birthPace = was === 'fast' ? 'realistic' : 'fast'; if (birthClock !== null) birthClock *= was === 'fast' ? 5 : 1 / 5; return; }
-    // (a birth from RECLINE or SQUAT only -- Joshua, 2026-11-02: LEGS APART is her pre-labour stance)
-    if (birthClock === null && !pregnant()) { const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = 'BIRTH · not pregnant (PREGNANT · ON)'; return; }
-    if (birthClock === null) { if (!BIRTH_POSES_OK.includes(pose)) { const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = 'BIRTH · from RECLINE or SQUAT'; return; } birthClock = 0; birthRunning = true; applyLook(); return; }
+    // (only while she is pregnant and her belly is over 90%, and from RECLINE or SQUAT: `beginBirth`)
+    if (birthClock === null) { if (beginBirth()) birthRunning = true; return; }
     birthRunning = !birthRunning;
+  }
+  /**
+   * A BIRTH BEGUN, WHERE SHE IS (Joshua, 2026-11-14: "It should be only when pregnancy is on and the belly size is greater
+   * than 90%"; 2026-11-02: from RECLINE or SQUAT -- LEGS APART is her pre-labour stance): birthSequence.ts `birthNeeds`.
+   * While she can not, the birth's line says why, and false. It begins from how open BIRTH OPENING has her by hand
+   * (`birthBeginsAt`: his "I set the start at 40% opening before I pressed it") -- or at `at`, a moment asked for (the
+   * TIMELINE dragged, a probe), she as open as that all the same. `anyPose`: begun by a probe, which poses her after.
+   */
+  function beginBirth(at: number | null = null, anyPose = false): boolean {
+    if (birthClock !== null) return true;
+    const why = birthNeeds(pregnant(), sized(), anyPose ? BIRTH_POSES_OK[0] : pose);
+    if (why) { const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = why; birthIdleShown = why; return false; }
+    birthEvents.openFrom = vulva ? vulva.open : birthOpenPct / 100;
+    birthClock = at ?? birthBeginsAt(birthEvents.openFrom, birthPace);
+    applyLook(); refresh();
+    return true;
+  }
+  /** The birth's line while none is begun: "not started", or what one needs first (PREGNANT on, her belly over 90%,
+   * RECLINE or SQUAT). Written when that changes (`now`: or at once), so a button's own hint stays until it does. */
+  function showIdleBirth(now = false): void {
+    if (birthClock !== null) { birthIdleShown = ''; return; }
+    const idle = birthNeeds(pregnant(), sized(), pose) ?? birthLine(null), f = fields[SARAH_LAB_FIELD.birthLine];
+    // (not before its line is built: what is "shown" is what was written)
+    if (!f || (!now && idle === birthIdleShown)) return;
+    birthIdleShown = idle;
+    f.textContent = idle;
+    // (and its TIMELINE's own line: put back with the birth, it went on saying the moment the last one had reached)
+    const tl = fields[SARAH_LAB_FIELD.birthTime]; if (tl) tl.textContent = 'TIMELINE · drag to any moment';
   }
   /** Each baby's placenta on her womb's lining, and its cord to its navel, stepped and drawn (SEE BABY). */
   function layCords(): void {
@@ -8372,36 +8427,44 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const moved = Math.abs(bellySettle - bellySettleApplied) * BELLY_SETTLE.most * bump;
     if (moved > 1e-3 && bellySettleAt > 0.1 && (moved >= BELLY_SETTLE.step || bellySettle === want)) { bellySettleAt = 0; applyLook(); }
   }
-  /** the angle between her two thighs (degrees): hip to knee each side, in the world */
-  function thighSpread(): number {
+  /** how far her legs are spread (degrees ACROSS her: legsOpen.ts `legSpreadDeg`), read off her own hips and knees */
+  const lsV = new THREE.Vector3();
+  function legSpread(): number {
     const sk = herSkinned();
     if (!sk || !measure) return 0;
-    const b = sk.skeleton.bones, j = measure.joints, w = (i: number) => b[i].getWorldPosition(new THREE.Vector3());
-    const l = w(j.kneeL).sub(w(j.hipL)), r = w(j.kneeR).sub(w(j.hipR));
-    if (l.lengthSq() < 1e-12 || r.lengthSq() < 1e-12) return 0;
-    return (l.angleTo(r) * 180) / Math.PI;
+    const b = sk.skeleton.bones, j = measure.joints, w = (i: number): [number, number, number] => { const p = b[i].getWorldPosition(lsV); return [p.x, p.y, p.z]; };
+    return legSpreadDeg(w(j.hipL), w(j.kneeL), w(j.hipR), w(j.kneeR));
   }
   /**
-   * HER POSE OPENS HER A LITTLE (Joshua, 2026-11-02: "the vagina naturally opens about 15% in a squat and 30% in a Recline,
-   * because the skin pulls it open a little bit from standing to those poses, and closes naturally when the leg angles get
-   * closer together"): from the angle between her thighs (measured: STAND 0, LEGS APART 36, SQUAT 85, RECLINE 159 degrees)
-   * through the table --
-   * eased toward it at `perSecond` of the way a second.
+   * HER LEGS OPEN HER (legsOpen.ts; Joshua, 2026-11-14: "how far the 🦵 legs are spread apart does naturally open the
+   * opening to a max of 20% in recline and squat, legs apart would be 12%"): from how far her thighs are spread across
+   * her, eased toward it. In every pose, a birth or not. Her opening made from her own skin had been held shut out of a
+   * birth (2026-11-11, with his scale for BIRTH OPENING: "0.1cm for 0%, 0.15cm for 1%, 0.2cm for 2%, and from there,
+   * stays in sync"); the scale is BIRTH OPENING's still, and her legs open her on it as he says.
    */
-  const NATURAL_OPEN = Object.freeze({ table: [[30, 0], [85, 0.15], [160, 0.3]] as const, perSecond: 0.5 });
   let naturalNow = 0;
   function naturalOpening(dt: number): void {
     if (!vulva) return;
-    const a0 = thighSpread(), a = Number.isFinite(a0) ? a0 : 0, t = NATURAL_OPEN.table;
-    let want = a <= t[0][0] ? t[0][1] : t[t.length - 1][1];
-    for (let i = 1; i < t.length; i++) if (a <= t[i][0]) { const [a0, v0] = t[i - 1], [a1, v1] = t[i]; want = v0 + ((v1 - v0) * (a - a0)) / (a1 - a0); break; }
-    naturalNow = Math.max(0, Math.min(1, naturalNow + Math.max(-NATURAL_OPEN.perSecond * dt, Math.min(NATURAL_OPEN.perSecond * dt, want - naturalNow))));
-    // (her skeleton's opening: her doors are shut until they are pushed, so her skin round them is not held open by her pose)
-    // (and her skin-made opening held by her skeleton the same: shut a tenth of a centimetre at 0% in every pose, opened by
-    // BIRTH OPENING on Joshua's scale -- 2026-11-11: "0.1cm for 0%, 0.15cm for 1%, 0.2cm for 2%, and from there, stays in sync")
-    // (but through a birth it is, as v2's own: her baby's head is at her opening before it is pushed open)
-    const held = vulva.skeletonOpening || (skeletonOpening && !organsGrowWomb);
-    vulva.setNatural(held && birthClock === null ? 0 : naturalNow);
+    const spread = legSpread();
+    naturalNow = easeLegsOpen(naturalNow, spread, dt);
+    // (not with her skeleton's doors in her opening's place: they are shut until they are pushed, so her skin round them
+    // is not held open by her pose -- but through a birth it is, as v2's own: her baby's head is at her opening before
+    // it is pushed open)
+    const doors = vulva.skeletonOpening || (doorsOpening() && !organsGrowWomb);
+    legsOpenSet = doors && birthClock === null ? 0 : naturalNow;
+    vulva.setNatural(legsOpenSet, naturalNow === legsOpen(spread));
+    // (BIRTH OPENING's line says what her legs add to what is set by hand: written when the percent it shows changes)
+    const pct = legsOpenPct();
+    if (pct !== legsShown) { legsShown = pct; showBirthOpen(); }
+  }
+  /** what her legs' spread opens her, as BIRTH OPENING's line shows it (percent): nothing under what she wears */
+  const legsOpenPct = (): number => (!vulva || vulva.dressed ? 0 : Math.round(legsOpenSet * 100));
+  /** BIRTH OPENING's line and its slider: what is set by hand, and what her legs add to it; in a birth, that the birth
+   * has her opening -- the slider is where it began, and is hers to set again once the birth is put back (RESET). */
+  function showBirthOpen(): void {
+    const f = fields[SARAH_LAB_FIELD.birthOpen], inBirth = birthClock !== null;
+    if (f) f.textContent = birthOpenLine(birthOpenPct, vulva?.heldTo ?? null, legsShown, inBirth);
+    if (birthOpenInput) { birthOpenInput.disabled = inBirth; birthOpenInput.style.opacity = inBirth ? '.4' : '1'; }
   }
   function advance(dt: number): void {
       seconds += dt;
@@ -8865,7 +8928,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         squatPull: (v: number) => { squatPull = v; birthRoomFor = ''; applyLook(); return v; },
         squatBack: (v: number) => { squatBack = v; applyLook(); birthRoomFor = ''; return v; },
         birthFill: (squat: number, recline: number) => { birthFillSquat = squat; birthFillRecline = recline; birthRoomFor = ''; applyLook(); return true; },
-        legSpread: () => ({ deg: +thighSpread().toFixed(1), natural: +naturalNow.toFixed(3), drawn: vulva ? +vulva.drawnOpen.toFixed(3) : null }),
+        legSpread: () => ({ deg: +legSpread().toFixed(1), natural: +naturalNow.toFixed(3), given: +legsOpenSet.toFixed(3), drawn: vulva ? +vulva.drawnOpen.toFixed(3) : null, hand: vulva ? +vulva.open.toFixed(3) : null, line: fields[SARAH_LAB_FIELD.birthOpen]?.textContent ?? null, sliderOff: birthOpenInput?.disabled ?? null }),
         bellySettle: (on?: boolean) => { if (on !== undefined) { bellySettleOn = on; if (!on) { bellySettle = 0; applyLook(); } } return { on: bellySettleOn, settle: +bellySettle.toFixed(3), tiltDeg: +torsoTilt().toFixed(1), uprightDeg: +uprightTilt.toFixed(1), drawn: +shownBump().toFixed(1), bump }; },
         birthGap: (on: boolean) => { birthGapOn = on; applyLook(); return { on, ...birthGapInfo }; },
         birthSeat: (on: boolean, squat?: number) => { birthSeatOn = on; if (typeof squat === 'number') birthSeatSquat = squat; applyLook(); return on; },
@@ -9242,11 +9305,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         birth: (cmd?: { t?: number; pace?: BirthPace; run?: boolean; reset?: boolean }) => {
           if (cmd?.reset) birthControl('reset');
           if (cmd?.pace) birthPace = cmd.pace;
-          const begun = birthClock !== null;
-          if (cmd?.t !== undefined) { birthClock = cmd.t; birthRunning = cmd.run ?? false; trimBirthEvents(); }
-          else if (cmd?.run !== undefined) { if (birthClock === null) birthClock = 0; birthRunning = cmd.run; }
-          // (begun now: her bottoms come off -- bottomsOff())
-          if (!begun && birthClock !== null) applyLook();
+          // (begun as the room begins one -- only while she can give birth, from how open BIRTH OPENING has her: `beginBirth`,
+          // in any pose (a probe poses her after); her bottoms come off with it -- bottomsOff())
+          if (cmd?.t !== undefined) { if (beginBirth(cmd.t, true)) { birthClock = cmd.t; birthRunning = cmd.run ?? false; trimBirthEvents(); } }
+          else if (cmd?.run !== undefined) { if (beginBirth(null, true)) birthRunning = cmd.run; }
           const r0 = babyRoots()[0], headW = r0 && birthHeadModel ? headMiddle(r0) : null, pts = birthPath?.points;
           const along = headW && pts && pts.length > 1 ? (() => { const mouth = pts[pts.length - 1], t = mouth.clone().sub(pts[pts.length - 2]).normalize(); return +((headW.clone().sub(mouth).dot(t)) / M * 100).toFixed(1); })() : null;
           const offAxis = headW && pts ? +((Math.min(...pts.map((p) => p.distanceTo(headW)))) / M * 100).toFixed(1) : null;
@@ -9278,7 +9340,36 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             babyHolder.updateMatrixWorld(true); const held = babyHolder.localToWorld(birthRestAt.clone());
             return { restMatchCm: +(Math.sqrt(bd) * 100).toFixed(1), drawnVsHeldCm: +(drawn.distanceTo(held) / M * 100).toFixed(1), d: drawn.clone().sub(held).divideScalar(M / 100).toArray().map((x) => +x.toFixed(1)) };
           })() } : null;
-          return { rest: rp, headPastMouthCm: along, headFromPathCm: offAxis, bodyOffPathCm: bodyOff && bodyOff.length ? Math.max(...bodyOff.map((x) => x[1])) : null, bodyInCanal: bodyOff, headR: r0 ? +(headRadiusOf(r0.scale.x) * 100).toFixed(2) : null, open: vulva?.drawnOpen, clock: birthClock, running: birthRunning, pace: birthPace, now: birthNow, path: birthPath ? { length: +birthPath.length.toFixed(4), points: birthPath.points.length } : null, head: birthHeadModel?.toArray().map((x) => +x.toFixed(3)) ?? null, line: birthLine(birthNow) };
+          return { rest: rp, headPastMouthCm: along, headFromPathCm: offAxis, bodyOffPathCm: bodyOff && bodyOff.length ? Math.max(...bodyOff.map((x) => x[1])) : null, bodyInCanal: bodyOff, headR: r0 ? +(headRadiusOf(r0.scale.x) * 100).toFixed(2) : null, open: vulva?.drawnOpen, clock: birthClock, running: birthRunning, pace: birthPace, now: birthNow, path: birthPath ? { length: +birthPath.length.toFixed(4), points: birthPath.points.length } : null, head: birthHeadModel?.toArray().map((x) => +x.toFixed(3)) ?? null, line: birthLine(birthNow),
+            // (ITS BODY AGAINST THE WAY IT COMES: each joint of its back and legs against her canal's middle line carried on
+            // -- up from its top the way her canal comes from, and out of its mouth the way it leaves her -- as `[joint,
+            // 'womb' | 'canal' | 'out', centimetres off that line]`. `bodyInCanal` above measures against her canal alone,
+            // and a joint still up in her womb, or out of her, can be square to a far part of a line that turns)
+            bodyOnWay: (() => {
+              if (!r0 || !pts || pts.length < 3) return null;
+              const mv0 = babyMoveOf(0, r0), v = new THREE.Vector3(), ab = new THREE.Vector3(), n = pts.length, out: [string, string, number][] = [];
+              const up = pts[0].clone().sub(pts[1]).normalize(), on = pts[n - 1].clone().sub(pts[Math.max(0, n - 4)]).normalize();
+              const way = [pts[0].clone().addScaledVector(up, 0.7 * M), ...pts, pts[n - 1].clone().addScaledVector(on, 0.9 * M)];
+              for (const name of [...BABY_BONES.back, BABY_BONES.neck, ...BABY_BONES.leg.left, ...BABY_BONES.leg.right]) {
+                const b = mv0.bones.get(name); if (!b) continue;
+                b.getWorldPosition(v);
+                let best = Infinity, at = 0;
+                for (let k = 0; k + 1 < way.length; k++) {
+                  ab.copy(way[k + 1]).sub(way[k]);
+                  const f = Math.min(1, Math.max(0, v.clone().sub(way[k]).dot(ab) / Math.max(1e-12, ab.lengthSq()))), dd = ab.multiplyScalar(f).add(way[k]).distanceTo(v);
+                  if (dd < best) { best = dd; at = k; }
+                }
+                out.push([name, at === 0 ? 'womb' : at === way.length - 2 ? 'out' : 'canal', +(best / M * 100).toFixed(1)]);
+              }
+              return out;
+            })(),
+            // (and where they are, for a drawing of it: her canal's middle line and its joints, room centimetres)
+            wayCm: pts ? pts.map((q) => q.clone().divideScalar(M / 100).toArray().map((x) => +x.toFixed(1))) : null,
+            jointsCm: r0 ? (() => { const mv0 = babyMoveOf(0, r0), v = new THREE.Vector3(), o: Record<string, number[]> = {}; for (const name of [BABY_BONES.head, BABY_BONES.neck, ...BABY_BONES.back, ...BABY_BONES.leg.left, ...BABY_BONES.leg.right]) { const b = mv0.bones.get(name); if (b) o[name] = b.getWorldPosition(v).clone().divideScalar(M / 100).toArray().map((x) => +x.toFixed(1)); } return o; })() : null,
+            // (what a birth needs that she has not: null when one can begin; what the room's own line says; whether its body is
+            // laid along her canal; and how far each of its feet stands off its shin's line, degrees -- baby.ts `footOffDeg`)
+            needs: birthNeeds(pregnant(), sized(), pose), shown: fields[SARAH_LAB_FIELD.birthLine]?.textContent ?? null, along: alongCanal(), openFrom: birthEvents.openFrom,
+            feetOffDeg: r0 ? (['left', 'right'] as const).map((side) => { const mv0 = babyMoveOf(0, r0), [, k, a, t] = BABY_BONES.leg[side].map((n) => mv0.bones.get(n)); const d = k && a && t ? footOffDeg(k, a, t) : null; return d === null ? null : +d.toFixed(1); }) : null };
         },
         // aim straight at her navel from her side, at a distance (a probe photographing it)
         navelAim: (distance: number, yawOff = 0, pitch = 0.05) => {

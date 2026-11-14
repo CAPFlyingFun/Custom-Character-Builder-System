@@ -1460,6 +1460,29 @@ export function turnToward(bone: THREE.Object3D, child: THREE.Object3D, to: THRE
   bone.updateMatrixWorld(true);
 }
 
+const fA = new THREE.Vector3(), fB = new THREE.Vector3(), fC = new THREE.Vector3();
+/**
+ * How far its foot stands off its shin's line (degrees, in the world): 0 pointed straight on from its shin, 90 at a right
+ * angle to it, as a foot stands on a floor. Null where two of the joints lie on each other.
+ */
+export function footOffDeg(knee: THREE.Object3D, ankle: THREE.Object3D, toes: THREE.Object3D): number | null {
+  knee.getWorldPosition(fA); ankle.getWorldPosition(fB); toes.getWorldPosition(fC);
+  const shin = fA.subVectors(fB, fA), foot = fC.sub(fB);
+  if (shin.lengthSq() < 1e-16 || foot.lengthSq() < 1e-16) return null;
+  return (shin.angleTo(foot) * 180) / Math.PI;
+}
+/**
+ * ITS FOOT POINTED (Joshua, 2026-11-14, of its birth: "the feet was flat"): its foot turned at its ankle toward its
+ * shin's own line until it stands `offDeg` degrees off it, `share` of the way there. A foot nearer its shin's line than
+ * that already is left as it is.
+ */
+export function pointFoot(knee: THREE.Object3D, ankle: THREE.Object3D, toes: THREE.Object3D, offDeg: number, share: number): void {
+  const now = footOffDeg(knee, ankle, toes), off = Math.max(0, offDeg);
+  if (now === null || !(share > 0) || !(now > off)) return;
+  // (`fA`: its shin's way, left there by `footOffDeg`)
+  turnToward(ankle, toes, fA.normalize(), Math.min(1, share) * (1 - off / now));
+}
+
 export interface MoveFrame {
   /** the baby's long axis toward its head, its front (where its face and belly are), its left: in the world */
   readonly long: THREE.Vector3; readonly front: THREE.Vector3; readonly left: THREE.Vector3;
@@ -1592,12 +1615,19 @@ export function poseDescent(bones: ReadonlyMap<string, THREE.Bone>, k: number, f
   if (back.length) { const a = bones.get(back[back.length - 1]), b = bones.get(BABY_BONES.neck); if (a && b) turnToward(a, b, f.long, L.straighten * k); }
   // each limb down along its side toward its feet, the joint below in line with it
   const limb = (chain: readonly string[], hug: number, k: number) => {
-    const [a, b, c] = chain.map((n) => bones.get(n));
+    const [a, b, c, d] = chain.map((n) => bones.get(n));
     if (!a || !b || !c || !(k > 0)) return;
     const side = sideOf(bones, chain, f.left) >= 0 ? f.left.clone() : f.left.clone().negate();
     v.copy(f.long).negate().addScaledVector(side, hug).normalize();
     turnToward(a, b, v, k);
     turnToward(b, c, v, k);
+    // ITS FEET AS ITS STRAIGHT BODY HAS THEM (Joshua, 2026-11-14, of its birth: "the feet was flat"): only its thigh and
+    // shin were ever turned, so each foot kept the angle it has curled in her womb -- MEASURED on the model's bones, 112
+    // and 119 degrees off its shin's line: its toes drawn up past a right angle, toward its shin -- down her canal and out
+    // of her on straight legs. Its straight body was baked with its feet 61 degrees off (`DESCENT.footOff`), and drawn
+    // from bones 51 and 58 degrees from that its feet stood bent up at the ankle. Turned at its ankle toward its shin's
+    // line as its leg straightens
+    if (d) pointFoot(b, c, d, L.footOff, k);
   };
   // its arms tucked to its chest, as a baby's are born (2026-11-03, Joshua, of its arms at its sides making it 16-18 cm
   // wide: "fix"): each upper arm down its side and a little forward, its forearm folded up across its chest
@@ -1693,8 +1723,12 @@ export function poseAlong(bones: ReadonlyMap<string, THREE.Bone>, way: AlongWay)
 
 /** GAME TUNING: its body made long coming down -- how far its back straightens; its legs nearly together (how far out
  * from its length); its arms tucked to its chest -- each upper arm's aim (down, out, forward) and forearm's (up, in
- * across its chest, forward), as its straight body is baked (`.scratch/baby/straight-pose.json`) */
-export const DESCENT = Object.freeze({ straighten: 0.8, legOut: 0.08, upperDown: 0.85, upperOut: -0.15, upperFront: 0.45, foreUp: 0.3, foreIn: 0.85, foreFront: 0.4 });
+ * across its chest, forward), as its straight body is baked (`.scratch/baby/straight-pose.json`); and how far its feet
+ * stand off its shins' line, degrees (`footOff` -- MEASURED on its straight body's own bones, models/sarah-baby-straight.glb:
+ * 61.1 each foot, a foot pointed 29 degrees on from a right angle. A newborn's ankle bends up freely and points only a
+ * limited way: Waugh et al. 1983, Physical Therapy 63:1616, 40 newborns, "plantar flexion was generally limited, but
+ * dorsiflexion was unlimited") */
+export const DESCENT = Object.freeze({ straighten: 0.8, legOut: 0.08, upperDown: 0.85, upperOut: -0.15, upperFront: 0.45, foreUp: 0.3, foreIn: 0.85, foreFront: 0.4, footOff: 61 });
 
 /** GAME TUNING: the newborn on her -- how far its back straightens (all the way: its straight body, part-curled, had a
  * hollow belly -- 2026-11-03), its head's turn (radians), and each limb's aim (its

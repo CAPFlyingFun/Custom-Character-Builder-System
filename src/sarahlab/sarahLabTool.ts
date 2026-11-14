@@ -1029,8 +1029,18 @@ export function foldBackLine(percent: number, angles: { outer: number; mid: numb
   return p === 0 && angles.outer < 0.5 ? 'FOLD BACK · closed' : `FOLD BACK ${p}% · lip ${d(angles.outer)} · middle ${d(angles.mid)} · inner ${d(angles.inner)} · hinge ${d(angles.hinge)}`;
 }
 
-export function birthOpenLine(percent: number, heldTo: number | null = null): string {
+/**
+ * BIRTH OPENING's line: what is set by hand, and what is drawn where that is something else --
+ *   `legsPercent`: how open her legs' spread has her (legsOpen.ts; Joshua, 2026-11-14: "to a max of 20% in recline and
+ *     squat, legs apart would be 12%"), said when it is more than the slider's;
+ *   `inBirth`: a birth has her opening -- the slider is where the birth began (his "I set the start at 40% opening before
+ *     I pressed it"), and is hers again once the birth is put back.
+ */
+export function birthOpenLine(percent: number, heldTo: number | null = null, legsPercent = 0, inBirth = false): string {
   const p = Math.round(Math.min(100, Math.max(0, percent)));
+  if (inBirth) return `BIRTH OPENING · with the birth now · it began at ${p}% (RESET to set it)`;
+  const legs = Math.round(Math.min(100, Math.max(0, Number.isFinite(legsPercent) ? legsPercent : 0)));
+  if (legs > p) return `BIRTH OPENING ${p}% · her legs open her ${legs}% · ${(legs / 10).toFixed(1)} cm across`;
   if (p === 0) return 'BIRTH OPENING · closed';
   // (held back by her legs: what it is, and why -- spread her legs and it goes on)
   if (heldTo !== null) return `BIRTH OPENING ${p}% · held to ${(heldTo * 100).toFixed(1)} cm by her legs`;

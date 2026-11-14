@@ -356,6 +356,70 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   same either way -- 51.0 cm, 3.46 kg, 1% smaller to fit -- on the chart at her 100% and by the rule at her 120%.
 - After anything changes the rule, her chart or the panel: `tests/pregnancyRule.test.ts`, `tests/pregnantToggle.test.ts`.
 
+## Her baby's birth
+
+- **Only with PREGNANT on and her belly over 90%** (Joshua, 2026-11-14: "It should be only when pregnancy is on and the
+  belly size is greater than 90%"; and, 2026-11-02, from RECLINE or SQUAT). `birthSequence.ts` `BIRTH_NEEDS`, `canBirth`,
+  `birthNeeds`; the room's `beginBirth`. The birth's buttons and its TIMELINE are dimmed until she can; the birth's line
+  says what is needed next ("BIRTH · not pregnant (PREGNANT · ON)", "BIRTH · her belly over 90% first (now 73%)", "BIRTH
+  · from RECLINE or SQUAT"); and a birth under way is put back to before it began the moment she can not (PREGNANT
+  switched off, her belly brought to 90% or under). Her belly's size is `bellySize`: the slider, and her Depth past its
+  top. MEASURED in the room: off at 73% and at 90%, on at 91%. A probe opens on her at 73%, where no birth is played:
+  `scripts/probe-birth-v2.mjs` sets her belly first (BELLY, 100) -- what it measured before that day was at 73%.
+- **It begins where she is** (of a birth played from BIRTH OPENING at 40%, her belly at 150%: "the opening didn't sync up
+  as when I tried it, I set the start at 40% opening before I pressed it"). By hand BIRTH OPENING opens her opening and
+  her cervix together. A birth then took what was set as a floor under all of it: MEASURED on v0.9.22, four seconds in
+  the line said "Cervix 2.7 cm" beside an opening drawn 4.0 cm (labour began from 1 cm whatever was set), and once her
+  baby was born she stood at 40% for good. Now (`birthBeginsAt`, `BirthEvents.openFrom`, `BirthMoment.held`): her cervix
+  is never less than she began; its clock starts at the contraction that takes her further (40%: the second, 0:08 FAST,
+  0:40 REALISTIC), never later than the one her baby's head begins to settle in; her opening is held that open until her
+  first baby's head is born, and from there it is the birth's -- as wide as what passes, easing back after to what her
+  legs have her (`vulvaMesh.ts`: while a birth holds her, what was set by hand is left out). BIRTH OPENING's slider is
+  off while a birth has her and says where it began; RESET gives it back as it was set. MEASURED in the room, RECLINE at
+  150% from 40%: "BIRTH · labour · Cervix 4.0 cm · not yet · Opening 4.0 cm" as it begins; her cervix 4.6 cm at 0:13, 6.3
+  at 0:20, 10.0 by 0:38; her opening 4.0 cm until its head, then 8.5, 10.0, 9.3 as its body passes, 3.5 as it is born,
+  2.5, 2.0; after RESET 40% again. From 0%: the clock at 0:00, "Cervix 1.0 cm", her opening her legs' 2.0 cm until its
+  head, then the same.
+- **Her legs open her** (Joshua, 2026-11-14: "how far the 🦵 legs are spread apart does naturally open the opening to a
+  max of 20% in recline and squat, legs apart would be 12%"; first, 2026-11-02, 15% and 30%). `legsOpen.ts`, pure: how
+  far her thighs are spread ACROSS her (`legSpreadDeg`: each thigh's lean out from her hips' line -- a walk's stride,
+  37 degrees between her thighs in space, is not a spread) through `LEGS_OPEN.table`: closed to 28 degrees, 12% from 36
+  to 62, 20% from 90. In every pose, a birth or not: her skin-made opening had been held shut out of a birth since
+  2026-11-11. Nothing is drawn under what she wears; her cervix opens by hand and with a birth, not with her legs; with
+  her skeleton's doors in her opening's place (a probe's) it is as it was. BIRTH OPENING's line says what her legs add
+  ("BIRTH OPENING 0% · her legs open her 12% · 1.2 cm across"). MEASURED on her own bones, across her, at 0, 100, 150 and
+  200% of her belly: standing 0, 8, 11 and 14 degrees; LEGS APART 36, 47, 54 and 60; SQUAT 103, 111, 113 and 116; RECLINE
+  93, 101, 104 and 108; walking up to 14 at 150% and 17 at 200%; seated 22 at 150% and 31 at 200% (5% open there). And
+  with nothing worn, at 150%: closed standing, 12% drawn in LEGS APART, 20% in SQUAT and in RECLINE.
+- **Her bones are read off HER skeleton** (the fault found that day, fixed and told as he asks). Her model carries her
+  baby once it is loaded -- its holder hangs from her spine -- and its skeleton has 71 bones to her 68, so "the skinned
+  mesh with the most bones in her model" (`HumanRig.ts` `findSkinnedMesh`) was her baby's from then on. MEASURED with her
+  baby loaded, at 150%: the room's angle between her thighs read 169, 169, 171 and 169 degrees standing, in LEGS APART,
+  in SQUAT and in RECLINE (11, 54, 112 and 104 on her own bones), so her pose's opening stood at its most through every
+  birth; and seated she was set 23 cm too low, her ankles 10 cm under the floor (now 13 cm over it, as standing). The
+  room reads her through `herSkinned()`, which leaves out what hangs in her baby's holder -- her legs' spread, her
+  torso's lean, her place seated, her legs' springs, what a garment's file is bound to, and the probes' aim. A model
+  with as many bones as her baby (`sarah-base.glb`: 71) does not show it.
+- **Its body lies along her canal** (Joshua, 2026-11-14: "the baby wasn't bending down the tube"). `birthAlong` lays what
+  of it is in her along her canal, and on up the way her canal comes from; it was switched on only for her skeleton's
+  doors. Her skin-made opening (the room's own since 2026-11-11) holds v2's canal's top at the middle of her pelvis --
+  15 cm of canal that turns up into her womb -- and her baby was still one stiff length down it. Now wherever her canal
+  is held (`canalHeld`, `alongCanal`). MEASURED, RECLINE at 150%, the joints of its back and legs against her canal's
+  middle line carried on (the probe's `bodyOnWay`), at eight moments from 0:62 to 0:98: stiff, up to 19.9 cm off in her
+  canal and 30.1 cm above it -- as it crowned its legs lay straight on back from her opening, not up into her womb; laid
+  along, never more than 5.9 cm in her canal, 4.8 above it and 6.6 out of her (its neck's joint lies 5 cm off the line
+  its head's middle rides, and its hips and knees stand off its own middle). SQUAT at 150% within 6.4; RECLINE at 100%
+  and 120% within 4.9; twins' first within 4.5.
+- **Its feet as its straight body has them** ("the feet was flat"). Made long, only its thighs and shins were turned:
+  each foot kept the angle it has curled in her womb -- MEASURED on the model's bones, 112 and 119 degrees off its shin's
+  line, its toes drawn up past a right angle -- while its straight body was baked with its feet at 61. `baby.ts`
+  `pointFoot`, `DESCENT.footOff` (61: the straight body's own, MEASURED on `sarah-baby-straight.glb`): turned at its ankle
+  as its legs straighten. MEASURED in the room: 105 and 111 at 0:62, 68 by crowning, 61 from 0:88 until it is born.
+  NOT TOUCHED: lifted onto her its feet go back to its curl's and past (122 to 147 degrees with its stretch).
+- After anything changes the birth, her canal, her legs' poses or its poses: `tests/birthBegins.test.ts`,
+  `tests/legsOpen.test.ts`, `tests/babyFeet.test.ts`, `tests/babyAlong.test.ts`, `tests/herOwnSkeleton.test.ts`,
+  `tests/birthSequence.test.ts`; then the birth read in the room (the `birth` and `legSpread` probes).
+
 ## Kept on the device (the room as an app)
 
 - **The site keeps its own files on the device, in stages** (Joshua, 2026-11-13: "what it should do, is load everything at
@@ -442,7 +506,9 @@ of work; load it again only when `dist` has been built again; picture the panel
 or the part of her that changed, not the whole screen each time; and close the
 browser and the preview when the work is done. A software renderer's frame
 costs by the pixel and the page answers between frames: read and measure at 1x,
-and draw at a phone's 2x only for the pictures a person will see.
+and draw at a phone's 2x only for the pictures a person will see. (A preview
+left running in the background is stopped by the session after two hours: past
+that, open it for a bounded batch of readings and close it.)
 
 ## Git
 

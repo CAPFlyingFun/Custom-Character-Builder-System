@@ -243,15 +243,19 @@ export interface VulvaPatch {
   wire(on: boolean): void;
   /** how open (0 closed .. 1 a 10 cm circle, crowning): slit, then oval, then round, the area doming out round it */
   setOpen(open: number): void;
-  /** how far her pose alone opens her (0..1; Joshua, 2026-11-02: "the vagina naturally opens about 15% in a squat and 30%
-   * in a Recline, because the skin pulls it open"): she is open at least this much, whatever the slider says */
-  setNatural(open: number): void;
+  /** how far her pose alone opens her (0..1; legsOpen.ts -- Joshua, 2026-11-14: her legs' spread opens her "to a max of
+   * 20% in recline and squat, legs apart would be 12%"): she is open at least this much, whatever the slider says. Her
+   * opening only: her cervix opens by hand and with a birth, not with her legs. `atRest`: it has come to where her legs
+   * have her (it is eased there: laid in steps on the way, and exactly once it rests) */
+  setNatural(open: number, atRest?: boolean): void;
   /** how far the area is pushed out round the opening (0..1, `bulge` metres at 1): its own slider, not the opening's
    * (Joshua, 2026-11-02 -- it opens first; it bulges once her baby's head is low, past her cervix in the canal) */
   setBulge(bulge: number): void;
   readonly bulge: number;
-  /** A BIRTH's hold on her (birthSequence.ts), null to let go: the opening and bulge at least `open` and `bulge` (0..1, as
-   * their sliders), and her cervix dilated to `cervix` (0 shut .. 1 ten centimetres) on its own */
+  /** A BIRTH's hold on her (birthSequence.ts), null to let go: her opening `open` (0..1, as its slider) or as wide as her
+   * legs have her, whichever is more -- what `setOpen` set by hand is left out while a birth holds her (it is where the
+   * birth began, and is in `open` for as long as the birth keeps it); her bulge at least `bulge`; and her cervix dilated
+   * to `cervix` (0 shut .. 1 ten centimetres) on its own */
   setBirthDrive(d: { open: number; bulge: number; cervix: number } | null): void;
   /** her baby's head in her canal: its middle `at` metres down from the top of her cervix (null: none), `radius` round */
   setHead(at: number | null, radius: number): void;
@@ -652,8 +656,11 @@ void main() {
   let skelOpening = false, skelLips = 0, skelTint: readonly [number, number, number] = [1, 1, 1], skelReach = 0.03;
   // A BIRTH drives her (birthSequence.ts): the opening and bulge at least what her baby's head makes them, and her cervix
   // dilated on its own; nothing while no birth runs
+  // (and while one does, her opening is the birth's and her legs': what was set by hand is where the birth BEGAN, and is
+  // in what the birth gives -- `BirthMoment.held` -- until its head is born. Kept as a floor all through, an opening set
+  // to 40% before a birth stood at 40% after it instead of easing shut: Joshua, 2026-11-14, "the opening didn't sync up")
   let driveOpen = 0, driveBulge = 0, cervixDrive: number | null = null;
-  const openNow = () => (dressed ? 0 : Math.max(wantOpen, naturalOpen, driveOpen)), bulgeNow2 = () => (dressed ? 0 : Math.max(bulgeAmt, driveBulge));
+  const openNow = () => (dressed ? 0 : Math.max(cervixDrive !== null ? 0 : wantOpen, naturalOpen, driveOpen)), bulgeNow2 = () => (dressed ? 0 : Math.max(bulgeAmt, driveBulge));
   // HER SKIN'S OWN HOLE, WITH HER SKELETON'S OPENING (Joshua, 2026-11-10: "the whole opening moves down and far from the
   // skin while the skin stays, leaving two openings and different heights"): her opening is her doors, which come down
   // to their seat under her pubic bone as they open, and her skin opening where it always had left a second one above
@@ -2142,7 +2149,8 @@ void main() {
     }
     ctr.sub(bulgeOff);
     // 3. THE CERVIX: a neck, its own opening dilating with hers (shut, a few millimetres; at 100%, the opening's width)
-    const rCx = Math.max(L.cervixShut * perMetre / 2, 0.05 * perMetre * (cervixDrive ?? open));
+    // (with hers as it is set by HAND, or as a birth has it: her legs' spread opens her opening, not her cervix)
+    const rCx = Math.max(L.cervixShut * perMetre / 2, 0.05 * perMetre * (cervixDrive ?? Math.min(open, dressed ? 0 : wantOpen)));
     if (womb) {
       // 3 and 4 WITH HER WOMB (Joshua, 2026-11-01: "make it 8cm and curve it so it all works like it's supposed to be"):
       // the canal (section 2) runs its own `canal` length on its curve from the opening; the cervix goes on from its end
@@ -3044,10 +3052,18 @@ void main() {
       return { passingHugged, hugDbg, ringsDbg, passing: passing ? passing.length / 3 : 0, wombDbg, rimSize, uScale, sScale, pelvisBoneGiven: pelvisBone, pelvis: body.skeleton.bones[pelvis]?.name, pelvisIndex: pelvis, restPos: bad(restPos), restNrm: bad(restNrm), rim: bad(rim), pos: bad(pos), tau: bad(tau), colQ: bad(colQ), body: bad((g.getAttribute('position') as THREE.BufferAttribute).array), O: O.toArray(), tA: tA.toArray(), nO: nO.toArray(), across: across.toArray(), perMetre, open };
     },
     get open() { return wantOpen; },
-    setOpen(o: number) { wantOpen = Number.isFinite(o) ? Math.max(0, Math.min(1, o)) : 0; open = laidOpen(); sync(); },
-    setNatural(o: number) {
+    setOpen(o: number) {
+      const was = wantOpen;
+      wantOpen = Number.isFinite(o) ? Math.max(0, Math.min(1, o)) : 0; open = laidOpen();
+      // (her cervix is laid by what is set by hand: laid again when that changed, though her legs may have her opening as it was)
+      if (wantOpen !== was) openApplied = -1;
+      sync();
+    },
+    setNatural(o: number, atRest = false) {
       const n = Number.isFinite(o) ? Math.max(0, Math.min(1, o)) : 0;
-      if (Math.abs(n - naturalOpen) < 0.004 && !(n === 0 && naturalOpen !== 0)) return;
+      // (while it is eased she is laid again only once it has moved 0.4% -- and come to rest, where it rests: left at the
+      // last step laid, LEGS APART's 12% was drawn 11.7%, MEASURED 2026-11-14)
+      if (Math.abs(n - naturalOpen) < 0.004 && !(n === 0 && naturalOpen !== 0) && !(atRest && Math.abs(n - naturalOpen) >= 0.001)) return;
       naturalOpen = n; const was = open; open = laidOpen(); if (open !== was) sync();
     },
     get drawnOpen() { return shownOpen; },
