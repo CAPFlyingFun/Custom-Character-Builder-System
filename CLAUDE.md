@@ -371,12 +371,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   60 ms a request; the build machine draws with a software renderer, so its seconds compare builds and are not a
   phone's). v0.9.20, which kept nothing: a first visit 34.3 MB in 16 files; a visit again fetched her 15.45 MB body in
   full a second time (the browser's own cache had kept every small file and not the big one); with no internet she
-  never appeared. Now: a first visit fetches 34.0 MB for the room, then 42.7 MB more ahead of need, and 77 MB is kept
-  (46 files; "the whole room is saved here (42 files, 76 MB)"); a visit again, and the page loaded again in the same
+  never appeared. Now (MEASURED again the same evening, on the build that opens on the Female Base Model and no longer
+  fetches ahead the bodies hers was built from): a first visit fetches 32.5 MB for the room in 15 files, then 12.5 MB
+  more ahead of need in 25, and 45 MB is kept (41 files; "the whole room is saved here (37 files, 44 MB)" -- it was
+  42.7 MB more and 77 MB kept with the old bodies among them); a visit again, and the page loaded again in the same
   tab, fetch 0 MB (one question to the server: has the page changed); a turn of the screen and LIGHT / DARK ask for
   nothing, then as before; a new build (new code, one changed skin) fetches 1.2 MB, shows itself at once, and the old
   code and the old skin are gone from the device; with no internet she stands dressed. Her seconds to dressed there:
-  24.7 on the first visit, 13.7 to 16.0 after.
+  22.2 on the first visit, 12.3 to 13.9 after.
 - **What the worker answers with depends on what may change behind an address** (`keeper.ts` `kindOf`). The page is asked
   of the server first, past the browser's ten-minute copy, so a new build shows the moment it is live; the page kept
   here answers with no network, or none in 3 s. A file that can not change behind its address -- Vite's bundles, and a
