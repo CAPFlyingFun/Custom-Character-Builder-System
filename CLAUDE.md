@@ -358,14 +358,28 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 
 ## Her baby's birth
 
-- **Only with PREGNANT on and her belly over 90%** (Joshua, 2026-11-14: "It should be only when pregnancy is on and the
-  belly size is greater than 90%"; and, 2026-11-02, from RECLINE or SQUAT). `birthSequence.ts` `BIRTH_NEEDS`, `canBirth`,
-  `birthNeeds`; the room's `beginBirth`. The birth's buttons and its TIMELINE are dimmed until she can; the birth's line
-  says what is needed next ("BIRTH · not pregnant (PREGNANT · ON)", "BIRTH · her belly over 90% first (now 73%)", "BIRTH
-  · from RECLINE or SQUAT"); and a birth under way is put back to before it began the moment she can not (PREGNANT
-  switched off, her belly brought to 90% or under). Her belly's size is `bellySize`: the slider, and her Depth past its
-  top. MEASURED in the room: off at 73% and at 90%, on at 91%. A probe opens on her at 73%, where no birth is played:
-  `scripts/probe-birth-v2.mjs` sets her belly first (BELLY, 100) -- what it measured before that day was at 73%.
+- **While she is pregnant, from RECLINE or SQUAT; no size of belly is asked** (Joshua, 2026-11-02, the two positions;
+  2026-11-14, of the belly: he set one that morning -- "only when pregnancy is on and the belly size is greater than 90%"
+  -- and took it back the same day: "let's remove the minimum pregnancy limit as that's automatically set from the max",
+  read as: her belly at a birth is her BIGGEST BELLY's to say, not a second number's). `birthSequence.ts` `BIRTH_NEEDS`,
+  `birthNeeds`; the room's `beginBirth`. The birth's buttons and its TIMELINE are dimmed while she is not pregnant, and
+  the birth's line says what is needed next ("BIRTH · not pregnant (PREGNANT · ON)", "BIRTH · from RECLINE or SQUAT").
+  MEASURED in the room: BIRTH on at 73% and at 20% of her belly; and a birth played through at 20% and at 0% (on the
+  chart her weeks 17.6 and 12: a baby of 21.5 cm, and one with a head 1.5 cm across), RECLINE and SQUAT -- its body within
+  2.3 cm of its way from 0:62 to 0:98, its feet at 61 degrees from 0:91, born at 1:40 as at any size, no error on the page.
+- **Her pregnancy ends with the birth** (Joshua, 2026-11-14: "just keep it simple and automatically turn off the
+  pregnancy state after birth"). Once her last baby is out of her (`pregnantAt`: its 'after', what the birth's line calls
+  born; with twins and triplets the last of them) her state is off: PREGNANT · OFF, as it is kept with her, and HER
+  PREGNANCY's line says "not pregnant". The birth on the clock is drawn to its end all the same -- her newborn on her,
+  its cord, her placenta: what draws her asks `carrying()` (her state, or a birth on the clock), what she IS asks
+  `pregnant()`. It is the clock's, as all of the birth is: dragged back before then she is pregnant again, and RESET puts
+  her back as she was before it, pregnant. Her state switched by hand with a birth on the clock, or another body put on,
+  puts the birth back first (`setPregnancy`). Nothing else of hers is moved: her belly slider and her baby counter are as
+  they were (her END BELLY and one more on her counter are a game's to write). MEASURED in the room, one baby, RECLINE at
+  150%: PREGNANT · ON at 1:39.9, OFF at 1:40.1 with "BIRTH · born"; her newborn on her at 1:45 and her afterbirth at 2:05
+  drawn as before; dragged back to 1:00, ON; RESET, ON and "BIRTH · not started"; PREGNANT pressed once it is born, the
+  birth put back and ON; pressed in labour, the birth put back and OFF, BIRTH dimmed. Twins: ON once the first is born
+  ("baby A born · B next", 1:40 of 3:18) and at 2:32; OFF at 2:33 with "born · 2 of 2"; RESET, ON.
 - **It begins where she is** (of a birth played from BIRTH OPENING at 40%, her belly at 150%: "the opening didn't sync up
   as when I tried it, I set the start at 40% opening before I pressed it"). By hand BIRTH OPENING opens her opening and
   her cervix together. A birth then took what was set as a floor under all of it: MEASURED on v0.9.22, four seconds in

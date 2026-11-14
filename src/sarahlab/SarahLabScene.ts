@@ -327,7 +327,7 @@ const AFTERBIRTH = Object.freeze({
 import { BIRTH_CONTACT_FIELD, createBirthContact, type BirthContact } from './birthContact';
 import { KNEE_TURN_FIELD, createKneeTurn, type KneeTurn } from './kneeTurn';
 import { HIP_TURN_FIELD, createHipTurn, type HipTurn } from './hipTurn';
-import { BIRTH_NEEDS, birthAt, birthBeginsAt, birthLength, birthLine, birthNeeds, canBirth, REALISTIC_STRETCH, type BirthMoment, type BirthPace, type BirthTurn } from './birthSequence';
+import { BIRTH_NEEDS, birthAt, birthBeginsAt, birthLength, birthLine, birthNeeds, pregnantAt, REALISTIC_STRETCH, type BirthMoment, type BirthPace, type BirthTurn } from './birthSequence';
 import { easeLegsOpen, legSpreadDeg, legsOpen } from './legsOpen';
 /** GAME TUNING: all of it within `near` of a knee, none past `far` (metres); `passes` of `lambda` each */
 const KNEE_SMOOTH = Object.freeze({ near: 0.06, far: 0.12, passes: 60, lambda: 0.6, restore: 0 });
@@ -989,6 +989,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** PREGNANT (P5): is she -- on or off, nothing else (her weeks are typed: `pregnancy`, below) */
   const pregnant = (): boolean => pregnancy.pregnant;
   /**
+   * Whether she is DRAWN carrying: her pregnancy state, or a birth on the clock. Her state ends with the birth (Joshua,
+   * 2026-11-14: "just keep it simple and automatically turn off the pregnancy state after birth" -- `stepBirth`), and
+   * the birth she is giving is drawn to its end all the same: her womb, her newborn, its cord and her placenta are the
+   * birth's until it is put back. What draws her asks this; what she IS -- her PREGNANT button, HER PREGNANCY's lines,
+   * whether a birth can begin -- asks `pregnant()`.
+   */
+  const carrying = (): boolean => pregnancy.pregnant || birthClock !== null;
+  /**
    * Her belly's SIZE, as her chart reads it (pregnancy.ts `bellySize`; Joshua, 2026-11-13: "anything past the 200% default
    * slider will carry over into the extra depth slider which can go an additional +15%"): her belly slider's %, and once
    * that is at its top what her Depth control adds. Below the slider's top it is her belly slider's % exactly.
@@ -1002,6 +1010,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let birthClock: number | null = null, birthRunning = false, birthPace: BirthPace = 'fast', birthNow: BirthMoment | null = null;
   /** the birth's line as last written while none is begun (`showIdleBirth`) */
   let birthIdleShown = '';
+  /** the birth on the clock has ended her pregnancy (her last baby is out): put back with it (`stepBirth`, `birthControl`) */
+  let birthEndedIt = false;
   /** how open her legs' spread has her as last given to her opening (0..1), and the percent of it BIRTH OPENING's line shows */
   let legsOpenSet = 0, legsShown = 0;
   /** CUT CORD and DELIVER PLACENTA, as moments on the birth's clock (FAST seconds; null: on their own time); with twins
@@ -1945,7 +1955,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
   }
   /** HER PREGNANCY changed (PREGNANT, or a week typed): her babies fitted again for the week her belly stands for */
-  function setPregnancy(next: Pregnancy): void { pregnancy = next; babyDirty = true; babyFitAt = -Infinity; applyLook(); applyMotion(); refresh(); }
+  function setPregnancy(next: Pregnancy): void {
+    // (her state switched by hand with a birth on the clock: the birth is put back first -- she is not giving one while
+    // she is not pregnant, and pregnant again she has not given it)
+    if (birthClock !== null && next.pregnant !== pregnancy.pregnant) { birthControl('reset'); if (birthButtons[0]) birthButtons[0].textContent = 'BIRTH ▶'; }
+    pregnancy = next; babyDirty = true; babyFitAt = -Infinity; applyLook(); applyMotion(); refresh();
+  }
   /** HER PREGNANCY's boxes: what is typed, or blank with what is in force in grey; and the lines under them */
   function refreshWeeks(): void {
     const size = sized(), chart = herChart(babyCount, pregnancy), here = herWeek(size, babyCount, pregnancy), mine = weekIsFor(pregnancy, size);
@@ -2124,11 +2139,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     if (buttons.pregnant) { buttons.pregnant.textContent = pregnantLine(pregnancy); lit(buttons.pregnant, pregnant()); }
     if (buttons.opening) { buttons.opening.textContent = openingLine(skeletonOpening); buttons.opening.style.display = v2OrganBones ? '' : 'none'; lit(buttons.opening, skeletonOpening); }
-    if (buttons.baby) { buttons.baby.textContent = !pregnant() ? 'SEE BABY · not pregnant' : babyShown ? (babyCount > 1 ? 'HIDE BABIES' : 'HIDE BABY') : (babyCount > 1 ? 'SEE BABIES' : 'SEE BABY'); lit(buttons.baby, babyShown); }
+    if (buttons.baby) { buttons.baby.textContent = !carrying() ? 'SEE BABY · not pregnant' : babyShown ? (babyCount > 1 ? 'HIDE BABIES' : 'HIDE BABY') : (babyCount > 1 ? 'SEE BABIES' : 'SEE BABY'); lit(buttons.baby, babyShown); }
     // (an unavailable action never looks like one that works: a baby's controls dimmed while she is not pregnant)
-    for (const b of [buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) if (b) { b.disabled = !pregnant(); b.style.opacity = pregnant() ? '1' : '.4'; }
-    // (a birth's own: only while she can give birth -- pregnant, her belly over 90% -- or one is under way)
-    { const can = birthClock !== null || canBirth(pregnant(), sized());
+    for (const b of [buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) if (b) { b.disabled = !carrying(); b.style.opacity = carrying() ? '1' : '.4'; }
+    // (a birth's own: only while she is pregnant, or one is on the clock)
+    { const can = birthClock !== null || pregnant();
       for (const b of birthButtons) if (b) { b.disabled = !can; b.style.opacity = can ? '1' : '.4'; }
       if (birthTimeInput) { birthTimeInput.disabled = !can; birthTimeInput.style.opacity = can ? '1' : '.4'; }
       showIdleBirth(); }
@@ -3424,6 +3439,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       putOnBody: (saved) => {
         bump = Math.max(0, Math.min(BUMP_MAX_PERCENT, Math.round(saved.bump)));
         body = parseShape(saved.shape);
+        // (another body: no birth of the last one's goes on)
+        if (birthClock !== null) { birthControl('reset'); if (birthButtons[0]) birthButtons[0].textContent = 'BIRTH ▶'; }
         pregnancy = pregnancyOf(saved); babyDirty = true; babyFitAt = -Infinity;
         refine = saved.refine;
         randomRules = saved.random;
@@ -4636,7 +4653,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const toe = f.state.legs.map((leg) => { const e = leg.ball >= 0 ? child(leg.ball) : -1; return e >= 0 ? at(e) : leg.ball >= 0 ? at(leg.ball) : at(leg.ankle); }) as unknown as [P3, P3];
     const heel = ankle.map((a, k) => [a[0] - (toe[k][0] - a[0]) * 0.3, a[1] - 0.08, a[2] - (toe[k][2] - a[2]) * 0.3] as P3) as unknown as [P3, P3];
     const hipL = at(j.hipL), hipR = at(j.hipR), mid: P3 = [(hipL[0] + hipR[0]) / 2, (hipL[1] + hipR[1]) / 2, (hipL[2] + hipR[2]) / 2];
-    const week = pregnant() ? herWeek(sized(), babyCount, pregnancy) : 0, kg = wombKg(week), place = wombPlace(week);
+    const week = carrying() ? herWeek(sized(), babyCount, pregnancy) : 0, kg = wombKg(week), place = wombPlace(week);
     // (the womb's weight where her baby's womb is, once it is laid out in her; till then where a womb that size sits)
     const womb: P3 = babyWomb && babyHolder ? (() => { const c = babyHolder.localToWorld(babyWomb.centre.clone()); return [c.x / M, c.y / M, c.z / M] as P3; })() : [mid[0], mid[1] + place.up, mid[2] + place.forward];
     const body: BodyPoints = {
@@ -5230,7 +5247,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     if (!touch.length) return null;
     // what her womb carries, at its middle (her baby once born is in her arms or on her: counted with her womb till then)
-    if (babyWomb && babyHolder && pregnant()) parts.push([BALANCE_WOMB * Math.min(1.5, bump / 100), babyHolder.localToWorld(babyWomb.centre.clone())]);
+    if (babyWomb && babyHolder && carrying()) parts.push([BALANCE_WOMB * Math.min(1.5, bump / 100), babyHolder.localToWorld(babyWomb.centre.clone())]);
     const com = new THREE.Vector3(); let m = 0; for (const [w, at] of parts) { com.addScaledVector(at, w); m += w; } com.divideScalar(m);
     // her forward: from between her hips toward between her knees, level
     const ahead = wp(j.kneeL).add(wp(j.kneeR)).multiplyScalar(0.5).sub(hipM).setY(0).normalize(), side = new THREE.Vector3(0, 1, 0).cross(ahead).normalize();
@@ -5918,7 +5935,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** One step of her breath and her heart; her skin's move and her lungs and heart laid by them. */
   function stepBreath(dt: number): void {
-    const weeks = pregnant() ? herWeek(sized(), babyCount, pregnancy) : 0;
+    const weeks = carrying() ? herWeek(sized(), babyCount, pregnancy) : 0;
     const intensity = activity === 'auto' ? (pose === 'walk' ? ACTIVITY.walk : ACTIVITY.rest) : ACTIVITY[activity];
     const now = (vitalsNow = stepVitals(vitals, dt, intensity, { weeks }));
     const B = jiggle.breath.value;
@@ -5979,7 +5996,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // pelvis in labour counts as dropped all the way), a contraction -- and once her baby is born, by what her womb left
     // (NAVEL AFTER BIRTH); a spring carries it there, a little past and back
     const born = allOut(birthNow);
-    if (!born) { navelPress = navelPressure(pregnant() ? herWeek(sized(), babyCount, pregnancy) : 0, babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1, baby && birthNow ? { low: baby.low + 0.7 * birthNow.engage, forward: baby.forward } : baby, birthNow?.contraction ?? 0); navelPeak = birthNow ? Math.max(navelPeak, navelPress) : navelPress; navelBornFor = 0; }
+    if (!born) { navelPress = navelPressure(carrying() ? herWeek(sized(), babyCount, pregnancy) : 0, babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1, baby && birthNow ? { low: baby.low + 0.7 * birthNow.engage, forward: baby.forward } : baby, birthNow?.contraction ?? 0); navelPeak = birthNow ? Math.max(navelPeak, navelPress) : navelPress; navelBornFor = 0; }
     else { navelBornFor += dt; navelPress = navelAfterBirth(body.navelAfter, navelPeak, navelBornFor); }
     if (!navelSpring.primed) { navelSpring.x = navelPress; navelSpring.primed = true; }
     { const w = 2 * Math.PI * 1.4, steps = Math.max(1, Math.ceil(dt / 0.01)), h = dt / steps;
@@ -6225,7 +6242,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   function showBaby(on: boolean): void {
     // (nothing to see while she is not pregnant: SEE BABY stays off, and looks it)
-    if (on && !pregnant()) on = false;
+    if (on && !carrying()) on = false;
     babyShown = on;
     if (on) loadBaby();
     if (on && babyRoot && babyFrame && !babyHolder) {
@@ -6268,7 +6285,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function layBalloonWomb(): void {
     if (!vulva || !babyFrame) return;
     // (not pregnant: her own womb, a small bulb of its own -- not one grown round a baby or read off her belly's size)
-    if (!pregnant()) { if (balloonWombKey !== 'none') { balloonWombKey = 'none'; vulva.setWomb(null); roomForV2Womb(null); } return; }
+    if (!carrying()) { if (balloonWombKey !== 'none') { balloonWombKey = 'none'; vulva.setWomb(null); roomForV2Womb(null); } return; }
     const sk = bodyOf()?.mesh.skeleton, bone = sk ? sk.bones.indexOf(babyFrame.bone) : -1;
     // (once her baby is born her womb shrinks back with her belly: laid round her belly as it now is, not round the baby
     // it held -- 2026-11-02, Joshua saw it through her skin in a few spots as her belly settled)
@@ -6447,7 +6464,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * WEIGHT change -- a few times a second at most while a slider is dragged -- seen or not; drawn only while shown.
    */
   function placeBaby(): void {
-    if (!pregnant()) { notPregnant(); return; }
+    if (!carrying()) { notPregnant(); return; }
     if (!babyRoot) { loadBaby(); return; }
     if (!babyCurl || !babyPoints || !babyFrame) return;
     // (v3: and her womb as grown for her week -- grown on the frame her slider moved, which may be after this one)
@@ -7098,9 +7115,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * it has them now (her baby itself is laid by `birthPlace`, as her babies are placed).
    */
   function stepBirth(dt: number): void {
-    // (a birth is played only while she can give birth: PREGNANT switched off, or her belly brought to 90% or under,
-    // puts it back to before it began -- the line says which)
-    if (birthClock !== null && !canBirth(pregnant(), sized())) { birthControl('reset'); if (birthButtons[0]) birthButtons[0].textContent = 'BIRTH ▶'; refresh(); }
     if (birthClock === null || (!vulva && !organs)) { birthNow = null; birthPath = null; organs?.setPassing(null); seatHeld = 0; return; }
     // (out of a birth pose it waits where it is)
     if (birthRunning && BIRTH_POSES_OK.includes(pose)) birthClock += dt;
@@ -7108,6 +7122,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // yet... we will come back to on her after we have skin for the model")
     if (!vulva) { const held = bornAt(); if (birthClock > held) { birthClock = held; birthRunning = false; } }
     birthNow = birthAt(birthClock, birthPace, birthEvents, babyCount, birthTurn());
+    // HER PREGNANCY ENDS WITH THE BIRTH (Joshua, 2026-11-14: "just keep it simple and automatically turn off the pregnancy
+    // state after birth"): once her last baby is out of her, her state is off -- PREGNANT · OFF, as it is kept with her.
+    // The birth goes on being drawn to its end (`carrying`). It is the clock's, as all of the birth is: dragged back
+    // before then she is pregnant again, and the birth put back (RESET) she is as she was before it (`birthControl`).
+    { const still = pregnantAt(birthNow);
+      if (!still && pregnancy.pregnant) { pregnancy = { ...pregnancy, pregnant: false }; birthEndedIt = true; refresh(); }
+      else if (still && birthEndedIt) { pregnancy = { ...pregnancy, pregnant: true }; birthEndedIt = false; refresh(); } }
     // her baby drawn through it even without SEE BABY: hidden inside her by her own body until it comes out of her (only
     // the baby: its sac, her womb's wall, its placenta and cord stay as SEE BABY has them)
     if (!babyRoot) loadBaby();
@@ -7513,33 +7534,34 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** BIRTH: begun (from the start) or paused and on again; reset takes it back to before it began. */
   function birthControl(cmd: 'run' | 'reset' | 'pace'): void {
-    if (cmd === 'reset') { birthRest = null; birthOutLines.length = 0; birthRests.length = 0; birthCentreOffs.length = 0; placeBassinet(false); twinHandShare = 0; for (const c of cordOuts) if (c) { c.cut = false; c.outerLaid = false; c.stumpLaid = false; c.remnantLaid = false; for (const t of [c.outerMesh, c.stumpMesh, c.remnantMesh]) if (t) t.visible = false; } cordCut = false; birthEvents.cutAt = null; birthEvents.cuts = []; birthEvents.placentaAt = null; birthEvents.openFrom = 0; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); organs?.setPassing(null); organs?.setCervix(birthOpenPct / 100); applyLook(); showIdleBirth(true); return; }
+    if (cmd === 'reset') { birthRest = null; birthOutLines.length = 0; birthRests.length = 0; birthCentreOffs.length = 0; placeBassinet(false); twinHandShare = 0; for (const c of cordOuts) if (c) { c.cut = false; c.outerLaid = false; c.stumpLaid = false; c.remnantLaid = false; for (const t of [c.outerMesh, c.stumpMesh, c.remnantMesh]) if (t) t.visible = false; } cordCut = false; birthEvents.cutAt = null; birthEvents.cuts = []; birthEvents.placentaAt = null; birthEvents.openFrom = 0; cordOuterLaid = false; cordStumpLaid = false; cordRemnantLaid = false; for (const t of [cordOuterMesh, cordStumpMesh, cordRemnantMesh]) if (t) t.visible = false; placeBowl(false); for (const m of placentaMeshes) { m.matrixAutoUpdate = true; m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.setScalar(1); } if (birthPushWas !== null) { babyPushOff = birthPushWas; birthPushWas = null; babyDirty = true; } birthBellyShare = 1; if (birthTimeInput) birthTimeInput.value = '0'; if (babyHolder && !babyShown) { babyHolder.visible = false; for (const m of [...placentaMeshes, ...cordMeshes]) m.visible = true; if (babySac) babySac.visible = babyCount === 1; } birthLen = null; birthClock = null; birthRunning = false; birthNow = null; birthPath = null; vulva?.setBirthDrive(null); vulva?.setHead(null, 0); organs?.setPassing(null); organs?.setCervix(birthOpenPct / 100); if (birthEndedIt) { pregnancy = { ...pregnancy, pregnant: true }; birthEndedIt = false; } applyLook(); showIdleBirth(true); return; }
     if (cmd === 'pace') { const was = birthPace; birthPace = was === 'fast' ? 'realistic' : 'fast'; if (birthClock !== null) birthClock *= was === 'fast' ? 5 : 1 / 5; return; }
-    // (only while she is pregnant and her belly is over 90%, and from RECLINE or SQUAT: `beginBirth`)
+    // (only while she is pregnant, and from RECLINE or SQUAT: `beginBirth`)
     if (birthClock === null) { if (beginBirth()) birthRunning = true; return; }
     birthRunning = !birthRunning;
   }
   /**
-   * A BIRTH BEGUN, WHERE SHE IS (Joshua, 2026-11-14: "It should be only when pregnancy is on and the belly size is greater
-   * than 90%"; 2026-11-02: from RECLINE or SQUAT -- LEGS APART is her pre-labour stance): birthSequence.ts `birthNeeds`.
+   * A BIRTH BEGUN, WHERE SHE IS: only while she is pregnant, and from RECLINE or SQUAT (Joshua, 2026-11-02 -- LEGS APART
+   * is her pre-labour stance); no size of belly is asked (2026-11-14: "let's remove the minimum pregnancy limit as that's
+   * automatically set from the max"): birthSequence.ts `birthNeeds`.
    * While she can not, the birth's line says why, and false. It begins from how open BIRTH OPENING has her by hand
    * (`birthBeginsAt`: his "I set the start at 40% opening before I pressed it") -- or at `at`, a moment asked for (the
    * TIMELINE dragged, a probe), she as open as that all the same. `anyPose`: begun by a probe, which poses her after.
    */
   function beginBirth(at: number | null = null, anyPose = false): boolean {
     if (birthClock !== null) return true;
-    const why = birthNeeds(pregnant(), sized(), anyPose ? BIRTH_POSES_OK[0] : pose);
+    const why = birthNeeds(pregnant(), anyPose ? BIRTH_POSES_OK[0] : pose);
     if (why) { const f = fields[SARAH_LAB_FIELD.birthLine]; if (f) f.textContent = why; birthIdleShown = why; return false; }
     birthEvents.openFrom = vulva ? vulva.open : birthOpenPct / 100;
     birthClock = at ?? birthBeginsAt(birthEvents.openFrom, birthPace);
     applyLook(); refresh();
     return true;
   }
-  /** The birth's line while none is begun: "not started", or what one needs first (PREGNANT on, her belly over 90%,
-   * RECLINE or SQUAT). Written when that changes (`now`: or at once), so a button's own hint stays until it does. */
+  /** The birth's line while none is begun: "not started", or what one needs first (PREGNANT on, RECLINE or SQUAT).
+   * Written when that changes (`now`: or at once), so a button's own hint stays until it does. */
   function showIdleBirth(now = false): void {
     if (birthClock !== null) { birthIdleShown = ''; return; }
-    const idle = birthNeeds(pregnant(), sized(), pose) ?? birthLine(null), f = fields[SARAH_LAB_FIELD.birthLine];
+    const idle = birthNeeds(pregnant(), pose) ?? birthLine(null), f = fields[SARAH_LAB_FIELD.birthLine];
     // (not before its line is built: what is "shown" is what was written)
     if (!f || (!now && idle === birthIdleShown)) return;
     birthIdleShown = idle;
@@ -8510,7 +8532,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // her pelvic organs follow her pelvis as soft bodies (v3, on her skeleton), her womb grown for HER WEEKS
       if (organs) {
         // (v2: her womb is her body's own -- none is grown here)
-        const wk = organsGrowWomb && pregnant() ? herWeek(sized(), babyCount, pregnancy) : null;
+        const wk = organsGrowWomb && carrying() ? herWeek(sized(), babyCount, pregnancy) : null;
         organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         // (v2: her doors open as her own skin's opening does -- BIRTH OPENING, her pose's, a birth's)
         if (!organsGrowWomb && vulva && doorsOpening()) {
@@ -9370,7 +9392,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             jointsCm: r0 ? (() => { const mv0 = babyMoveOf(0, r0), v = new THREE.Vector3(), o: Record<string, number[]> = {}; for (const name of [BABY_BONES.head, BABY_BONES.neck, ...BABY_BONES.back, ...BABY_BONES.leg.left, ...BABY_BONES.leg.right]) { const b = mv0.bones.get(name); if (b) o[name] = b.getWorldPosition(v).clone().divideScalar(M / 100).toArray().map((x) => +x.toFixed(1)); } return o; })() : null,
             // (what a birth needs that she has not: null when one can begin; what the room's own line says; whether its body is
             // laid along her canal; and how far each of its feet stands off its shin's line, degrees -- baby.ts `footOffDeg`)
-            needs: birthNeeds(pregnant(), sized(), pose), shown: fields[SARAH_LAB_FIELD.birthLine]?.textContent ?? null, along: alongCanal(), openFrom: birthEvents.openFrom,
+            needs: birthNeeds(pregnant(), pose), state: pregnantLine(pregnancy), carrying: carrying(), shown: fields[SARAH_LAB_FIELD.birthLine]?.textContent ?? null, along: alongCanal(), openFrom: birthEvents.openFrom,
             feetOffDeg: r0 ? (['left', 'right'] as const).map((side) => { const mv0 = babyMoveOf(0, r0), [, k, a, t] = BABY_BONES.leg[side].map((n) => mv0.bones.get(n)); const d = k && a && t ? footOffDeg(k, a, t) : null; return d === null ? null : +d.toFixed(1); }) : null };
         },
         // aim straight at her navel from her side, at a distance (a probe photographing it)

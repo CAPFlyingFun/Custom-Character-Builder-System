@@ -1,36 +1,69 @@
 /**
- * WHEN A BIRTH CAN BE PLAYED, AND WHERE IT BEGINS (src/sarahlab/birthSequence.ts; Joshua, 2026-11-14: "It should be only
- * when pregnancy is on and the belly size is greater than 90%"; and of a birth played with BIRTH OPENING set by hand
- * first, "the opening didn't sync up as when I tried it, I set the start at 40% opening before I pressed it").
+ * WHEN A BIRTH CAN BE PLAYED, WHERE IT BEGINS, AND WHEN HER PREGNANCY ENDS WITH IT (src/sarahlab/birthSequence.ts; Joshua,
+ * 2026-11-14). A birth needs her pregnant, in RECLINE or SQUAT, and no size of belly ("let's remove the minimum pregnancy
+ * limit as that's automatically set from the max"); begun with BIRTH OPENING set by hand it goes on from there ("the
+ * opening didn't sync up as when I tried it, I set the start at 40% opening before I pressed it"); and once her last baby
+ * is out she is no longer pregnant ("just keep it simple and automatically turn off the pregnancy state after birth").
  */
 import { describe, expect, it } from 'vitest';
-import { BIRTH_NEEDS, BIRTH_TIMING, REALISTIC_STRETCH, birthAt, birthBeginsAt, birthLine, birthNeeds, birthPlan, canBirth } from '../src/sarahlab/birthSequence';
+import { BIRTH_NEEDS, BIRTH_TIMING, REALISTIC_STRETCH, birthAt, birthBeginsAt, birthLine, birthNeeds, birthPlan, pregnantAt } from '../src/sarahlab/birthSequence';
 
 describe('when a birth can be played', () => {
-  it('only while she is pregnant and her belly is over 90%', () => {
-    expect(BIRTH_NEEDS.bellyOver).toBe(90);
-    expect(canBirth(true, 150)).toBe(true);
-    expect(canBirth(true, 91)).toBe(true);
-    // (greater than 90: at 90 itself, not yet)
-    expect(canBirth(true, 90)).toBe(false);
-    expect(canBirth(true, 73)).toBe(false);
-    expect(canBirth(false, 150)).toBe(false);
-    expect(canBirth(true, NaN)).toBe(false);
-    // (past the slider, her Depth's share of her size counts: pregnancy.ts `bellySize` runs to 215)
-    expect(canBirth(true, 215)).toBe(true);
+  it('only while she is pregnant, whatever her pose', () => {
+    expect(birthNeeds(false, 'recline')).toBe('BIRTH · not pregnant (PREGNANT · ON)');
+    expect(birthNeeds(false, 'squat')).toBe('BIRTH · not pregnant (PREGNANT · ON)');
+    expect(birthNeeds(false, 'stand')).toBe('BIRTH · not pregnant (PREGNANT · ON)');
   });
-  it('says what it needs first, one thing at a time: PREGNANT on, her belly, her position', () => {
-    expect(birthNeeds(false, 150, 'recline')).toBe('BIRTH · not pregnant (PREGNANT · ON)');
-    expect(birthNeeds(false, 20, 'stand')).toBe('BIRTH · not pregnant (PREGNANT · ON)');
-    expect(birthNeeds(true, 73, 'recline')).toBe('BIRTH · her belly over 90% first (now 73%)');
-    expect(birthNeeds(true, 90, 'stand')).toBe('BIRTH · her belly over 90% first (now 90%)');
-    expect(birthNeeds(true, 150, 'stand')).toBe('BIRTH · from RECLINE or SQUAT');
-    expect(birthNeeds(true, 150, 'apart')).toBe('BIRTH · from RECLINE or SQUAT');
-  });
-  it('can begin from RECLINE or SQUAT once she is', () => {
-    expect(birthNeeds(true, 150, 'recline')).toBeNull();
-    expect(birthNeeds(true, 91, 'squat')).toBeNull();
+  it('from RECLINE or SQUAT', () => {
+    expect(birthNeeds(true, 'recline')).toBeNull();
+    expect(birthNeeds(true, 'squat')).toBeNull();
+    expect(birthNeeds(true, 'stand')).toBe('BIRTH · from RECLINE or SQUAT');
+    expect(birthNeeds(true, 'apart')).toBe('BIRTH · from RECLINE or SQUAT');
     expect(BIRTH_NEEDS.poses).toEqual(['recline', 'squat']);
+  });
+  it('asks no size of belly of her: the minimum he set that morning is gone', () => {
+    // (her state and her pose are all it is given, and all it needs)
+    expect(Object.keys(BIRTH_NEEDS)).toEqual(['poses']);
+    expect(birthNeeds.length).toBe(2);
+  });
+});
+
+describe('her pregnancy ends with the birth', () => {
+  const T = BIRTH_TIMING;
+  it('she is pregnant until her baby is out of her, and not after', () => {
+    const P = birthPlan();
+    for (const t of [0, P.pushing - 0.1, P.crowning, P.birth, P.birth + T.headOut, P.after - 0.01]) expect(pregnantAt(birthAt(t))).toBe(true);
+    for (const t of [P.after, P.after + 5, P.total - 0.01, P.total, P.total + 60]) expect(pregnantAt(birthAt(t))).toBe(false);
+    // (the moment is the one the birth's own line calls born)
+    expect(birthAt(P.after - 0.01).stage).toBe('birth');
+    expect(birthAt(P.after).stage).toBe('after');
+  });
+  it('once, at one moment: never back on as the birth goes on to its end', () => {
+    const P = birthPlan();
+    let was = true, flips = 0;
+    for (let t = 0; t <= P.total; t += 0.05) { const now = pregnantAt(birthAt(t)); if (now !== was) flips++; expect(now && !was).toBe(false); was = now; }
+    expect(flips).toBe(1);
+  });
+  it('with twins and triplets, until the last of them is out', () => {
+    for (const count of [2, 3]) {
+      const P = birthPlan({}, count), last = P.babies[count - 1];
+      for (let i = 0; i < count - 1; i++) expect(pregnantAt(birthAt(P.babies[i].after + 1, 'fast', {}, count))).toBe(true);
+      expect(pregnantAt(birthAt(last.after - 0.01, 'fast', {}, count))).toBe(true);
+      expect(pregnantAt(birthAt(last.after, 'fast', {}, count))).toBe(false);
+    }
+  });
+  it('is the clock\'s: dragged back before then she is pregnant again; with no birth on the clock it says nothing', () => {
+    const P = birthPlan();
+    expect(pregnantAt(birthAt(P.total))).toBe(false);
+    expect(pregnantAt(birthAt(P.crowning))).toBe(true);
+    expect(pregnantAt(null)).toBe(true);
+  });
+  it('REALISTIC is the same, slower; begun open already, the same', () => {
+    const P = birthPlan();
+    expect(pregnantAt(birthAt((P.after - 0.01) * REALISTIC_STRETCH, 'realistic'))).toBe(true);
+    expect(pregnantAt(birthAt(P.after * REALISTIC_STRETCH, 'realistic'))).toBe(false);
+    expect(pregnantAt(birthAt(P.after - 0.01, 'fast', { openFrom: 0.4 }))).toBe(true);
+    expect(pregnantAt(birthAt(P.after, 'fast', { openFrom: 0.4 }))).toBe(false);
   });
 });
 

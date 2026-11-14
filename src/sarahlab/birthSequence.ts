@@ -24,6 +24,7 @@
  *
  * WHEN one can be played at all, and WHERE it begins when she is open already (BIRTH OPENING set by hand first), are
  * at the foot of this file: `BIRTH_NEEDS`, `birthNeeds`; `birthBeginsAt`, `BirthEvents.openFrom`, `BirthMoment.held`.
+ * And when her pregnancy ends with it: `pregnantAt`.
  *
  * TWINS AND TRIPLETS (P3, Joshua 2026-11-04: "use the same event/animation... it just counts the babies and knows if it
  * should play it once, twice, or more"): ONE labour, then the same pushing, crowning and birth once per baby in turn
@@ -370,20 +371,28 @@ export function birthBeginsAt(openFrom: number, pace: BirthPace = 'fast'): numbe
 }
 
 /**
- * WHEN A BIRTH CAN BE PLAYED (Joshua, 2026-11-14: "It should be only when pregnancy is on and the belly size is greater
- * than 90%"; 2026-11-02: from RECLINE or SQUAT -- LEGS APART is her pre-labour stance). GAME TUNING: his numbers.
+ * WHEN A BIRTH CAN BE PLAYED: while she is pregnant, from RECLINE or SQUAT (Joshua, 2026-11-02 -- LEGS APART is her
+ * pre-labour stance). No size of belly is asked of her: he set one that morning ("only when pregnancy is on and the belly
+ * size is greater than 90%") and took it back the same day -- 2026-11-14, "let's remove the minimum pregnancy limit as
+ * that's automatically set from the max". Read here as: her belly at a birth is her BIGGEST BELLY's to say
+ * (pregnancy.ts), not a second number's.
  */
-export const BIRTH_NEEDS = Object.freeze({ bellyOver: 90, poses: Object.freeze(['recline', 'squat']) as readonly string[] });
-/** Whether she can give birth at all as she is, whatever her pose: pregnant, and her belly's size (its %, pregnancy.ts
- * `bellySize`) over `BIRTH_NEEDS.bellyOver`. A birth is played only while this holds. */
-export const canBirth = (pregnant: boolean, bellySize: number): boolean => pregnant && bellySize > BIRTH_NEEDS.bellyOver;
+export const BIRTH_NEEDS = Object.freeze({ poses: Object.freeze(['recline', 'squat']) as readonly string[] });
 /** Why a birth can not begin now -- the line the room shows for it -- or null when it can. */
-export function birthNeeds(pregnant: boolean, bellySize: number, pose: string): string | null {
+export function birthNeeds(pregnant: boolean, pose: string): string | null {
   if (!pregnant) return 'BIRTH · not pregnant (PREGNANT · ON)';
-  if (!canBirth(pregnant, bellySize)) return `BIRTH · her belly over ${BIRTH_NEEDS.bellyOver}% first (now ${Number.isFinite(bellySize) ? Math.round(bellySize) : 0}%)`;
   if (!BIRTH_NEEDS.poses.includes(pose)) return 'BIRTH · from RECLINE or SQUAT';
   return null;
 }
+
+/**
+ * HER PREGNANCY ENDS WITH THE BIRTH (Joshua, 2026-11-14: "just keep it simple and automatically turn off the pregnancy
+ * state after birth"): whether she is still pregnant at this moment of a birth -- until her last baby is out of her (a
+ * baby is `born` once all of it is: its 'after'). With twins and triplets she is pregnant until the last. Like every
+ * other reading of the birth it is the clock's: dragged back before then she is pregnant again, and with no birth on
+ * the clock (`null`) her state is whatever it was set to.
+ */
+export const pregnantAt = (m: BirthMoment | null): boolean => !m || !m.babies.every((b) => b.born);
 
 /** Her cervix as a gameplay reading (Joshua, 2026-11-02: "a stat that says like 'Open 2.7cm - not yet'"). */
 export function cervixLine(cervix: number): string {

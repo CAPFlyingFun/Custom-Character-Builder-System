@@ -6,10 +6,6 @@
  * Into shots/birth-v2/ (or OUT), with report.json.
  *
  *     node scripts/probe-birth-v2.mjs      (NO_BUILD=1; TIMES=10,20,...; OPENING=skeleton|v2; XRAY=0; BEND=0; SIDE=yaw,pitch,distance,dx,dy,dz; HIDE=1: her side pictures with her hidden -- her baby and her organs alone)
- *
- * BELLY=<percent> (100): her belly as the birth is played. A birth is played only with her pregnant and her belly over
- * 90% (Joshua, 2026-11-14; birthSequence.ts BIRTH_NEEDS), and a probe opens on her at 73%: what this measured before
- * that day was measured at 73%.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -50,8 +46,6 @@ try {
   else await hook('opening', MODE !== 'v2', ...(process.env.LOOK !== undefined ? [Number(process.env.LOOK)] : []));
   // (NAKED=1: her clothes off first -- OUTFIT pressed until it says none -- for a look at her from the side with nothing over it)
   if (process.env.NAKED) { for (let k = 0; k < 12; k++) { const t = await page.evaluate(() => document.querySelector('[data-action="sarahlab:outfit"]')?.textContent ?? ''); if (/none/i.test(t)) break; await press('sarahlab:outfit'); await page.waitForTimeout(2500); } await page.waitForTimeout(6000); }
-  // (her belly over 90% first: no birth is played below it)
-  await slide('sarahlab-bump', Number(process.env.BELLY ?? 100)); await page.waitForTimeout(4000); await run(1);
   await press('sarahlab:recline'); await run(2.5);
   // (BEND=0: her baby as one stiff length down her canal, as it was, to compare)
   if (process.env.BEND === '0') await hook('babyAlong', false);
