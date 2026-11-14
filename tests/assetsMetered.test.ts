@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { assetBytes, fetchBytes, loadModel } from '../src/assets/assets';
 import { LoadMeter } from '../src/assets/loadMeter';
-import { recoveredPartPath, recoveredPartsFor, wornGarments, GARMENTS, RECOVERED_SHIRTS, OUTFITS, PAINTED_DEFAULT_OUTFIT, SARAH_DEFAULT_OUTFIT, SARAH_V2_BODY_MODEL, RECOVERED_GARMENTS, nextOutfit, type Garment } from '../src/sarahlab/sarahLabTool';
+import { recoveredPartPath, recoveredPartsFor, wornGarments, GARMENTS, RECOVERED_SHIRTS, OUTFITS, PAINTED_DEFAULT_OUTFIT, SARAH_DEFAULT_OUTFIT, SARAH_V2_BODY_MODEL, RECOVERED_GARMENTS, nextOutfit, outfitWorn, type Garment } from '../src/sarahlab/sarahLabTool';
 import * as THREE from 'three';
 
 /**
@@ -156,6 +156,24 @@ describe('the room opens with only what she has on', () => {
     // (the bikini's bottom is painted now: it is among the painted ones as well -- Joshua, 2026-11-12)
     expect([...new Set(seen)].sort((a, b) => a - b)).toEqual([...new Set([2, 4, ...OUTFITS.map((o, i) => (o.paint ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b));
     expect(seen).toContain(SARAH_DEFAULT_OUTFIT);
+  });
+
+  // (a fault found 2026-11-13, there since this site was split from the game: MODEL pressed round to v2-body again left
+  // her in outfit 0 -- the game's 66 MB relaxed shirt, which this site does not have -- and the room said "Her outfit
+  // could not be downloaded" until BACK)
+  it('on the slim v2 body she is never left in an outfit whose files this site does not have', () => {
+    const slim: Garment[] = [...new Set<Garment>(['bikini', ...RECOVERED_GARMENTS, ...RECOVERED_SHIRTS])];
+    for (let i = 0; i < OUTFITS.length; i++) {
+      const worn = outfitWorn(i, slim);
+      for (const file of recoveredPartsFor(wornGarments(worn, slim)).map(recoveredPartPath)) expect(existsSync(`public/${file}`), `asked for ${OUTFITS[i].name}, wears ${OUTFITS[worn].name}: ${file}`).toBe(true);
+    }
+    // the big modelled shirts and leggings become the outfit the room opens her in; what OUTFIT offers stays itself
+    for (const i of [0, 1, 5, 6]) expect(outfitWorn(i, slim), OUTFITS[i].name).toBe(SARAH_DEFAULT_OUTFIT);
+    for (const i of [2, 4, SARAH_DEFAULT_OUTFIT, PAINTED_DEFAULT_OUTFIT, OUTFITS.length - 1]) expect(outfitWorn(i, slim), OUTFITS[i].name).toBe(i);
+    expect(outfitWorn(-1, slim)).toBe(OUTFITS.length - 1);
+    // a model without her painted outfits keeps its own first outfit, and is put in it from a painted one
+    expect(outfitWorn(0, ['shirtAthletic', 'leggings'])).toBe(0);
+    expect(outfitWorn(SARAH_DEFAULT_OUTFIT, ['shirtAthletic', 'leggings'])).toBe(0);
   });
 
   it('downloads less than the four files it used to wait for, and every file has a size', () => {

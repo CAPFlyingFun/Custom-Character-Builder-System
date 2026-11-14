@@ -682,6 +682,20 @@ function offered(index: number, available: readonly Garment[]): boolean {
   if (paintedOutfitsAvailable(available) && recoveredPartsFor(wanted).some((part) => !LIGHT_PARTS.includes(part))) return false;
   return !available.length || wanted.every((g) => available.includes(g));
 }
+/**
+ * The outfit a model offering `available` wears when asked for outfit `index`: that one where the model offers it, and
+ * otherwise the outfit the room opens that model in (on the approved v2 body her red raglan tee; elsewhere the first).
+ *
+ * A FAULT FOUND 2026-11-13, there since this site was split from TRADDOMIUM: MODEL pressed round to v2-body again left
+ * her in outfit 0 -- which a model without her painted outfits is put in -- and on her approved body outfit 0 is the
+ * recovered relaxed shirt, whose 66 MB file is the game's and was never this site's. MEASURED in the room: "Her outfit
+ * could not be downloaded", and RETRY asked for the same file again; only BACK got her back. An outfit OUTFIT never
+ * steps to is not one she is left in.
+ */
+export function outfitWorn(index: number, available: readonly Garment[]): number {
+  const i = ((Math.trunc(index) % OUTFITS.length) + OUTFITS.length) % OUTFITS.length;
+  return offered(i, available) ? i : paintedOutfitsAvailable(available) ? SARAH_DEFAULT_OUTFIT : 0;
+}
 /** Every outfit a model offering `available` offers, in OUTFITS order, without 'none' (a blank outfit is NEW OUTFIT's). */
 export function offeredOutfits(available: readonly Garment[]): number[] {
   return OUTFITS.map((_, i) => i).filter((i) => OUTFITS[i].name !== 'none' && offered(i, available));
