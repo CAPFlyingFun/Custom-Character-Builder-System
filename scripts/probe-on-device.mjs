@@ -133,6 +133,9 @@ try {
     const after = await dressed(); await going;
     const forRoom = srv.requests.slice(mark);
     log(`${name}: ${after ? `she is dressed after ${((Date.now() - t0) / 1000).toFixed(1)} s` : 'she never appears'};`, 'fetched for the room', tally(forRoom));
+    // (her hair comes on after her clothes -- a moment on a phone, up to half a minute behind this machine's software
+    // renderer, MEASURED 2026-11-13 with and without internet: the picture waits for it)
+    await page.waitForTimeout(Number(process.env.SETTLE ?? 30000));
     await page.screenshot({ path: path.join(OUT, `${name}.png`), timeout: 120_000 }).catch(() => {});
     return mark;
   };

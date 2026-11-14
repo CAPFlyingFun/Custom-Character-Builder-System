@@ -30,9 +30,12 @@ async function start(): Promise<void> {
   // THE ROOM KEPT ON THIS DEVICE (Joshua, 2026-11-13: "load everything at one time and hold it locally especially if I
   // have it saved as a PWA"): the service worker and what it keeps (src/pwa). Nothing on a development server.
   const table = publicTable();
+  // (and nothing for a probe or a bake, which open the room by address to measure it: a download in the background is
+  // one more thing moving while they do)
+  const asked = new URLSearchParams(location.search);
   const device = startOnDevice({
     build: `${BUILD_INFO.version}+${BUILD_INFO.commit}`,
-    enabled: import.meta.env.PROD,
+    enabled: import.meta.env.PROD && !asked.has('probe') && !asked.has('bake'),
     files: aheadFiles(table.revisions, table.sizes, (path) => new URL(assetUrl(path), document.baseURI).href),
     workerUrl: new URL('sw.js', document.baseURI).href,
   });
