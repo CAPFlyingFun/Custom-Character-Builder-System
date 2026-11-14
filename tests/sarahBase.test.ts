@@ -343,6 +343,9 @@ describe('the Sarah Lab', () => {
     expect(bellyWeights(125).belly150).toBeCloseTo(0.5);
     expect(bellyWeights(500)).toMatchObject({ belly200: 1, belly150: 0 });
     expect(bumpLine(160)).toMatch(/past full term/);
+    // (past HER full term: her BIGGEST, 120% for a first baby by the rule and 175% with twins -- pregnancy.ts)
+    expect(bumpLine(120, 120)).toBe(bumpLine(120).replace(' · past full term', '')); expect(bumpLine(121, 120)).toMatch(/past full term/);
+    expect(bumpLine(160, 175)).not.toMatch(/past full term/); expect(bumpLine(101)).toMatch(/past full term/);
     // Original model at zero, then nominal volume targets 1.30 and 1.55.
     expect(breastWeights(0)).toEqual({ breast0: 0, breast100: 0 });
     expect(breastWeights(50).breast100).toBeCloseTo(.15 / .55, 8);

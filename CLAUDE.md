@@ -293,6 +293,69 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   render running beside it: a laying 22 ms before, 8 ms now, over a womb as without; her belly's organs laid round a term
   womb 80 ms a change of womb (her stomach's fit behind the wall tries none of its forward run first).
 
+## Her pregnancy as numbers
+
+- **Three simple numbers and a baby counter, each one optional** (Joshua, 2026-11-13: "keep the numbers simple and easier
+  to understand. The gameplay depending on the game, can then work with those numbers and adjust between them"; "Keep it
+  optional, but still there like my example which can save stats per character... like now... just rename the beginning
+  and end of it basically... and maybe a baby counter"). HER PREGNANCY, in the Body section (`pregnancy.ts`, kept with
+  her body in her save): her BABY COUNTER (the pregnancies she has had before this one, by what each was: three small
+  boxes, single / twins / triplets), her START BELLY (what WEEK 1 BELLY was), her BIGGEST BELLY and its week (DELIVERY
+  BELLY, DELIVERY WEEK), her END BELLY after the birth (new: a number for a game -- nothing in the room is drawn from
+  it), and under them the exact week for the belly she has now. A save's own names for them are the ones it always had
+  (`firstWeekBump`, `deliveryBump`, `deliveryWeek`), with `afterBump` and `births` added. Stats and numbers: the room
+  never picks her a week and never moves her between them.
+- **THE RULE for a box left blank: every pregnancy adds its own amount to her belly for good** (`PREGNANCY_RULE`; his,
+  as he corrected it the same evening: "I meant if a woman has triplets for example, she gains +20% to her starting
+  number vs +10% for only one baby. Single: start 5%, birth 120%, end 15, 2nd birth 130%, end 25%, 3rd birth 140%, end
+  35%. Twins: start 10%, birth 175%, end 25%, 2nd birth (single this time) 185%, end 35%. Triplets: start 20%, birth
+  180%, end 40%, 2nd birth (single this time) 190%, end 50%... Single always adds +10% to belly size for pregnancy and
+  after, twins +15%, and triplets +20%").
+  - her START is what the pregnancies she has had added (from 0; a woman who began with more has it typed, and it is
+    then where she last ended); her END is her START and what this one adds;
+  - her BIGGEST in a first pregnancy is what its babies need -- one baby 120%, twins and triplets the chart's own 175%
+    at week 37 and 180% at week 34 ("My rules on top") -- and each pregnancy after adds its own amount to her last
+    (`baby.ts` `ruleBiggest`). It does NOT move with her START ("start 5%, birth 120%"). One baby after twins is 185%;
+    twins after one baby are 185% too (their 175% and the 10% she had kept): his examples do not reach that one, and
+    he passed it ("Looks good to me") -- it is the reading that gives the same number whichever came first;
+  - what is typed wins (his Sarah: 15% -> 130% at week 41 -> 25%, her END the rule's from her typed START);
+  - a week not typed is a game's to pick, a whole week from 38 to 42 for one baby (`pickDeliveryWeek`; 36-38 twins,
+    33-35 triplets); the room draws her chart at the middle one;
+  - after a birth a game puts one more of its kind on her counter (`bornTo`) and writes her START where she ended.
+  All GAME TUNING; what was looked up behind it is in `PREGNANCY_RULE`'s comment.
+- **Past the belly slider** (Joshua, 2026-11-13: "I guess anything past the 200% default slider will carry over into
+  the extra depth slider which can go an additional +15%"). Her belly's SIZE is her belly slider's %, and once that is
+  at its top what her Depth control adds (`bellySize`; `bellySetting` the other way, for a game): a size runs to 215%.
+  Her BIGGEST is a size -- the rule's and a typed one run to 215% -- and the room reads her week at her size (`sized`).
+  Below the slider's top her Depth is her shape, as it was, and not her size. GAME TUNING: his reckoning, a point of
+  Depth for a point of size.
+- **Her chart follows it** (`baby.ts` `herChart`): her belly reaches the chart's delivery week at her BIGGEST, so a
+  first baby's 120% belly is week 40 and her 100% is week 35.3. The belly slider's "past full term" is past HER biggest
+  (`bumpLine`).
+- **No count is the chart, as it always was.** A save from before the counter has none (`births` null: the three boxes
+  are blank and the line says "no baby count: the chart's own"), and keeps 0% -> 100% at week 40 for one baby. Sarah's
+  look is one, so a probe, the story's bake, and everything MEASURED in the room before 2026-11-13 are on the chart.
+  The room itself opens with her counter at none, on the rule; her counter's ↺ is no count again.
+- MEASURED in the room 2026-11-13 (one page, a 430 x 932 screen). His three women read off the panel as he wrote them:
+  one baby from a START of 5%, 120% and 15%, then 130% and 25%, then 140% and 35%; twins from 10%, 175% and 25%, then
+  one baby 185% and 35%; triplets from 20%, 180% and 40%, then one baby 190% and 50%; and twins after one baby 185%.
+  A first baby by the rule: her week 12 at 0%, 26 at 60%, 35.3 at 100%, 40 at 120%, 40.6 at 150%, 41.6 at 200%; his
+  Sarah's numbers typed, 41 at 130%, and 32 typed for her 73% held; twins 37 at 175% and triplets 34 at 180%. Past
+  the slider, with 210% her BIGGEST (two singles and triplets had): week 38.4 at the slider's 200%, and with her Depth
+  at +10 "WEEK AT 210%" and week 40; at 190% her Depth at +15 changes nothing; a BIGGEST typed 400 is 215.
+- MEASURED the same day, a first baby by the rule, her organs as drawn (the `organsDrawn` probe) at 60, 100, 120, 150
+  and 200% at a breath out, and at 120% breathed in and at her hardest breath, with the same bellies measured with no
+  count beside them: none in another at 100%, at 150% and at 120% breathed in; one of her liver's 1,402 points in her
+  left lung at 120% and at 200% (the same one with no count); at her hardest breath at 120% a point or two of her
+  colon, her bowel and her kidneys in one another and 9 of her left kidney's 270 in her colon, 3 mm (10 with no count);
+  and at 60%, her week 26, her bowel's bumps against her colon (23 of its 736 points, 6 of her colon's 576) -- the
+  contact the chart has at ITS week 26, her 50% (21 and 7), where her womb's top is at the same height to 0.1 mm
+  (1.0887 and 1.0886 m): before her colon goes behind the wall, it is her week that says where her womb stands, and the
+  rule reaches a week at a bigger belly. With no count her 60% is week 28.8, and clear. Her baby is never bigger for
+  her belly by the rule than on the chart (the chart's % is at most her own: tested), and at full term it is drawn the
+  same either way -- 51.0 cm, 3.46 kg, 1% smaller to fit -- on the chart at her 100% and by the rule at her 120%.
+- After anything changes the rule, her chart or the panel: `tests/pregnancyRule.test.ts`, `tests/pregnantToggle.test.ts`.
+
 ## Kept on the device (the room as an app)
 
 - **The site keeps its own files on the device, in stages** (Joshua, 2026-11-13: "what it should do, is load everything at
@@ -367,6 +430,17 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local
 (Playwright + swiftshader, one browser at a time; never rebuild `dist` while
 one runs). Kill a stray process by its PID only.
+
+**One preview, one page** (Joshua, 2026-11-13: "When you check how things look,
+keep one local preview running while you work and reuse the same browser page
+for all your screenshots instead of reloading or restarting for each one. Only
+screenshot the parts that changed. Shut the preview down when you're done").
+Open the room once and drive that page for every reading and picture of a piece
+of work; load it again only when `dist` has been built again; picture the panel
+or the part of her that changed, not the whole screen each time; and close the
+browser and the preview when the work is done. A software renderer's frame
+costs by the pixel and the page answers between frames: read and measure at 1x,
+and draw at a phone's 2x only for the pictures a person will see.
 
 ## Git
 

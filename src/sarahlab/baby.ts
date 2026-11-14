@@ -16,6 +16,7 @@
  * at 0, the 90th at +100.
  */
 import * as THREE from 'three';
+import { PREGNANCY_RANGE, PREGNANCY_RULE, ruleEnd, ruleStart, type Births } from './pregnancy';
 
 // ------------------------------------------------------------------------------------------------------------- chart
 
@@ -68,27 +69,75 @@ export function bumpForWeek(week: number, babies = 1): number {
 }
 
 /**
+ * Her BIGGEST in a FIRST pregnancy under the rule (pregnancy.ts `PREGNANCY_RULE`), belly %: what its babies need. One
+ * baby the rule's own (Joshua, 2026-11-13: "max pregnancy - 120% @ 40 weeks"); twins and triplets the chart's delivery
+ * bellies, 175% at week 37 and 180% at week 34 -- the bigger bellies that let them fit, which his rule goes on top of
+ * ("My rules on top").
+ */
+export function ruleFirst(babies: number): number {
+  const n = Math.min(3, Math.max(1, Math.round(Number.isFinite(babies) ? babies : 1)));
+  return n === 1 ? PREGNANCY_RULE.first : bumpForWeek(DELIVERY_WEEKS[n], n);
+}
+
+/**
+ * Her BIGGEST under the rule, for a pregnancy of `babies` after the ones on her counter, belly %. Joshua, 2026-11-13:
+ * "Single: start 5%, birth 120%, end 15, 2nd birth 130%, end 25%, 3rd birth 140%, end 35%. Twins: start 10%, birth
+ * 175%, end 25%, 2nd birth (single this time) 185%, end 35%. Triplets: start 20%, birth 180%, end 40%, 2nd birth
+ * (single this time) 190%, end 50%... Single always adds +10% to belly size for pregnancy and after, twins +15%, and
+ * triplets +20%."
+ *
+ * A first pregnancy's is what its babies need (`ruleFirst`), and each one after adds its own amount to her last. Said
+ * without the order: every pregnancy she has had, and this one, adds its amount, on top of a floor -- the biggest need
+ * among them less that pregnancy's own amount. So one baby after twins is 185%, as he gives it, and twins after one
+ * baby are 185% too (their 175% and the 10% she had kept), which his examples do not reach ("Looks good to me"). No
+ * further than a size goes: past the belly slider's 200% it carries over into her Depth, to 215% (pregnancy.ts
+ * `bellySize`).
+ */
+export function ruleBiggest(births: Births, babies: number): number {
+  const n = Math.min(3, Math.max(1, Math.round(Number.isFinite(babies) ? babies : 1)));
+  const kinds = [n, ...(births.single > 0 ? [1] : []), ...(births.twins > 0 ? [2] : []), ...(births.triplets > 0 ? [3] : [])];
+  const floor = Math.max(...kinds.map((k) => ruleFirst(k) - PREGNANCY_RULE.adds[k]));
+  return Math.min(PREGNANCY_RANGE.size[1], floor + ruleStart(births) + PREGNANCY_RULE.adds[n]);
+}
+
+/**
  * HER CHART (Joshua, 2026-11-05; her numbers, `pregnancy.ts`): which % of the chart her belly stands for. Her belly in
- * her first week is the chart's 0% (it shows nothing before week 12); her belly at delivery is the chart's at her
- * delivery week; the exact week typed is the chart's at that week. Between them a straight line, past the last the
- * chart's own growth. What she has not typed gives way to what she has (a week typed for a belly past the chart's
- * delivery % moves that delivery out with it); a typed number that cannot be on one chart with the others -- a week
- * before her belly shows, a belly % not between its neighbours' -- is not used, and `unused` says which.
+ * her first week -- her START -- is the chart's 0% (it shows nothing before week 12); her belly at delivery -- her
+ * BIGGEST -- is the chart's at her delivery week; the exact week typed is the chart's at that week. Between them a
+ * straight line, past the last the chart's own growth. What she has not typed gives way to what she has (a week typed
+ * for a belly past the chart's delivery % moves that delivery out with it); a typed number that cannot be on one chart
+ * with the others -- a week before her belly shows, a belly % not between its neighbours' -- is not used, and `unused`
+ * says which.
+ *
+ * WHAT IS NOT TYPED (2026-11-13). With a count on her BABY COUNTER (`births`) it follows THE RULE (pregnancy.ts
+ * `PREGNANCY_RULE`): her START is what the pregnancies she has had added to her belly, her BIGGEST what the rule gives
+ * her counter and the babies she carries (`ruleBiggest`), wherever her delivery week falls and whatever her START
+ * ("start 5%, birth 120%"), and her END her START and what this pregnancy adds. With no count -- a save from before the
+ * counter, Sarah's look -- it is the chart's own, as it always was: 0%, and the chart's belly at her delivery week. So
+ * with no count and nothing typed her chart is the chart exactly; and with a count of none, twins' and triplets' still
+ * is (their BIGGEST is the chart's), while one baby's reaches the chart's week 40 at her 120% belly.
  */
 export interface HerChart {
   /** [her belly %, the chart's belly %], each rising */
   readonly anchors: readonly (readonly [number, number])[];
   readonly unused: readonly ('week' | 'delivery')[];
-  /** what is in force: her first week's belly %, her delivery's belly % and week (typed, or the chart's) */
+  /** what is in force: her START (her first week's belly %), her BIGGEST (her delivery's belly %) and its week, and her END (her belly % after): typed, or the rule's, or with no count the chart's */
   readonly firstWeekBump: number;
   readonly deliveryBump: number;
   readonly deliveryWeek: number;
+  readonly afterBump: number;
+  /** true when what is not typed follows the rule (she has a count) */
+  readonly ruled: boolean;
 }
-export interface PregnancyNumbers { readonly week: number | null; readonly weekAtBump: number | null; readonly firstWeekBump: number | null; readonly deliveryBump: number | null; readonly deliveryWeek: number | null }
+export interface PregnancyNumbers { readonly week: number | null; readonly weekAtBump: number | null; readonly firstWeekBump: number | null; readonly deliveryBump: number | null; readonly deliveryWeek: number | null; readonly afterBump?: number | null; readonly births?: Births | null }
 export function herChart(babies: number, p: PregnancyNumbers): HerChart {
   const n = Math.min(3, Math.max(1, Math.round(Number.isFinite(babies) ? babies : 1)));
   const deliveryWeek = p.deliveryWeek ?? DELIVERY_WEEKS[n], dChart = bumpForWeek(deliveryWeek, n), unused: ('week' | 'delivery')[] = [];
-  let first = p.firstWeekBump ?? 0, delivery = p.deliveryBump ?? dChart;
+  const births = p.births ?? null;
+  // (her START and her BIGGEST with nothing typed: the rule's for her counter, or the chart's; and what her belly grows
+  // by from a START that leaves her BIGGEST no room -- a first pregnancy's need, or the chart's)
+  const start = p.firstWeekBump ?? (births ? ruleStart(births) : 0), grown = births ? ruleFirst(n) : dChart;
+  let first = start, delivery = p.deliveryBump ?? (births ? ruleBiggest(births, n) : dChart);
   let pin: [number, number] | null = null;
   if (p.week !== null && p.weekAtBump !== null) {
     const c = bumpForWeek(p.week, n), at = p.weekAtBump;
@@ -102,14 +151,14 @@ export function herChart(babies: number, p: PregnancyNumbers): HerChart {
     if (ok && !(first < delivery)) ok = false;
     if (ok) { if (c !== dChart) pin = [at, c]; } else unused.push('week');
   }
-  if (!(first < delivery)) { if (p.deliveryBump !== null) unused.push('delivery'); delivery = first + dChart; }
+  if (!(first < delivery)) { if (p.deliveryBump !== null) unused.push('delivery'); delivery = first + grown; }
   const anchors = [[first, 0], [delivery, dChart], ...(pin ? [pin] : [])].sort((a, b) => a[1] - b[1]) as [number, number][];
-  return { anchors, unused, firstWeekBump: first, deliveryBump: delivery, deliveryWeek };
+  return { anchors, unused, firstWeekBump: first, deliveryBump: delivery, deliveryWeek, afterBump: p.afterBump ?? ruleEnd(start, n), ruled: births !== null };
 }
 
-/** The % of the chart her belly stands for at `bumpPercent` (her own belly %): `bumpPercent` itself while nothing is typed. */
+/** The % of the chart her belly stands for at `bumpPercent` (her own belly %): `bumpPercent` itself while nothing is typed and nothing counted. */
 export function chartBump(bumpPercent: number, babies: number, p: PregnancyNumbers): number {
-  if (p.week === null && p.firstWeekBump === null && p.deliveryBump === null && p.deliveryWeek === null) return bumpPercent;
+  if (p.week === null && p.firstWeekBump === null && p.deliveryBump === null && p.deliveryWeek === null && (p.births ?? null) === null) return bumpPercent;
   const a = herChart(babies, p).anchors, b = Number.isFinite(bumpPercent) ? bumpPercent : 0;
   if (b <= a[0][0]) return Math.max(0, a[0][1] + (b - a[0][0]));
   for (let i = 1; i < a.length; i++) if (b <= a[i][0]) { const [h0, c0] = a[i - 1], [h1, c1] = a[i]; return c0 + (c1 - c0) * (b - h0) / (h1 - h0); }

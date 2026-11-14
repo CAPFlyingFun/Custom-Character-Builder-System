@@ -44,7 +44,7 @@ import { GarmentPanel } from './garmentPanel';
 import { FaceMotion } from './faceMotion';
 import { patchHairMaterial } from './hairMaterial';
 import { lookOpenedOn } from './sarahLook';
-import { PREGNANCY_OPENING, PREGNANCY_RANGE, pregnancyOf, pregnantLine, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
+import { BIRTH_KINDS, PREGNANCY_OPENING, PREGNANCY_RANGE, PREGNANCY_RULE, bellySize, numbersLine, pregnancyOf, pregnantLine, typeBirths, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
 import { BUILD_INFO } from '../ui/buildInfo';
 import { graphicsNote, pictureLost } from './lostPictures';
@@ -986,8 +986,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let babyShown = false, babyLoading = false, babyKey = '';
   /** PREGNANT (P5): is she -- on or off, nothing else (her weeks are typed: `pregnancy`, below) */
   const pregnant = (): boolean => pregnancy.pregnant;
+  /**
+   * Her belly's SIZE, as her chart reads it (pregnancy.ts `bellySize`; Joshua, 2026-11-13: "anything past the 200% default
+   * slider will carry over into the extra depth slider which can go an additional +15%"): her belly slider's %, and once
+   * that is at its top what her Depth control adds. Below the slider's top it is her belly slider's % exactly.
+   */
+  const sized = (): number => bellySize(bump, body.bellyDepth);
   /** the % of the chart her belly stands for, off her own chart (baby.ts `chartBump`): `b` itself while nothing is typed */
-  const onChart = (b = bump): number => chartBump(b, babyCount, pregnancy);
+  const onChart = (b = sized()): number => chartBump(b, babyCount, pregnancy);
   // HER BABY'S BIRTH (birthSequence.ts): its clock (null: not begun), whether it runs, its pace, where it is now, her
   // canal as drawn this frame, and her baby's head's middle (its model's units)
   let birthTimeInput: HTMLInputElement | null = null;
@@ -1923,30 +1929,36 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** HER PREGNANCY changed (PREGNANT, or a week typed): her babies fitted again for the week her belly stands for */
   function setPregnancy(next: Pregnancy): void { pregnancy = next; babyDirty = true; babyFitAt = -Infinity; applyLook(); applyMotion(); refresh(); }
-  /** HER WEEKS' boxes: what is typed, or blank with what is in force in grey; and the line under them */
+  /** HER PREGNANCY's boxes: what is typed, or blank with what is in force in grey; and the lines under them */
   function refreshWeeks(): void {
-    const chart = herChart(babyCount, pregnancy), here = herWeek(bump, babyCount, pregnancy), mine = weekIsFor(pregnancy, bump);
+    const size = sized(), chart = herChart(babyCount, pregnancy), here = herWeek(size, babyCount, pregnancy), mine = weekIsFor(pregnancy, size);
     const put = (field: string, typed: number | null, inForce: string, on = true) => {
       const i = weekBoxes.get(field);
       if (!i) return;
       if (document.activeElement !== i) i.value = typed === null ? '' : String(typed);
       i.placeholder = inForce; i.disabled = !on; i.style.opacity = on ? '1' : '.4';
     };
-    if (weekLabel) weekLabel.textContent = `WEEK AT ${Math.round(bump)}%`;
+    if (weekLabel) weekLabel.textContent = `WEEK AT ${Math.round(size)}%`;
     put(SARAH_LAB_FIELD.pregnancyWeek, mine ? pregnancy.week : null, pregnant() ? weekText(here) : '–', pregnant());
-    for (const [k, on] of [['week', pregnant() && pregnancy.week !== null], ['first', pregnancy.firstWeekBump !== null], ['delivery', pregnancy.deliveryBump !== null], ['deliveryWeek', pregnancy.deliveryWeek !== null]] as const) {
+    for (const [k, on] of [['week', pregnant() && pregnancy.week !== null], ['first', pregnancy.firstWeekBump !== null], ['delivery', pregnancy.deliveryBump !== null], ['deliveryWeek', pregnancy.deliveryWeek !== null], ['after', pregnancy.afterBump !== null], ['births', pregnancy.births !== null]] as const) {
       const b = buttons[`${SARAH_LAB_ACTION.pregnancyClear}${k}`];
       if (b) { b.disabled = !on; b.style.opacity = on ? '1' : '.4'; }
     }
+    for (const kind of BIRTH_KINDS) put(`${SARAH_LAB_FIELD.pregnancyBirths}${kind}`, pregnancy.births ? pregnancy.births[kind] : null, '–');
     put(SARAH_LAB_FIELD.pregnancyFirst, pregnancy.firstWeekBump, String(Math.round(chart.firstWeekBump)));
     put(SARAH_LAB_FIELD.pregnancyDelivery, pregnancy.deliveryBump, String(Math.round(chart.deliveryBump)));
-    put(SARAH_LAB_FIELD.pregnancyDeliveryWeek, pregnancy.deliveryWeek, weekText(chart.deliveryWeek));
+    // (her delivery week not typed: what a game picks it from; her chart is drawn at the middle one meanwhile)
+    put(SARAH_LAB_FIELD.pregnancyDeliveryWeek, pregnancy.deliveryWeek, PREGNANCY_RULE.weeks[babyCount].join('–'));
+    put(SARAH_LAB_FIELD.pregnancyAfter, pregnancy.afterBump, String(Math.round(chart.afterBump)));
+    const numbers = fields[SARAH_LAB_FIELD.pregnancyNumbers];
+    if (numbers) numbers.textContent = numbersLine(pregnancy, chart, babyCount);
     const line = fields[SARAH_LAB_FIELD.pregnancyLine];
     if (!line) return;
-    if (!pregnant()) { line.textContent = 'not pregnant · her weeks are kept for when she is (PREGNANT · ON)'; return; }
-    const from = mine ? 'as typed' : nothingTyped(pregnancy) ? `the chart's for ${BABIES_NAME[babyCount] === 'ONE' ? 'one baby' : BABIES_NAME[babyCount].toLowerCase()}` : 'off her chart';
+    if (!pregnant()) { line.textContent = 'not pregnant · her numbers are kept for when she is (PREGNANT · ON)'; return; }
+    const forBabies = BABIES_NAME[babyCount] === 'ONE' ? 'one baby' : BABIES_NAME[babyCount].toLowerCase();
+    const from = mine ? 'as typed' : nothingTyped(pregnancy) ? (chart.ruled ? `by her baby counter, for ${forBabies}` : `the chart's for ${forBabies}`) : 'off her chart';
     const pinned = pregnancy.week !== null && !mine && pregnancy.weekAtBump !== null ? ` · ${weekText(pregnancy.week)} wk typed for ${Math.round(pregnancy.weekAtBump)}%` : '';
-    const unused = chart.unused.map((u) => u === 'week' ? ' · the typed week is not used: it must be past week 12 and its belly % between her week 1 and delivery' : ' · her delivery % is not used: it must be above her week 1').join('');
+    const unused = chart.unused.map((u) => u === 'week' ? ' · the typed week is not used: it must be past week 12 and its belly % between her START and her BIGGEST' : ' · her BIGGEST is not used: it must be above her START').join('');
     line.textContent = `her week now ${weekText(here)} (${from})${pinned}${unused}`;
   }
   /** The Library's line of what is kept on this device, and the notice over the stage (there only when it says something). */
@@ -1969,7 +1981,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     refreshSkin();
     const bumpField = fields[SARAH_LAB_FIELD.bump], fingerField = fields[SARAH_LAB_FIELD.fingers];
-    if (bumpField) bumpField.textContent = bumpLine(bump);
+    if (bumpField) bumpField.textContent = bumpLine(bump, herChart(babyCount, pregnancy).deliveryBump);
     if (fingerField) fingerField.textContent = fingersLine(curl);
     { const f2 = fields[SARAH_LAB_FIELD.birthOpen];
       // (the probes set the opening too: the slider follows whatever she is)
@@ -3035,17 +3047,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       right.append(r, rangeRow(spec));
     }
     {
-      // HER WEEKS (Joshua, 2026-11-05: "add a text box you can type in the exact week to the % if you have an exact week
-      // for that %. Also, you could add the 1st week of pregnancy %, and the delivery week %... then the game can use those
-      // numbers later"). Each box is blank until something is typed, and shows in grey what is in force meanwhile; blank
-      // again, or its ↺, is nothing typed. Together they are her chart (baby.ts `herChart`), kept with her body.
+      // HER PREGNANCY, AS NUMBERS (Joshua, 2026-11-05: "add a text box you can type in the exact week to the % if you
+      // have an exact week for that %. Also, you could add the 1st week of pregnancy %, and the delivery week %... then
+      // the game can use those numbers later"; 2026-11-13: "keep the numbers simple and easier to understand... just
+      // rename the beginning and end of it basically... and maybe a baby counter" -- her START, her BIGGEST and its
+      // week, her END after the birth, and the pregnancies she has had). Each box is blank until something is typed, and
+      // shows in grey what is in force meanwhile: her baby counter's (pregnancy.ts `PREGNANCY_RULE`), or with no count
+      // the chart's own; blank again, or its ↺, is nothing typed. Together they are her chart (baby.ts `herChart`),
+      // kept with her body.
       const wrap = document.createElement('div'); wrap.dataset.tab = 'body';
       wrap.style.cssText = 'display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:3px 5px;font-size:11px;letter-spacing:.04em;margin:2px 0 4px;border-top:1px solid rgba(255,255,255,0.12);padding-top:6px';
       const head = document.createElement('div');
       head.style.cssText = 'grid-column:1 / -1;font:700 11px system-ui,sans-serif;letter-spacing:.08em';
-      const sub = document.createElement('span'); sub.textContent = ' · type what you know; blank is the chart\'s';
+      const sub = document.createElement('span'); sub.textContent = ' · type what you know; blank follows her baby counter';
       sub.style.cssText = 'font-weight:500;letter-spacing:.03em;opacity:.7';
-      head.append('HER WEEKS', sub);
+      head.append('HER PREGNANCY', sub);
       wrap.appendChild(head);
       const box = (field: string, range: readonly [number, number], step: number, set: (v: number | null) => void): HTMLInputElement => {
         const i = document.createElement('input');
@@ -3059,18 +3075,44 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         return i;
       };
       // (one row each: its name, its box, its unit, its ↺)
-      const row = (label: string | HTMLElement, input: HTMLInputElement, unit: string, clear: () => void, action: string) => {
+      const row = (label: string | HTMLElement, input: HTMLInputElement, unit: string, clear: () => void, action: string, cleared = 'nothing typed: her baby counter\'s, or with no count the chart\'s') => {
         const l = typeof label === 'string' ? Object.assign(document.createElement('span'), { textContent: label }) : label;
         const reset = btn('↺', action, clear);
-        reset.title = 'nothing typed: the chart\'s'; reset.style.padding = '2px 8px'; reset.style.fontSize = '12px';
+        reset.title = cleared; reset.style.padding = '2px 8px'; reset.style.fontSize = '12px';
         buttons[action] = reset;
         wrap.append(l, input, Object.assign(document.createElement('span'), { textContent: unit }), reset);
       };
+      // her counter first: the pregnancies she has had, by what each was -- each adds its own amount to her belly, so it
+      // says what the blank boxes under it hold (all none: her first baby). Three small boxes in one row, each named
+      // under it; its ↺ is no count at all (her numbers the chart's own, as a character from before the counter has).
+      {
+        const cell = document.createElement('div');
+        cell.style.cssText = 'grid-column:2 / 4;display:flex;gap:5px;justify-content:flex-end';
+        for (const kind of BIRTH_KINDS) {
+          const col = document.createElement('label');
+          col.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:1px;font-size:9px;letter-spacing:.03em;opacity:.85';
+          const i = box(`${SARAH_LAB_FIELD.pregnancyBirths}${kind}`, PREGNANCY_RANGE.births, 1, (v) => setPregnancy(typeBirths(pregnancy, kind, v)));
+          i.style.width = '42px'; i.title = `the pregnancies of ${kind === 'single' ? 'one baby' : kind} she has had before this one`;
+          col.append(i, kind);
+          cell.appendChild(col);
+        }
+        const action = `${SARAH_LAB_ACTION.pregnancyClear}births`, reset = btn('↺', action, () => setPregnancy(typeBirths(pregnancy, null, null)));
+        reset.title = 'no count: her numbers are the chart\'s own'; reset.style.padding = '2px 8px'; reset.style.fontSize = '12px';
+        buttons[action] = reset;
+        wrap.append(Object.assign(document.createElement('span'), { textContent: 'BABY COUNTER' }), cell, reset);
+      }
+      row('START BELLY', box(SARAH_LAB_FIELD.pregnancyFirst, PREGNANCY_RANGE.bump, 1, (v) => setPregnancy({ ...pregnancy, firstWeekBump: v })), '%', () => setPregnancy({ ...pregnancy, firstWeekBump: null }), `${SARAH_LAB_ACTION.pregnancyClear}first`);
+      row('BIGGEST BELLY', box(SARAH_LAB_FIELD.pregnancyDelivery, PREGNANCY_RANGE.size, 1, (v) => setPregnancy({ ...pregnancy, deliveryBump: v })), '%', () => setPregnancy({ ...pregnancy, deliveryBump: null }), `${SARAH_LAB_ACTION.pregnancyClear}delivery`);
+      row('… AT WEEK', box(SARAH_LAB_FIELD.pregnancyDeliveryWeek, PREGNANCY_RANGE.deliveryWeek, 0.1, (v) => setPregnancy({ ...pregnancy, deliveryWeek: v })), 'wk', () => setPregnancy({ ...pregnancy, deliveryWeek: null }), `${SARAH_LAB_ACTION.pregnancyClear}deliveryWeek`, 'nothing typed: a game picks her week');
+      row('END BELLY (AFTER)', box(SARAH_LAB_FIELD.pregnancyAfter, PREGNANCY_RANGE.bump, 1, (v) => setPregnancy({ ...pregnancy, afterBump: v })), '%', () => setPregnancy({ ...pregnancy, afterBump: null }), `${SARAH_LAB_ACTION.pregnancyClear}after`);
+      // her numbers in force, in one line
+      const numbers = document.createElement('div');
+      numbers.dataset.field = SARAH_LAB_FIELD.pregnancyNumbers; fields[SARAH_LAB_FIELD.pregnancyNumbers] = numbers;
+      numbers.style.cssText = 'grid-column:1 / -1;font-size:10px;opacity:.9;line-height:1.35';
+      wrap.appendChild(numbers);
+      // and under the three, the extra: an exact week for the belly she has now ("Keep it optional, but still there")
       weekLabel = document.createElement('span');
-      row(weekLabel, box(SARAH_LAB_FIELD.pregnancyWeek, PREGNANCY_RANGE.week, 0.1, (v) => setPregnancy(typeWeek(pregnancy, v, bump))), 'wk', () => setPregnancy(typeWeek(pregnancy, null, bump)), `${SARAH_LAB_ACTION.pregnancyClear}week`);
-      row('WEEK 1 BELLY', box(SARAH_LAB_FIELD.pregnancyFirst, PREGNANCY_RANGE.bump, 1, (v) => setPregnancy({ ...pregnancy, firstWeekBump: v })), '%', () => setPregnancy({ ...pregnancy, firstWeekBump: null }), `${SARAH_LAB_ACTION.pregnancyClear}first`);
-      row('DELIVERY BELLY', box(SARAH_LAB_FIELD.pregnancyDelivery, PREGNANCY_RANGE.bump, 1, (v) => setPregnancy({ ...pregnancy, deliveryBump: v })), '%', () => setPregnancy({ ...pregnancy, deliveryBump: null }), `${SARAH_LAB_ACTION.pregnancyClear}delivery`);
-      row('DELIVERY WEEK', box(SARAH_LAB_FIELD.pregnancyDeliveryWeek, PREGNANCY_RANGE.deliveryWeek, 0.1, (v) => setPregnancy({ ...pregnancy, deliveryWeek: v })), 'wk', () => setPregnancy({ ...pregnancy, deliveryWeek: null }), `${SARAH_LAB_ACTION.pregnancyClear}deliveryWeek`);
+      row(weekLabel, box(SARAH_LAB_FIELD.pregnancyWeek, PREGNANCY_RANGE.week, 0.1, (v) => setPregnancy(typeWeek(pregnancy, v, sized()))), 'wk', () => setPregnancy(typeWeek(pregnancy, null, sized())), `${SARAH_LAB_ACTION.pregnancyClear}week`, 'nothing typed: off her chart');
       const line = document.createElement('div');
       line.dataset.field = SARAH_LAB_FIELD.pregnancyLine; fields[SARAH_LAB_FIELD.pregnancyLine] = line;
       line.style.cssText = 'grid-column:1 / -1;font-size:10px;opacity:.8;line-height:1.35';
@@ -4570,7 +4612,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const toe = f.state.legs.map((leg) => { const e = leg.ball >= 0 ? child(leg.ball) : -1; return e >= 0 ? at(e) : leg.ball >= 0 ? at(leg.ball) : at(leg.ankle); }) as unknown as [P3, P3];
     const heel = ankle.map((a, k) => [a[0] - (toe[k][0] - a[0]) * 0.3, a[1] - 0.08, a[2] - (toe[k][2] - a[2]) * 0.3] as P3) as unknown as [P3, P3];
     const hipL = at(j.hipL), hipR = at(j.hipR), mid: P3 = [(hipL[0] + hipR[0]) / 2, (hipL[1] + hipR[1]) / 2, (hipL[2] + hipR[2]) / 2];
-    const week = pregnant() ? herWeek(bump, babyCount, pregnancy) : 0, kg = wombKg(week), place = wombPlace(week);
+    const week = pregnant() ? herWeek(sized(), babyCount, pregnancy) : 0, kg = wombKg(week), place = wombPlace(week);
     // (the womb's weight where her baby's womb is, once it is laid out in her; till then where a womb that size sits)
     const womb: P3 = babyWomb && babyHolder ? (() => { const c = babyHolder.localToWorld(babyWomb.centre.clone()); return [c.x / M, c.y / M, c.z / M] as P3; })() : [mid[0], mid[1] + place.up, mid[2] + place.forward];
     const body: BodyPoints = {
@@ -5852,7 +5894,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** One step of her breath and her heart; her skin's move and her lungs and heart laid by them. */
   function stepBreath(dt: number): void {
-    const weeks = pregnant() ? herWeek(bump, babyCount, pregnancy) : 0;
+    const weeks = pregnant() ? herWeek(sized(), babyCount, pregnancy) : 0;
     const intensity = activity === 'auto' ? (pose === 'walk' ? ACTIVITY.walk : ACTIVITY.rest) : ACTIVITY[activity];
     const now = (vitalsNow = stepVitals(vitals, dt, intensity, { weeks }));
     const B = jiggle.breath.value;
@@ -5913,7 +5955,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // pelvis in labour counts as dropped all the way), a contraction -- and once her baby is born, by what her womb left
     // (NAVEL AFTER BIRTH); a spring carries it there, a little past and back
     const born = allOut(birthNow);
-    if (!born) { navelPress = navelPressure(pregnant() ? herWeek(bump, babyCount, pregnancy) : 0, babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1, baby && birthNow ? { low: baby.low + 0.7 * birthNow.engage, forward: baby.forward } : baby, birthNow?.contraction ?? 0); navelPeak = birthNow ? Math.max(navelPeak, navelPress) : navelPress; navelBornFor = 0; }
+    if (!born) { navelPress = navelPressure(pregnant() ? herWeek(sized(), babyCount, pregnancy) : 0, babyRoot ? carriedShare(onChart(), body.babyWeight, babyCount) : 1, baby && birthNow ? { low: baby.low + 0.7 * birthNow.engage, forward: baby.forward } : baby, birthNow?.contraction ?? 0); navelPeak = birthNow ? Math.max(navelPeak, navelPress) : navelPress; navelBornFor = 0; }
     else { navelBornFor += dt; navelPress = navelAfterBirth(body.navelAfter, navelPeak, navelBornFor); }
     if (!navelSpring.primed) { navelSpring.x = navelPress; navelSpring.primed = true; }
     { const w = 2 * Math.PI * 1.4, steps = Math.max(1, Math.ceil(dt / 0.01)), h = dt / steps;
@@ -6219,7 +6261,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     balloonWombKey = key;
     // (and, settling, held further inside her than her skin, as a womb shrinking back is: not right under her belly)
     if (settled) for (let i = 0; i < skin.length; i += 3) skin[i + 2] -= BIRTH_WOMB_IN * (1 - birthBellyShare) / BIRTH_SHRINK;
-    try { const w = wombFromSkin(skin, weekForBump(onChart(bump * birthBellyShare), babyCount)); vulva.setWomb(w, bone); roomForV2Womb(w); } catch (error) { console.error('[sarahlab] her womb for the balloon could not be laid', error); vulva.setWomb(null); roomForV2Womb(null); }
+    try { const w = wombFromSkin(skin, weekForBump(onChart(sized() * birthBellyShare), babyCount)); vulva.setWomb(w, bone); roomForV2Womb(w); } catch (error) { console.error('[sarahlab] her womb for the balloon could not be laid', error); vulva.setWomb(null); roomForV2Womb(null); }
   }
   /** v2: her organs make room for her own womb as it was just laid (sarahlab/wombRoom.ts); nothing of her womb changes. */
   function roomForV2Womb(w: WombShape | null): void {
@@ -8392,7 +8434,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // her pelvic organs follow her pelvis as soft bodies (v3, on her skeleton), her womb grown for HER WEEKS
       if (organs) {
         // (v2: her womb is her body's own -- none is grown here)
-        const wk = organsGrowWomb && pregnant() ? herWeek(bump, babyCount, pregnancy) : null;
+        const wk = organsGrowWomb && pregnant() ? herWeek(sized(), babyCount, pregnancy) : null;
         organs.setPregnancy(wk, wk === null ? [] : Array.from({ length: babyCount }, () => babySize(wk, body.babyWeight, babyCount).g));
         // (v2: her doors open as her own skin's opening does -- BIRTH OPENING, her pose's, a birth's)
         if (!organsGrowWomb && vulva && doorsOpening()) {

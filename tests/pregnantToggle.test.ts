@@ -3,7 +3,9 @@
  * tied to pregnancy on/off... add a text box you can type in the exact week to the % if you have an exact week for that
  * %. Also... the 1st week of pregnancy %, and the delivery week %... then the game can use those numbers later".
  *
- * PREGNANT is on or off and sets no week; with nothing typed her chart is the chart exactly; a week typed for a belly %
+ * PREGNANT is on or off and sets no week; with nothing typed and nothing counted -- a character from before her baby
+ * counter, `PREGNANCY_DEFAULT`; with a count it is the rule's, tests/pregnancyRule.test.ts -- her chart is the chart
+ * exactly; a week typed for a belly %
  * is the week there, her first week's and her delivery's bellies move the chart's ends, and what was not typed gives way
  * to what was; it is all kept per character in her save (two with the same body, one pregnant and one not, each read
  * back as she was), and a save from before -- PREGNANT as her `pregnancyWeeks` body control -- is read as it meant.
@@ -89,7 +91,8 @@ describe('her weeks as typed and as saved', () => {
   it('a record read from a file is brought into range; a week without its belly % is no week', () => {
     expect(readPregnancy(null)).toEqual(PREGNANCY_DEFAULT);
     expect(readPregnancy({ pregnant: false, week: 30 })).toEqual(typed({ pregnant: false }));
-    expect(readPregnancy({ week: 99, weekAtBump: 500, firstWeekBump: -3, deliveryWeek: 5 })).toEqual(typed({ week: 42, weekAtBump: 200, firstWeekBump: 0, deliveryWeek: 13 }));
+    // (the belly a week is typed for is a SIZE: her slider's 200% and what carries over into her Depth, 215% -- pregnancy.ts `bellySize`)
+    expect(readPregnancy({ week: 99, weekAtBump: 500, firstWeekBump: -3, deliveryWeek: 5 })).toEqual(typed({ week: 42, weekAtBump: 215, firstWeekBump: 0, deliveryWeek: 13 }));
   });
   it('two characters with the same body, one pregnant with her weeks typed and one not, are saved and read back each as she was', () => {
     const shape = serializeShape({ ...defaultBodyShape(), bellyWidth: 4 }), clothes = null as unknown as SavedClothes;

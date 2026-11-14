@@ -179,7 +179,7 @@ export const SARAH_LAB_ACTION = Object.freeze({
   bounce: 'sarahlab:bounce',
   /** PREGNANT on or off (P5): on or off and nothing else -- her weeks are typed, each its own box (pregnancy.ts) */
   pregnant: 'sarahlab:pregnant',
-  /** `${pregnancyClear}week` / `first` / `delivery` / `deliveryWeek`: one of HER WEEKS back to nothing typed (the chart's) */
+  /** `${pregnancyClear}week` / `first` / `delivery` / `deliveryWeek` / `after` / `births`: one of HER PREGNANCY's boxes back to nothing typed (her baby counter's, or with no count the chart's) */
   pregnancyClear: 'sarahlab:pregnancy-clear-',
   /** SEE BABY: her baby in her womb, her body seen through (baby.ts) */
   baby: 'sarahlab:baby',
@@ -271,12 +271,17 @@ export const SARAH_LAB_FIELD = Object.freeze({
   /** `${birth}<control>`: a BIRTH control's line (holdCm, firmness, headPush); its slider follows it */
   birth: 'sarahlab-birth-',
   bump: 'sarahlab-bump',
-  /** HER WEEKS (pregnancy.ts), each a box that may be left blank: the exact week for her belly %, her belly % at week 1,
-   * at delivery, and the delivery week; and the line under them (the week her belly stands for, and from what) */
+  /** HER PREGNANCY (pregnancy.ts), each a box that may be left blank: her baby counter (`${pregnancyBirths}single` /
+   * `twins` / `triplets`: how many pregnancies of each she has had), her START (her belly % at week 1), her BIGGEST (at
+   * delivery) and its week, her END (after the birth), and the exact week for her belly %; and the lines under them: her
+   * numbers in force, and the week her belly stands for and from what */
+  pregnancyBirths: 'sarahlab-pregnancy-births-',
   pregnancyWeek: 'sarahlab-pregnancy-week',
   pregnancyFirst: 'sarahlab-pregnancy-first',
   pregnancyDelivery: 'sarahlab-pregnancy-delivery',
   pregnancyDeliveryWeek: 'sarahlab-pregnancy-delivery-week',
+  pregnancyAfter: 'sarahlab-pregnancy-after',
+  pregnancyNumbers: 'sarahlab-pregnancy-numbers',
   pregnancyLine: 'sarahlab-pregnancy-line',
   fingers: 'sarahlab-fingers',
   /** her birth opening (vulvaMesh.ts): closed to the full 10 cm, for looking at it in the room */
@@ -1042,12 +1047,17 @@ export function birthBulgeLine(percent: number, cmAtFull = 5): string {
   return `BIRTH BULGE ${p}% · ${((p / 100) * cmAtFull).toFixed(1)} cm out`;
 }
 
-export function bumpLine(bumpPercent: number): string {
+/**
+ * The belly slider's line. `fullTerm` is her belly % at full term: her BIGGEST as it is in force (baby.ts `herChart`) --
+ * the chart's 100% for one baby with no baby count, 120% for a first baby by the rule, more with twins -- so "past full
+ * term" is past HERS (2026-11-13: with her BIGGEST at 120% the line said "past full term" beside "her week now 40").
+ */
+export function bumpLine(bumpPercent: number, fullTerm = 100): string {
   const p = Math.round(Math.min(BUMP_MAX_PERCENT, Math.max(0, bumpPercent)));
   const breasts = ` · bust volume target ${breastVolumeRatio(p).toFixed(2)}×`;
   if (p === 100) return `BUMP 100% · as modelled${breasts}`;
   if (p === 0) return `BUMP 0% · nearly flat${breasts}`;
-  return (p > 100 ? `BUMP ${p}% · past full term` : `BUMP ${p}%`) + breasts;
+  return (p > Math.round(Number.isFinite(fullTerm) ? fullTerm : 100) ? `BUMP ${p}% · past full term` : `BUMP ${p}%`) + breasts;
 }
 
 /**
