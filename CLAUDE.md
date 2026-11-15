@@ -254,25 +254,59 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   same way. MEASURED after, in the room, her belly at 0%: her cups cover her at MILK 50, at MILK 100, and at MILK 100
   with SIZE +100; as the room opens her and at SIZE +100 alone she is as she was.
 - Her body file's tee and swimsuit, off the menu, are not named there: they have not been read in the room with it.
-- FOUND 2026-11-14, NOT YET FIXED, the same pictures:
-  - AT HIGH MILK HER TOP'S STRINGS RUN IN CORNERS, and each cup's edge by her arm in waves. One of her shapes moves her
-    skin's SHAPE and SLIDES her skin's points along her skin, each of her triangles by its own amount (her slip,
-    `skinSlip.ts`); nobody sees the slide on her skin or on a cup lying on it, and a string, a line across her, turns a
-    corner where it passes from one of her triangles to the next. MEASURED on the room's files at MILK 100, her belly
-    at 0% (the roughest of her milk's shapes): a neck string turned 50 degrees more sharply than at rest over 9 mm of
-    it, the string between her cups 20 (it spans the air, and the place of her nearest it changes sides), the cord
-    round a cup 44; a cord's rings, 1.5 mm apart, stepped up to 2.6 mm from one to the next. At her 100% and 200%
-    bellies' milk: 18 and 23 degrees.
-  - A FIRST TRY AT IT, NOT KEPT: each cord's move evened along the cord, and each cup's edge with its cord. Her
-    strings and edges ran smooth; and at SIZE +100 with MILK 100 a chip of her skin stood through a cup's edge. A cup
-    lies half a millimetre off her, and it covers her because it and her skin under it are moved BY THE SAME NUMBERS:
-    whatever is slid along her skin by other numbers is under her skin as soon as another of her shapes turns it. So a
-    panel, and the cord sewn round it, are never to be slid along her apart from her skin.
-  - AT HER BIGGEST BELLY HER TOP'S CORNERS SHOW SLIVERS OF HER SKIN, WITH NO MILK IN IT: at 200%, SIZE and MILK at 0,
-    at the inner lower corner and the lower edge of her right cup and at the top corner of her left, where its neck
-    string stands a little off it (and the same with SIZE +100, and with MILK 100).
-- After anything changes which garments are given her shapes, or how: `tests/garmentShapeTransfer.test.ts`; then the
-  room: her top as the room opens her, at MILK 50 and 100, at SIZE +100, and with both, from her front and her side.
+- **Her top's strings are evened along themselves** (`cordEvening.ts`; `GarmentShapeTransfer.syncSet`, her top's twelve
+  parts bound as ONE garment; a fault found in the pictures of the one above). One of her shapes moves her skin's SHAPE
+  and SLIDES her skin's points along her skin, each of her triangles by its own amount (her slip, `skinSlip.ts`);
+  nobody sees the slide on her skin or on a cup lying on it, and a string, a line across her, turns a corner where it
+  passes from one of her triangles to the next -- and a string that spans the air (her neck strings stand up to 15 mm
+  off her, the string between her cups 7) has no one place of her under it: the nearest changes sides from one of its
+  rings to the next. MEASURED on the room's files at MILK 100, her belly at 0% (the roughest of her milk's shapes): a
+  neck string turned 50 degrees more sharply than at rest over 9 mm of it, the string between her cups 20; a string's
+  rings, 1.5 mm apart, stepped up to 2.1 mm from one to the next. So, for a STRING (a cord point 6 mm or more from every
+  panel):
+  - its move is the mean of the cords' moves round each point, weighed by a bell that is nothing `reachM` (18 mm) away;
+  - a point lying on her (within 1.5 mm at rest) keeps its own share OUT FROM her skin, takes the evened share ALONG
+    it, and is lifted off her by up to 0.4 of how far that slides it (what else shapes her turns her skin under it); a
+    point that spans the air (4 mm off her or more) takes all of the evened move;
+  - it eases to her skin's own numbers over its last 6 mm to a panel, so its end stays on the cord it is tied to.
+  MEASURED after, the same files: no string turns more than 12.7 degrees more sharply than at rest (a neck string,
+  where the top of her breast rises under it) or steps its rings more than 1.2 mm; none is moved more than 2.7 mm from
+  where her skin alone put it; of its points lying on her none is under her skin, and none is nearer her than it was
+  by more than 0.04 mm (lifted 0.42 at the most). At her 100% and 200% bellies' milk: 7.8 and 5.1 degrees (her skin
+  alone: 17.8 and 16.3). In the room: her neck strings run as lines at MILK 100, and with SIZE +100 as well. The
+  evening is built once (under 0.1 s on the build machine) and costs about 10 ms a shape after.
+  `CORD_EVENING` is GAME TUNING: `reachM` is the one to turn (MEASURED, the same files: at 9 mm a neck string is left
+  23 degrees sharper than at rest, at 12 mm 18, at 18 mm 12.7, at 27 mm 11.6 -- and moved 3.4 mm from her skin's
+  place).
+- **A PANEL, AND THE CORD SEWN ROUND IT, ARE NEVER SLID ALONG HER APART FROM HER SKIN.** A cup lies half a millimetre off
+  her, and it covers her because it and her skin under it are moved BY THE SAME NUMBERS. A first build evened each
+  cord and each cup's edge with it: edges and strings ran smooth, and at SIZE +100 with MILK 100 a chip of her skin
+  stood through a cup's edge (MEASURED in the room, 2026-11-14) -- a slide along her skin as she rests is under her
+  skin as soon as another of her shapes turns it. So her cups and the cord round each (a cord point within 2 mm of a
+  panel: all of those two cords' points are within 1.63) are exactly as her skin alone has them, and
+  `tests/bikiniTopMilk.test.ts` holds them to it.
+- NOT FIXED, AND WHY: at MILK 100 each cup's EDGE by her arm runs in small waves, and its top corner in a notch (the
+  cord round a cup turned 44 degrees more sharply than at rest, its rings stepped 2.6 mm). It is her milk's own
+  slide, and by the rule above it can not be taken off her top alone. The cure is at its source: her milk's shapes
+  baked again with an even slide (the same shapes; her skin's points sliding along her evenly), which is a change to
+  a shape he approved -- TO BE ASKED OF HIM, with before and after. Tried offline on her skin's points (each taking
+  the mean of its neighbours' slides, eight times over): the cord round a cup 9 degrees, a neck string 8, with nothing
+  evened on the garment at all; but some of her skin's points then slide a centimetre from where they do now, and a
+  slide along her skin AT REST is not along it once her milk has turned it -- it has to be laid along her FILLED
+  skin, which is a bake.
+- FOUND 2026-11-14, NOT YET FIXED: AT HER BIGGEST BELLY HER TOP'S CORNERS SHOW SLIVERS OF HER SKIN, AND HER NECK
+  STRINGS' FEET SINK INTO HER, WITH NO MILK IN IT. At 200%, SIZE and MILK at 0: at the inner lower corner and the
+  lower edge of her right cup and at the top corner of her left. THE CAUSE, MEASURED on the room's files: her skin's
+  SMOOTHINGS are laid on her body from a file of their own as well (`shape:chest:`, her cleavage's; `shape:sides:`;
+  `shape:zeroRefine`), and her top has none of them. Under her top's points at 200% her cleavage's smoothing moves
+  her skin up to 9.0 mm, 2.4 mm out from her at her left cup's top corner and 2.8 under a neck string's foot; her
+  sides' 2.0 mm out under her cups' lower edges and 4.4 under the string round her back (at 100%: 2.2 and 4.5; at 0%
+  her cleavage's 0.3 under her cups). They can not simply be given to her top as her milk is: they are relaxations of
+  her skin that slide it up to 9.5 mm, and offline her top's strings rode that into zigzags (the string round her
+  back turned up to 72 degrees over 9 mm of it, 17 at rest, its rings stepped 6 mm apart).
+- After anything changes which garments are given her shapes, how, or the evening: `tests/garmentShapeTransfer.test.ts`,
+  `tests/cordEvening.test.ts`, `tests/bikiniTopMilk.test.ts`; then the room: her top as the room opens her, at MILK
+  50 and 100, at SIZE +100, and with both, from her front and her side and close on her strings.
 
 ## Her opening's area and her skin round it
 

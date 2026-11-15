@@ -2362,13 +2362,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!b || !source) return;
     const wanted = new Set([...source.fields.fields.keys()].filter((n) => !!weights[n] && (n.startsWith('shape:baby:') || n.startsWith('shape:milk:'))));
     if (!wanted.size) return;
-    // (the recovered clothes, and her body file's own garments that have none of these: her bikini top -- `followsHerShapes`)
+    const targets = shaped.filter((s) => s.mesh !== b.mesh && (s.mesh.userData.recoveredShirt || s.mesh.userData.recoveredLeggings));
+    // her body file's own garments that have none of these (her bikini top, `followsHerShapes`): all of its parts as ONE
+    // garment, so that its strings are evened along themselves (`cordEvening.ts`)
     const materialName = (mesh: THREE.Mesh) => (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material)?.name ?? '';
-    const targets = shaped.filter((s) => s.mesh !== b.mesh && (s.mesh.userData.recoveredShirt || s.mesh.userData.recoveredLeggings || followsHerShapes(materialName(s.mesh))));
-    if (!targets.length) return;
+    const own = shaped.filter((s) => s.mesh !== b.mesh && followsHerShapes(materialName(s.mesh)));
+    if (!targets.length && !own.length) return;
     let transfer = garmentTransfers.get(b.mesh);
     if (!transfer) { transfer = new GarmentShapeTransfer(b.mesh, source.fields); garmentTransfers.set(b.mesh, transfer); }
-    for (const target of targets) target.fields = transfer.sync(target.mesh, target.fields, source.fields, (name) => wanted.has(name)).fields;
+    const follow = (name: string) => wanted.has(name);
+    for (const target of targets) target.fields = transfer.sync(target.mesh, target.fields, source.fields, follow).fields;
+    if (own.length) transfer.syncSet(own.map((s) => ({ mesh: s.mesh, fields: s.fields, cord: s.mesh.userData.cord === true })), source.fields, follow).fields.forEach((fields, i) => { own[i].fields = fields; });
   }
 
   function applyLook(): void {
@@ -8039,6 +8043,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (`bikiniTrim`, the fabric editor's TRIM); her cups, the only sheets of it, its fabric
               bikiniTrim ??= Object.assign(m.material.clone(), { name: 'bikiniTrim' });
               m.material = bikiniTrim;
+              // (and a string is evened along itself when it takes one of her skin's shapes: `followMissingGarmentFields`)
+              m.userData.cord = true;
             }
           }
         });
