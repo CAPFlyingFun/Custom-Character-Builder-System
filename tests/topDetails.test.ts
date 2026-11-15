@@ -231,13 +231,24 @@ describe('a top\'s details in the shader', () => {
   it('a layer with no detail compiles to exactly the program it does without details (MEASURED: its text\'s hash, 2026-11-15, an outline\'s armscye in it)', () => {
     // (2026-11-14, before an outline's armscye was read from the cut's picture: a5541172… her skin's, b570892d… a sheet's;
     // with the armscye and before the program said `fabricRest` is there to read, for her face's layer: 7cdec1ff… and 57ffa7a5…)
-    expect(compiled(true, 3, null).hash).toBe('4dcfa78a5c769f5a5ce7217e204d42fd7b70837693ba898baa43ea340c6742bb');
+    // (and before each of a cut's edges was antialiased by its own slope: 4dcfa78a… her skin's; a sheet has one edge)
+    expect(compiled(true, 3, null).hash).toBe('d27c39a7f2a0a6e578c9784be1fc4421e59e42d249322d50634017b83018fbe2');
     expect(compiled(false, 1, null).hash).toBe('23dfa6e159cd254884d1852047ae2e642124986f2897f0fb78a91f375d85a07e');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
     // shoulder joints -- and rounds the corner between it and her front's and back's (topCut.ts `armscyeAt`, `smoothMax`);
     // a sheet across her front (her cleavage bridge) reads her front's drawing alone, as before
     const skin = compiled(true, 3, null), sheet = compiled(false, 1, null);
+    // EACH OF A CUT'S EDGES IS ANTIALIASED BY ITS OWN SLOPE on her skin, and the layer is there where both have it: the
+    // edge function draws its line a pixel wide by the slope of what it is given, and the nearer of the two distances
+    // has a slope of some twenty ranges a pixel where a sleeveless top's bare arm comes in across the row of triangles
+    // that joins her arm to her trunk (MEASURED 2026-11-15 in the room, the tank: a dotted hairline down each shoulder)
+    for (const i of [0, 1, 2]) {
+      expect(skin.fragmentShader).toContain(`fe${i} = min(fabricEdge(0.5 + fn / (2.0 * fabricCutDepth.w)), fabricEdge(0.5 + fl / (2.0 * fabricCutDepth.w)));`);
+      expect(skin.fragmentShader).toContain(`float fk = (fe${i} < 0.0 ? fabricEdge(fm${i}) : fe${i}) * `);
+    }
+    expect(skin.fragmentShader).not.toMatch(/float fk = fabricEdge\(fm\d\) \* /);
+    expect(sheet.fragmentShader).not.toContain('fe0');
     expect(skin.fragmentShader).toContain('vec2(fabricCutLimb.x + place.z * fabricCutLimb.w - fabricCutSide.x, place.y)');
     expect(skin.fragmentShader).toContain('neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;');
     expect(sheet.fragmentShader).not.toContain('fabricCutSide.x');

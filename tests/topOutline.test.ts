@@ -343,6 +343,35 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     expect(armscyeAt(tank, frame.mid + 0.125, frame.neckY - 0.2, -0.12)!).toBeGreaterThan(0.015);
   });
 
+  it('on her own skin, nothing of a sleeveless top is on the row of triangles that joins her arm to her trunk', async () => {
+    // that row runs round her shoulder and through her armpit: outside every strap, and above every armhole's foot.
+    // Each of its triangles sampled all over, its place and its share of her arm blended as the shader blends them.
+    // (MEASURED 2026-11-15 in the room, the tank: a dotted hairline down the front of each shoulder along that row.
+    // It was not this -- nothing here was ever covered -- but the edge's antialiasing, which the shader does and this
+    // can not: `fabricMaterial.ts`, each edge by its own slope, `tests/topDetails.test.ts`)
+    const body = await loadBody(), P = body.rest, A = body.armShare, I = body.index;
+    const row: number[] = [];
+    for (let t = 0; t + 2 < I.length; t += 3) { const s = [A[I[t]], A[I[t + 1]], A[I[t + 2]]]; if (Math.max(...s) >= 0.5 && Math.min(...s) < 0.5) row.push(t); }
+    expect(row.length).toBeGreaterThan(200);
+    const N = 12;
+    for (const kind of ['tank', 'sportsBra', 'camisole', 'mockNeck'] as const) {
+      const cut = outlineOn(kind);
+      let covered = 0, deepest = 0, samples = 0;
+      for (const t of row) {
+        const [a, b, c] = [I[t], I[t + 1], I[t + 2]];
+        for (let i = 0; i <= N; i++) for (let j = 0; j <= N - i; j++) {
+          const u = i / N, v = j / N, w = 1 - u - v;
+          const at = (k: number) => P[a * 3 + k] * u + P[b * 3 + k] * v + P[c * 3 + k] * w;
+          const d = cutAt(cut, at(0), at(1), at(2), A[a] * u + A[b] * v + A[c] * w);
+          samples++;
+          if (d > 0) { covered++; deepest = Math.max(deepest, d); }
+        }
+      }
+      expect(samples).toBeGreaterThan(10000);
+      expect(covered, `${kind}: ${covered} of ${samples} samples covered, up to ${(deepest * 1000).toFixed(1)} mm inside`).toBe(0);
+    }
+  });
+
   it('a camisole\'s armscye begins at its peak, wherever its top edge is set', () => {
     for (const neckFront of [OUTLINE_NECK.camisole, OUTLINE_NECK.camisole - 0.04, OUTLINE_NECK.camisole - 0.08]) {
       const cut = topCut(topCutSpec({ ...t('camisole'), neckFront, top: 'camisole' }, frame, -0.06), frame), O = cut.spec.outline!, S = O.side;

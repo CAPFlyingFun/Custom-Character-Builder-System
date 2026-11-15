@@ -250,11 +250,20 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           // by the same slip-free place: `FabricLayer.field`)
           // (a top's cut: the layer ends where its drawings, its sleeves' ends and its hem say, at this pixel's own
           // rest place: `FabricLayer.cut`)
+          // (EACH OF A CUT'S EDGES IS ANTIALIASED BY ITS OWN SLOPE, and the layer is there where both have it. A
+          // sleeveless top has her arm's skin bare by a distance of a metre and more, which comes in across the one row
+          // of her triangles that joins her arm to her trunk: taken as one distance, the nearer of the two, its slope
+          // there was some twenty ranges a pixel, and the edge function -- which draws a line a pixel wide by that
+          // slope -- put a third of the cloth on the first pixel of it, on skin both edges have bare. MEASURED
+          // 2026-11-15 in the room, the tank: a dotted hairline in the top's shade down the front of each shoulder,
+          // stepped as her triangles are)
           ? `float fm${i} = fabricFieldOn${i} > 0.5 ? fabricFieldValue + 0.5 - fabricFieldLevel${i} : vFabricMask[${i}];
+        float fe${i} = -1.0;
         if (fabricCutOn${i} > 0.5) {${cutLine(i, false)}
           fm${i} = 0.5 + fd / (2.0 * fabricCutDepth.w);
+          fe${i} = min(fabricEdge(0.5 + fn / (2.0 * fabricCutDepth.w)), fabricEdge(0.5 + fl / (2.0 * fabricCutDepth.w)));
         }
-        float fk = fabricEdge(fm${i}) * (1.0 - pow(1.0 - fabricOpacity${i}, 2.2)) * (1.0 - fabricEdge(vFabricAux.x) * step(abs(fabricHangLayer - ${i}.0), 0.5)) * (1.0 - fabricEdge(vFabricAux.y) * step(abs(fabricUnderLayer - ${i}.0), 0.5));\n        diffuseColor.rgb = mix(diffuseColor.rgb, fc, fk);`
+        float fk = (fe${i} < 0.0 ? fabricEdge(fm${i}) : fe${i}) * (1.0 - pow(1.0 - fabricOpacity${i}, 2.2)) * (1.0 - fabricEdge(vFabricAux.x) * step(abs(fabricHangLayer - ${i}.0), 0.5)) * (1.0 - fabricEdge(vFabricAux.y) * step(abs(fabricUnderLayer - ${i}.0), 0.5));\n        diffuseColor.rgb = mix(diffuseColor.rgb, fc, fk);`
           : cut
             // a sheet in a top's fabric (her cleavage bridge): it ends at the cut's rim as her skin's paint does, and
             // is there only inside it
