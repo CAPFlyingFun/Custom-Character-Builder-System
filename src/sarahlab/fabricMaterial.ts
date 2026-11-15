@@ -18,6 +18,7 @@
  */
 import * as THREE from 'three';
 import type { ShapeFields } from '../view/bodyShapeView';
+import { DETAIL_LOOK, DETAIL_PACK, topDetailGlsl } from './topDetails';
 
 export interface FabricLayer {
   /** The swatch, tiled (MirroredRepeatWrapping). Null switches the layer off. */
@@ -55,8 +56,13 @@ export interface FabricLayer {
    * 2026-11-14: "for the collars and sleeve bands, are those colors also adjustable? So for example can pick a solid
    * pink shirt with solid red color edging"): `colour` in linear light, laid on the layer's own knit -- each pixel's
    * light over the fabric's average, whose inverse is `knit` -- or flat, with `knit` 0.
+   * `detail`: what is drawn on the cloth inside the cut (`topDetails.ts`: a collar, a placket and its buttons, a raglan's
+   * sleeves in the edging colour, a wrap's crossing, a pocket), its pack (`TopDetailSpec.pack`). A second-colour region
+   * and a button of the edging's tone take the edging colour as a band does; with no edging chosen, the fabric
+   * `DETAIL_LOOK.fallback` as dark. A material is given the detail's code the first time one of its layers has a detail
+   * (it is compiled again once); until then its program is exactly as it was.
    */
-  readonly cut?: { readonly band: readonly [number, number, number]; readonly shade: number; readonly edging?: { readonly colour: readonly [number, number, number]; readonly knit: number } | null } | null;
+  readonly cut?: { readonly band: readonly [number, number, number]; readonly shade: number; readonly edging?: { readonly colour: readonly [number, number, number]; readonly knit: number } | null; readonly detail?: { readonly pack: ArrayLike<number> } | null } | null;
 }
 
 /**
@@ -79,7 +85,7 @@ export interface FabricCut {
   readonly seam: readonly [number, number];
 }
 
-interface Patched { readonly uniforms: Record<string, THREE.IUniform>; readonly layers: number; readonly masked: boolean; readonly cut: boolean }
+interface Patched { readonly uniforms: Record<string, THREE.IUniform>; readonly layers: number; readonly masked: boolean; readonly cut: boolean; details: boolean }
 const patched = new WeakMap<THREE.Material, Patched>();
 /**
  * What her skin carries beside its paint, one attribute for the three (a vertex shader has sixteen attributes on many
@@ -195,11 +201,23 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             else fc *= 1.0 - fabricCutBand${i}.w * fi;
             fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fa, abs(${d} - ${b})));
           }`;
+    // a top's DETAILS for layer i (topDetails.ts `detailOf`, formula for formula): drawn on its cloth after its bands --
+    // the edging's colour (or the fabric darker) where it says, a button's tone, then its shade. Only in a program
+    // compiled with details (`Patched.details`): without, not a character of the program changes
+    const edgeColour = (i: number) => `(fabricCutEdge${i}.w >= 0.0 ? fabricCutEdge${i}.rgb * (fabricCutEdge${i}.w > 0.0 ? clamp(dot(fc, vec3(0.2126, 0.7152, 0.0722)) * fabricCutEdge${i}.w, 0.45, 1.75) : 1.0) : fc * ${DETAIL_LOOK.fallback})`;
+    const detailLine = (i: number) => entry.details ? `
+          if (fabricTopDetOn${i} > 0.5) {
+            vec3 ft = fabricTopDetail(fabricTopDet${i}, fabricDetPlace.x, fabricDetPlace.y, fabricDetPlace.z, 1.0 - fabricCutValue.z, fn, fabricCutBand${i}.x, fabricDetPlace.w, fabricDetFacing);
+            vec3 fe = ${edgeColour(i)};
+            fc = mix(fc, fe, ft.y);
+            fc = mix(fc, fabricTopDet${i}[6].w < 0.0 ? fe : vec3(fabricTopDet${i}[6].w), ft.z);
+            fc *= ft.x;
+          }` : '';
     const cutLine = (i: number, neckOnly: boolean) => `
           float fn = fabricCutValue.x;${band('fn', `fabricCutBand${i}.x`, i)}
           ${neckOnly ? 'float fd = fn;' : `float fl = fabricCutValue.y;
           float fbl = mix(fabricCutBand${i}.z, fabricCutBand${i}.y, fabricCutValue.z);${band('fl', 'fbl', i)}
-          float fd = min(fn, fl);`}`;
+          float fd = min(fn, fl);`}${detailLine(i)}`;
     const sample = (i: number) => `
       if (fabricOn${i} > 0.5) {
         vec3 fq = ${masked ? `(vFabricPos + vFabricSlip * fabricFieldOn${i})` : 'vFabricPos'} / fabricTile${i};
@@ -264,6 +282,18 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           vec4 c = texture2D(fabricCutMap, (vFabricPos.xy + vFabricSlip.xy - fabricCutRect.xy) * fabricCutRect.zw);
           return vec3((c.r * 255.0 - 127.5) / 127.5 * fabricCutDepth.w, 0.0, 0.0);
         }`] : []),
+      // a top's details: their code, and where a pixel is for them -- out from her middle, its height, how much it is
+      // on her front (as fabricCutAt blends her two drawings; a sheet across her front: all), half a pixel
+      ...(cut && entry.details ? [topDetailGlsl(), ...idx.flatMap((i) => [`uniform float fabricTopDetOn${i};`, `uniform vec4 fabricTopDet${i}[${DETAIL_PACK / 4}];`]),
+        masked ? `vec4 fabricDetailPlace() {
+          vec3 place = vFabricPos + vFabricSlip;
+          vec4 c = texture2D(fabricCutMap, (place.xy - fabricCutRect.xy) * fabricCutRect.zw);
+          float front = smoothstep(-fabricCutDepth.z, fabricCutDepth.z, place.z * fabricCutLimb.w - (fabricCutDepth.x + c.b * fabricCutDepth.y));
+          return vec4(place.x - fabricCutLimb.x, place.y, front, max(length(fwidth(place.xy)), 1e-7) * 0.75);
+        }` : `vec4 fabricDetailPlace() {
+          vec2 place = vFabricPos.xy + vFabricSlip.xy;
+          return vec4(place.x - fabricCutLimb.x, place.y, 1.0, max(length(fwidth(place)), 1e-7) * 0.75);
+        }`] : []),
       ...idx.flatMap((i) => [`uniform float fabricOn${i};`, `uniform sampler2D fabricMap${i};`, `uniform float fabricTile${i};`, `uniform float fabricOpacity${i};`, `uniform float fabricRough${i};`]),
       shader.fragmentShader,
     ].join('\n').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, fabricRoughness, fabricMatte);')
@@ -278,15 +308,17 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       fw /= max(fw.x + fw.y + fw.z, 1e-5);
       ${masked ? `float fabricFieldValue = ${idx.map((i) => `fabricFieldOn${i}`).join(' + ')} > 0.5 ? fabricFieldAt() : 0.0;` : ''}
       ${cut ? `bool fabricCutWorn = ${idx.map((i) => `fabricCutOn${i}`).join(' + ')} > 0.5;
-      vec3 fabricCutValue = fabricCutWorn ? fabricCutAt() : vec3(0.0);${masked ? '' : '\n      float fabricCover = 0.0;'}` : ''}
+      vec3 fabricCutValue = fabricCutWorn ? fabricCutAt() : vec3(0.0);${masked ? '' : '\n      float fabricCover = 0.0;'}${entry.details ? `
+      vec4 fabricDetPlace = fabricCutWorn ? fabricDetailPlace() : vec4(0.0);
+      float fabricDetFacing = normalize(vFabricNrm).z * fabricCutLimb.w;` : ''}` : ''}
       ${idx.map(sample).join('\n')}
       ${cut && !masked ? 'if (fabricCutWorn) { if (fabricCover < 0.004) discard; diffuseColor.a *= fabricCover; }' : ''}
       ${masked ? 'if (fabricShowRegions > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vFabricTint.rgb, 0.78 * vFabricTint.a);' : ''}
     }`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v16`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v16${entry.details ? '-detail' : ''}`; };
   material.needsUpdate = true;
-  const entry = { uniforms, layers, masked, cut };
+  const entry: Patched = { uniforms, layers, masked, cut, details: false };
   patched.set(material, entry);
   return entry;
 }
@@ -310,6 +342,12 @@ export function setFabricLayer(mesh: THREE.Mesh, material: THREE.Material, index
       const e = c.edging ?? null;
       (uniforms[`fabricCutEdge${index}`].value as THREE.Vector4).set(e ? e.colour[0] : 0, e ? e.colour[1] : 0, e ? e.colour[2] : 0, e ? Math.max(0, e.knit) : -1);
     }
+    const d = c?.detail ?? null;
+    if (d) withDetails(material);
+    if (patched.get(material)?.details) {
+      uniforms[`fabricTopDetOn${index}`].value = d ? 1 : 0;
+      if (d) (uniforms[`fabricTopDet${index}`].value as THREE.Vector4[]).forEach((v, k) => v.set(d.pack[k * 4], d.pack[k * 4 + 1], d.pack[k * 4 + 2], d.pack[k * 4 + 3]));
+    }
   }
   // a designed garment's field
   const field = masked && on ? layer?.field ?? null : null;
@@ -330,6 +368,18 @@ export function setFabricLayer(mesh: THREE.Mesh, material: THREE.Material, index
     const m = material as THREE.MeshStandardMaterial;
     if (m.transparent !== seeThrough) { m.transparent = seeThrough; m.depthWrite = true; m.needsUpdate = true; }
   }
+}
+
+/** A material that reads a top's cut given its details' code and uniforms, once: it compiles again. */
+function withDetails(material: THREE.Material): void {
+  const p = patched.get(material);
+  if (!p?.cut || p.details) return;
+  p.details = true;
+  for (let i = 0; i < p.layers; i++) {
+    p.uniforms[`fabricTopDetOn${i}`] = { value: 0 };
+    p.uniforms[`fabricTopDet${i}`] = { value: Array.from({ length: DETAIL_PACK / 4 }, () => new THREE.Vector4()) };
+  }
+  material.needsUpdate = true;
 }
 
 /**
