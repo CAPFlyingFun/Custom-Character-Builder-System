@@ -248,19 +248,19 @@ export interface TopCutSpec {
  * - `strapIn`, `strapOut`: a strap's inner and outer edge out from her middle where they cross her shoulders' ridge, the
  *   same numbers front and back (a strap is `strapOut - strapIn` wide over her shoulder). Both drawings carry each
  *   edge straight up from her ridge, as a neck opening's side points are.
- * - `armX`, `armDrop`, `frontDrop`: the armholes' feet, out from her middle and under the base of her neck, her back's
- *   and her front's; each armhole runs from the strap's outer edge on her ridge, straight down at first, round to level
- *   at its foot (no corner at either end), and on out level round her side.
+ * - `armX`, `armDrop`: her back's armhole's foot, out from her middle and under the base of her neck; it runs from the
+ *   strap's outer edge on her ridge, straight down at first, round to level at its foot (no corner at either end), and
+ *   on out level round her side. Her front's is one sweep of its own, the same for every outline (`FRONT_ARM`,
+ *   `FRONT_FOOT`).
  *   MEASURED 2026-11-14 on her rest skin (`armShare`, the row of her triangles that joins her arm's skin to her trunk's):
  *   that row crosses her ridge 15.8 cm out from her middle; down her front it is 13 to 14 cm out from 5 to 11 cm under
  *   her neck joint (her armpit's apex in front, 12 cm under it); down her back 11.3 to 13 cm out, as low as 17 cm under
  *   it. Under her arm her trunk is 12.1 to 12.4 cm out from 18 to 21 cm under it. So every armhole is out of that row:
- *   in FRONT straight down and out from the strap's outer edge toward her armpit and round under it (`FRONT_ARM`) to
- *   level `frontDrop` (12.8 cm) under, covering all of her bust (a bust of another size grows under the line: a cut is looked
- *   up about her frame); BEHIND in to `BACK_ARM` and out to level `armDrop` (18.3 cm) under. Each foot runs on out
- *   past her side, and under her arm the two are blended over `OUTLINE_SIDE_BLEND` of depth: one slope down her side
- *   from the front's foot to the back's. A tank's strap's outer edge is 10.6 cm out. `tests/topOutline.test.ts` holds every point of that row 5 mm or more inside
- *   the armhole, for every outline.
+ *   in FRONT one sweep from the strap's outer edge round the side of her bust to level under her arm (`FRONT_ARM`,
+ *   14.0 cm under); BEHIND in to `BACK_ARM` and out to level `armDrop` (18.3 cm) under. Each foot runs on out past her
+ *   side, and under her arm the two are blended over `OUTLINE_SIDE_BLEND` of depth: one slope down her side from the
+ *   front's foot to the back's. A tank's strap's outer edge is 10.6 cm out. `tests/topOutline.test.ts` holds every
+ *   point of that row 5 mm or more inside the armhole, for every outline.
  * - `neck`: the front's neck opening between the straps, a `NECK_STYLES` curve whose side points are the straps'
  *   inner edges; its depth is the NECKLINE slider's. `back`: how the back is cut between them -- 'scoop' to `backDrop`
  *   under her neck joint; 'racer', its neck opening to `backDrop` and the straps' outer edges curving in to one panel
@@ -274,10 +274,10 @@ export interface TopCutSpec {
  *   6.2 cm stands 2 cm up the side of her neck and higher at its front (the base of her neck is lower there).
  */
 export const TOP_OUTLINES = Object.freeze({
-  tank: Object.freeze({ strapIn: 0.07, strapOut: 0.106, armX: 0.15, armDrop: 0.183, frontDrop: 0.128, neck: 'scoop' as NeckStyle, front: 'neck', back: 'scoop', backDrop: 0.07, depth: 0.11 }),
-  sportsBra: Object.freeze({ strapIn: 0.074, strapOut: 0.11, armX: 0.15, armDrop: 0.183, frontDrop: 0.128, neck: 'scoop' as NeckStyle, front: 'neck', back: 'racer', backDrop: 0.055, racerX: 0.03, racerDrop: 0.14, depth: 0.12 }),
-  camisole: Object.freeze({ strapIn: 0.088, strapOut: 0.096, armX: 0.15, armDrop: 0.183, frontDrop: 0.128, neck: 'scoop' as NeckStyle, front: 'straight', back: 'straight', sag: 0.01, corner: 0.012, depth: 0.1 }),
-  mockNeck: Object.freeze({ strapIn: 0.1, strapOut: 0.1, armX: 0.15, armDrop: 0.183, frontDrop: 0.128, neck: 'crew' as NeckStyle, front: 'collar', back: 'collar', collar: 0.062, corner: 0.01, depth: 0 }),
+  tank: Object.freeze({ strapIn: 0.07, strapOut: 0.106, armX: 0.15, armDrop: 0.183, neck: 'scoop' as NeckStyle, front: 'neck', back: 'scoop', backDrop: 0.07, depth: 0.11 }),
+  sportsBra: Object.freeze({ strapIn: 0.074, strapOut: 0.11, armX: 0.15, armDrop: 0.183, neck: 'scoop' as NeckStyle, front: 'neck', back: 'racer', backDrop: 0.055, racerX: 0.03, racerDrop: 0.14, depth: 0.12 }),
+  camisole: Object.freeze({ strapIn: 0.088, strapOut: 0.096, armX: 0.15, armDrop: 0.183, neck: 'scoop' as NeckStyle, front: 'straight', back: 'straight', sag: 0.01, corner: 0.012, depth: 0.1 }),
+  mockNeck: Object.freeze({ strapIn: 0.1, strapOut: 0.1, armX: 0.15, armDrop: 0.183, neck: 'crew' as NeckStyle, front: 'collar', back: 'collar', collar: 0.062, corner: 0.01, depth: 0 }),
 });
 export type TopOutlineKind = keyof typeof TOP_OUTLINES;
 /** The drawn tops that are not a tee's neck opening, sleeves and level hem alone: the outlines, and the boxy crop tee (a crew tee with a hem of its own). */
@@ -331,7 +331,7 @@ function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Pa
     bands: { neck: (p.band?.neck ?? OUTLINE_BANDS.neck) * U, sleeve: 0, hem: (p.band?.hem ?? OUTLINE_BANDS.hem) * U },
     sideBlend: OUTLINE_SIDE_BLEND * U,
     outline: {
-      kind, strapIn: half, strapOut: O.strapOut * U, armX: O.armX * U, armY: frame.neckY - O.armDrop * U, frontY: frame.neckY - O.frontDrop * U,
+      kind, strapIn: half, strapOut: O.strapOut * U, armX: O.armX * U, armY: frame.neckY - O.armDrop * U, frontY: frame.neckY - FRONT_FOOT * U,
       front: O.front as TopOutlineSpec['front'], back: O.back as TopOutlineSpec['back'],
       backY: frame.neckY - n('backDrop'), racerX: n('racerX'), racerY: frame.neckY - n('racerDrop'), sag: n('sag'), corner: n('corner'), collarY: frame.neckY + n('collar'),
     },
@@ -340,10 +340,10 @@ function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Pa
 /**
  * GAME TUNING (metres): how far either side of her middle depth an outline's two drawings are blended. Each drawing keeps
  * its distances only to `TOP_CUT.range` (3 cm), and between feet more than two ranges apart both are held there, so the
- * blend crosses zero at its own middle whatever the height: a vertical step down her side. With the feet 5.5 cm apart
- * (12.8 and 18.3 cm under her neck joint: under two ranges) and blended 4 cm either side, the edge runs down her side
+ * blend crosses zero at its own middle whatever the height: a vertical step down her side. With the feet 4.3 cm apart
+ * (14.0 and 18.3 cm under her neck joint: under two ranges) and blended 4 cm either side, the edge runs down her side
  * as one slope (MEASURED along her side's skin, `tests/topOutline.test.ts`: no turn over 30 degrees in 3 mm; with the
- * feet 4.8 cm apart it fell about 4 cm over 4.4 cm of depth, and at 5.5 it is steeper; at a blend of 2.5 cm the slope
+ * feet 4.8 cm apart it fell about 4 cm over 4.4 cm of depth, and at 5.5 it was steeper; at a blend of 2.5 cm the slope
  * was 4.5 cm over 1.6). A wider gap between the feet wants a wider `TOP_CUT.range` (the shader's).
  */
 export const OUTLINE_SIDE_BLEND = 0.04;
@@ -508,17 +508,16 @@ export function outlinePath(spec: TopCutSpec, frame: TopFrame, front: boolean): 
   } else if (how === 'straight') {
     // a camisole's front: from the strap's foot on its top edge, straight down and out to the front's turn under her
     // armpit, and out level; an edge set at or below the foot runs straight out level
-    const y = spec.dipY, xe = CAMI_FALL.to * U, r = O.corner;
-    if (y - foot > 0.008 * U) {
-      // the strap's outer edge comes down to a PEAK a little over the top edge, and from there the bodice's edge runs
-      // straight down and out over her bust to the front's foot, round into it, and out level
-      const peak: P2 = [xo, Math.min(y + CAMI_FALL.rise * U, to - 0.004 * U)];
-      half.push(...fillet([xo, to], peak, [xe, foot], r * 0.75, step), ...fillet(peak, [xe, foot], [O.armX, foot], FRONT_ARM.turn * U, step), [O.armX, foot]);
-    } else half.push(...fillet([xo, to], [xo, foot], [O.armX, foot], r, step), [O.armX, foot]);
+    const y = spec.dipY, r = O.corner;
+    // the strap's outer edge comes down to a PEAK a little over the top edge, and from there the bodice's edge runs
+    // straight to the front armhole's sweep and round it (`frontSweep`); an edge set at or below the sweep's foot
+    // runs straight out level
+    const peak: P2 = [xo, Math.min(y + CAMI_FALL.rise * U, to - 0.004 * U)], sweep = y - O.frontY > 0.008 * U ? frontSweep(peak, frame, step) : null;
+    if (sweep) half.push(...fillet([xo, to], peak, sweep[0], r * 0.75, step), ...sweep);
+    else half.push(...fillet([xo, to], [xo, foot], [O.armX, foot], r, step), [O.armX, foot]);
   } else {
-    // in front from the strap's outer edge straight down and out toward her armpit (`FRONT_ARM`), round a tight turn
-    // under it, and out level at its foot
-    half.push(...fillet([xo, to], [FRONT_ARM.x * U, foot], [O.armX, foot], FRONT_ARM.turn * U, step), [O.armX, foot]);
+    // in front from the strap's outer edge down, and round the side of her bust in one sweep to level under her arm
+    half.push(...frontSweep([xo, to], frame, step)!);
   }
   const mid = frame.mid, out: P2[] = [[frame.x0 - TOP_CUT.range * U * 4, foot]];
   for (let k = half.length - 1; k >= 1; k--) out.push([mid - half[k][0], half[k][1]]);
@@ -528,30 +527,61 @@ export function outlinePath(spec: TopCutSpec, frame: TopFrame, front: boolean): 
   return out;
 }
 /**
- * A FRONT ARMHOLE (Joshua's 06: its edge runs from the strap out toward her armpit). MEASURED 2026-11-14 on her rest
- * skin: her breast's outer side lies at her armpit's own height, her front 12.6 cm wide at 10 cm under her neck joint
- * and 13.7 at 14; her arm's skin joins her front 13 to 14 cm out from 5 to 11 cm under, its apex 12.4 to 12.6 cm out 12
- * cm under. So from the strap's outer edge on her ridge the line runs straight down and out to `x` at the front's foot
- * (`TOP_OUTLINES.frontDrop`, 12.8 cm under), turns there round `turn` and runs out level: 5 mm or more inside that row all
- * the way, and all of her bust below it covered. GAME TUNING (metres).
- * THE FOOT WAS FIRST 13.5 cm UNDER: her areolas' upper outer rims reach 11.9 cm out 13 cm under her neck joint
- * (MEASURED by her skin's own picture, `CAMI_FALL`), and at 13.5 a trace of her right one showed in the armhole's
- * corner on this file's bust. At 12.8 it is under the foot's line; a tighter turn than 12 mm there (8, 9 mm) turned
- * over 30 degrees in 3 mm, on the path or seen from her side (`tests/topOutline.test.ts`).
+ * A FRONT ARMHOLE IS ONE SWEEP ROUND THE SIDE OF HER BUST (Joshua, 2026-11-14, of the tank pictured with its edge run
+ * straight down from the strap, turned round 12 mm and run out level under her arm: "make the side a smoother curve…
+ * it looks like it changes shape in the curve… like these two images… round the sides of the breasts";
+ * `docs/reference/tops/tank-armhole-*.jpg`). From where it starts -- a strap's outer edge on her ridge, a mock neck's
+ * cut-in point, a camisole's peak -- the edge runs STRAIGHT to an arc of `radius` and round it until it is level: no
+ * corner and no level run before her side, one curve whose turn begins over her bust and ends under her arm.
+ *
+ * WHERE THE ARC LIES is the one place it can: it passes `gate` (out from her middle, under her neck joint) going down
+ * and out at 45 degrees. MEASURED 2026-11-14 on her rest skin: her arm's skin joins her front 13 to 14 cm out from 5
+ * to 11 cm under her neck joint, and that row's apex -- her armpit, in front -- is 12.4 to 12.6 cm out 12 cm under;
+ * by her skin's own picture each areola lies 8.5 to 11.9 cm out and 11.7 to 15.1 cm under (its middle 10.3 out, 13.1
+ * under) -- LEVEL WITH HER ARMPIT, a little over a centimetre from it. The edge has to leave her arm's skin bare (or
+ * its line is that row's ragged one) and her areola covered, so it goes between the two: with the gate 12.75 cm out
+ * and 12.25 under, the nearest point of that row is 6.0 mm inside the opening and the least covered point of an areola
+ * 6.1 mm inside the line (5.9 a camisole's; `tests/topOutline.test.ts` holds both over 5). At 12.05 cm out her areola
+ * had 1 mm; at 12.9 the row had 4.8. Her bust runs from 8 to 18 cm under, so everything of it below the sweep is
+ * covered and its upper outer corner by her armpit is not, as a tank's leaves it. (A bust of another size grows
+ * under the line: a cut is looked up about her frame.) The radius is GAME TUNING (4.5 cm read tighter than his
+ * pictures); the gate is where her body leaves room.
+ *
+ * BEFORE, the same day: a quarter ellipse to a foot 20.5 cm under (the outer third of each breast bare); then straight
+ * to 11.8 cm out, a 12 mm turn and level 13.5 and then 12.8 cm under (her bust covered, and the kink he saw).
  */
-export const FRONT_ARM = Object.freeze({ x: 0.118, turn: 0.012 });
+export const FRONT_ARM = Object.freeze({ gate: Object.freeze([0.1275, 0.1225] as const), radius: 0.06 });
+/** How far under her neck joint the front armhole's sweep is level (metres): its foot, out to her side and past it. */
+export const FRONT_FOOT = FRONT_ARM.gate[1] + FRONT_ARM.radius * (1 - Math.SQRT1_2);
+/**
+ * The front armhole's sweep from `start` (out from her middle, height; her units): the arc's tangent point and the
+ * points round it to where it is level, `step` apart -- `start` itself is not among them, and the straight run from it
+ * to the first is the caller's. Null when `start` is too low to reach the arc going its way.
+ */
+function frontSweep(start: P2, frame: TopFrame, step: number): P2[] | null {
+  const U = frame.unitsPerMetre, R = FRONT_ARM.radius * U;
+  // (through the gate at 45 degrees: its centre is R from the gate, square to that, up and out)
+  const cx = FRONT_ARM.gate[0] * U + R * Math.SQRT1_2, cy = frame.neckY - FRONT_ARM.gate[1] * U + R * Math.SQRT1_2;
+  const dx = start[0] - cx, dy = start[1] - cy, d = Math.hypot(dx, dy);
+  if (!(d > R * 1.001)) return null;
+  // the arc is gone round from its left (heading down) to its foot (heading out): the tangent from `start` that meets
+  // it going that way touches it this far round, measured as an angle from +x
+  let a = Math.atan2(dy, dx);
+  if (a < 0) a += 2 * Math.PI;
+  const from = a + Math.acos(R / d), to = 1.5 * Math.PI;
+  if (!(from < to - 0.05)) return null;
+  const n = Math.max(8, Math.ceil((R * (to - from)) / step)), out: P2[] = [];
+  for (let j = 0; j <= n; j++) { const f = from + ((to - from) * j) / n; out.push([cx + R * Math.cos(f), cy + R * Math.sin(f)]); }
+  return out;
+}
 /**
  * A CAMISOLE's bodice outside its strap (his 13: its straps meet it at two peaks, and its edge runs from each down to
  * her underarm): the strap's outer edge comes down to a peak `rise` over the top edge, and from there the edge runs
- * straight down and out to the front foot's level `to` out from her middle. MEASURED 2026-11-14 on her rest skin by
- * her skin's own picture: each areola lies 8.5 to 11.9 cm out from her middle and 11.7 to 15.1 cm under her neck
- * joint (its middle 10.3 out, 13.1 under) -- level with her armpit's apex, 12.4 to 12.6 cm out 12 cm under. Run
- * from the strap's foot ON the top edge to the front's turn (11.8 cm out), the edge crossed the upper outer rim of
- * her right areola: a sliver of it showed. From the peak to here it passes 3 mm or more over that rim all the way
- * and 5.6 mm inside her armpit's apex (at the NECKLINE it starts with; a higher one brings it nearer her arm's
- * skin, 3.7 mm at 6 cm under her neck joint). GAME TUNING (metres).
+ * straight to the front armhole's sweep and round it (`FRONT_ARM`). Run from the strap's foot ON the top edge, it
+ * crossed the upper outer rim of her right areola (a sliver of it showed); from the peak it passes over it. GAME
+ * TUNING (metres).
  */
-export const CAMI_FALL = Object.freeze({ to: 0.1228, rise: 0.012 });
+export const CAMI_FALL = Object.freeze({ rise: 0.012 });
 /**
  * Behind, an armhole comes in to `x` out from her middle `drop` under her neck joint before it goes out to its foot:
  * the row joining her arm's skin to her back is 11.3 to 12.1 cm out from 15 to 17.3 cm under it (MEASURED, `TOP_OUTLINES`).

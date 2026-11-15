@@ -163,6 +163,13 @@ export const LINES = Object.freeze({
   neckU: 0.76, neckV: 0.72,
   /** under her bust (her map's underbust is 0.6), and the band of a bra or bandeau behind */
   underbust: 0.56, bandBack: 0.56, bandTopBack: 0.7, bandeauTop: 0.82,
+  /**
+   * a sports bra's hem, a little under that (his 07's wide band lies under her bust, clear of its armholes). MEASURED
+   * 2026-11-14 on her rest skin: at 0.56 its 35 mm band's top is 19.6 cm under her neck joint and the bound edge of its
+   * back armhole's foot ends 19.3 under -- two bands 3 mm apart round her side, read as one stepped band. At 0.53 there
+   * is 2 cm of its cloth between them
+   */
+  hemSportsBra: 0.53,
   /** where an armhole's bottom sits, a little above her underarm */
   armhole: 0.8,
   /** a bandeau's top edge under her arms, below its height over the cups */
@@ -453,7 +460,7 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['crop', 'Crop top', 'Shirts', upper(LINES.hemCrop, LINES.hemCrop - 0.04, LINES.neckScoop, 0.25)],
   ['maternity', 'Maternity T-shirt', 'Shirts', upper(LINES.hemMaternity, LINES.hemHip + 0.06, LINES.neckCrew, 0.32)],
   // (his 07: a scoop between wide straps, a racerback, a wide band under her bust; drawn, `TOP_OUTLINES.sportsBra`)
-  ['sportsBra', 'Sports bra', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, OUTLINE_NECK.sportsBra, -1, { strapIn: 0.85, strap: 0.65, neckBack: 0.86, armhole: LINES.armhole - 0.02, band: SPORTS_BRA_BANDS, top: 'sportsBra' }), 'sportsBra'],
+  ['sportsBra', 'Sports bra', 'Bras & bands', upper(LINES.hemSportsBra, LINES.bandBack, OUTLINE_NECK.sportsBra, -1, { strapIn: 0.85, strap: 0.65, neckBack: 0.86, armhole: LINES.armhole - 0.02, band: SPORTS_BRA_BANDS, top: 'sportsBra' }), 'sportsBra'],
   ['bandeau', 'Bandeau', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckCrew, -1, { topFront: LINES.bandeauTop, topSide: LINES.bandeauSide, topBack: LINES.bandTopBack })],
   ['bodysuitFull', 'Full bodysuit', 'Other', { ...upper(-1, -1, LINES.neckCrew, 1.0), ...FULL, legEnd: 1.0 }],
   // a leotard cut high, front and back (`ONE_PIECE_CUT`)

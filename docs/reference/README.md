@@ -13,3 +13,7 @@ picture with a visible watermark. Nothing here is drawn by the room or shipped t
   Out once Lena is a saved character in the room.
 - `tops/16-womens-tops.jpg` -- his sheet of sixteen tops (2026-11-14: "Hopefully these will help to get started and have
   more than our list"; `CLAUDE.md`, "A painted top, drawn"). Out once all sixteen are in the room.
+- `tops/tank-armhole-front.jpg`, `tops/tank-armhole-three-quarter.jpg` -- two tank tops (Joshua, 2026-11-14, of the
+  drawn tank's armhole: "make the side a smoother curve… it looks like it changes shape in the curve… like these two
+  images… round the sides of the breasts"): the armhole's edge is one curve from the strap round the side of the bust
+  (`topCut.ts` `FRONT_ARM`). Out once he has passed the tank in the room.
