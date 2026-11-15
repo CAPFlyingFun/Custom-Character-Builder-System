@@ -228,10 +228,22 @@ function compiled(masked: boolean, layers: number, detail: { pack: ArrayLike<num
 }
 
 describe('a top\'s details in the shader', () => {
-  it('a layer with no detail compiles to exactly the program it did before details (MEASURED: its text\'s hash, 2026-11-14)', () => {
-    expect(compiled(true, 3, null).hash).toBe('a5541172c7f44d31f6a38dc9d2f5e54ee2555ce8a0d95ab26bcf78a0c2dff792');
-    expect(compiled(false, 1, null).hash).toBe('b570892d6865830fb12b944a99ff813d35261e96ad91cd700354e15eeef7ec65');
+  it('a layer with no detail compiles to exactly the program it does without details (MEASURED: its text\'s hash, 2026-11-15, an outline\'s armscye in it)', () => {
+    // (2026-11-14, before an outline's armscye was read from the cut's picture: a5541172… her skin's, b570892d… a sheet's)
+    expect(compiled(true, 3, null).hash).toBe('7cdec1ff8168a972f37eb65b2f4bd1621cdb275705988ca20453c0edb84e9a3a');
+    expect(compiled(false, 1, null).hash).toBe('57ffa7a54c49f17600fd5a99a0651a7d6929a94bf8c5dadfd1426db00a72fcbc');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
+    // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
+    // shoulder joints -- and rounds the corner between it and her front's and back's (topCut.ts `armscyeAt`, `smoothMax`);
+    // a sheet across her front (her cleavage bridge) reads her front's drawing alone, as before
+    const skin = compiled(true, 3, null), sheet = compiled(false, 1, null);
+    expect(skin.fragmentShader).toContain('vec2(fabricCutLimb.x + place.z * fabricCutLimb.w - fabricCutSide.x, place.y)');
+    expect(skin.fragmentShader).toContain('neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;');
+    expect(sheet.fragmentShader).not.toContain('fabricCutSide.x');
+    // off until a cut with an armscye is laid: its rounding is 0, and a camisole's line is nowhere
+    expect((skin.uniforms.fabricCutSide.value as THREE.Vector4).toArray()).toEqual([0, 0, 1, 0]);
+    expect((skin.uniforms.fabricCutStart.value as THREE.Vector3).toArray()).toEqual([0, 1e9, 0]);
+    expect(skin.key).toContain('-v17');
   });
 
   it('a layer with one is given the detail\'s code, its uniforms and the table\'s own numbers', () => {

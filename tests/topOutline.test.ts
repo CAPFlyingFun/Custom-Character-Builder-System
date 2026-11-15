@@ -6,6 +6,8 @@
  * - over her shoulders the two drawings agree, as they do for a neck opening;
  * - a strap is its number wide over her shoulder, in both drawings;
  * - every armhole keeps off the row of her triangles that joins her arm's skin to her trunk's;
+ * - an armhole's side profile is his line (`ARMSCYES`): one C seen from her side, and on her skin one line from the strap
+ *   round the side of her bust to under her arm, seen from her front, her three-quarter and her side;
  * - the templates: which are drawn, their dials, and a look saved before today still opens.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -13,7 +15,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
-  FRONT_ARM, FRONT_FOOT, NECK_STYLES, TOP_OUTLINES, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, topCut, topCutSpec, topFrame,
+  ARMSCYE, ARMSCYES, CAMI_FALL, NECK_STYLES, TOP_OUTLINES, armscyeAt, armscyeGate, armscyePath, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, smoothMax, topCut, topCutSpec, topFrame,
   type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind,
 } from '../src/sarahlab/topCut';
 import { loadBody } from '../scripts/preview/body.mjs';
@@ -135,10 +137,10 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     expect(e.edge).toBe(2); expect(e.distance).toBeCloseTo(0.01, 6);
   });
 
-  it('MEASURED: under her arm the blended edge is one smooth line down her side, from the front\'s foot to the back\'s', () => {
+  it('MEASURED: under her arm the edge is one smooth line along her side, from the back\'s foot to the armscye\'s and up it', () => {
     // her left side seen square on from her left, her arm's skin left out: for each 1 mm of depth the outermost skin of
-    // her trunk at each height, and up it from under the feet the first place `cutAt` (the two drawings blended by
-    // depth, as the shader blends them) calls bare -- the edge as it lies on her side -- then that line in 3 mm steps
+    // her trunk at each height, and up it from under the feet the first place `cutAt` (the drawings as the shader reads
+    // them) calls bare -- the armhole's lower edge as it lies on her side -- then that line in 3 mm steps
     const cell = 0.001, z0 = -0.2, y0 = frame.neckY - 0.25, nz = 400, ny = 250, X = new Float32Array(nz * ny).fill(-1);
     for (let k = 0; k + 2 < index.length; k += 3) {
       const v = [index[k], index[k + 1], index[k + 2]];
@@ -158,7 +160,10 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
       const cut = outlineOn(kind), edge: [number, number][] = [];
       for (let i = 0; i < nz; i++) for (let j = 1; j < ny; j++) {
         const x = X[j * nz + i], z = z0 + i * cell;
-        if (x < 0.1 || !(cutAt(cut, x, y0 + j * cell, z, 0) < 0)) continue;
+        // (her SIDE: from 14 cm behind her rest frame's z = 0 forward. Behind that is her back, where the armhole runs in
+        // toward her spine -- a racer's panel leaves her bare from there out -- and the lowest bare skin at a depth is
+        // not the armhole's lower edge)
+        if (x < 0.1 || z < -0.14 || !(cutAt(cut, x, y0 + j * cell, z, 0) < 0)) continue;
         let lo = y0 + (j - 1) * cell, hi = y0 + j * cell;
         for (let it = 0; it < 20; it++) { const m = (lo + hi) / 2; if (cutAt(cut, x, m, z, 0) < 0) hi = m; else lo = m; }
         edge.push([z, hi]); break;
@@ -171,56 +176,190 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
         most = Math.max(most, (Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by))))) * 180) / Math.PI);
       }
       worst[kind] = +most.toFixed(1);
-      // it runs from the front's foot in front to the back's behind
-      expect(edge.length, kind).toBeGreaterThan(200);
-      // (its front end is on the front's sweep, which is still coming round to its foot as it passes her side: over the
-      // foot's level, and by no more than the sweep falls from her armpit's height to it)
-      expect(edge[edge.length - 1][1], kind).toBeGreaterThan(cut.spec.outline!.frontY - 0.004);
-      expect(edge[edge.length - 1][1], kind).toBeLessThan(cut.spec.outline!.frontY + 0.03);
+      // it runs from the back's foot behind, level under her arm at the armscye's foot, and up the armscye's front to
+      // its most forward point: its front end is there, well over the feet
+      // (MEASURED 2026-11-15: 123 mm of depth, the mock neck's, to 159, the camisole's)
+      expect(edge.length, kind).toBeGreaterThan(110);
+      const C = ARMSCYES[kind], fore = C.reduce((m, q) => (q[0] > m[0] ? q : m)), foot = C[C.length - 1][1];
+      expect(Math.abs(edge[edge.length - 1][1] - (frame.neckY - fore[1])), kind).toBeLessThan(0.02);
       expect(edge.some((q) => Math.abs(q[1] - cut.spec.outline!.armY) < 0.006), kind).toBe(true);
+      // (under her arm, 4 to 7 cm behind her rest frame's z = 0, it is level at the armscye's foot)
+      for (const q of edge) if (q[0] > -0.07 && q[0] < -0.04 - (kind === 'mockNeck' ? 0.02 : 0)) expect(Math.abs(q[1] - (frame.neckY - foot)), `${kind} at z ${q[0]}`).toBeLessThan(0.012);
     }
-    // MEASURED 2026-11-14, the front one sweep of 6 cm (`FRONT_ARM`) and the back's foot 18.3 cm under her neck joint:
-    // tank 29.3, sports bra 26.8, camisole 23.1, mock neck 23.4 degrees in 3 mm at the most. (The front straight to a
-    // 12 mm turn and a level foot 12.8 cm under: 16.0, 26.8, 22.7, 26.6; that foot 13.5 under: 28.6, 26.8, 17.1, 23.3)
-    for (const kind of KINDS) expect(worst[kind], kind).toBeLessThan(30);
+    // MEASURED 2026-11-15, each outline's own armscye (`ARMSCYES`) over a front limit and the back's foot 18.3 cm under
+    // her neck joint: tank 14.7, sports bra 10.6, camisole 7.9, mock neck 7.7 degrees in 3 mm at the most.
+    // (2026-11-14, the front one sweep of 6 cm to a foot 14 cm under, her back's skin among it: 29.3, 26.8, 23.1, 23.4)
+    for (const kind of KINDS) expect(worst[kind], kind).toBeLessThan(20);
   });
 
-  it('a front armhole is ONE SWEEP round the side of her bust: straight from where it starts to an arc, and round it to level', () => {
-    // (Joshua, 2026-11-14, of the tank with its edge run straight, turned round 12 mm and run level: "make the side a
-    // smoother curve… it looks like it changes shape in the curve… round the sides of the breasts")
-    const R = FRONT_ARM.radius, gx = FRONT_ARM.gate[0], gy = frame.neckY - FRONT_ARM.gate[1], cx = gx + R * Math.SQRT1_2, cy = gy + R * Math.SQRT1_2;
+  it('an armscye is his line: ONE C seen from her side, forward to one place and back from it, level at its foot', () => {
+    // (Joshua, 2026-11-14, his green line over each outline's picture from her side: "Update to the side profile… make it
+    // smoother…"; "basically, the side cutout profile matches the side profile of the breasts")
     for (const kind of KINDS) {
-      const cut = outlineOn(kind), O = cut.spec.outline!, path = outlinePath(cut.spec, frame, true).map((q) => [q[0] - frame.mid, q[1]] as const);
-      // her left's armhole: the path's points out from the strap and under her ridge, down to its foot
-      const arm = path.filter((q) => q[0] > O.strapOut + 0.0005 && q[1] < ridgeAt(frame, O.strapOut) - 0.002 && q[0] < cx + 1e-6);
-      expect(arm.length, kind).toBeGreaterThan(30);
-      // every one of them is ON THE ARC, or on the straight run to it (outside the arc's circle, and above its foot)
-      let onArc = 0;
-      for (const q of arm) {
-        const d = Math.hypot(q[0] - cx, q[1] - cy);
-        expect(d, `${kind} ${q}`).toBeGreaterThan(R - 1e-6);
-        if (d < R + 1e-5) onArc++;
-        expect(q[1], kind).toBeGreaterThan(cy - R - 1e-6);
+      const C = ARMSCYES[kind], k = C.reduce((m, q, i) => (q[0] > C[m][0] ? i : m), 0);
+      // forward all the way down to its most forward point, and back all the way from it: one bulge, no second
+      for (let i = 1; i <= k; i++) { expect(C[i][0], `${kind} ${i}`).toBeGreaterThanOrEqual(C[i - 1][0]); expect(C[i][1], `${kind} ${i}`).toBeGreaterThanOrEqual(C[i - 1][1]); }
+      for (let i = k + 1; i < C.length; i++) { expect(C[i][0], `${kind} ${i}`).toBeLessThanOrEqual(C[i - 1][0]); expect(C[i][1], `${kind} ${i}`).toBeGreaterThanOrEqual(C[i - 1][1]); }
+      // most forward beside her bust (9.5 to 13.5 cm under her neck joint), level at its foot under her arm
+      expect(C[k][1], kind).toBeGreaterThan(0.095); expect(C[k][1], kind).toBeLessThan(0.135);
+      expect(C[C.length - 1][1], kind).toBe(C[C.length - 2][1]);
+      expect(C[C.length - 1][1], kind).toBeCloseTo(0.179, 9);
+      // the line drawn through them turns smoothly: in 3 mm no more than a curve 1.2 cm round does, and never back on itself
+      const path = armscyePath(frame, C), p = [path[1]];
+      for (const q of path.slice(1, -1)) if (Math.hypot(q[0] - p[p.length - 1][0], q[1] - p[p.length - 1][1]) >= 0.003) p.push(q);
+      let most = 0;
+      for (let i = 1; i + 1 < p.length; i++) {
+        const ax = p[i][0] - p[i - 1][0], ay = p[i][1] - p[i - 1][1], bx = p[i + 1][0] - p[i][0], by = p[i + 1][1] - p[i][1];
+        most = Math.max(most, (Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by))))) * 180) / Math.PI);
       }
-      // the arc is gone round for most of a quarter turn (a mock neck's and a tank's from nearly straight down: 5 cm of it and more)
-      expect(onArc * 0.0015, kind).toBeGreaterThan(kind === 'camisole' ? 0.035 : 0.06);
-      // it passes the gate, and ends level at the foot, FRONT_FOOT under her neck joint
-      expect(Math.min(...arm.map((q) => Math.hypot(q[0] - gx, q[1] - gy))), kind).toBeLessThan(0.001);
-      expect(O.frontY).toBeCloseTo(frame.neckY - FRONT_FOOT, 9);
-      expect(Math.min(...arm.map((q) => q[1])), kind).toBeCloseTo(O.frontY, 5);
-      // and round it, in 3 mm the edge turns no more than an arc of that radius does (a 12 mm turn turned 14 degrees and
-      // more). (A camisole's edge leaves its strap round a turn of its own, at its peak, before its straight run.)
-      const round = arm.filter((q) => Math.hypot(q[0] - cx, q[1] - cy) < R + 1e-5), p = [round[0]];
-      for (const q of round) if (Math.hypot(q[0] - p[p.length - 1][0], q[1] - p[p.length - 1][1]) >= 0.003) p.push(q);
-      for (let k = 1; k + 1 < p.length; k++) {
-        const ax = p[k][0] - p[k - 1][0], ay = p[k][1] - p[k - 1][1], bx = p[k + 1][0] - p[k][0], by = p[k + 1][1] - p[k][1];
-        const turn = (Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by))))) * 180) / Math.PI;
-        expect(turn, `${kind} at ${k}`).toBeLessThan(6);
+      // (MEASURED 2026-11-15: tank 13.9, sports bra 13.5, mock neck 9.0; a camisole's 15.2, where it turns out of the
+      // line down from over its strap into its bodice's edge, at its peak)
+      expect(most, kind).toBeLessThan(kind === 'camisole' ? 18 : 15);
+      // it is carried by her frame: hung from her shoulder joints' depth and her neck joint's height
+      const cut = outlineOn(kind), S = cut.spec.outline!.side;
+      expect(S.z0).toBeCloseTo((frame.arms[0].from[2] + frame.arms[1].from[2]) / 2, 12);
+      expect(S.curve).toBe(C);
+    }
+    // each is his own line for that top: the mock neck's keeps closest to her arm, the camisole's stands furthest forward
+    const forward = (kind: TopOutlineKind) => Math.max(...ARMSCYES[kind].map((q) => q[0]));
+    expect(forward('mockNeck')).toBeLessThan(forward('sportsBra') - 0.015);
+    expect(forward('sportsBra')).toBeLessThan(forward('tank'));
+    expect(forward('tank')).toBeLessThan(forward('camisole'));
+  });
+
+  it('MEASURED: on her skin an armhole is ONE LINE from the strap round the side of her bust, seen from her front, her three-quarter and her side', () => {
+    // the edge by height: each level slice of her trunk's skin (her left side, her arm's left out), walked a quarter
+    // millimetre at a time, and where `cutAt` turns from cloth to bare furthest out on her front
+    const slice = (y: number) => {
+      const segs: number[][] = [];
+      for (let k = 0; k + 2 < index.length; k += 3) {
+        const v = [index[k], index[k + 1], index[k + 2]];
+        if (v.some((i) => arm[i] > 0.5 || rest[i * 3] - frame.mid < 0.08 || rest[i * 3 + 2] < -0.1)) continue;
+        const pts: number[][] = [];
+        for (let e = 0; e < 3; e++) { const a = v[e], b = v[(e + 1) % 3], ya = rest[a * 3 + 1], yb = rest[b * 3 + 1]; if ((ya - y) * (yb - y) < 0) { const f = (y - ya) / (yb - ya); pts.push([rest[a * 3] + (rest[b * 3] - rest[a * 3]) * f, rest[a * 3 + 2] + (rest[b * 3 + 2] - rest[a * 3 + 2]) * f]); } }
+        if (pts.length === 2) segs.push([pts[0][0], pts[0][1], pts[1][0], pts[1][1]]);
+      }
+      return segs;
+    };
+    const heights: number[] = [];
+    for (let d = 0.02; d <= 0.1501; d += 0.0025) heights.push(d);
+    const slices = heights.map((d) => slice(frame.neckY - d));
+    for (const kind of KINDS) {
+      const cut = outlineOn(kind), O = cut.spec.outline!, line: number[][] = [];
+      heights.forEach((d, h) => {
+        const y = frame.neckY - d;
+        let best: number[] | null = null;
+        for (const [ax, az, bx, bz] of slices[h]) {
+          const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 0.00025));
+          let px = ax, pz = az, pd = cutAt(cut, ax, y, az, 0);
+          for (let k = 1; k <= n; k++) {
+            const x = ax + ((bx - ax) * k) / n, z = az + ((bz - az) * k) / n, dd = cutAt(cut, x, y, z, 0);
+            if ((pd > 0) !== (dd > 0)) { const f = pd / (pd - dd), cx = px + (x - px) * f, cz = pz + (z - pz) * f; if (cx - frame.mid > 0.094 && cz > midDepthAt(frame, cx, y) - 0.005 && (!best || cx > best[0])) best = [cx, cz]; }
+            px = x; pz = z; pd = dd;
+          }
+        }
+        if (best) line.push([d, best[0] - frame.mid, best[1]]);
+      });
+      expect(line.length, kind).toBeGreaterThan(heights.length - 3);
+      // SEEN FROM HER SIDE it goes forward all the way down to its most forward point and back from there: one C. (With
+      // one C begun behind her skin under a limit 11.3 cm out, 2026-11-14, it ran up the first of her bust and turned)
+      const k = line.reduce((m, q, i) => (q[2] > line[m][2] ? i : m), 0);
+      for (let i = 1; i <= k; i++) expect(line[i][2] - line[i - 1][2], `${kind} from her side at ${(line[i][0] * 100).toFixed(2)} cm under`).toBeGreaterThan(-0.0003);
+      for (let i = k + 1; i < line.length; i++) expect(line[i][2] - line[i - 1][2], `${kind} from her side at ${(line[i][0] * 100).toFixed(2)} cm under`).toBeLessThan(0.0003);
+      // SEEN FROM HER FRONT it runs down her from the strap, never back toward her middle by more than half a millimetre,
+      // out round the side of her bust
+      for (let i = 1; i < line.length && line[i][0] < 0.135; i++) expect(line[i][1] - line[i - 1][1], `${kind} from her front at ${(line[i][0] * 100).toFixed(2)} cm under`).toBeGreaterThan(-0.0005);
+      expect(Math.max(...line.map((q) => q[1])), kind).toBeGreaterThan(0.125);
+      // it leaves the strap where the strap's outer edge is: within 3 mm of her front's limit down to 4.5 cm under her
+      // neck joint (a camisole's and a tank's the strap's own edge; a sports bra's and a mock neck's on their way to it)
+      const lo = Math.min(O.strapOut, O.limit), hi = Math.max(O.strapOut, O.limit);
+      for (const q of line) if (q[0] < 0.045) { expect(q[1], `${kind} at ${q[0]}`).toBeGreaterThan(lo - 0.0005); expect(q[1], `${kind} at ${q[0]}`).toBeLessThan(hi + 0.003); }
+      // and it turns smoothly in each view: over 4 mm of it, measured along it
+      const turns = ([['front', (q: number[]) => [q[1], -q[0]]], ['threeQuarter', (q: number[]) => [0.766 * q[1] - 0.643 * q[2], -q[0]]], ['side', (q: number[]) => [q[2], -q[0]]]] as const).map(([name, view]) => {
+        const pts = line.map(view), R: number[][] = [pts[0]];
+        let carry = 0;
+        for (let i = 1; i < pts.length; i++) { let a = pts[i - 1]; const b = pts[i]; let l = Math.hypot(b[0] - a[0], b[1] - a[1]); while (carry + l >= 0.001) { const f = (0.001 - carry) / l; a = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; R.push(a); l = Math.hypot(b[0] - a[0], b[1] - a[1]); carry = 0; } carry += l; }
+        let most = 0;
+        for (let i = 4; i + 4 < R.length; i++) { const ux = R[i][0] - R[i - 4][0], uy = R[i][1] - R[i - 4][1], vx = R[i + 4][0] - R[i][0], vy = R[i + 4][1] - R[i][1]; most = Math.max(most, Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)) * 180 / Math.PI); }
+        return [name, +most.toFixed(1)] as const;
+      });
+      // MEASURED 2026-11-15 (degrees in 4 mm at the most; front, three-quarter, side): tank 12.8, 15.3, 14.0 -- where her
+      // bust begins under the strap's edge, her skin's own turn -- sports bra 14.4, 15.8, 13.8; mock neck 9.1, 8.0, 7.5;
+      // camisole 21.6, 24.7 (its peak, where its edge leaves the strap) and 17.7. A corner is 90.
+      for (const [name, most] of turns) expect(most, `${kind} from her ${name}`).toBeLessThan(kind === 'camisole' ? 30 : 20);
+    }
+  }, 120_000);
+
+  it('the armscye comes in before her front\'s limit: no band is drawn along the limit where the armscye covers her past it', () => {
+    for (const kind of KINDS) {
+      const cut = outlineOn(kind), O = cut.spec.outline!, S = O.side, B = cut.spec.bands.neck, f = ARMSCYE.feather;
+      // in by more than a bound edge is wide before the limit, and (but a camisole's, whose strap is narrower than its
+      // bound edge) not until a bound edge's width past the strap's inner edge
+      expect(S.gate).toBe(armscyeGate(O.strapOut, B, O.limit, 1));
+      expect(S.gate + f).toBeLessThanOrEqual(O.limit - B - 0.003);
+      expect(S.gate).toBeLessThanOrEqual(O.strapOut);
+      if (kind !== 'camisole' && kind !== 'mockNeck') expect(S.gate - f).toBeGreaterThanOrEqual(O.strapIn + B + 0.002);
+      // on her skin: 1 to 9 mm inside the limit, beside her bust (12 to 14 cm under her neck joint), she is covered and
+      // further inside the cut than a band is wide. (MEASURED 2026-11-14 with the armscye in at the tank's strap's
+      // outer edge and its limit 11.3 cm out: 9 to 10 mm, a line of the band's shade down the front of each breast)
+      for (const under of [0.12, 0.13, 0.14]) for (const inside of [0.001, 0.005, 0.009]) for (const side of [1, -1]) {
+        const x = frame.mid + side * (O.limit - inside), y = frame.neckY - under;
+        let z = -Infinity;
+        for (let k = 0; k + 2 < index.length; k += 3) {
+          const a = index[k] * 3, b = index[k + 1] * 3, c = index[k + 2] * 3, den = (rest[b + 1] - rest[c + 1]) * (rest[a] - rest[c]) + (rest[c] - rest[b]) * (rest[a + 1] - rest[c + 1]);
+          if (Math.abs(den) < 1e-14) continue;
+          const w0 = ((rest[b + 1] - rest[c + 1]) * (x - rest[c]) + (rest[c] - rest[b]) * (y - rest[c + 1])) / den, w1 = ((rest[c + 1] - rest[a + 1]) * (x - rest[c]) + (rest[a] - rest[c]) * (y - rest[c + 1])) / den, w2 = 1 - w0 - w1;
+          if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+          z = Math.max(z, w0 * rest[a + 2] + w1 * rest[b + 2] + w2 * rest[c + 2]);
+        }
+        expect(z, `${kind} skin`).toBeGreaterThan(0);
+        expect(cutEdgeAt(cut, x, y, z, 0).distance, `${kind} ${under} ${inside} ${side}`).toBeGreaterThan(B + 0.002);
       }
     }
   });
 
-  it('MEASURED: her areolas are covered by every outline, and her arm\'s skin is clear of it: the sweep goes between them', async () => {
+  it('where two drawings\' edges cross, the corner between them is rounded, and nothing else is moved', () => {
+    const k = 0.005;
+    // far from one another: the larger, exactly
+    expect(smoothMax(0.02, -0.01, k)).toBe(0.02);
+    expect(smoothMax(-0.03, 0.004, k)).toBe(0.004);
+    expect(smoothMax(0.001, 0.001 + k, k)).toBe(0.001 + k);
+    // at the corner itself, a quarter of the rounding more; and the same either way round
+    expect(smoothMax(0, 0, k)).toBeCloseTo(k / 4, 12);
+    expect(smoothMax(0.001, -0.002, k)).toBe(smoothMax(-0.002, 0.001, k));
+    // never less than the larger: what either drawing covers is covered
+    for (const [a, b] of [[0.003, 0.004], [-0.002, -0.001], [-0.0005, 0.0004], [0.01, 0.0099]]) expect(smoothMax(a, b, k)).toBeGreaterThanOrEqual(Math.max(a, b));
+    // a top without an armscye has no say of her side's at all
+    const tee = topCut(topCutSpec({ neckFront: neckDefault('crew', frame), neckStyle: 'crew', sleeve: 0.32 }, frame, -0.06), frame);
+    expect(tee.side ?? null).toBeNull();
+    expect(armscyeAt(tee, frame.mid + 0.13, frame.neckY - 0.12, 0)).toBeNull();
+    // an outline's: nothing nearer her middle than it comes in at; in front of the C covered, behind it the opening
+    const tank = outlineOn('tank'), S = tank.spec.outline!.side, range = 0.03;
+    expect(armscyeAt(tank, frame.mid + S.gate - 0.003, frame.neckY - 0.12, 0.05)).toBe(-range);
+    expect(armscyeAt(tank, frame.mid + 0.13, frame.neckY - 0.12, 0.04)!).toBeGreaterThan(0.02);
+    expect(armscyeAt(tank, frame.mid + 0.13, frame.neckY - 0.12, -0.05)!).toBeLessThan(-0.02);
+    expect(armscyeAt(tank, frame.mid - 0.13, frame.neckY - 0.12, 0.04)!).toBeGreaterThan(0.02);
+    // and under its foot covered, all the way back
+    expect(armscyeAt(tank, frame.mid + 0.125, frame.neckY - 0.2, -0.12)!).toBeGreaterThan(0.015);
+  });
+
+  it('a camisole\'s armscye begins at its peak, wherever its top edge is set', () => {
+    for (const neckFront of [OUTLINE_NECK.camisole, OUTLINE_NECK.camisole - 0.04, OUTLINE_NECK.camisole - 0.08]) {
+      const cut = topCut(topCutSpec({ ...t('camisole'), neckFront, top: 'camisole' }, frame, -0.06), frame), O = cut.spec.outline!, S = O.side;
+      // the peak: `rise` over the top edge, where its strap's outer edge comes down to
+      expect(S.startX).toBe(O.strapOut);
+      expect(S.startY).toBeCloseTo(cut.spec.dipY + CAMI_FALL.rise, 9);
+      expect(S.slope).toBe(CAMI_FALL.slope);
+      // out from the strap, over the line its bodice falls away by, her side's drawing says nothing; under it, it speaks
+      const out = O.strapOut + 0.012, lineY = S.startY - S.slope * 0.012;
+      expect(armscyeAt(cut, frame.mid + out, lineY + 0.004, 0.06)).toBe(-0.03);
+      expect(armscyeAt(cut, frame.mid + out, lineY - 0.004, 0.06)!).toBeGreaterThan(0.02);
+    }
+    // the others' have no such line
+    for (const kind of KINDS.filter((x) => x !== 'camisole')) expect(outlineOn(kind).spec.outline!.side.startY).toBe(Infinity);
+  });
+
+  it('MEASURED: her areolas are covered by every outline, and her arm\'s skin is clear of it: the armhole goes between them', async () => {
     // her areolas by her skin's own picture: her chest's points redder than her chest (red less green, 0.03 over its median)
     const body = await loadBody(), P = body.rest, neckY = frame.neckY, col = (v: number) => body.skin!.texel(body.uv[v * 2], body.uv[v * 2 + 1]);
     const chest: number[] = [];
@@ -236,9 +375,10 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     expect(Math.max(...under)).toBeLessThan(0.157);
     for (const kind of KINDS) {
       const cut = outlineOn(kind);
-      // MEASURED: the least covered of them is 6.1 mm inside the line (tank, sports bra, mock neck) and 5.9 (camisole),
-      // at the upper outer rim of her right one, 11.5 cm out and 12.1 under
-      expect(Math.min(...areola.map((v) => cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 0))) / MM, kind).toBeGreaterThan(5);
+      // MEASURED 2026-11-15, each outline's own armscye: the least covered of them is 14.3 mm inside the line (the
+      // camisole: under its top edge) and 15.5 the others'. (2026-11-14, the front one sweep: 6.1 and 5.9, at the upper
+      // outer rim of her right one)
+      expect(Math.min(...areola.map((v) => cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 0))) / MM, kind).toBeGreaterThan(10);
     }
   }, 60_000);
 

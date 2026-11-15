@@ -40,7 +40,7 @@ import {
 } from './fabricLibrary';
 import { ensureRest, fabricCutWorn, fabricFieldWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricLayer, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer } from './fabricMaterial';
 import { MOTION_SHAPES } from './levelLine';
-import { TOP_CUT, cutPicture, isCutTop, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
+import { ARMSCYE, TOP_CUT, cutPicture, isCutTop, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
 import type { TopDetailSpec } from './topDetails';
 import { layCarried, poseTurns, settleCarry } from './designPose';
 import { besideShapes, makeFrameSlip, makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
@@ -799,7 +799,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
    * A cut as her skin's material reads it (`fabricMaterial.FabricCut`): its picture, made the first time it is worn.
    * Its two drawings are blended over the cut's own depth (`TopCutSpec.sideBlend`: an outline's front and back armholes
    * end at feet of their own, and under her arm the edge slopes from one to the other across that depth), a tee's
-   * over `TOP_CUT.sideBlend`.
+   * over `TOP_CUT.sideBlend`. An outline's armscye -- her side's drawing, the picture's alpha -- goes with it (`side`,
+   * `start`: `topCut.armscyeAt`'s numbers).
    */
   function fabricCutOf(worn: WornCut): FabricCut {
     const { cut, key } = worn, f = cut.frame, U = f.unitsPerMetre;
@@ -810,10 +811,11 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping; texture.generateMipmaps = false; texture.needsUpdate = true;
       cutTextures.set(key, texture);
     }
-    const arm = (a: TopFrame['arms'][number]) => sleevePlane(a, cut.spec.sleeve, U);
+    const arm = (a: TopFrame['arms'][number]) => sleevePlane(a, cut.spec.sleeve, U), S = cut.side ? cut.spec.outline?.side : null;
     return {
       texture, rect: [f.x0, f.y0, 1 / (f.cols * f.cell), 1 / (f.rows * f.cell)], depth: [f.zLo, f.zHi - f.zLo, cut.spec.sideBlend ?? TOP_CUT.sideBlend * U, TOP_CUT.range * U],
       armL: arm(f.arms[0]), armR: arm(f.arms[1]), limb: [f.mid, cut.spec.sleeve, Number.isFinite(cut.spec.hemY) ? cut.spec.hemY : -1e9, f.facing], seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U],
+      side: S ? [S.z0, S.gate, ARMSCYE.feather * U, ARMSCYE.join * U] : null, start: S && Number.isFinite(S.startY) ? [S.startX, S.startY, S.slope] : null,
     };
   }
   function moveDial(dial: (typeof COVERAGE_DIALS)[number]['id'], value: number): void {
