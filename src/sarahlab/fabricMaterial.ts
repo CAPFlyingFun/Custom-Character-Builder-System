@@ -101,6 +101,12 @@ const patched = new WeakMap<THREE.Material, Patched>();
  */
 export const AUX_ATTRIBUTE = 'fabricAux';
 
+/**
+ * Said in the vertex shader of every material the fabric's program is on: `fabricRest`, a point's place on the mesh's
+ * rest surface, is declared there. Her face's layer reads it when it is (`faceRig.ts` `FACE_REST_DEFINE`: the same name).
+ */
+export const FABRIC_REST_DEFINE = 'FABRIC_REST_ATTRIBUTE';
+
 /** Copy a mesh's rest surface into the attributes the fabric reads, once (a brush measures on it too). */
 export function ensureRest(geometry: THREE.BufferGeometry, rest: ShapeFields | null): void {
   if (geometry.getAttribute('fabricRest')) return;
@@ -152,6 +158,8 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     Object.assign(shader.uniforms, uniforms);
     const idx = Array.from({ length: layers }, (_, i) => i);
     shader.vertexShader = [
+      // (`FABRIC_REST_DEFINE`: whatever else is laid on this material can tell that `fabricRest` is here to read)
+      `#define ${FABRIC_REST_DEFINE} 1`,
       'attribute vec3 fabricRest;', 'attribute vec3 fabricRestNormal;', 'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;',
       ...(masked ? ['attribute vec3 fabricPaint;', 'attribute vec4 fabricRegionTint;', 'varying vec3 vFabricMask;', 'varying vec4 vFabricTint;',
         // where a shirt's drape hangs clear of her (tunicDrape.ts), that shirt's paint comes off the skin under it (x);
@@ -342,6 +350,17 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
   const entry: Patched = { uniforms, layers, masked, cut, details: false };
   patched.set(material, entry);
   return entry;
+}
+
+/**
+ * Her skin's material in the fabric's program with nothing painted on her yet -- as her first painted layer would leave
+ * it, the layer aside. For what reads her rest place in her own shader and can not wait for paint: her face's layer
+ * under a shaped face (`faceRig.ts`). Nothing where the program is already on.
+ */
+export function ensureSkinFabric(mesh: THREE.Mesh, material: THREE.Material, opts: { readonly layers: number; readonly rest: ShapeFields | null }): void {
+  ensureRest(mesh.geometry as THREE.BufferGeometry, opts.rest);
+  patch(material, opts.layers, true);
+  ensureHang(mesh.geometry as THREE.BufferGeometry);
 }
 
 /**

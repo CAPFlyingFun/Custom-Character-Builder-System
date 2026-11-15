@@ -8,6 +8,7 @@
  */
 import type { EyeMode } from './faceMotion';
 import { EYE_COLOURS, LIP_COLOURS, swatchOf, type FaceSwatch } from './faceLook';
+import { HAIR_COLOURS } from './hairColours';
 
 /** The order EYES steps through: alive by default, then on the viewer, then still. */
 export const EYE_MODES: readonly EyeMode[] = Object.freeze(['around', 'camera', 'ahead'] as EyeMode[]);
@@ -53,3 +54,34 @@ function colourLine(label: string, list: readonly FaceSwatch[], colour: string |
 }
 export function eyeColourLine(colour: string | null): string { return colourLine('EYE COLOUR', EYE_COLOURS, colour); }
 export function lipColourLine(colour: string | null): string { return colourLine('LIP SHADE', LIP_COLOURS, colour); }
+
+/**
+ * THE HEAD PANEL'S LINES (`headPanel.ts`, 2026-11-15: hair, lashes and the shape of her face chosen). A colour line says
+ * HER OWN for null, the swatch's name, or the picker's colour itself. Pure, as the lines above.
+ */
+export function hairColourLine(colour: string | null): string {
+  return `HAIR COLOUR · ${colour ? (swatchOf(HAIR_COLOURS, colour)?.name ?? `custom ${colour.toLowerCase()}`) : 'her own'}`;
+}
+/** HAIR LENGTH, or why it is off: a style with one length (`hasLength` false) and no hair at all say so. */
+export function hairLengthLine(percent: number, state: 'on' | 'one-length' | 'none'): string {
+  if (state === 'none') return 'HAIR LENGTH · no hair';
+  if (state === 'one-length') return 'HAIR LENGTH · this style has one length';
+  return `HAIR LENGTH ${Math.round(Math.max(0, Math.min(100, percent)))}%`;
+}
+/** BROW COLOUR: null follows her hair. */
+export function browColourLine(colour: string | null): string {
+  return `BROW COLOUR · ${colour ? `custom ${colour.toLowerCase()}` : 'matches her hair'}`;
+}
+export function lashesLine(percent: number): string {
+  const p = Math.round(Math.max(0, Math.min(100, percent)));
+  return `LASHES · ${p === 0 ? 'none' : `${p}%`}`;
+}
+/** One face slider at `v` (-1..1): "NOSE WIDTH +35%", "NOSE WIDTH 0". */
+export function faceSliderLine(name: string, v: number): string {
+  const p = Math.round(v * 100);
+  return p === 0 ? `${name} 0` : `${name} ${p > 0 ? '+' : '-'}${Math.abs(p)}%`;
+}
+/** A group's summary: "NOSE", or "NOSE · 2 changed". */
+export function faceGroupLine(group: string, changed: number): string {
+  return changed > 0 ? `${group} · ${changed} changed` : group;
+}

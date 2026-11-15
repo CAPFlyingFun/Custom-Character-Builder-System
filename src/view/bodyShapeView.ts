@@ -29,6 +29,16 @@ export interface ShapeFields {
 
 export const SHAPE_FIELD_PREFIX = 'shape:';
 
+/** One sparse field: the points it moves, each one's move and (when the mesh has normals to turn) its normal's change. */
+export type ShapeField = Field;
+/**
+ * A field laid on a mesh after its file's own: one worked out from where the mesh's points are, and not carried by its
+ * file (her face's shapes, `sarahlab/faceShapeFields.ts`). The next `applyShapeFields` that weighs it lays it.
+ */
+export function addShapeField(shape: ShapeFields, name: string, field: ShapeField): void {
+  (shape.fields as Map<string, Field>).set(name, field);
+}
+
 /** Lift `shape:*` morph targets out of a mesh (call before it is first drawn). Null when it has none. */
 export function liftShapeFields(mesh: THREE.Mesh): ShapeFields | null {
   const geom = mesh.geometry as THREE.BufferGeometry, dict = mesh.morphTargetDictionary;

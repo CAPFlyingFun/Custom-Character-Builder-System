@@ -229,9 +229,10 @@ function compiled(masked: boolean, layers: number, detail: { pack: ArrayLike<num
 
 describe('a top\'s details in the shader', () => {
   it('a layer with no detail compiles to exactly the program it does without details (MEASURED: its text\'s hash, 2026-11-15, an outline\'s armscye in it)', () => {
-    // (2026-11-14, before an outline's armscye was read from the cut's picture: a5541172… her skin's, b570892d… a sheet's)
-    expect(compiled(true, 3, null).hash).toBe('7cdec1ff8168a972f37eb65b2f4bd1621cdb275705988ca20453c0edb84e9a3a');
-    expect(compiled(false, 1, null).hash).toBe('57ffa7a54c49f17600fd5a99a0651a7d6929a94bf8c5dadfd1426db00a72fcbc');
+    // (2026-11-14, before an outline's armscye was read from the cut's picture: a5541172… her skin's, b570892d… a sheet's;
+    // with the armscye and before the program said `fabricRest` is there to read, for her face's layer: 7cdec1ff… and 57ffa7a5…)
+    expect(compiled(true, 3, null).hash).toBe('4dcfa78a5c769f5a5ce7217e204d42fd7b70837693ba898baa43ea340c6742bb');
+    expect(compiled(false, 1, null).hash).toBe('23dfa6e159cd254884d1852047ae2e642124986f2897f0fb78a91f375d85a07e');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
     // shoulder joints -- and rounds the corner between it and her front's and back's (topCut.ts `armscyeAt`, `smoothMax`);

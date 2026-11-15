@@ -486,14 +486,32 @@ const VERTEX_PARS = [
   GLSL_JAW_WEIGHT,
 ].join('\n');
 
+/**
+ * WHERE A POINT OF HER SKIN IS IN HER SCULPT, WHATEVER HAS SHAPED HER SINCE. The layer is drawn by a point's place on the
+ * sculpt it was measured on. Until her face could be shaped that was the point's `position`: none of her shapes, her
+ * build's field or her morphs reaches her head. A shaped face (`faceShapes.ts`, laid into `position` on the CPU) moves
+ * it, and the layer has to RIDE that -- a bigger eye is the eye drawn there, bigger; a lifted brow carries its brow --
+ * so it reads the place her skin had before any shape: `fabricRest`, which her skin's material carries once the
+ * fabric's program is on it (`fabricMaterial.ts` says so with this `#define`; the room puts that program on before it
+ * shapes her face: `ensureSkinFabric`). Without it the point's `position`, as before. The test is inside `main`, after
+ * every patch's own lines, so it holds whichever of the two patches was laid first.
+ */
+export const FACE_REST_DEFINE = 'FABRIC_REST_ATTRIBUTE';
+
 // After morphnormal_vertex, which in three's standard shader comes before begin_vertex: the weight and the angle are
 // worked out once here, at main()'s scope, and the normal turned; the point is turned after morphtarget_vertex, before
-// skinning, and where it then stands (its posed rest-frame y) handed on. `vFaceJaw` carries the SEAM weight, untapered:
+// skinning, and where its place on her SCULPT then stands (its posed rest-frame y: the sculpt's point turned with the
+// jaw, not the shaped one, so a longer chin is not read as an open mouth) handed on. `vFaceJaw` carries the SEAM weight, untapered:
 // exactly 0 or 1 on the lips' own surfaces, so the fragment stage can tell them from the curtain. The varyings are
 // written whatever the switch says, so they are never undefined; nothing they hold reaches the picture with it off.
 const VERTEX_NORMAL = `
     float faceTheta = 0.0;
-    vFaceF = position * ${n(FACE_REST_SCALE)} + ${v3(F_OFFSET)};
+    #ifdef ${FACE_REST_DEFINE}
+    vec3 faceRestAt = fabricRest;
+    #else
+    vec3 faceRestAt = position;
+    #endif
+    vFaceF = faceRestAt * ${n(FACE_REST_SCALE)} + ${v3(F_OFFSET)};
     vFaceJaw = 0.0;
     vFacePosedY = vFaceF.y;
     if (faceOn > 0.5) {
@@ -507,7 +525,8 @@ const VERTEX_JAW = `
       vec2 faceQ = transformed.yz - ${v2([HINGE_G[1], HINGE_G[2]])};
       float faceCp = cos(faceTheta), faceSp = sin(faceTheta);
       transformed.yz = ${v2([HINGE_G[1], HINGE_G[2]])} + vec2(faceQ.x * faceCp - faceQ.y * faceSp, faceQ.x * faceSp + faceQ.y * faceCp);
-      vFacePosedY = transformed.y * ${n(FACE_REST_SCALE)} + ${n(F_OFFSET[1])};
+      vec2 faceR = faceRestAt.yz - ${v2([HINGE_G[1], HINGE_G[2]])};
+      vFacePosedY = (${n(HINGE_G[1])} + faceR.x * faceCp - faceR.y * faceSp) * ${n(FACE_REST_SCALE)} + ${n(F_OFFSET[1])};
     }`;
 
 const L = FACE_LIDS;
@@ -820,7 +839,7 @@ function patch(material: THREE.Material): Uniforms {
       .replace('#include <roughnessmap_fragment>', () => `#include <roughnessmap_fragment>${FRAGMENT_ROUGHNESS}`)
       .replace('#include <normal_fragment_maps>', () => `#include <normal_fragment_maps>${FRAGMENT_NORMAL}`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|face-rig-v2`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|face-rig-v3`; };
   material.needsUpdate = true;
   patched.set(material, uniforms);
   return uniforms;

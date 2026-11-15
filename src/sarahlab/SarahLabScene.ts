@@ -6,7 +6,7 @@ import { fabricPanel, type FabricPanel } from './fabricPanel';
 import { strapBuilder, type StrapBuilder } from './strapBuilder';
 import { mapBody } from './bodyRegions';
 import { DEFAULT_SHIRT_LENGTH, PAINTED_SHIRT_LONGEST } from './paintTemplates';
-import { AUTO_DETAIL, EMPTY_BOOK, type CharacterBook, type SavedBody, type SavedClothes } from './characterSaves';
+import { AUTO_DETAIL, EMPTY_BOOK, headOf, savedHead, type CharacterBook, type SavedBody, type SavedClothes } from './characterSaves';
 import { characterPanel, type CharacterPanel } from './characterPanel';
 import { outfitPanel, type OutfitPanel, type OutfitSource } from './outfitPanel';
 import { NO_RULES, isLocked, randomize, ruleFor, withGroupLock, withRule, type RandomRules, type RandomSpec } from '../actor/bodyRandom';
@@ -30,9 +30,9 @@ import { SkinPainter, standingSourceOf, tilePattern, type SkinImage, type SkinPa
 import { ACTIVITY, ACTIVITIES, breathFlare, chestShare, diaphragmRise, restingVitals, stepVitals, type Activity, type VitalsNow } from '../actor/vitals';
 import { breathAt, breathVolumes, layBreathTable } from './breathSkin';
 import { LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, standingShape, type LineMode } from './levelLine';
-import { ensureRest, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
+import { ensureRest, ensureSkinFabric, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
-import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig } from './faceRig';
+import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
 import { REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { BEND_COMPLIANCE } from './garment/garmentCloth';
 import { NavelSurface } from './garment/navelSurface';
@@ -42,13 +42,20 @@ import { cutEdgeOn, setCutEdge } from './garment/cutEdge';
 import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorKey, withConstruction, type GarmentRecord, type GarmentSettings } from './garment/settings';
 import { GarmentPanel } from './garmentPanel';
 import { FaceMotion } from './faceMotion';
-import { patchHairMaterial } from './hairMaterial';
+import { patchHairMaterial, setHairColour } from './hairMaterial';
+import { HAIR_LENGTH_MORPH, HAIR_STYLE_NONE, hairStyle } from './hairStyles';
+import { browFromHair } from './hairColours';
+import { HAIR_STYLE_FIRST, HEAD_DEFAULT, normaliseHead, type HeadLook } from './headLook';
+import { faceRigLook } from './faceLook';
+import { FACE_FIELD_PREFIX, faceFieldOn, faceFieldWeights, faceSlidersMoved, headPoints, type HeadPoints } from './faceShapeFields';
+import { HeadPanel } from './headPanel';
+import { PAINT_LAYER_COUNT } from './bodyPaint';
 import { lookOpenedOn } from './sarahLook';
 import { BIRTH_KINDS, PREGNANCY_OPENING, PREGNANCY_RANGE, PREGNANCY_RULE, bellySize, numbersLine, pregnancyOf, pregnantLine, typeBirths, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
 import { BUILD_INFO } from '../ui/buildInfo';
 import { graphicsNote, pictureLost } from './lostPictures';
-import { IRIS_CHOICES, browsLine, eyesLine, lipsLine, mouthLine, nextEyeMode } from './faceChoices';
+import { eyesLine, mouthLine, nextEyeMode } from './faceChoices';
 /**
  * THE SARAH LAB — Sarah rebuilt from Joshua's base mannequin, on a turntable,
  * to try before anything of it goes live (Joshua, 2026-10-07: "Good to test
@@ -114,7 +121,7 @@ import type { AppScene, FrameInfo, SceneContext, SceneFactory } from '../app/Sce
 import { assets, assetUrl } from '../assets/assets';
 import { release } from './release';
 import { BODY_CONTROLS, BREAST_DIMENSIONS, clampShape, controlLine, defaultBodyShape, parseShape, resetControl, serializeShape, setControl, setLinkedControl, type BodyControl, type BodyShape } from '../actor/bodyShape';
-import { applyShapeFields, baseShapeFields, liftShapeFields, type ShapeFields, type ShapePost } from '../view/bodyShapeView';
+import { addShapeField, applyShapeFields, baseShapeFields, liftShapeFields, type ShapeFields, type ShapePost } from '../view/bodyShapeView';
 import { BUILD_PROFILES, buildAmounts, buildKey, heightLine, heldSegments, profileOf, withProfile, type BuildAmounts, type BuildSegment } from '../actor/bodyBuild';
 import { applyBuildToBones, applyBuildToMesh, buildBoneOffsets, buildMeshFields, prepareBuildRig, standingLift, type BuildMeshFields, type BuildRig } from '../view/bodyBuild';
 import { Sneakers } from './sneakers';
@@ -1475,27 +1482,106 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const faceMotion = new FaceMotion(7);
   /** The material the face is laid on (only her approved v2 body's: every number in faceRig.ts is measured on it). */
   let faceMaterial: THREE.Material | null = null;
-  let faceOn = true, irisIndex = 0, browPct = 100, lipPct = 55;
+  let faceOn = true;
   const cameraRest: [number, number, number] = [0, 0, 1];
+  // ------------------------------------------------------------ HER HEAD'S LOOK (headLook.ts, headPanel.ts)
+  // Joshua, 2026-11-14: "making the eye color adjustable and more hairstyles and colors so we can do Lena and add more
+  // of a customizable character, as it's kind of limited hair and face wise to one look"; "create different hairstyles,
+  // hair length and color, different face types, eye and lip colors". ONE record (`HeadLook`) that her hair, her face's
+  // colours and the shape of her face are drawn from; a character's save keeps it with her body (`characterSaves.ts`).
+  // `HEAD_DEFAULT` is the head she always had, drawn exactly as before any of it could be chosen.
+  let head: HeadLook = HEAD_DEFAULT;
+  /** What `head` sets on her face's layer (`faceLook.ts`): worked out when the look changes, read every frame. */
+  let faceLookNow: Partial<FaceRigState> = {};
+  let headPanel: HeadPanel | null = null;
+  /** The story's bake reads the file her first hairstyle was baked from (`hairStyles.ts`: the toolkit's differs by 76 points). */
+  const storyBaking = new URLSearchParams(globalThis.location?.search ?? '').get('bake') === 'story';
   /**
-   * HER HAIR (`scripts/sarahV2Recovery/hair-bake.mjs`): one skinned mesh on her own skeleton, bound to her as every
-   * recovered garment is. It is not a garment: CLOTHES · HIDDEN and the outfit editor leave it on.
+   * HER HAIR (`hairStyles.ts`; the toolkit `scripts/hair/`): one skinned mesh on her own skeleton, bound to her as every
+   * recovered garment is. It is not a garment: CLOTHES · HIDDEN and the outfit editor leave it on. The style is her
+   * head's look's; another style's file is fetched, and the one before stays on her until it is in.
    */
   let hairMeshes: THREE.SkinnedMesh[] = [];
+  /** The style whose file `hairMeshes` came from (null: none on her), and whether one is on its way. */
+  let hairWorn: string | null = null, hairLoading = false;
   let hairOn = true, hairRequest = 0;
+  /** Her hair off her and its file's memory let go (another style is in, or she has none). */
+  function dropHair(): void {
+    const old = hairMeshes;
+    hairMeshes = []; hairWorn = null;
+    if (!old.length) return;
+    shaped = shaped.filter((x) => !old.includes(x.mesh));
+    releaseRecoveredMeshes(old);
+  }
   function loadHair(): void {
     const b = bodyOf();
     if (!b || !recovered) return;
     const request = ++hairRequest;
-    void assets.loadModel(SARAH_V2_HAIR_MODEL, () => new THREE.Object3D()).then((root) => {
-      if (request !== hairRequest || disposed || bodyOf()?.mesh !== b.mesh || root.userData.isPlaceholder === true) { release(root); return; }
+    const style = hairStyle(head.hair.style);
+    // (no hair, or a style this build does not have -- a save from a later one: none, and nothing fetched)
+    if (!style) { dropHair(); hairLoading = false; refresh(); return; }
+    hairLoading = true;
+    const file = storyBaking && style.id === HAIR_STYLE_FIRST ? SARAH_V2_HAIR_MODEL : style.file;
+    void assets.loadModel(file, () => new THREE.Object3D()).then((root) => {
+      if (request !== hairRequest) { release(root); return; }
+      hairLoading = false;
+      if (disposed || bodyOf()?.mesh !== b.mesh || root.userData.isPlaceholder === true) { release(root); refresh(); return; }
+      dropHair();
       hairMeshes = attachRecoveredMeshes(root, b.mesh, 'sarahHair');
-      for (const m of hairMeshes) { m.visible = hairOn; m.castShadow = b.mesh.castShadow; m.receiveShadow = b.mesh.receiveShadow; for (const mat of Array.isArray(m.material) ? m.material : [m.material]) patchHairMaterial(mat); }
-      // her hair takes her build too (its weights on her neck and head)
-      const build = currentBuild();
-      for (const m of hairMeshes) { const fields = liftShapeFields(m) ?? baseShapeFields(m); shaped.push({ mesh: m, fields }); applyShapeFields(m, fields, {}, { post: buildPost(m, fields, build) }); }
+      hairWorn = style.id;
+      for (const m of hairMeshes) { m.castShadow = b.mesh.castShadow; m.receiveShadow = b.mesh.receiveShadow; for (const mat of Array.isArray(m.material) ? m.material : [m.material]) patchHairMaterial(mat); }
+      layHair();
+      // her hair takes her build too (its weights on her neck and head), and the shape of her face: it lies on her skin
+      for (const m of hairMeshes) shaped.push({ mesh: m, fields: liftShapeFields(m) ?? baseShapeFields(m) });
+      layFaceFields();
+      const build = currentBuild(), weights = faceFieldWeights(head.face);
+      for (const m of hairMeshes) { const fields = shaped.find((x) => x.mesh === m)!.fields; applyShapeFields(m, fields, weights, { post: buildPost(m, fields, build) }); }
       refresh();
     });
+  }
+  /** Her hair as her head's look has it: how long (its `shorter` morph, 1 at its shortest), its colour, and whether it is shown. */
+  function layHair(): void {
+    for (const m of hairMeshes) {
+      const at = m.morphTargetDictionary?.[HAIR_LENGTH_MORPH];
+      if (at !== undefined && m.morphTargetInfluences) m.morphTargetInfluences[at] = 1 - head.hair.length;
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) setHairColour(mat, head.hair.colour);
+      m.visible = hairOn;
+    }
+  }
+  /**
+   * HER FACE'S SHAPES ON HER SKIN AND HER HAIR (`faceShapeFields.ts`): each slider's field is made for a mesh the first
+   * time the look moves it, and laid with her other shape fields by its number (`fieldWeightsAt`). Her face's painted
+   * layer rides her skin: it reads each point's place on her sculpt, which her skin's material carries once the fabric's
+   * program is on it (`faceRig.ts` `FACE_REST_DEFINE`), so that program goes on with the first shape.
+   */
+  const headPointsOf = new WeakMap<THREE.SkinnedMesh, HeadPoints>();
+  function layFaceFields(): void {
+    const ids = faceSlidersMoved(head.face), b = bodyOf();
+    if (!ids.length || !b || !recovered) return;
+    for (const s of shaped) {
+      if (s.mesh !== b.mesh && !hairMeshes.includes(s.mesh)) continue;
+      for (const id of ids) {
+        const name = `${FACE_FIELD_PREFIX}${id}`;
+        if (s.fields.fields.has(name)) continue;
+        let points = headPointsOf.get(s.mesh);
+        if (!points) { points = headPoints(s.fields.basePos); headPointsOf.set(s.mesh, points); }
+        addShapeField(s.fields, name, faceFieldOn(id, s.fields.basePos, s.fields.baseNrm, points));
+      }
+    }
+    if (faceMaterial === b.material) ensureSkinFabric(b.mesh, b.material, { layers: PAINT_LAYER_COUNT, rest: shaped.find((x) => x.mesh === b.mesh)?.fields ?? null });
+  }
+  /**
+   * Her head's look set (the FACE tab's panel, a character put on, a probe). What changed is laid: another hairstyle is
+   * fetched; her hair's length and colour and her face's colours at once; the shape of her face with her other shapes.
+   */
+  function setHead(next: HeadLook): void {
+    const was = head;
+    head = normaliseHead(next);
+    faceLookNow = faceRigLook(head, head.hair.colour ? browFromHair(head.hair.colour) : null);
+    if (head.hair.style !== was.hair.style) loadHair();
+    layHair();
+    const moved = (look: HeadLook) => faceSlidersMoved(look.face).sort().map((id) => `${id}:${look.face[id]}`).join('|');
+    if (moved(head) !== moved(was)) applyLook();
   }
   /** One frame of her face: where the camera is in her head's rest frame, the animator, then the shader's uniforms. */
   function faceFrame(dt: number): void {
@@ -1504,7 +1590,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     model.updateMatrixWorld(true);
     const cam = faceMotion.mode === 'camera' ? restFromWorld(b.mesh, camera.position, cameraRest) : null;
     faceMotion.step(dt, cam);
-    setFaceRig(faceMaterial, faceOn ? { jaw: faceMotion.jaw, gazeRight: faceMotion.gazeRight, gazeLeft: faceMotion.gazeLeft, blink: faceMotion.blink, iris: IRIS_CHOICES[irisIndex].linear, brow: browPct / 100, lips: lipPct / 100 } : null);
+    setFaceRig(faceMaterial, faceOn ? { jaw: faceMotion.jaw, gazeRight: faceMotion.gazeRight, gazeLeft: faceMotion.gazeLeft, blink: faceMotion.blink, ...faceLookNow } : null);
   }
 
   // ------------------------------------------------------------ HER SKIN (skinChoices.ts, skinPaint.ts)
@@ -1761,9 +1847,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** HER WEEKS' boxes (pregnancy.ts), by `SARAH_LAB_FIELD`, and the week box's own label */
   const weekBoxes = new Map<string, HTMLInputElement>();
   let weekLabel: HTMLElement | null = null;
-  /** FACE's own controls: the held-open mouth, and the eye-colour swatches. */
+  /** FACE's own controls: the held-open mouth (her head's look has a panel of its own: `headPanel`). */
   let faceMouthInput: HTMLInputElement | null = null;
-  const irisButtons: HTMLButtonElement[] = [];
   /** FACE's brush controls (shown while PAINT SKIN is on) and its colour swatches, by colour. */
   let skinTools: HTMLElement | null = null;
   /** What the LINE button's mode does, shown under the brush's buttons while a stroke is held to a level. */
@@ -1917,17 +2002,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function refreshSkin(): void {
     const noFace = !faceMaterial;
     if (buttons.face) { buttons.face.textContent = noFace ? 'FACE · v2 body only' : `FACE · ${faceOn ? 'ON' : 'OFF (the sculpt)'}`; buttons.face.disabled = noFace; buttons.face.style.opacity = noFace ? '.4' : '1'; }
-    if (buttons.hair) { const none = hairMeshes.length === 0; buttons.hair.textContent = none ? (faceMaterial ? 'HAIR · loading…' : 'HAIR · v2 body only') : `HAIR · ${hairOn ? 'ON' : 'OFF'}`; buttons.hair.disabled = none; buttons.hair.style.opacity = none ? '.4' : '1'; }
+    if (buttons.hair) { const none = hairMeshes.length === 0; buttons.hair.textContent = none ? (!faceMaterial ? 'HAIR · v2 body only' : hairLoading ? 'HAIR · loading…' : head.hair.style === HAIR_STYLE_NONE ? 'HAIR · none (choose a style)' : 'HAIR · this style is not here') : `HAIR · ${hairOn ? 'ON' : 'OFF'}${hairLoading ? ' · loading…' : ''}`; buttons.hair.disabled = none; buttons.hair.style.opacity = none ? '.4' : '1'; }
     if (buttons.eyes) buttons.eyes.textContent = eyesLine(faceMotion.mode);
     if (buttons.blink) buttons.blink.textContent = `BLINK · ${faceMotion.blinking ? 'ON' : 'OFF'}`;
     if (buttons.talk) buttons.talk.textContent = `TALK · ${faceMotion.talking ? 'ON' : 'OFF'}`;
     const mouthField = fields[SARAH_LAB_FIELD.faceMouth];
     if (mouthField) mouthField.textContent = mouthLine(faceMotion.mouth * 100, faceMotion.talking);
     if (faceMouthInput && Number(faceMouthInput.value) !== Math.round(faceMotion.mouth * 100)) faceMouthInput.value = String(Math.round(faceMotion.mouth * 100));
-    const browField = fields[SARAH_LAB_FIELD.faceBrows], lipField = fields[SARAH_LAB_FIELD.faceLips];
-    if (browField) browField.textContent = browsLine(browPct);
-    if (lipField) lipField.textContent = lipsLine(lipPct);
-    irisButtons.forEach((b, i) => { b.style.borderColor = i === irisIndex ? 'var(--sl-accent,#d4a853)' : 'var(--sl-btn-line,#ffffff30)'; });
+    headPanel?.refresh();
     if (buttons.skin) buttons.skin.textContent = skinLine(skinId, skinUpload);
     const note = fields[SARAH_LAB_FIELD.skinNote];
     if (note) note.textContent = skinNote(skinId, skinUpload, skinState, !!painted?.painter.canUndo) + (painted ? ` · brush on a ${paintMeta} copy` : '');
@@ -2352,6 +2434,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     Object.assign(out, chestFieldWeights(b, chestAt, bellyCurve));
     Object.assign(out, groinFieldWeights(b, groinAt, bellyCurve));
     Object.assign(out, milkFieldWeights(b, body.milk, body.milkBalance, milkAt, bellyCurve));
+    // the shape of her face, each slider by its own number (her skin's and her hair's: `layFaceFields`)
+    Object.assign(out, faceFieldWeights(head.face));
     return out;
   }
 
@@ -2380,6 +2464,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
 
   function applyLook(): void {
     babyDirty = true;
+    // (her face's fields on whatever of hers has them not: a body's own fields are sometimes made again from a file)
+    layFaceFields();
     const drawn = shownBump(); bellySettleApplied = bellySettle;
     const fieldWeights = fieldWeightsAt(drawn);
     followMissingGarmentFields(fieldWeights);
@@ -3442,7 +3528,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     characters = characterPanel({
       read: () => book.read(),
       write: (b) => book.write(b),
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head) }),
       clothes: () => currentClothes(),
       wornFrom: () => wornFrom,
       putOnBody: (saved) => {
@@ -3453,6 +3539,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         pregnancy = pregnancyOf(saved); babyDirty = true; babyFitAt = -Infinity;
         refine = saved.refine;
         randomRules = saved.random;
+        // her head as the character has it (one saved before a head could be chosen: the head she had)
+        setHead(headOf(saved));
         const index = SARAH_LAB_MODELS.findIndex((m) => m.id === saved.model);
         if (index >= 0 && index !== modelIndex) {
           modelIndex = index;
@@ -3503,7 +3591,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       read: () => book.read(),
       write: (b) => { book.write(b); characters?.refresh(); },
       clothes: clothesNow,
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head) }),
       characterName: () => characters?.name() ?? '',
       builtins: () => OUTFITS.filter((o) => (o.paint ? recovered : o.name !== 'none')).map((o) => o.name),
       // her own outfit first, then the rest in the room's order
@@ -3661,20 +3749,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       buttons.hair = btn('HAIR · ON', SARAH_LAB_ACTION.hair, () => { hairOn = !hairOn; for (const m of hairMeshes) m.visible = hairOn; });
       for (const b of [buttons.face, buttons.hair, buttons.eyes, buttons.blink, buttons.talk]) { b.dataset.tab = 'face'; b.style.padding = '8px 10px'; b.style.fontSize = '12px'; right.appendChild(b); }
       faceMouthInput = slider(SARAH_LAB_FIELD.faceMouth, 0, (v) => { faceMotion.mouth = v / 100; }, 100, 'face');
-      const irises = document.createElement('div');
-      irises.dataset.tab = 'face';
-      irises.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;letter-spacing:.05em';
-      const irisLabel = document.createElement('span'); irisLabel.textContent = 'EYE COLOUR'; irises.appendChild(irisLabel);
-      IRIS_CHOICES.forEach((c, i) => {
-        const b = document.createElement('button');
-        b.type = 'button'; b.dataset.action = `${SARAH_LAB_ACTION.faceIris}${c.name}`; b.title = c.name; b.setAttribute('aria-label', `${c.name} eyes`);
-        b.style.cssText = `width:26px;height:26px;border-radius:50%;border:2px solid var(--sl-btn-line,#ffffff30);background:${c.swatch};padding:0;cursor:pointer`;
-        b.addEventListener('click', (e) => { e.stopPropagation(); irisIndex = i; refresh(); });
-        irisButtons.push(b); irises.appendChild(b);
-      });
-      right.appendChild(irises);
-      slider(SARAH_LAB_FIELD.faceBrows, browPct, (v) => { browPct = v; }, 100, 'face');
-      slider(SARAH_LAB_FIELD.faceLips, lipPct, (v) => { lipPct = v; }, 100, 'face');
+      // her head's look (headPanel.ts): her hair's style, length and colour, her eyes', brows' and lips' colours, her
+      // lashes and the shape of her face. The room owns the look; the panel shows it and hands back each change whole
+      headPanel = new HeadPanel({ look: () => head, change: (next) => { setHead(next); refresh(); } });
+      right.appendChild(headPanel.element);
     }
     // ------------------------------------------------------------ FACE: her skin's map (skinChoices.ts, skinPaint.ts)
     {
@@ -7972,7 +8050,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // the brush's copy belongs to this body's material, which goes now
     dropPainter();
     // her hair goes with her body (it is in her model's tree); a request still under way is no longer wanted
-    hairMeshes = []; hairRequest++;
+    hairMeshes = []; hairWorn = null; hairLoading = false; hairRequest++;
     if (model) { three.remove(model); rig?.dispose(); release(model); model = null; }
     thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; v2OrganBones = null; v2Womb = null; organsGrowWomb = false; abdomenFailed = false; thoraxFailed = false;
     skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
@@ -10583,7 +10661,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         },
         skinUndo: () => painted?.painter.undo() ?? false,
         // FACE as its buttons set it, and the face's state now
-        face: (set?: { hair?: boolean; on?: boolean; mode?: 'around' | 'camera' | 'ahead'; blinking?: boolean; talking?: boolean; mouth?: number; iris?: number; brows?: number; lips?: number }) => {
+        face: (set?: { hair?: boolean; on?: boolean; mode?: 'around' | 'camera' | 'ahead'; blinking?: boolean; talking?: boolean; mouth?: number; head?: unknown }) => {
           if (set) {
             if (set.hair !== undefined) { hairOn = set.hair; for (const m of hairMeshes) m.visible = hairOn; }
             if (set.on !== undefined) faceOn = set.on;
@@ -10591,15 +10669,26 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             if (set.blinking !== undefined) faceMotion.blinking = set.blinking;
             if (set.talking !== undefined) faceMotion.talking = set.talking;
             if (set.mouth !== undefined) faceMotion.mouth = set.mouth;
-            if (set.iris !== undefined) irisIndex = set.iris;
-            if (set.brows !== undefined) browPct = set.brows;
-            if (set.lips !== undefined) lipPct = set.lips;
+            // her head's look, whole (`headLook.ts`: what is missing or wrong is `HEAD_DEFAULT`'s)
+            if (set.head !== undefined) setHead(normaliseHead(set.head));
             refresh();
           }
           const b = bodyOf(); model?.updateMatrixWorld(true);
           // where the camera is in her head's rest frame (metres), and where the face's own probe point (her nose tip) lands in the world
           const cam = b ? restFromWorld(b.mesh, camera.position) : null;
-          return { on: faceOn, laid: !!faceMaterial, mode: faceMotion.mode, jaw: faceMotion.jaw, blink: faceMotion.blink, gazeRight: [...faceMotion.gazeRight], gazeLeft: [...faceMotion.gazeLeft], cameraRest: cam, cameraWorld: camera.position.toArray() };
+          const skinFields = b ? shaped.find((x) => x.mesh === b.mesh)?.fields : undefined;
+          return {
+            on: faceOn, laid: !!faceMaterial, mode: faceMotion.mode, jaw: faceMotion.jaw, blink: faceMotion.blink, gazeRight: [...faceMotion.gazeRight], gazeLeft: [...faceMotion.gazeLeft], cameraRest: cam, cameraWorld: camera.position.toArray(),
+            // her head's look, and what of it is on her now: her hair's file and its morph, her face's fields on her skin
+            head, hair: { worn: hairWorn, loading: hairLoading, shown: hairOn, parts: hairMeshes.map((m) => ({ points: m.geometry.getAttribute('position').count, shorter: m.morphTargetInfluences?.[m.morphTargetDictionary?.[HAIR_LENGTH_MORPH] ?? -1] ?? null, fields: [...(shaped.find((x) => x.mesh === m)?.fields.laid?.keys() ?? [])] })) },
+            faceFields: [...(skinFields?.laid?.entries() ?? [])].filter(([name]) => name.startsWith(FACE_FIELD_PREFIX)),
+            skinProgram: b ? { rest: !!b.mesh.geometry.getAttribute('fabricRest'), fabric: /\|fabric-\d+-painted-v\d+/.exec(b.material.customProgramCacheKey())?.[0] ?? null, face: /\|face-rig-v\d+/.exec(b.material.customProgramCacheKey())?.[0] ?? null } : null,
+          };
+        },
+        // the room as its own camera sees it now, as a picture: drawn and copied in this call (a software renderer's
+        // screenshot through the page costs some ten frames; this is one). `width` x `height` of the stage's own shape
+        picture: (width?: number, height?: number, quality = 0.9) => {
+          return shootDataUrl(ctx.renderer.gl, three, camera, { ...(width && height ? { width, height } : {}), quality });
         },
         // every mesh drawn now (name, material, vertices): to tell what is what on screen
         drawn: () => { const out: string[] = []; three.traverseVisible((n) => { const m = n as THREE.Mesh; if (m.isMesh) out.push(`${m.name}|${(Array.isArray(m.material) ? m.material[0] : m.material).name}|${m.geometry.getAttribute('position')?.count}`); }); return out; },

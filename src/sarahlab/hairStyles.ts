@@ -25,6 +25,9 @@ export interface HairStyle {
   readonly hasLength: boolean;
 }
 
+/** The morph a file with a range of lengths carries (`scripts/hair/glb.mjs`): weight 1 is its shortest. */
+export const HAIR_LENGTH_MORPH = 'shorter';
+
 /** No hair on her head. */
 export const HAIR_STYLE_NONE = 'none';
 

@@ -20,12 +20,12 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
   FACE_BROWS, FACE_DEFAULTS, FACE_EYE_CENTRES, FACE_EYES, FACE_HEAD, FACE_HEAD_BONE, FACE_JAW_HINGE, FACE_JAW_MAX,
-  FACE_MOUTH, FACE_MOUTH_INSIDE, FACE_MOUTH_TAPER, FACE_REST_OFFSET, FACE_REST_SCALE,
+  FACE_MOUTH, FACE_MOUTH_INSIDE, FACE_MOUTH_TAPER, FACE_REST_DEFINE, FACE_REST_OFFSET, FACE_REST_SCALE,
   faceBrowAlpha, faceBrowLine, faceEyeRegion, faceJawMove, faceJawSeam, faceJawWeight, faceLipAlpha, faceMouthEdges,
   faceMouthInterior, faceMouthSample, patchFaceRig, restFromWorld, setFaceRig, type FaceEyeRegion, type FaceRigState,
 } from '../src/sarahlab/faceRig';
 import { FACE_MOTION_EYE_CENTRES } from '../src/sarahlab/faceMotion';
-import { setFabricLayer } from '../src/sarahlab/fabricMaterial';
+import { FABRIC_REST_DEFINE, setFabricLayer } from '../src/sarahlab/fabricMaterial';
 
 type P = [number, number, number];
 
@@ -587,7 +587,7 @@ describe('the patch', () => {
     const shader = compiled(material);
     expect(before).toHaveBeenCalledTimes(1);
     expect(before.mock.calls[0][0]).toBe(shader);
-    expect(material.customProgramCacheKey()).toBe('hem-cut-v3|face-rig-v2');
+    expect(material.customProgramCacheKey()).toBe('hem-cut-v3|face-rig-v3');
     expect(shader.fragmentShader).toContain('// earlier');
     expect(shader.fragmentShader.indexOf('uniform float faceOn;')).toBeLessThan(shader.fragmentShader.indexOf('// earlier'));
   });
@@ -610,11 +610,18 @@ describe('the patch', () => {
     expect(vert.indexOf('objectNormal.yz = vec2(')).toBeGreaterThan(vert.indexOf('#include <morphnormal_vertex>'));
     expect(vert.indexOf('transformed.yz = ')).toBeGreaterThan(vert.indexOf('#include <morphtarget_vertex>'));
     expect(vert.indexOf('transformed.yz = ')).toBeLessThan(vert.indexOf('#include <skinning_vertex>'));
-    // the varyings are written whatever the switch says, and from the rest position; the posed height again once turned
-    expect(vert).toContain('vFaceF = position * ');
+    // the varyings are written whatever the switch says, and from the point's place on her SCULPT -- its rest attribute
+    // where the fabric's program says it is there (a shaped face moves `position`: the layer rides it), else `position`,
+    // as before; the test is inside main, after every patch's own lines, so either patch may be laid first
+    expect(vert).toMatch(/float faceTheta = 0\.0;\s*#ifdef FABRIC_REST_ATTRIBUTE\s*vec3 faceRestAt = fabricRest;\s*#else\s*vec3 faceRestAt = position;\s*#endif\s*vFaceF = faceRestAt \* /);
+    expect(FACE_REST_DEFINE).toBe(FABRIC_REST_DEFINE);
     expect(vert).toContain('vFaceJaw = 0.0;');
     expect(vert).toContain('vFacePosedY = vFaceF.y;');
-    expect(vert.indexOf('vFacePosedY = transformed.y * ')).toBeGreaterThan(vert.indexOf('transformed.yz = '));
+    // the posed height again once turned: the SCULPT's point turned with the jaw (not the shaped one's: a longer chin
+    // would read as an open mouth)
+    expect(vert.indexOf('vec2 faceR = faceRestAt.yz - ')).toBeGreaterThan(vert.indexOf('transformed.yz = '));
+    expect(vert).toMatch(/vFacePosedY = \([-0-9.]+ \+ faceR\.x \* faceCp - faceR\.y \* faceSp\) \* /);
+    expect(vert).not.toContain('vFacePosedY = transformed.y');
     // the curtain test carries the untapered seam weight; the turn is the seam weight times the taper
     expect(vert).toContain('vFaceJaw = faceJawSeam(vFaceF);');
     expect(vert).toContain('faceTheta = faceJaw * 0.24 * vFaceJaw * faceJawTaper(vFaceF);');
@@ -724,8 +731,12 @@ describe('the patch', () => {
       expect(frag.indexOf('float faceWet = 0.0')).toBeGreaterThan(frag.indexOf('float fabricMatte = 0.0'));
       for (const name of [...UNIFORMS, 'fabricOn0', 'fabricOn1', 'fabricShowRegions']) expect(shader.uniforms[name], name).toBeDefined();
       const key = material.customProgramCacheKey();
-      expect(key).toContain('|face-rig-v2');
-      expect(key).toContain('|fabric-2-painted-v16');
+      expect(key).toContain('|face-rig-v3');
+      expect(key).toContain('|fabric-2-painted-v17');
+      // the fabric's program says her rest place is there, before the face's own lines read it -- in either order
+      expect(vert.indexOf(`#define ${FABRIC_REST_DEFINE} 1`)).toBeGreaterThanOrEqual(0);
+      expect(vert.indexOf(`#define ${FABRIC_REST_DEFINE} 1`)).toBeLessThan(vert.indexOf(`#ifdef ${FACE_REST_DEFINE}`));
+      expect(vert.indexOf('attribute vec3 fabricRest;')).toBeLessThan(vert.indexOf('vec3 faceRestAt = fabricRest;'));
     });
   }
 });
