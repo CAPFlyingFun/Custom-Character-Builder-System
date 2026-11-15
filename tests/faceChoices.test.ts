@@ -26,3 +26,13 @@ describe("the FACE section's face controls (Joshua, 2026-10-24: a mouth that ope
     expect(lipsLine(55)).toBe('LIP COLOUR · 55%');
   });
 });
+
+import { eyeColourLine, lipColourLine } from '../src/sarahlab/faceChoices';
+describe('her eyes\' and lips\' colour lines', () => {
+  it('say her own, a swatch\'s name, or a picker\'s colour', () => {
+    expect(eyeColourLine(null)).toBe('EYE COLOUR · her own');
+    expect(eyeColourLine('#3D2516')).toBe('EYE COLOUR · dark brown');
+    expect(lipColourLine('#b46d6a')).toBe('LIP SHADE · natural rose');
+    expect(lipColourLine('#123456')).toBe('LIP SHADE · #123456');
+  });
+});

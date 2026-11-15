@@ -7,6 +7,7 @@
  * Pure.
  */
 import type { EyeMode } from './faceMotion';
+import { EYE_COLOURS, LIP_COLOURS, swatchOf, type FaceSwatch } from './faceLook';
 
 /** The order EYES steps through: alive by default, then on the viewer, then still. */
 export const EYE_MODES: readonly EyeMode[] = Object.freeze(['around', 'camera', 'ahead'] as EyeMode[]);
@@ -42,3 +43,13 @@ export function lipsLine(percent: number): string {
   const p = Math.round(Math.max(0, Math.min(100, percent)));
   return `LIP COLOUR · ${p === 0 ? 'her skin' : `${p}%`}`;
 }
+
+/**
+ * The EYES' and LIPS' colour lines (2026-11-14: her face's colours chosen, `faceLook.ts`): HER OWN for null, else the
+ * swatch's name, or the colour itself when it is a picker's and on no list.
+ */
+function colourLine(label: string, list: readonly FaceSwatch[], colour: string | null): string {
+  return `${label} · ${colour ? (swatchOf(list, colour)?.name ?? colour.toLowerCase()) : 'her own'}`;
+}
+export function eyeColourLine(colour: string | null): string { return colourLine('EYE COLOUR', EYE_COLOURS, colour); }
+export function lipColourLine(colour: string | null): string { return colourLine('LIP SHADE', LIP_COLOURS, colour); }

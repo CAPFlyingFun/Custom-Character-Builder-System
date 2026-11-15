@@ -553,8 +553,8 @@ describe('the mouth\'s inside', () => {
 
 /** The face's lines in the shader, each of which must sit behind the switch. */
 const VERTEX_EFFECTS = ['objectNormal.yz = vec2(', 'transformed.yz = vec2(', 'transformed.yz = '];
-const FRAGMENT_EFFECTS = ['diffuseColor.rgb *= mix(vec3(1.0)', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceM, faceInner);', 'faceEye(vFaceF.xy', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceBC', 'roughnessFactor = mix(roughnessFactor', 'normal = normalize(mix(normal, nonPerturbedNormal, faceWet));', 'normal = normalize(mix(normal, vec3(0.0, 0.0, 1.0), faceInner));'];
-const UNIFORMS = ['faceBlink', 'faceBrow', 'faceBrowColour', 'faceGazeL', 'faceGazeR', 'faceIris', 'faceJaw', 'faceLashes', 'faceLips', 'faceOn', 'facePupil'];
+const FRAGMENT_EFFECTS = ['diffuseColor.rgb *= mix(vec3(1.0)', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceLipTint.rgb * faceLipShade', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceM, faceInner);', 'faceEye(vFaceF.xy', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceBC', 'roughnessFactor = mix(roughnessFactor', 'normal = normalize(mix(normal, nonPerturbedNormal, faceWet));', 'normal = normalize(mix(normal, vec3(0.0, 0.0, 1.0), faceInner));'];
+const UNIFORMS = ['faceBlink', 'faceBrow', 'faceBrowColour', 'faceGazeL', 'faceGazeR', 'faceIris', 'faceIrisAmber', 'faceIrisRing', 'faceJaw', 'faceLashes', 'faceLipTint', 'faceLips', 'faceOn', 'facePupil'];
 
 describe('the patch', () => {
   it('is applied once, and later changes are uniforms', () => {

@@ -234,12 +234,25 @@ export const FACE_LIPS = {
   lower: 0.0100, lowerPower: 0.85, soft: 0.0007,
   tint: [0.93, 0.70, 0.68] as V3,
   zFrom: -0.012,
+  /**
+   * A CHOSEN colour (`FaceRigState.lipTint`, 2026-11-14) is not laid as her own tint is. Her own multiplies her skin, and a
+   * multiplier can only darken toward itself: no number makes a pale skin a red, a berry or a nude by multiplying it. So a
+   * chosen colour REPLACES her skin's colour on her lips, keeping her lips' own light and dark: her skin's linear
+   * luminance there over `skinLuminance` (MEASURED: the mean over her lips' shape of the EVEN skin's picture,
+   * `scripts/preview/face.mts`), held to `shade`. It is whole at an amount of `paintFull` (GAME TUNING: the room's
+   * default amount, 0.55, lays a chosen colour as itself; less fades it toward her skin).
+   */
+  skinLuminance: 0.372, shade: [0.75, 1.2] as const, paintFull: 0.55,
 } as const;
 /** What the face looks like: the colours that are not settings, and the roughness of the wet eye, the lips and the mouth. */
 export const FACE_LOOK = {
   sclera: [0.92, 0.88, 0.85] as V3, scleraCorner: [0.88, 0.80, 0.76] as V3, caruncle: [0.78, 0.54, 0.52] as V3,
   pupil: [0.04, 0.03, 0.03] as V3,
-  /** The iris's inner amber and its dark limbal ring, as given for the default base; with another base both scale with it. */
+  /**
+   * The iris's inner amber and its dark limbal ring, as given for the default base; with another base (`iris` alone) both
+   * scale with it. A CHOSEN eye colour gives its own (`irisAmber`, `irisRing`: `faceLook.ts` `irisPalette`), since a dark
+   * brown scaled by these went to a near-black disc round a black pupil.
+   */
   amber: [0.54, 0.42, 0.22] as V3, limbal: [0.16, 0.16, 0.10] as V3,
   fibres: 48, fibreContrast: 0.12,
   lash: [0.11, 0.07, 0.06] as V3,
@@ -276,6 +289,17 @@ export interface FaceRigState {
   readonly lips?: number;
   /** 0..1: how much lash; default 1. */
   readonly lashes?: number;
+  /**
+   * The iris's inner collar round the pupil and its limbal ring, LINEAR 0..1 each. Given (both), they are drawn as they
+   * are; left out, they are the base's times the default's ratios (`FACE_LOOK.amber`, `.limbal`), exactly as before.
+   */
+  readonly irisAmber?: readonly [number, number, number];
+  readonly irisRing?: readonly [number, number, number];
+  /**
+   * A CHOSEN lip colour, LINEAR 0..1 each, laid AS that colour over her lips' shape (`FACE_LIPS.skinLuminance`); left out,
+   * her own tint (`FACE_LIPS.tint`) multiplies her skin exactly as before.
+   */
+  readonly lipTint?: readonly [number, number, number];
 }
 
 /** A state reduced to what both the shader and the CPU read: every amount clamped, every direction unit. */
@@ -290,6 +314,11 @@ interface Setting {
   readonly browColour: V3;
   readonly lips: number;
   readonly lashes: number;
+  /** null: the base's ratios (her own way). */
+  readonly irisAmber: V3 | null;
+  readonly irisRing: V3 | null;
+  /** null: her own tint. */
+  readonly lipTint: V3 | null;
 }
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 const amount = (x: number | undefined, fallback: number): number => (x !== undefined && Number.isFinite(x) ? clamp(x, 0, 1) : fallback);
@@ -315,8 +344,17 @@ function settingOf(state: FaceRigState): Setting {
     browColour: colour(state.browColour, FACE_DEFAULTS.browColour),
     lips: amount(state.lips, FACE_DEFAULTS.lips),
     lashes: amount(state.lashes, FACE_DEFAULTS.lashes),
+    ...pickedIris(state),
+    lipTint: state.lipTint ? colour(state.lipTint, FACE_LIPS.tint) : null,
   };
 }
+/** A collar and a ring are drawn only as a pair (one alone would be half of one look, half of another). */
+function pickedIris(state: FaceRigState): { irisAmber: V3 | null; irisRing: V3 | null } {
+  if (!state.irisAmber || !state.irisRing) return { irisAmber: null, irisRing: null };
+  const base = colour(state.iris, FACE_DEFAULTS.iris);
+  return { irisAmber: colour(state.irisAmber, mul(base, AMBER_RATIO)), irisRing: colour(state.irisRing, mul(base, LIMBAL_RATIO)) };
+}
+const mul = (a: V3, b: V3): V3 => [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
 
 // ------------------------------------------------------------------------------------------------------------------
 // The constants in the frames the shader works in, converted once
@@ -362,6 +400,8 @@ const EDGE_HALF = FACE_EYES.edge / 2;
 /** The iris's amber centre and limbal ring as multiples of its base colour, so a new base recolours the whole iris. */
 const AMBER_RATIO: V3 = [0, 1, 2].map((i) => FACE_LOOK.amber[i] / FACE_DEFAULTS.iris[i]) as unknown as V3;
 const LIMBAL_RATIO: V3 = [0, 1, 2].map((i) => FACE_LOOK.limbal[i] / FACE_DEFAULTS.iris[i]) as unknown as V3;
+/** Linear light's luminance (Rec. 709), what a chosen lip colour keeps of her lips' own light and dark. */
+const LUMA: V3 = [0.2126, 0.7152, 0.0722];
 /** The brows' quadratics in s (0 at the head, 1 at the tail), as a + b·s + c·s², height in face coordinates and thickness. */
 const BROW_S_ARCH = (FACE_BROWS.arch[0] - FACE_BROWS.head[0]) / (FACE_BROWS.tail[0] - FACE_BROWS.head[0]);
 function quadratic(v0: number, va: number, v1: number): readonly [number, number, number] {
@@ -401,6 +441,11 @@ interface Uniforms {
   readonly faceBrowColour: THREE.IUniform<THREE.Vector3>;
   readonly faceLips: THREE.IUniform<number>;
   readonly faceLashes: THREE.IUniform<number>;
+  /** rgb: the lips' tint (her own `FACE_LIPS.tint`) or a chosen colour; w: 1 for a chosen colour, laid as itself. */
+  readonly faceLipTint: THREE.IUniform<THREE.Vector4>;
+  /** rgb: a chosen collar; w: 1 when the iris's collar and ring are chosen, 0 for the base's ratios. */
+  readonly faceIrisAmber: THREE.IUniform<THREE.Vector4>;
+  readonly faceIrisRing: THREE.IUniform<THREE.Vector3>;
 }
 const patched = new WeakMap<THREE.Material, Uniforms>();
 
@@ -625,8 +670,8 @@ void faceEye(vec2 p, vec2 inner, vec2 outer, vec2 centre, vec3 g, inout vec3 col
       vec3 up = cross(g, rt);
       float a = atan(dot(nrm, up), dot(nrm, rt) + 1e-6);
       float t = ang / ${n(IRIS_ANGLE)};
-      vec3 iris = mix(faceIris * ${v3(AMBER_RATIO)}, faceIris, smoothstep(0.38, 0.62, t));
-      iris = mix(iris, faceIris * ${v3(LIMBAL_RATIO)}, smoothstep(0.80, 0.97, t));
+      vec3 iris = mix(mix(faceIris * ${v3(AMBER_RATIO)}, faceIrisAmber.rgb, faceIrisAmber.w), faceIris, smoothstep(0.38, 0.62, t));
+      iris = mix(iris, mix(faceIris * ${v3(LIMBAL_RATIO)}, faceIrisRing, faceIrisAmber.w), smoothstep(0.80, 0.97, t));
       float fib = (a + 3.14159265) * ${n(FACE_LOOK.fibres / (2 * Math.PI))};
       float fi = floor(fib);
       float h = mix(faceHash11(mod(fi, ${n(FACE_LOOK.fibres)})), faceHash11(mod(fi + 1.0, ${n(FACE_LOOK.fibres)})), smoothstep(0.3, 0.7, fract(fib)));
@@ -668,6 +713,9 @@ const FRAGMENT_PARS = [
   'uniform vec3 faceBrowColour;',
   'uniform float faceLips;',
   'uniform float faceLashes;',
+  'uniform vec4 faceLipTint;',
+  'uniform vec4 faceIrisAmber;',
+  'uniform vec3 faceIrisRing;',
   'varying float vFaceJaw;',
   'varying vec3 vFaceF;',
   'varying float vFacePosedY;',
@@ -684,7 +732,9 @@ const FRAGMENT_COLOUR = `
       float facePx = max(max(fwidth(vFaceF.x), fwidth(vFaceF.y)), 1e-6);
       if (abs(vFaceF.x) < ${n(FACE_BOX.halfWidth)} && vFaceF.y > ${n(BOX_Y0_F)} && vFaceF.y < ${n(BOX_Y1_F)} && vFaceF.z > ${n(BOX_Z_F)}) {
         faceLipMask = faceLipAlpha(vFaceF);
-        diffuseColor.rgb *= mix(vec3(1.0), ${v3(FACE_LIPS.tint)}, faceLipMask * faceLips);
+        diffuseColor.rgb *= mix(vec3(1.0), faceLipTint.rgb, faceLipMask * faceLips * (1.0 - faceLipTint.w));
+        float faceLipShade = clamp(dot(diffuseColor.rgb, ${v3(LUMA)}) / ${n(FACE_LIPS.skinLuminance)}, ${n(FACE_LIPS.shade[0])}, ${n(FACE_LIPS.shade[1])});
+        diffuseColor.rgb = mix(diffuseColor.rgb, faceLipTint.rgb * faceLipShade, faceLipMask * clamp(faceLips / ${n(FACE_LIPS.paintFull)}, 0.0, 1.0) * faceLipTint.w);
         float faceDist, faceGap;
         faceInner = faceMouthAmount(vFaceJaw, vFaceF, vFacePosedY, faceJaw, faceDist, faceGap);
         if (faceInner > 0.0) {
@@ -754,6 +804,9 @@ function patch(material: THREE.Material): Uniforms {
     faceBrowColour: { value: new THREE.Vector3(...FACE_DEFAULTS.browColour) },
     faceLips: { value: FACE_DEFAULTS.lips },
     faceLashes: { value: FACE_DEFAULTS.lashes },
+    faceLipTint: { value: new THREE.Vector4(...FACE_LIPS.tint, 0) },
+    faceIrisAmber: { value: new THREE.Vector4(...FACE_LOOK.amber, 0) },
+    faceIrisRing: { value: new THREE.Vector3(...FACE_LOOK.limbal) },
   };
   const previous = material.onBeforeCompile, cacheKey = material.customProgramCacheKey;
   material.onBeforeCompile = function (shader, renderer) {
@@ -793,6 +846,10 @@ export function setFaceRig(material: THREE.Material, state: FaceRigState | null)
   u.faceBrowColour.value.set(...(s ? s.browColour : FACE_DEFAULTS.browColour));
   u.faceLips.value = s ? s.lips : FACE_DEFAULTS.lips;
   u.faceLashes.value = s ? s.lashes : FACE_DEFAULTS.lashes;
+  const lip = s?.lipTint, amber = s?.irisAmber, ring = s?.irisRing;
+  u.faceLipTint.value.set(...(lip ?? FACE_LIPS.tint), lip ? 1 : 0);
+  u.faceIrisAmber.value.set(...(amber ?? FACE_LOOK.amber), amber ? 1 : 0);
+  u.faceIrisRing.value.set(...(ring ?? FACE_LOOK.limbal));
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -1074,4 +1131,85 @@ export function faceMouthSample(jawWeightInterpolated: number, rest: readonly [n
 /** How much of the mouth's inside a fragment shows: `faceMouthSample(...).amount`. */
 export function faceMouthInterior(jawWeightInterpolated: number, rest: readonly [number, number, number], jaw: number, posedY: number): number {
   return faceMouthSample(jawWeightInterpolated, rest, jaw, posedY).amount;
+}
+
+// ------------------------------------------------------------------------------------------------------------------
+// The colours the face lays, mirrored (2026-11-14: her eyes' and lips' colours chosen; `faceLook.ts`, the preview)
+
+/**
+ * The iris's colour (linear) at `t` of the way from its middle to its edge (0..1, the shader's `ang / IRIS_ANGLE`),
+ * before its fibres: the collar, the base, the limbal ring, blended as `faceEye` blends them.
+ */
+export function faceIrisColour(t: number, state: Pick<FaceRigState, 'iris' | 'irisAmber' | 'irisRing'>): [number, number, number] {
+  return irisAt(t, settingOf({ jaw: 0, gazeRight: [0, 0, 1], gazeLeft: [0, 0, 1], blink: 0, ...state }));
+}
+function irisAt(t: number, s: Setting): [number, number, number] {
+  const amber = s.irisAmber ?? mul(s.iris, AMBER_RATIO), ring = s.irisRing ?? mul(s.iris, LIMBAL_RATIO);
+  const a = smoothstep(0.38, 0.62, t), b = smoothstep(0.80, 0.97, t);
+  return [0, 1, 2].map((i) => mix(mix(amber[i], s.iris[i], a), ring[i], b)) as [number, number, number];
+}
+
+/** The lips' layer over her skin's colour `under` (linear) at a rest point: her own tint multiplied in, or a chosen colour laid. */
+export function faceLipLayer(under: readonly [number, number, number], rest: readonly [number, number, number], state: FaceRigState): [number, number, number] {
+  const s = settingOf(state), m = faceLipAlpha(rest);
+  const own = s.lipTint ? 0 : m * s.lips, tint = s.lipTint ?? FACE_LIPS.tint;
+  const c = [0, 1, 2].map((i) => under[i] * mix(1, tint[i], own)) as [number, number, number];
+  if (!s.lipTint) return c;
+  const shade = clamp((c[0] * LUMA[0] + c[1] * LUMA[1] + c[2] * LUMA[2]) / FACE_LIPS.skinLuminance, FACE_LIPS.shade[0], FACE_LIPS.shade[1]);
+  const k = m * clamp(s.lips / FACE_LIPS.paintFull, 0, 1);
+  return [0, 1, 2].map((i) => mix(c[i], tint[i] * shade, k)) as [number, number, number];
+}
+
+const hash11 = (p: number): number => { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); };
+const fract = (x: number): number => x - Math.floor(x);
+/**
+ * An eye's layer over the colour `under` (linear) at a rest point, as `faceEye` draws it -- the sclera, the caruncle,
+ * the iris with its fibres, the pupil, the lid's shadow and shade, the lashes -- and how wet it is (0..1). Its fibres
+ * are the shader's hash worked in 64-bit floats, so a fibre may differ from the GPU's in its last place.
+ */
+export function faceEyeLayer(under: readonly [number, number, number], rest: readonly [number, number, number], state: FaceRigState): { colour: [number, number, number]; wet: number } {
+  const f = toF(rest);
+  let col: [number, number, number] = [under[0], under[1], under[2]];
+  if (!inBox(f) || !(f[2] > EYE_Z_F)) return { colour: col, wet: 0 };
+  const s = settingOf(state), right = f[0] < 0, eye = right ? RIGHT_F : LEFT_F, g = right ? s.gazeRight : s.gazeLeft;
+  const { u, open, lid } = eyeTerms([f[0], f[1]], eye, s.blink);
+  const base = mix(eye.inner[1], eye.outer[1], 0.5 * (u + 1)), bulge = 1 - u * u;
+  const yUp = base + FACE_EYES.upperLid * bulge, yLo = base - FACE_EYES.lowerLid * bulge, yLid = mix(yUp, yLo + L.blinkGap, s.blink);
+  const lerp3 = (a: readonly number[], b: readonly number[], t: number): [number, number, number] => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
+  if (open > 0) {
+    let e = lerp3(FACE_LOOK.sclera, FACE_LOOK.sclera.map((c, i) => c * FACE_LOOK.scleraCorner[i]), smoothstep(0.35, 1, Math.abs(u)));
+    e = lerp3(e, FACE_LOOK.caruncle, 1 - smoothstep(-0.9, -0.8, u));
+    const dx = f[0] - eye.centre[0], dy = f[1] - eye.centre[1], r2 = dx * dx + dy * dy;
+    if (r2 < EYE_R * EYE_R) {
+      const nz = Math.sqrt(EYE_R * EYE_R - r2), nrm: V3 = [dx / EYE_R, dy / EYE_R, nz / EYE_R];
+      const ang = Math.acos(clamp(nrm[0] * g[0] + nrm[1] * g[1] + nrm[2] * g[2], -1, 1));
+      let rt: V3 = [g[2], 0, -g[0]]; // cross((0, 1, 0), g)
+      const rl = Math.hypot(rt[0], rt[1], rt[2]);
+      rt = rl * rl > 1e-6 ? [rt[0] / rl, rt[1] / rl, rt[2] / rl] : [1, 0, 0];
+      const up: V3 = [g[1] * rt[2] - g[2] * rt[1], g[2] * rt[0] - g[0] * rt[2], g[0] * rt[1] - g[1] * rt[0]];
+      const a = Math.atan2(nrm[0] * up[0] + nrm[1] * up[1] + nrm[2] * up[2], nrm[0] * rt[0] + nrm[1] * rt[1] + nrm[2] * rt[2] + 1e-6);
+      const iris = irisAt(ang / IRIS_ANGLE, s);
+      const fib = (a + Math.PI) * (FACE_LOOK.fibres / (2 * Math.PI)), fi = Math.floor(fib);
+      const h = mix(hash11(fi % FACE_LOOK.fibres), hash11((fi + 1) % FACE_LOOK.fibres), smoothstep(0.3, 0.7, fract(fib)));
+      const k = 1 + FACE_LOOK.fibreContrast * (2 * h - 1);
+      e = lerp3(e, iris.map((c) => c * k), 1 - smoothstep(IRIS_ANGLE - 0.03, IRIS_ANGLE + 0.03, ang));
+      const pa = Math.asin(Math.min(s.pupil / EYE_R, 0.95));
+      e = lerp3(e, FACE_LOOK.pupil, 1 - smoothstep(pa - 0.025, pa + 0.025, ang));
+    }
+    const sh = 1 - L.shadowShade * smoothstep(yLid - L.shadow, yLid, f[1]);
+    col = lerp3(col, e.map((c) => c * sh), open);
+  }
+  col = col.map((c) => c * (1 - L.lidShade * lid)) as [number, number, number];
+  const fe = L.feather, th = L.lash + L.lashOuter * smoothstep(-0.2, 1, Math.min(u, 1));
+  const upper = smoothstep(yLid - fe, yLid + fe, f[1]) * (1 - smoothstep(yLid + th - fe, yLid + th + fe, f[1])) * smoothstep(-1, -0.8, u) * (u >= 1 ? 0 : 1);
+  const sF = (u - 1) / L.flick;
+  let flick = 0;
+  if (sF >= 0 && sF < 1) {
+    const yb = base + s.blink * L.blinkGap + L.flickRise * sF, tf = (L.lash + L.lashOuter) * (1 - sF);
+    flick = smoothstep(yb - fe, yb + fe, f[1]) * (1 - smoothstep(yb + tf - fe, yb + tf + fe, f[1]));
+  }
+  const lower = smoothstep(yLo - L.lowerLash - fe, yLo - L.lowerLash + fe, f[1]) * (1 - smoothstep(yLo - fe, yLo + fe, f[1]))
+    * smoothstep(L.lowerFrom, L.lowerFrom + 0.15, u) * (1 - smoothstep(0.9, 1, u)) * L.lowerAlpha;
+  col = lerp3(col, FACE_LOOK.lash, Math.max(Math.max(upper, flick) * L.lashAlpha, lower) * s.lashes);
+  return { colour: col, wet: open };
 }
