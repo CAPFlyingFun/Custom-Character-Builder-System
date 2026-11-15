@@ -136,7 +136,9 @@ describe('a top\'s details on her own rest skin (the room\'s body file)', () => 
 
   it('a collar\'s two leaves mirror each other', () => {
     for (const name of ['polo', 'buttonUp'] as const) {
-      const { detail } = dressed(name), P = detail.pack;
+      // (the button-up's pocket is on her left alone, and since 2026-11-14 it lies up beside her collar's leaf: left out here)
+      const { detail } = dressed(name), P = Float32Array.from(detail.pack);
+      P[22] = 0;
       for (let u = 0; u < 0.12; u += 0.0037) for (let y = frame.neckY - 0.12; y < frame.neckY + 0.06; y += 0.0041) for (const neck of [0.004, 0.02, 0.05]) {
         const a = detailOf(P, u, y, 1, 1, neck, 0.016, 0.0005), b = detailOf(P, -u, y, 1, 1, neck, 0.016, 0.0005);
         expect(a.shade).toBe(b.shade);
@@ -144,6 +146,22 @@ describe('a top\'s details on her own rest skin (the room\'s body file)', () => 
       // and its point is where it is told: 4 cm (the polo) out from her middle, under the rim's lowest point
       expect(P[28]).toBeCloseTo(TOP_DETAIL_STYLES[name].detail.collar!.pointOut, 6);
     }
+  });
+
+  it('a button-up\'s pocket is on her left alone, on her bust\'s upper slope', () => {
+    const { detail } = dressed('buttonUp'), P = detail.pack, k = TOP_DETAIL_STYLES.buttonUp.detail.pocket!;
+    const cx = k.out, top = frame.neckY - k.down, bottom = top - k.height, far = 0.05;
+    // its edge is drawn (darker) at the middle of its lower edge and of each side, and not at those places mirrored
+    for (const [u, y] of [[cx, bottom], [cx - k.width / 2, top - k.height / 2], [cx + k.width / 2, top - k.height / 2]] as const) {
+      expect(detailOf(P, u, y, 1, 1, far, 0.016, 0.0005).shade, `${u}, ${y}`).toBeLessThan(0.75);
+      expect(detailOf(P, -u, y, 1, 1, far, 0.016, 0.0005).shade, `mirrored ${u}, ${y}`).toBe(1);
+    }
+    // inside it, away from its edge, its stitch and its hem: the cloth as it is
+    expect(detailOf(P, cx, top - k.height / 2, 1, 1, far, 0.016, 0.0005).shade).toBe(1);
+    // MEASURED 2026-11-14 on her rest skin: her bust runs from 8 to 18 cm under her neck joint, its most forward point
+    // 14 cm under. Its lower edge stays over the fold under her breast (it was first 26 cm under: on her belly's top)
+    expect(k.down + k.height).toBeLessThan(0.17);
+    expect(k.down).toBeGreaterThan(0.05);
   });
 
   it('nothing is drawn outside the garment', () => {
