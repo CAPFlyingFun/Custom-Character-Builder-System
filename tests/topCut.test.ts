@@ -161,8 +161,9 @@ describe('a top\'s cut: its numbers from a template\'s sliders', () => {
   });
   it('says which templates are drawn: a shirt with a neck opening and a level hem, no straps', () => {
     const drawn = COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params)).map((t) => t.id);
-    expect(drawn).toEqual(['sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong']);
-    for (const id of ['tank', 'crop', 'maternity', 'sportsBra', 'bandeau', 'swimsuit', 'bodysuit', 'leggingsFull', 'athleticBottom']) expect(drawn, id).not.toContain(id);
+    // (and, since his sheet's outlines, the tank, the camisole, the mock neck, the crop tee and the sports bra: `tests/topOutline.test.ts`)
+    expect(drawn).toEqual(['tank', 'camisole', 'mockNeck', 'cropTee', 'sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong', 'sportsBra']);
+    for (const id of ['crop', 'maternity', 'bandeau', 'swimsuit', 'bodysuit', 'leggingsFull', 'athleticBottom']) expect(drawn, id).not.toContain(id);
   });
 });
 
@@ -471,7 +472,7 @@ describe('a drawn top\'s template', () => {
     expect(cut.spec.style).toBe('v');
     expect(cut.spec.sleeve).toBeCloseTo(0.32 * 0.5, 9);
     expect(Number.isFinite(cut.spec.hemY)).toBe(true);
-    expect(templateCut(map, t('tank'), d.frame)).toBeNull();
+    expect(templateCut(map, t('crop'), d.frame)).toBeNull();
     expect(templateCut(map, t('leggingsFull'), d.frame)).toBeNull();
     expect(templateCut(map, t('teeV'), null)).toBeNull();
   });

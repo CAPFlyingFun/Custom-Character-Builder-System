@@ -17,7 +17,7 @@ import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
-import { NECK_STYLES, cutCoverage, isCutTop, topCut, topCutSpec, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
+import { NECK_STYLES, TOP_OUTLINES, cutCoverage, isCutTop, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
 
 export interface CoverageParams {
   /**
@@ -107,6 +107,13 @@ export interface CoverageParams {
    * to it. Null: the hem is `hemFront` / `hemBack`.
    */
   readonly length: number | null;
+  /**
+   * A DRAWN top of a kind of its own (`topCut.TOP_OUTLINES`, Joshua's sheet of 2026-11-14): 'tank', 'sportsBra',
+   * 'camisole', 'mockNeck' -- straps, armholes, a racerback, a straight top edge or a mock neck, sleeveless -- or 'cropTee',
+   * a crew tee whose hem is `hemFront` (above her navel) instead of a LENGTH. Absent: what the fields above say.
+   * Its strap, armhole and neckBack numbers are its outline's, not the old `strap` / `strapIn` / `armhole` / `neckBack`.
+   */
+  readonly top?: CutTopKind | null;
 }
 
 const NONE: CoverageParams = Object.freeze({ riseFront: null, riseSide: null, riseBack: null, riseFrontWidth: 1, legStart: 0, legEnd: 0, feet: false, hemFront: null, hemBack: null, neckFront: null, neckBack: null, sleeve: -1, topFront: null, topBack: null, topSide: null, strap: 0, strapIn: 0, armhole: null, neckStyle: 'crew', legCut: null, length: null });
@@ -138,6 +145,11 @@ export const RISES = Object.freeze({
   underBelly: Object.freeze({ front: -0.02, side: 0.26, back: 0.33, frontWidth: 0.8 }),
 });
 export const LINES = Object.freeze({
+  /**
+   * a boxy crop tee's hem, above her navel (MEASURED 2026-11-14 on her rest skin: her belly is fullest 0.22 to 0.26 up
+   * her trunk, her navel about there; his 14 ends a hand over it)
+   */
+  hemCropTee: 0.32,
   hemHip: -0.1, hemMaternity: -0.04, hemCrop: 0.62, neckCrew: 0.94, neckScoop: 0.86, neckTank: 0.8,
   /** the dips of a U- and a V-neck, down into her cleavage */
   neckU: 0.76, neckV: 0.72,
@@ -361,6 +373,15 @@ export function legCutBack(g: NonNullable<CoverageParams['legCut']>, across: num
 const SHIRT: Partial<CoverageParams> = Object.freeze({ length: DEFAULT_SHIRT_LENGTH });
 /** GAME TUNING (metres) to his sheet: a ringer's collar and sleeve bands (its hem has none), and a long sleeve's cuff. */
 const RINGER_BANDS = Object.freeze({ neck: 0.016, sleeve: 0.016, hem: 0 }), LONG_SLEEVE_BANDS = Object.freeze({ sleeve: 0.05 });
+/** GAME TUNING (metres) to his sheet: a sports bra's wide band under her bust. */
+const SPORTS_BRA_BANDS = Object.freeze({ hem: 0.035 });
+/**
+ * An outline's NECKLINE until it is moved (its front's lowest point, or a camisole's top edge, on her trunk): its
+ * `depth` under the base of her neck on her trunk of HER_TRUNK_M, as DRAWN_NECK.
+ */
+export const OUTLINE_NECK = Object.freeze({
+  tank: +(1 - TOP_OUTLINES.tank.depth / HER_TRUNK_M).toFixed(3), sportsBra: +(1 - TOP_OUTLINES.sportsBra.depth / HER_TRUNK_M).toFixed(3), camisole: +(1 - TOP_OUTLINES.camisole.depth / HER_TRUNK_M).toFixed(3),
+});
 const NO_RISE = Object.freeze({ front: -9, side: -9, back: -9 });
 const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 /**
@@ -379,7 +400,15 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['shortsMid', 'Mid-thigh shorts', 'Shorts', lower(RISES.underBelly, 0.26)],
   ['shortsBike', 'Bike shorts', 'Shorts', lower(RISES.underBelly, 0.36)],
   ['shortsKnee', 'Knee-length shorts', 'Shorts', lower(RISES.overBelly, 0.44)],
-  ['tank', 'Tank top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckTank, -1, { strapIn: 1.0, strap: 0.55, neckBack: 0.9, armhole: LINES.armhole, length: DEFAULT_SHIRT_LENGTH })],
+  // (his 06: a scoop between wide straps, armholes cut in, a scoop behind a little higher; drawn, `TOP_OUTLINES.tank`.
+  // Its old numbers stay: a look saved before names them, and what draws it now is its kind)
+  ['tank', 'Tank top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, OUTLINE_NECK.tank, -1, { strapIn: 1.0, strap: 0.55, neckBack: 0.9, armhole: LINES.armhole, length: DEFAULT_SHIRT_LENGTH, top: 'tank' })],
+  // (his 13: thin straps, a top edge nearly straight across above her bust, the same height behind, armholes low)
+  ['camisole', 'Camisole', 'Shirts', upper(LINES.hemHip, LINES.hemHip, OUTLINE_NECK.camisole, -1, { ...SHIRT, top: 'camisole' })],
+  // (his 11: sleeveless, armholes cut in to leave her shoulders' points bare, a collar standing 3 cm up her neck)
+  ['mockNeck', 'Mock-neck top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, 1, -1, { ...SHIRT, neckFront: null, top: 'mockNeck' })],
+  // (his 14: a crew tee, short sleeves, a level hem cropped above her navel)
+  ['cropTee', 'Boxy crop tee', 'Shirts', upper(LINES.hemCropTee, LINES.hemCropTee, DRAWN_NECK.crew, 0.28, { top: 'cropTee' })],
   // THE DRAWN TOPS (`topCut.ts`; Joshua, 2026-11-14, from his sheet of sixteen tops): shirts with a level hem and no
   // straps. Their neck opening is a drawn curve, their sleeves' ends and hem flat cuts, each with its band
   ['sleeveless', 'Sleeveless shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 0.07, SHIRT)],
@@ -398,7 +427,8 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['teeLong', 'Long-sleeve shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 1.0, { ...SHIRT, band: LONG_SLEEVE_BANDS })],
   ['crop', 'Crop top', 'Shirts', upper(LINES.hemCrop, LINES.hemCrop - 0.04, LINES.neckScoop, 0.25)],
   ['maternity', 'Maternity T-shirt', 'Shirts', upper(LINES.hemMaternity, LINES.hemHip + 0.06, LINES.neckCrew, 0.32)],
-  ['sportsBra', 'Sports bra', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckScoop - 0.02, -1, { strapIn: 0.85, strap: 0.65, neckBack: 0.86, armhole: LINES.armhole - 0.02 }), 'sportsBra'],
+  // (his 07: a scoop between wide straps, a racerback, a wide band under her bust; drawn, `TOP_OUTLINES.sportsBra`)
+  ['sportsBra', 'Sports bra', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, OUTLINE_NECK.sportsBra, -1, { strapIn: 0.85, strap: 0.65, neckBack: 0.86, armhole: LINES.armhole - 0.02, band: SPORTS_BRA_BANDS, top: 'sportsBra' }), 'sportsBra'],
   ['bandeau', 'Bandeau', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckCrew, -1, { topFront: LINES.bandeauTop, topSide: LINES.bandeauSide, topBack: LINES.bandTopBack })],
   ['bodysuitFull', 'Full bodysuit', 'Other', { ...upper(-1, -1, LINES.neckCrew, 1.0), ...FULL, legEnd: 1.0 }],
   // a leotard cut high, front and back (`ONE_PIECE_CUT`)
@@ -467,7 +497,8 @@ export function dialsFor(p: CoverageParams): CoverageDial['id'][] {
   if (p.length !== null) { if (PAINTED_SHIRT_LONGEST > 0) out.push('length'); }
   else if (p.hemFront !== null && p.hemFront > -1) out.push('hem');
   if (p.neckFront !== null) out.push('neck');
-  if (p.hemFront !== null) out.push('sleeve');
+  // (a top of an outline is sleeveless: its armholes are its own)
+  if (p.hemFront !== null && !(p.top && p.top in TOP_OUTLINES)) out.push('sleeve');
   return out;
 }
 
@@ -636,7 +667,8 @@ function layField(f: { readonly path: string; readonly dims: readonly [number, n
  */
 export function templateCut(map: BodyMap, p: CoverageParams, frame: TopFrame | null): TopCut | null {
   if (!frame || !isCutTop(p)) return null;
-  return topCut(topCutSpec(p, frame, shirtHem(map, p.length ?? 0)), frame);
+  // (a top cut above her LENGTH's reach -- the crop tee, the sports bra -- has its hem where `hemFront` says)
+  return topCut(topCutSpec(p, frame, p.length === null && p.hemFront !== null ? p.hemFront : shirtHem(map, p.length ?? 0)), frame);
 }
 /**
  * GAME TUNING: how much darker a band is drawn in its own fabric (a collar's rib, a turned hem: his sheet's read a

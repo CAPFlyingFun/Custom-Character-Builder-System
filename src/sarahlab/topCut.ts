@@ -229,10 +229,63 @@ export interface TopCutSpec {
   /** Her hem's height; -Infinity: none (a one-piece). */
   readonly hemY: number;
   readonly bands: TopBands;
+  /**
+   * A top whose OUTLINE is more than a neck opening (`TOP_OUTLINES`: straps, armholes, a racerback, a straight top edge,
+   * a mock neck), laid in her units; absent, the neck opening alone, exactly as before.
+   */
+  readonly outline?: TopOutlineSpec;
+}
+
+/**
+ * THE OUTLINES, by kind (Joshua, 2026-11-14: "finish all 10 remaining shirt tops"; his sheet's 06, 07, 11 and 13). Metres
+ * on her rest shape, heights under the base of her neck (her neck joint); GAME TUNING to his sheet but where said.
+ * - `strapIn`, `strapOut`: a strap's inner and outer edge out from her middle where they cross her shoulders' ridge, the
+ *   same numbers front and back (a strap is `strapOut - strapIn` wide over her shoulder). Both drawings carry each
+ *   edge straight up from her ridge, as a neck opening's side points are.
+ * - `armX`, `armDrop`: the armhole's lowest point, out from her middle and under the base of her neck; the armhole runs
+ *   from the strap's outer edge on her ridge, straight down at first, round to level there (a quarter ellipse: no
+ *   corner at either end), and on out level round her side.
+ *   MEASURED 2026-11-14 on her rest skin (`armShare`, the row of her triangles that joins her arm's skin to her trunk's):
+ *   that row crosses her ridge 15.8 cm out from her middle; down her front it is 13 to 14 cm out from 5 to 11 cm under
+ *   her neck joint (her armpit's apex in front, 12 cm under it); down her back 11.3 to 13 cm out, as low as 17 cm under
+ *   it. Under her arm her trunk is 12.1 to 12.4 cm out from 18 to 21 cm under it. So every armhole is out of that row:
+ *   level 20.5 cm under (19 for the bra), its foot 15 cm out -- past her side, so round her side the line is where the
+ *   armhole crosses her side's width, not a corner -- squarer in front (`ARMHOLE_FRONT`), in to `BACK_ARM` behind; a
+ *   tank's strap's outer edge 10.6 cm out. `tests/topOutline.test.ts` holds every point of that row 5 mm or more inside
+ *   the armhole, for every outline.
+ * - `neck`: the front's neck opening between the straps, a `NECK_STYLES` curve whose side points are the straps'
+ *   inner edges; its depth is the NECKLINE slider's. `back`: how the back is cut between them -- 'scoop' to `backDrop`
+ *   under her neck joint; 'racer', its neck opening to `backDrop` and the straps' outer edges curving in to one panel
+ *   `racerX` either side of her spine `racerDrop` under her neck joint, and out from there to the armhole's foot;
+ *   'straight', the front's own top edge.
+ * - 'straight' front (the camisole): a top edge at the NECKLINE slider's height, dipping `sag` at her middle, turned up
+ *   into each strap round `corner`; past the strap it runs on across her bust and comes down her side at
+ *   `CAMI_SIDE_X` to the armhole's foot (its back is the same edge, and its back armhole a tank's).
+ * - `collar` (the mock neck): no neck opening -- it goes up her neck to a level rim `collar` over her neck joint, and
+ *   across her shoulders out to its armholes. MEASURED: her ridge is 4.4 cm over her neck joint 6 cm out, so a rim at
+ *   6.2 cm stands 2 cm up the side of her neck and higher at its front (the base of her neck is lower there).
+ */
+export const TOP_OUTLINES = Object.freeze({
+  tank: Object.freeze({ strapIn: 0.07, strapOut: 0.106, armX: 0.15, armDrop: 0.205, neck: 'scoop' as NeckStyle, front: 'neck', back: 'scoop', backDrop: 0.07, depth: 0.11 }),
+  sportsBra: Object.freeze({ strapIn: 0.074, strapOut: 0.11, armX: 0.15, armDrop: 0.19, neck: 'scoop' as NeckStyle, front: 'neck', back: 'racer', backDrop: 0.055, racerX: 0.03, racerDrop: 0.14, depth: 0.12 }),
+  camisole: Object.freeze({ strapIn: 0.088, strapOut: 0.096, armX: 0.15, armDrop: 0.205, neck: 'scoop' as NeckStyle, front: 'straight', back: 'straight', sag: 0.01, corner: 0.012, depth: 0.1 }),
+  mockNeck: Object.freeze({ strapIn: 0.1, strapOut: 0.1, armX: 0.15, armDrop: 0.205, neck: 'crew' as NeckStyle, front: 'collar', back: 'collar', collar: 0.062, corner: 0.01, depth: 0 }),
+});
+export type TopOutlineKind = keyof typeof TOP_OUTLINES;
+/** The drawn tops that are not a tee's neck opening, sleeves and level hem alone: the outlines, and the boxy crop tee (a crew tee with a hem of its own). */
+export type CutTopKind = TopOutlineKind | 'cropTee';
+/** An outline laid on one body (her units; heights absolute). */
+export interface TopOutlineSpec {
+  readonly kind: TopOutlineKind;
+  readonly strapIn: number; readonly strapOut: number; readonly armX: number; readonly armY: number;
+  readonly front: 'neck' | 'straight' | 'collar'; readonly back: 'scoop' | 'racer' | 'straight' | 'collar';
+  readonly backY: number; readonly racerX: number; readonly racerY: number; readonly sag: number; readonly corner: number; readonly collarY: number;
 }
 
 /** Whether a template's top is drawn this way: a shirt with a level hem and a neck opening (no straps, no straight top edge, no lower part of its own). */
-export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFront' | 'riseFront' | 'length' | 'neckFront'>): boolean {
+export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFront' | 'riseFront' | 'length' | 'neckFront' | 'top'>): boolean {
+  // (a kind of its own -- the outlines and the crop tee -- is drawn whatever else a look saved before said of it)
+  if (p.top && (p.top === 'cropTee' || p.top in TOP_OUTLINES)) return true;
   return p.hemFront !== null && p.neckFront !== null && p.length !== null && !(p.strap > 0) && p.topFront === null && p.riseFront === null;
 }
 
@@ -241,7 +294,8 @@ export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFron
  * of her neck) give the rim, its SLEEVE (0 her shoulder joint, 1 her wrist) the sleeves' ends, `hemTrunk` (her hem on
  * her trunk) the hem.
  */
-export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null; readonly top?: CutTopKind | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+  if (p.top && p.top in TOP_OUTLINES) return outlineSpec(p, p.top as TopOutlineKind, frame, hemTrunk);
   const style: NeckStyle = (p.neckStyle in NECK_STYLES ? p.neckStyle : 'crew') as NeckStyle, S = NECK_STYLES[style], U = frame.unitsPerMetre;
   const trunk = frame.neckY - frame.hipY, dipY = frame.hipY + (p.neckFront ?? 1) * trunk;
   // a crew taken lower than a crew opens a little wider as it goes (it never takes her shoulders: Joshua, 2026-10-23)
@@ -255,6 +309,25 @@ export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | '
     bands: { neck: (p.band?.neck ?? TEE_BANDS.neck) * U, sleeve: (p.band?.sleeve ?? TEE_BANDS.sleeve) * U, hem: (p.band?.hem ?? TEE_BANDS.hem) * U },
   };
 }
+/** An outline's spec on her: its own numbers, its NECKLINE (the front's depth, or a camisole's top edge) and its hem; no sleeves. */
+function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Partial<TopBands> | null }, kind: TopOutlineKind, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+  const O = TOP_OUTLINES[kind] as unknown as Readonly<Record<string, number>> & { readonly neck: NeckStyle; readonly front: string; readonly back: string }, U = frame.unitsPerMetre;
+  const n = (k: string) => (O[k] ?? 0) * U;
+  const trunk = frame.neckY - frame.hipY, half = O.strapIn * U;
+  const dipY = Math.min(frame.hipY + (p.neckFront ?? 1 - O.depth * U / trunk) * trunk, ridgeAt(frame, half) - 0.004 * U);
+  return {
+    style: O.neck, half, dipY, sleeve: -U,
+    hemY: hemTrunk === null ? -Infinity : frame.hipY + hemTrunk * trunk,
+    bands: { neck: (p.band?.neck ?? OUTLINE_BANDS.neck) * U, sleeve: 0, hem: (p.band?.hem ?? OUTLINE_BANDS.hem) * U },
+    outline: {
+      kind, strapIn: half, strapOut: O.strapOut * U, armX: O.armX * U, armY: frame.neckY - O.armDrop * U,
+      front: O.front as TopOutlineSpec['front'], back: O.back as TopOutlineSpec['back'],
+      backY: frame.neckY - n('backDrop'), racerX: n('racerX'), racerY: frame.neckY - n('racerDrop'), sag: n('sag'), corner: n('corner'), collarY: frame.neckY + n('collar'),
+    },
+  };
+}
+/** GAME TUNING (metres): an outline's bound edge -- round its neck, its straps and its armholes alike -- and no band at its hem unless its template says. */
+export const OUTLINE_BANDS: TopBands = Object.freeze({ neck: 0.01, sleeve: 0, hem: 0 });
 /** A style's NECKLINE setting until the slider moves it: its lowest point on her trunk (0 her hip joints, 1 the base of her neck). */
 export function neckDefault(style: NeckStyle, frame: Pick<TopFrame, 'neckY' | 'hipY' | 'unitsPerMetre'>): number {
   return 1 - (NECK_STYLES[style].depth * frame.unitsPerMetre) / (frame.neckY - frame.hipY);
@@ -327,12 +400,18 @@ export function rimPath(spec: TopCutSpec, frame: TopFrame, front: boolean): P2[]
  * rim between its side points, above the lines straight up from them, or above the ceiling.
  */
 export function drawCut(spec: TopCutSpec, frame: TopFrame, front: boolean): Float32Array {
-  const { cols, rows, cell, x0, y0 } = frame, U = frame.unitsPerMetre, range = TOP_CUT.range * U;
+  if (spec.outline) return pathDistances(outlinePath(spec, frame, front), frame);
+  const { cols, cell } = frame, U = frame.unitsPerMetre, range = TOP_CUT.range * U;
   const rim = rimPath(spec, frame, front), ceil = frame.neckY + TOP_CUT.ceiling * U, far = frame.x0 + cols * cell + range * 4;
   const w = spec.half, top = rim[rim.length - 1][1];
   // the opening's edge, left to right: the ceiling, down the line over the left side point, the rim, up, the ceiling
   const path: P2[] = [[frame.x0 - range * 4, ceil], [frame.mid - w, ceil], ...rim.map((p): P2 => [frame.mid + p[0], p[1]]), [frame.mid + w, ceil], [far, ceil]];
   if (ceil <= top) { path.splice(1, 1); path.splice(path.length - 2, 1); }
+  return pathDistances(path, frame);
+}
+/** A path's distances: every cell's distance to it within the range, minus where an odd number of its pieces lie under the cell (the opening). */
+function pathDistances(path: readonly P2[], frame: TopFrame): Float32Array {
+  const { cols, rows, cell, x0, y0 } = frame, range = TOP_CUT.range * frame.unitsPerMetre;
   const dist = new Float32Array(cols * rows).fill(range);
   for (let s = 0; s + 1 < path.length; s++) {
     const ax = path[s][0], ay = path[s][1], bx = path[s + 1][0], by = path[s + 1][1], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
@@ -360,6 +439,89 @@ export function drawCut(spec: TopCutSpec, frame: TopFrame, front: boolean): Floa
     }
   }
   return dist;
+}
+
+/**
+ * AN OUTLINE's drawing as one path, left to right (her units): from far out at her left at the armhole's foot, in round
+ * her side and up her left armhole to her strap's outer edge on her ridge, straight up to the ceiling and across the
+ * strap, down its inner edge into the neck opening (or the camisole's top edge, or round the mock neck's collar), and
+ * the same mirrored out to her right. Above it is the opening. Everything outside the straps' outer edges is the same
+ * in both drawings, so they agree over her shoulders and down her sides.
+ */
+export function outlinePath(spec: TopCutSpec, frame: TopFrame, front: boolean): P2[] {
+  const O = spec.outline!, U = frame.unitsPerMetre, step = 0.0015 * U, ceil = frame.neckY + TOP_CUT.ceiling * U, far = frame.x0 + frame.cols * frame.cell + TOP_CUT.range * U * 4;
+  const xi = O.strapIn, xo = O.strapOut, ti = ridgeAt(frame, xi), to = ridgeAt(frame, xo), how = front ? O.front : O.back;
+  const half: P2[] = [];
+  // the middle: from her middle out to the strap's inner edge on her ridge
+  if (how === 'neck' || how === 'scoop' || how === 'racer') {
+    const rim = rimPath(how === 'neck' ? spec : { ...spec, style: 'crew', dipY: Math.min(O.backY, ti - 0.004 * U) }, frame, true);
+    half.push(...rim.slice(Math.floor(rim.length / 2)).map((p): P2 => [Math.max(0, p[0]), p[1]]));
+  } else if (how === 'straight') {
+    // level across her, `sag` lower at her middle, turned up into the strap round `corner`
+    const y = spec.dipY, k = 0.8, n = Math.max(8, Math.ceil((xi * k) / step));
+    for (let j = 0; j <= n; j++) { const x = (xi * k * j) / n; half.push([x, y - O.sag * (1 - (x / xi) ** 2)]); }
+    half.push(...fillet(half[half.length - 1], [xi, y], [xi, ti], O.corner, step));
+  }
+  if (how === 'collar') {
+    // level round her neck, turned down at the armhole's top into its line
+    const n = Math.max(8, Math.ceil((xo * 0.8) / step));
+    for (let j = 0; j <= n; j++) half.push([(xo * 0.8 * j) / n, O.collarY]);
+    half.push(...fillet(half[half.length - 1], [xo, O.collarY], [xo, to], O.corner, step));
+  } else {
+    // the strap: its inner edge up to the ceiling, across, and its outer edge down to her ridge
+    half.push([xi, ti], [xi, ceil], [xo, ceil]);
+  }
+  half.push([xo, to]);
+  if (!front) {
+    // behind: the strap's outer edge curving in down her back (to the racer's panel, or for any other back to `BACK_ARM`,
+    // inside the row her arm's skin joins her back by), and out again to the armhole's foot -- two cubics, upright at
+    // her ridge and where they meet, level at the foot
+    const racer = how === 'racer', rx = racer ? O.racerX : Math.min(xo, BACK_ARM.x * U), ry = racer ? O.racerY : frame.neckY - BACK_ARM.drop * U;
+    const a = (to - ry) * 0.55, b = (ry - O.armY) * 0.6;
+    half.push(...cubic([xo, to], [xo, to - a], [rx, ry + a], [rx, ry], step).slice(1));
+    half.push(...cubic([rx, ry], [rx, ry - b], [O.armX - (O.armX - rx) * 0.5, O.armY], [O.armX, O.armY], step).slice(1));
+  } else if (how === 'straight') {
+    // a camisole's front: its top edge carried on out past the strap across her bust, then down her side, low under her
+    // arm, to the foot -- each turn round `corner`
+    const y = spec.dipY, xc = CAMI_SIDE_X * U, r = O.corner;
+    // (the two turns at its top share the strap's 2 cm to her side: each round a radius under half of it)
+    half.push(...fillet([xo, to], [xo, y], [xc, y], r * 0.7, step), ...fillet([xo, y], [xc, y], [xc, O.armY], r * 0.8, step), ...fillet([xc, y], [xc, O.armY], [O.armX, O.armY], r * 1.5, step), [O.armX, O.armY]);
+  } else {
+    // in front a quarter ellipse, upright at the strap and level at its foot, fuller than one (`ARMHOLE_FRONT`) round
+    // the side of her bust
+    const a = O.armX - xo, b = to - O.armY, e = 2 / ARMHOLE_FRONT, n = Math.max(8, Math.ceil(((Math.PI / 2) * Math.max(a, b)) / step));
+    for (let j = 1; j <= n; j++) { const t = ((Math.PI / 2) * j) / n; half.push([O.armX - a * Math.cos(t) ** e, to - b * Math.sin(t) ** e]); }
+  }
+  const mid = frame.mid, out: P2[] = [[frame.x0 - TOP_CUT.range * U * 4, O.armY]];
+  for (let k = half.length - 1; k >= 1; k--) out.push([mid - half[k][0], half[k][1]]);
+  if (half[0][0] > 1e-9) out.push([mid - half[0][0], half[0][1]]);
+  for (const p of half) out.push([mid + p[0], p[1]]);
+  out.push([far, O.armY]);
+  return out;
+}
+/**
+ * GAME TUNING: how square the front of an armhole is (2 a quarter ellipse; more, it keeps nearer the strap's line further
+ * down and goes out to its foot lower). Her armpit's apex in front, 12.4 to 12.6 cm out 11 to 12 cm under her neck joint
+ * (MEASURED, `TOP_OUTLINES`), is the nearest her arm's skin comes: at 2 the tank's line passed 1.6 mm inside it.
+ */
+export const ARMHOLE_FRONT = 2.6;
+/**
+ * Behind, an armhole comes in to `x` out from her middle `drop` under her neck joint before it goes out to its foot:
+ * the row joining her arm's skin to her back is 11.3 to 11.6 cm out from 15 to 16 cm under it (MEASURED, `TOP_OUTLINES`).
+ * GAME TUNING inside that.
+ */
+export const BACK_ARM = Object.freeze({ x: 0.102, drop: 0.155 });
+/**
+ * GAME TUNING: how far out from her middle a camisole's front comes down her side. Her arm's skin joins her trunk's 12.4
+ * to 13 cm out in front from 10 to 12 cm under her neck joint (MEASURED, `TOP_OUTLINES`), and her side is 12.1 to 13.7
+ * cm out under it: so its top edge spans her bust, and it goes down 5 mm or more inside that row.
+ */
+export const CAMI_SIDE_X = 0.116;
+/** A cubic curve's points, `step` apart or so. */
+function cubic(a: P2, b: P2, c: P2, d: P2, step: number): P2[] {
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) + Math.hypot(c[0] - b[0], c[1] - b[1]) + Math.hypot(d[0] - c[0], d[1] - c[1]), n = Math.max(8, Math.ceil(len / step)), out: P2[] = [];
+  for (let j = 0; j <= n; j++) { const t = j / n, u = 1 - t; out.push([u * u * u * a[0] + 3 * u * u * t * b[0] + 3 * u * t * t * c[0] + t * t * t * d[0], u * u * u * a[1] + 3 * u * u * t * b[1] + 3 * u * t * t * c[1] + t * t * t * d[1]]); }
+  return out;
 }
 
 /** A top's two drawings, ready to look up. */
