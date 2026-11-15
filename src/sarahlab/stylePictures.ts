@@ -21,9 +21,19 @@ export const styleThumbPath = (templateId: string): string => `sarahlab/styles/$
 /** A template that is another's other half (a set's edging layer): worn with it and pictured with it, never a style of its own. */
 export const isHelperStyle = (templateId: string): boolean => Object.values(GARMENT_SETS).some((s) => s.edging === templateId);
 
-/** The styles that have a picture: every template that is a kind of piece and not a helper, in the editor's order. */
+/**
+ * The kind of piece a style is PICTURED as: its own kind (`pieceKind`), but a piece the editor keeps with the one-pieces
+ * that has no top of its own -- the tied bikini bottom -- as a BOTTOM: under a tee, from the floor to her waist. (Baked
+ * as a one-piece on 2026-11-15 it was a picture of her bare to the waist: a style's picture is of the style.)
+ */
+export function picturedAs(templateId: string): PieceKind | null {
+  const kind = pieceKind(templateId), t = COVERAGE_TEMPLATES.find((x) => x.id === templateId);
+  return kind === 'onePiece' && t && t.params.hemFront === null ? 'bottom' : kind;
+}
+
+/** The styles that have a picture: every template that is a kind of piece and not a helper, in the editor's order, each with the kind it is pictured as. */
 export function picturedStyles(): readonly { readonly id: string; readonly kind: PieceKind }[] {
-  return COVERAGE_TEMPLATES.flatMap((t) => { const kind = pieceKind(t.id); return kind && !isHelperStyle(t.id) ? [{ id: t.id, kind }] : []; });
+  return COVERAGE_TEMPLATES.flatMap((t) => { const kind = picturedAs(t.id); return kind && !isHelperStyle(t.id) ? [{ id: t.id, kind }] : []; });
 }
 
 const STYLE_FABRIC: PaintedLayer['fabric'] = Object.freeze({ family: 'jersey', colour: 0, tint: SHEET_DENIM });
