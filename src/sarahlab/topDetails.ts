@@ -1,8 +1,9 @@
 /**
  * THE DETAILS DRAWN ON A PAINTED TOP: collars, plackets, buttons, a raglan's sleeves in a second colour, a wrap's
  * crossing edge and its knot, a shirt's chest pocket (Joshua, 2026-11-14, of his sheet of sixteen women's tops:
- * "Hopefully these will help to get started and have more than our list"; `docs/reference/tops/16-womens-tops.jpg`,
- * his 08 raglan, 09 henley, 10 fitted polo, 15 wrap top and 16 button-up).
+ * "Hopefully these will help to get started and have more than our list"; his sheet was kept in `docs/reference/tops/`
+ * while they were built, to v0.9.27 -- git, 6e0b67b; his 08 raglan, 09 henley, 10 fitted polo, 15 wrap top and 16
+ * button-up).
  *
  * WHY ARITHMETIC OVER A PIXEL'S PLACE. A top is paint on her skin whose edges the shader draws for each pixel
  * (`topCut.ts`): a line laid per vertex is as jagged as her triangles are big (centimetres over her chest). So a detail

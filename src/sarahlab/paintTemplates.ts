@@ -18,6 +18,7 @@ import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
 import { NECK_STYLES, TOP_OUTLINES, cutCoverage, isCutTop, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
+import type { LowBands } from './bottomCut';
 import { TOP_DETAIL_STYLES, topDetailSpec, type TopDetailName, type TopDetailSpec } from './topDetails';
 
 export interface CoverageParams {
@@ -122,6 +123,12 @@ export interface CoverageParams {
    * its hem, a chest pocket). Absent: nothing but its cut and its bands.
    */
   readonly detail?: TopDetailName | null;
+  /**
+   * A DRAWN bottom's BANDS, metres wide (`bottomCut.ts`: its waistband along its waistband's line, a hem or a cuff at
+   * each leg's end, a welt at a stocking's or a sock's top); what is not said is `bottomCut.LOW_BANDS`', 0 is none
+   * there. Drawn in the bottom's own fabric a shade darker with a seam, or in its EDGING colour, as a top's are.
+   */
+  readonly lowBand?: Partial<LowBands> | null;
 }
 
 const NONE: CoverageParams = Object.freeze({ riseFront: null, riseSide: null, riseBack: null, riseFrontWidth: 1, legStart: 0, legEnd: 0, feet: false, hemFront: null, hemBack: null, neckFront: null, neckBack: null, sleeve: -1, topFront: null, topBack: null, topSide: null, strap: 0, strapIn: 0, armhole: null, neckStyle: 'crew', legCut: null, length: null });
@@ -151,6 +158,22 @@ export const RISES = Object.freeze({
   overBelly: Object.freeze({ front: 0.48, side: 0.4, back: 0.4 }),
   /** under the bump at the front, over the hips and up the back */
   underBelly: Object.freeze({ front: -0.02, side: 0.26, back: 0.33, frontWidth: 0.8 }),
+  /**
+   * HIS SHEET OF BOTTOMS' HIGH RISE (Joshua, 2026-11-15, "16 WOMEN'S BOTTOMS": 01 the high-rise leggings, 05 the capri,
+   * 06 the bike shorts): level at her waist, a hand over her navel and just under where his figures' crop tee ends.
+   * MEASURED 2026-11-15 on her skin as the room shapes her at 0%: her navel is 12.2 cm over her hip joints (0.232 of
+   * her trunk), the small of her back 20 to 24 cm (0.38 to 0.46), and her trunk narrows all the way from her hips to
+   * under her bust -- it has no narrowest place of its own between. 0.38 is 7.7 cm over her navel. GAME TUNING to his
+   * sheet; a centimetre more in front, where her skin at that height stands half a centimetre lower at 0% than on her
+   * body file (its rest shape has its 100% belly), so the band is level on her as the room opens her.
+   */
+  high: Object.freeze({ front: 0.39, side: 0.38, back: 0.38 }),
+  /**
+   * HIS SHEET'S LOW RISE (02 the low-rise leggings): its top edge a shallow curve under her navel -- 5.7 cm under it at
+   * her front's middle on his figure, 2 cm higher over her hip bones, and higher again behind, over the top of her
+   * seat (the fullest of her seat is at 0.06, above). GAME TUNING to his sheet, on her at 0%.
+   */
+  low: Object.freeze({ front: 0.125, side: 0.175, back: 0.2 }),
 });
 export const LINES = Object.freeze({
   /**
@@ -407,6 +430,20 @@ const detailed = (name: TopDetailName): CoverageParams => {
   return upper(LINES.hemHip, LINES.hemHip, s.neckFront === null ? DRAWN_NECK[s.neckStyle] : +s.neckFront.toFixed(3), s.sleeve, { ...SHIRT, neckStyle: s.neckStyle, ...(Object.keys(s.band).length ? { band: s.band } : {}), detail: name });
 };
 const NO_RISE = Object.freeze({ front: -9, side: -9, back: -9 });
+/**
+ * GAME TUNING (metres): the bands of the bottoms that are not `bottomCut.LOW_BANDS`' -- shorts' turned hems, a bike
+ * short's gripper band, a stocking's welt, a knee sock's narrow top and a crew sock's ribbed cuff.
+ */
+/**
+ * ...and, to his sheet of bottoms: a high rise's deep waistband (his 01, 05 and 06) and a low rise's (his 02). MEASURED
+ * off his sheet: its high-rise bands' seams lie 41 to 48% of the way from the band's top to his figures' crotch, which
+ * is 10.4 to 12.3 cm on her; his low rise's 38%, 4.4 cm. At 10.5 cm a high rise's seam lies 2.3 cm under her navel
+ * (TRIED at 7.5 cm, 2026-11-15: the seam ran through her navel's hollow, and showed it as a nick in the line).
+ */
+const HIGH_RISE_WAIST = 0.105;
+const SHORTS_BANDS = Object.freeze({ leg: 0.015 }), BIKE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST, leg: 0.02 });
+const HIGH_RISE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST }), LOW_RISE_BANDS = Object.freeze({ waist: 0.045 });
+const STOCKING_BANDS = Object.freeze({ top: 0.045 }), KNEE_SOCK_BANDS = Object.freeze({ top: 0.02 }), CREW_SOCK_BANDS = Object.freeze({ top: 0.04 });
 const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 /**
  * A one-piece's leg openings, cut high (Joshua, 2026-10-21, marked on the render: "rise higher along the hips, with a
@@ -416,14 +453,24 @@ const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 const ONE_PIECE_CUT = Object.freeze({ crotch: -0.15, side: 0.28, sideBack: 0.3, gusset: 0.035, gussetFront: 0.07, backSpan: 0.5, traced: true });
 
 export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
+  // HIS SHEET OF BOTTOMS' TIGHT ONES (Joshua, 2026-11-15, "16 WOMEN'S BOTTOMS"; `bottomCut.ts` draws them), in his
+  // sheet's order: 01 the high rise, 02 the low rise, 03 over her belly and 04 under it (the two there were, as they
+  // were), 05 the capri and, among the shorts, 06 the bike shorts
+  ['leggingsHigh', 'High-rise leggings', 'Leggings', lower(RISES.high, 1.0, { lowBand: HIGH_RISE_BANDS })],
+  ['leggingsLow', 'Low-rise leggings', 'Leggings', lower(RISES.low, 1.0, { lowBand: LOW_RISE_BANDS })],
   ['leggingsFull', 'Over-belly leggings', 'Leggings', lower(RISES.overBelly, 1.0)],
   ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0)],
-  ['leggingsCapri', 'Capri leggings', 'Leggings', lower(RISES.overBelly, 0.78)],
+  // (his 05: a high rise, its legs' ends on her calves' fullest. It was the over-belly rise to 0.78 of her leg until
+  // 2026-11-15; MEASURED off his sheet, 0.70 of the way from his figure's crotch to her ankle, which is 0.72 of her
+  // leg's line. A look saved before keeps the numbers it was saved with)
+  ['leggingsCapri', 'Capri leggings', 'Leggings', lower(RISES.high, 0.72, { lowBand: HIGH_RISE_BANDS })],
   ['leggingsKnee', 'Knee-length leggings', 'Leggings', lower(RISES.overBelly, 0.5)],
-  ['shortsAthletic', 'Short shorts', 'Shorts', lower(RISES.underBelly, 0.12)],
-  ['shortsMid', 'Mid-thigh shorts', 'Shorts', lower(RISES.underBelly, 0.26)],
-  ['shortsBike', 'Bike shorts', 'Shorts', lower(RISES.underBelly, 0.36)],
-  ['shortsKnee', 'Knee-length shorts', 'Shorts', lower(RISES.overBelly, 0.44)],
+  ['shortsAthletic', 'Short shorts', 'Shorts', lower(RISES.underBelly, 0.12, { lowBand: SHORTS_BANDS })],
+  ['shortsMid', 'Mid-thigh shorts', 'Shorts', lower(RISES.underBelly, 0.26, { lowBand: SHORTS_BANDS })],
+  // (his 06: a high rise, its legs' ends a third of the way from her crotch to her knee -- 0.23 of her leg's line. It
+  // was the under-belly rise to 0.36 until 2026-11-15)
+  ['shortsBike', 'Bike shorts', 'Shorts', lower(RISES.high, 0.23, { lowBand: BIKE_BANDS })],
+  ['shortsKnee', 'Knee-length shorts', 'Shorts', lower(RISES.overBelly, 0.44, { lowBand: SHORTS_BANDS })],
   // (his 06: a scoop between wide straps, armholes cut in, a scoop behind a little higher; drawn, `TOP_OUTLINES.tank`.
   // Its old numbers stay: a look saved before names them, and what draws it now is its kind)
   ['tank', 'Tank top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, OUTLINE_NECK.tank, -1, { strapIn: 1.0, strap: 0.55, neckBack: 0.9, armhole: LINES.armhole, length: DEFAULT_SHIRT_LENGTH, top: 'tank' })],
@@ -474,9 +521,9 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // her athletic bikini bottom, designed on her skin from Joshua's reference: its fill, and its edging under it
   ['athleticBottom', 'Athletic bikini bottom', 'Shorts', lower(NO_RISE, 0, { outline: 'athleticBottom', outlineLine: 'fill' })],
   ['athleticBottomEdge', 'Athletic bikini bottom edging', 'Shorts', lower(NO_RISE, 0, { outline: 'athleticBottom', outlineLine: 'edge' })],
-  ['stockings', 'Thigh-high stockings', 'Other', lower(NO_RISE, 1.0, { legStart: 0.22, feet: true })],
-  ['socksKnee', 'Knee-high socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.58, feet: true })],
-  ['socks', 'Crew socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.86, feet: true })],
+  ['stockings', 'Thigh-high stockings', 'Other', lower(NO_RISE, 1.0, { legStart: 0.22, feet: true, lowBand: STOCKING_BANDS })],
+  ['socksKnee', 'Knee-high socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.58, feet: true, lowBand: KNEE_SOCK_BANDS })],
+  ['socks', 'Crew socks', 'Other', lower(NO_RISE, 1.0, { legStart: 0.86, feet: true, lowBand: CREW_SOCK_BANDS })],
 ] as const).map(([id, name, group, params, construction]: readonly [string, string, CoverageTemplate['group'], CoverageParams, CoverageTemplate['construction']?]) =>
   Object.freeze({ id, name, group, params: Object.freeze(params), ...(construction ? { construction } : {}) })));
 
@@ -729,10 +776,19 @@ export function templateDetail(p: Pick<CoverageParams, 'detail'>, cut: TopCut): 
  * A SAVED template's parameters as they are worn now: what the save says, and, for what it does not say -- a field its
  * template has gained since it was saved (a long sleeve's cuff: `band`) -- the template's own. So a look saved before a
  * template gained something wears it with that, and everything it did say is as it was saved.
+ *
+ * But a DEEP WAISTBAND is its style's own rise's (`lowBand.waist`: his sheet of bottoms' high rise, a hand deep). A
+ * look saved before bottoms had bands, on a rise that is not its style's now -- the capri's and the bike shorts' were
+ * maternity rises until 2026-11-15, and a bike short's dipped under her belly to her pubic bone -- wears the plain
+ * band (`bottomCut.LOW_BANDS`), which is what a band 7.5 cm deep would bury her front under.
  */
 export function wornParams(id: string, saved: CoverageParams): CoverageParams {
   const t = COVERAGE_TEMPLATES.find((x) => x.id === id);
-  return t ? { ...t.params, ...saved } : saved;
+  if (!t) return saved;
+  const own = t.params, deep = own.lowBand?.waist !== undefined && saved.lowBand === undefined && (saved.riseFront !== own.riseFront || saved.riseSide !== own.riseSide || saved.riseBack !== own.riseBack);
+  if (!deep) return { ...own, ...saved };
+  const { waist: _itsOwnRises, ...bands } = own.lowBand!;
+  return { ...own, ...saved, lowBand: bands };
 }
 const armSkins = new WeakMap<BodyMap, Float32Array>();
 /** Which of her skin is her arm's, a value a vertex (`bodyRegions.armSkin`), worked out once a map. */

@@ -11,9 +11,12 @@ picture with a visible watermark. Nothing here is drawn by the room or shipped t
   for Lena... You can save until it's built"): black wavy hair in a low ponytail over her left shoulder with loose
   strands by her face, brown eyes, an orange and charcoal utility jacket over a dark V-neck, charcoal cargo trousers.
   Out once Lena is a saved character in the room.
-- `tops/16-womens-tops.jpg` -- his sheet of sixteen tops (2026-11-14: "Hopefully these will help to get started and have
-  more than our list"; `CLAUDE.md`, "A painted top, drawn"). Out once all sixteen are in the room.
-- `tops/tank-armhole-front.jpg`, `tops/tank-armhole-three-quarter.jpg` -- two tank tops (Joshua, 2026-11-14, of the
-  drawn tank's armhole: "make the side a smoother curve… it looks like it changes shape in the curve… like these two
-  images… round the sides of the breasts"): the armhole's edge is one curve from the strap round the side of the bust
-  (`topCut.ts` `FRONT_ARM`). Out once he has passed the tank in the room.
+- `bottoms/16-womens-bottoms.png` -- his sheet of sixteen bottoms (2026-11-15: "Here is 16 bottoms ChatGPT did (you can
+  save to your branch), but let's still fix the ragged edges for the painted bottoms to still work like pantyhose or
+  tighter bottoms… this has a few looser ones which would need extra "fabric" to do, but not impossible"; `CLAUDE.md`,
+  "A painted bottom, drawn"). 01 to 06 are tight and are paint; 07 to 16 hang off her and want fabric of their own. Out
+  once all sixteen are in the room.
+
+Taken out, built: `tops/16-womens-tops.jpg`, his sheet of sixteen tops, and `tops/tank-armhole-front.jpg`,
+`tops/tank-armhole-three-quarter.jpg`, the two tank tops he sent for the armhole's curve -- all sixteen have been in the
+room since v0.9.27 (2026-11-15; `CLAUDE.md`, "A painted top, drawn", "The rest of his sixteen tops").

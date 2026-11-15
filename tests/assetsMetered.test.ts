@@ -143,8 +143,9 @@ describe('the room opens with only what she has on', () => {
     for (let i = 9; i < OUTFITS.length; i++) expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]);
     // seven modelled, the new tee and the light tee, then the painted ones: Sarah's own red tee and leggings (2026-10-23),
     // the white tee's six, the three drawn from his sheet of tops (2026-11-14: the scoop, the ringer, the long sleeve)
-    // and the other eleven of his sixteen (2026-11-15: the tank to the button-up)
-    expect(OUTFITS).toHaveLength(30);
+    // and the other eleven of his sixteen (2026-11-15: the tank to the button-up), then the six tight ones of his sheet
+    // of bottoms (the same day: the high-rise leggings to the bike shorts)
+    expect(OUTFITS).toHaveLength(36);
   });
 
   it('cycles through the painted outfits, the light tee, the bikini and none on the slim v2 body, never the big modelled shirts and leggings', () => {

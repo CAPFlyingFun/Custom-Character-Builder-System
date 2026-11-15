@@ -643,10 +643,26 @@ export const SHEET_TOPS = Object.freeze({
   blue: '#5b80c2', rose: '#c27d7a', lilac: '#b59ae2', rust: '#a9472b', chambray: '#7090d2',
 });
 /**
+ * HIS SHEET OF BOTTOMS' COLOURS (Joshua, 2026-11-15, "16 WOMEN'S BOTTOMS"), GAME TUNING by eye off it as `SHEET_TOPS`:
+ * 01 the high-rise leggings' black, 02 the low rise's slate blue, 03 the over-belly's plum, 04 the under-belly's dark
+ * green, 05 the capri's charcoal, 06 the bike shorts' maroon -- and the grey crop tee every one of his figures wears.
+ */
+export const SHEET_BOTTOMS = Object.freeze({ black: '#232326', slate: '#4f5d7c', plum: '#4d2b47', green: '#32493a', charcoal: '#55565c', maroon: '#6e2a35', tee: '#b4b4b8' });
+/**
+ * His figures' crop tee ends a hand over her navel (MEASURED off his sheet: 9 cm over it, 0.40 of her trunk; her navel
+ * is at 0.232), higher than the boxy crop tee's own hem (0.32): the outfits of his bottoms wear it there, a little
+ * over the high rise's band.
+ */
+export const SHEET_BOTTOMS_TEE_HEM = 0.42;
+/**
  * One layer of a built-in outfit: a template and its fabric, a pack colour or a custom one (`tint`, fabricTint.ts).
  * `edging`: a drawn top's bands in a colour of their own (`fabricLibrary.edgingOf`); without one they match its fabric.
  */
-export interface PaintedLayer { readonly template: string; readonly fabric: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string }; readonly edging?: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string } }
+export interface PaintedLayer {
+  readonly template: string; readonly fabric: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string }; readonly edging?: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string };
+  /** The template's sliders set for this outfit (`paintTemplates.withDial`, by a dial's id): a crop tee's HEM higher than its style's own. */
+  readonly dials?: Readonly<Partial<Record<'rise' | 'riseBack' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'sleeve', number>>>;
+}
 /** A modelled garment's fabric in a built-in outfit, as the editor's FABRIC would set it. */
 export type OutfitFabric = PaintedLayer['fabric'];
 /**
@@ -714,6 +730,19 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   })),
   { name: 'painted swimsuit', garments: [], paint: [{ template: 'swimsuit', fabric: { family: 'athletic', colour: 14 } }] },
   { name: 'painted leotard', garments: [], paint: [{ template: 'bodysuit', fabric: { family: 'athletic', colour: 15 } }] },
+  // HIS SHEET OF BOTTOMS, THE TIGHT ONES (Joshua, 2026-11-15: "Let's work on all the bottoms…"; "Here is 16 bottoms
+  // ChatGPT did... let's still fix the ragged edges for the painted bottoms to still work like pantyhose or tighter
+  // bottoms"; `bottomCut.ts`), in his sheet's order and colours, each under the grey crop tee his figures wear: 01 the
+  // high-rise leggings, 02 the low rise, 03 over her belly, 04 under it, 05 the capri, 06 the bike shorts. Put after
+  // everything there was: no outfit has moved.
+  ...([
+    ['painted high-rise leggings', 'leggingsHigh', SHEET_BOTTOMS.black], ['painted low-rise leggings', 'leggingsLow', SHEET_BOTTOMS.slate],
+    ['painted over-belly leggings', 'leggingsFull', SHEET_BOTTOMS.plum], ['painted under-belly leggings', 'leggingsUnder', SHEET_BOTTOMS.green],
+    ['painted capri leggings', 'leggingsCapri', SHEET_BOTTOMS.charcoal], ['painted bike shorts', 'shortsBike', SHEET_BOTTOMS.maroon],
+  ] as const).map(([name, template, tint]): BuiltInOutfit => ({
+    name, garments: [],
+    paint: [{ template, fabric: { family: 'athletic', colour: 0, tint } }, { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: SHEET_BOTTOMS_TEE_HEM } }],
+  })),
 ];
 /**
  * NAMES THE BUILT-IN OUTFITS HAD (Joshua, 2026-11-13: "let's remove the word Sarah and keep everything generic"): the

@@ -21,6 +21,8 @@ export const SKIN_PICTURE = 'public/models/skins/sarah-v2-skin-even-2048.webp';
 export const JOINTS = Object.freeze({
   neck: 'Bone_017', head: 'Bone_016', chest: 'Bone_002', hipL: 'Bone_014', hipR: 'Bone_009',
   shoulderL: 'Bone_026', elbowL: 'Bone_025', wristL: 'Bone_024', shoulderR: 'Bone_021', elbowR: 'Bone_020', wristR: 'Bone_019',
+  // (what a bottom's frame asks besides: `bottomCut.lowFrame`)
+  pelvis: 'Bone_001', spine: 'Bone_004', kneeL: 'Bone_013', ankleL: 'Bone_012', kneeR: 'Bone_008', ankleR: 'Bone_007',
 });
 
 export async function gltfIo() {
@@ -35,6 +37,9 @@ export async function gltfIo() {
  *   uv        Float32Array, uv a point (v as her file has it: 0 at the picture's TOP row)
  *   index     Uint32Array, three a triangle
  *   armShare  Float32Array, a point: 1 her arm's skin, 0 the rest of her (the bone that weighs most on it says)
+ *   limb      Float32Array, a point: 1 her arm's skin, -1 her leg's (her seat and her hips' sides among it: they hang
+ *             from her thigh bones), 0 the rest of her -- `bottomCut.limbSkin`, as the room lays it on her
+ *   lowJoints the ten `bottomCut.lowFrame` asks for, ready to hand it (with `unitsPerMetre: 1`)
  *   bones     { joints: Uint8/16Array (four a point), weights: Uint8Array (four a point, of 255), names: string[] }
  *   joint(name)  a bone's place at rest, metres ([x, y, z]); `JOINTS` names the ones a top's frame and her head use
  *   frameJoints  the nine `topCut.topFrame` asks for, ready to hand it (with `unitsPerMetre: 1`)
@@ -52,10 +57,17 @@ export async function loadBody({ file = BODY_FILE, picture = true } = {}) {
   const skin = doc.getRoot().listSkins()[0], list = skin.listJoints();
   const joint = (name) => { const j = list.find((x) => x.getName() === name); if (!j) throw new Error(`no joint ${name}`); return j.getWorldTranslation(); };
   const frameJoints = Object.fromEntries(['neck', 'hipL', 'hipR', 'shoulderL', 'elbowL', 'wristL', 'shoulderR', 'elbowR', 'wristR'].map((k) => [k, joint(JOINTS[k])]));
+  const lowJoints = Object.fromEntries(['pelvis', 'spine', 'chest', 'neck', 'hipL', 'kneeL', 'ankleL', 'hipR', 'kneeR', 'ankleR'].map((k) => [k, joint(JOINTS[k])]));
+  // her leg's bones: each hip joint's bone and every bone under it
+  const hips = [JOINTS.hipL, JOINTS.hipR].map((name) => list.find((x) => x.getName() === name));
+  const underHip = (j) => { for (let x = j; x; x = x.getParentNode?.()) { if (hips.includes(x)) return true; if (!list.includes(x)) return false; } return false; };
+  const isLeg = Uint8Array.from(list, (j) => (underHip(j) ? 1 : 0));
+  const limb = new Float32Array(n);
+  for (let v = 0; v < n; v++) { let best = 0; for (let k = 1; k < 4; k++) if (part.weights[v * 4 + k] > part.weights[v * 4 + best]) best = k; limb[v] = armShare[v] ? 1 : isLeg[part.joints[v * 4 + best]] ? -1 : 0; }
   return {
-    rest: Float32Array.from(part.rest), normal, uv, index: Uint32Array.from(part.index), armShare,
+    rest: Float32Array.from(part.rest), normal, uv, index: Uint32Array.from(part.index), armShare, limb,
     bones: { joints: part.joints, weights: part.weights, names: body.joints },
-    joint, frameJoints, skin: picture ? await readPicture(SKIN_PICTURE) : null,
+    joint, frameJoints, lowJoints, skin: picture ? await readPicture(SKIN_PICTURE) : null,
   };
 }
 

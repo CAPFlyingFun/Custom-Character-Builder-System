@@ -19,6 +19,7 @@
 import * as THREE from 'three';
 import type { ShapeFields } from '../view/bodyShapeView';
 import { DETAIL_LOOK, DETAIL_PACK, topDetailGlsl } from './topDetails';
+import { LOW_CUT, lowGlsl } from './bottomCut';
 
 export interface FabricLayer {
   /** The swatch, tiled (MirroredRepeatWrapping). Null switches the layer off. */
@@ -63,7 +64,47 @@ export interface FabricLayer {
    * (it is compiled again once); until then its program is exactly as it was.
    */
   readonly cut?: { readonly band: readonly [number, number, number]; readonly shade: number; readonly edging?: { readonly colour: readonly [number, number, number]; readonly knit: number } | null; readonly detail?: { readonly pack: ArrayLike<number> } | null } | null;
+  /**
+   * Painted on: where the layer ends drawn from a BOTTOM'S CUT (`bottomCut.ts`), for each pixel at its own place -- its
+   * `waist`, the waistband's line round her (its height at the middle of her front, at her sides and at the middle of
+   * her back, and how far round her the front's holds; null: none, a stocking), looked up where the pixel lies on her
+   * rest skin with her skin's slip taken off (`LOW_SLIP_ATTRIBUTE`); its legs' `end` and `start`, flat rings round her
+   * leg carried by her leg's bones (her units along her leg from her hip joint; null: none -- `setFabricLowLegs`),
+   * which cut her leg's skin alone. `band`: a band along each edge this wide inside it (its waistband, its legs' ends,
+   * its legs' tops), `shade` darker in the layer's own fabric or in its `edging` colour, with a seam -- as a top's.
+   * `setFabricLow` lays her own measures for it on the material. A material is given this code the first time one of
+   * its layers is a drawn bottom (it is compiled again once); until then its program is exactly as it was.
+   */
+  readonly low?: { readonly waist: readonly [number, number, number, number] | null; readonly end: number | null; readonly start: number | null; readonly band: readonly [number, number, number]; readonly shade: number; readonly edging?: { readonly colour: readonly [number, number, number]; readonly knit: number } | null } | null;
 }
+
+type V4 = readonly [number, number, number, number];
+/**
+ * Her own measures for a drawn bottom (`bottomCut.LowFrame`; her mesh's own units), as a material reads them: `axis`,
+ * her middle (x), which way she faces along z, how far in front of her spine her side seam runs, and the scale an
+ * edge's distance is put on; `spineA`, `spineB`, her spine's four joints (height, depth, height, depth each);
+ * `legL`, `legR`, each leg's measure at rest -- its thigh's cut, its shin's (`bottomCut.legPlanes`: laid again each
+ * frame as her bones carry them, `setFabricLowLegs`) and which of the two her skin takes by where it lies at rest
+ * (`bottomCut.legBlend`); `seam`, how dark a band's seam is drawn and half how wide.
+ */
+export interface FabricLow {
+  readonly axis: V4; readonly spineA: V4; readonly spineB: V4;
+  /** the height a waistband's BAND reaches no lower than (`bottomCut.LowFrame.floor`) */
+  readonly floor: number;
+  readonly legL: readonly [V4, V4, V4]; readonly legR: readonly [V4, V4, V4];
+  readonly seam: readonly [number, number];
+}
+/**
+ * HER SKIN'S SLIP ABOUT HER HIPS, for a drawn bottom's waistband (`pulledSlip.ts`): three numbers a vertex, her mesh's
+ * own units, what the shader adds to a pixel's rest place to look the waistband up. IT RIDES IN THE SHOW REGIONS
+ * OVERLAY'S ATTRIBUTE: her skin's vertex shader has no attribute left (sixteen, on many phones: `AUX_ATTRIBUTE`), and
+ * the overlay's tints are read only while SHOW REGIONS is on -- so while it is off the same four numbers a vertex are
+ * her slip (x, y, z) and, the fourth, how much longer her skin is ACROSS her there than at rest (`bottomCut.waistAt`'s
+ * `across`); and while it is on a waistband is looked up at her rest place itself (its line a little torn under the
+ * tints, as it was before). Whoever writes the attribute writes all of it: `bodyPaint.showRegions` the tints,
+ * `fabricPanel.ts` her slip when the overlay comes off.
+ */
+export const LOW_SLIP_ATTRIBUTE = 'fabricRegionTint';
 
 /**
  * A top's cut as a material reads it (`topCut.ts`; her mesh's own units): `texture`, its two drawings and her middle
@@ -102,12 +143,13 @@ export interface FabricCut {
   readonly ownHem?: boolean;
 }
 
-interface Patched { readonly uniforms: Record<string, THREE.IUniform>; readonly layers: number; readonly masked: boolean; readonly cut: boolean; details: boolean }
+interface Patched { readonly uniforms: Record<string, THREE.IUniform>; readonly layers: number; readonly masked: boolean; readonly cut: boolean; details: boolean; low: boolean }
 const patched = new WeakMap<THREE.Material, Patched>();
 /**
  * What her skin carries beside its paint, one attribute for the three (a vertex shader has sixteen attributes on many
  * phones, and her skin's uses them all): x, how far a shirt's drape hangs clear of her (`setHang`); y, how far she is
- * behind her top's cleavage bridge (`setUnder`); z, whether the skin is her arm's (`setArmSkin`: 1 or 0).
+ * behind her top's cleavage bridge (`setUnder`); z, whether the skin is a limb's (`setArmSkin`: 1 her arm's, -1 her
+ * leg's, 0 the rest of her -- `bottomCut.limbSkin`).
  */
 export const AUX_ATTRIBUTE = 'fabricAux';
 
@@ -192,6 +234,9 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         // (a sheet in a top's fabric that reads the top's cut -- her cleavage bridge -- has a slip of its own, laid from
         // her skin's at its ends: its rim is looked up as her skin's is, at its rest place and its slip)
         : cut ? ['attribute vec3 fabricSlip;', 'varying vec3 vFabricSlip;'] : []),
+      // a drawn bottom's legs (bottomCut.ts): how far along her leg this point is, measured where her leg's bones are
+      // now -- by her thigh's bone and by her shin's, blended round her knee by where the point lies at rest
+      ...(masked && entry.low ? ['uniform vec4 fabricLowLegL[3];', 'uniform vec4 fabricLowLegR[3];', 'uniform vec4 fabricLowAxis;', 'varying float vFabricLeg;', 'centroid varying float vFabricLimb;'] : []),
       shader.vertexShader,
     ].join('\n');
     const mask = masked ? `\nvFabricMask = fabricPaint;\nvFabricTint = fabricRegionTint;\nvFabricAux = ${AUX_ATTRIBUTE};\nvFabricSlip = fabricSlip;` : '';
@@ -211,7 +256,14 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     if (masked) shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>${soften}`);
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\nvFabricPos = fabricRest;\nvFabricNrm = fabricRestNormal;${mask}${cut && !masked ? '\nvFabricSlip = fabricSlip;' : ''}${masked ? '\ntransformed -= fabricDetail.xyz * fabricSoften;\nvFabricDetailKeep = clamp(fabricDetail.w * (1.0 - fabricHideNipple / max(fabricCovered, 1e-3)) + fabricDetailN.w * (1.0 - fabricHideNavel / max(fabricCovered, 1e-3)), 0.0, 1.0);' : ''}`);
     // (after her bones: `transformed` is her posed place, in her mesh's own space)
-    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <skinning_vertex>', '#include <skinning_vertex>\nvFabricAlong = dot(fabricRest.x >= fabricCutLimb.x ? fabricCutArmL : fabricCutArmR, vec4(transformed, 1.0));');
+    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <skinning_vertex>', `#include <skinning_vertex>\nvFabricAlong = dot(fabricRest.x >= fabricCutLimb.x ? fabricCutArmL : fabricCutArmR, vec4(transformed, 1.0));${entry.low ? `
+{
+  bool fabricLegLeft = fabricRest.x >= fabricLowAxis.x;
+  vec4 fabricPosed = vec4(transformed, 1.0);
+  float fabricByThigh = dot(fabricLegLeft ? fabricLowLegL[0] : fabricLowLegR[0], fabricPosed), fabricByShin = dot(fabricLegLeft ? fabricLowLegL[1] : fabricLowLegR[1], fabricPosed);
+  vFabricLeg = mix(fabricByThigh, fabricByShin, smoothstep(-1.0, 1.0, dot(fabricLegLeft ? fabricLowLegL[2] : fabricLowLegR[2], vec4(fabricRest, 1.0))));
+  vFabricLimb = ${AUX_ATTRIBUTE}.z;
+}` : ''}`);
     // a top's cut for layer i: its line, and its bands -- a touch darker (or in the layer's edging colour), a seam
     // along their inner side. `fd`, how far inside the line this pixel is; `fm`, the same on the paint's scale.
     // EACH EDGE'S BAND IS ITS OWN: a collar's by how far the pixel is inside the neck opening's rim (`fn`, which the
@@ -242,6 +294,52 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             fc = mix(fc, fabricTopDet${i}[6].w < 0.0 ? fe : vec3(fabricTopDet${i}[6].w), ft.z);
             fc *= ft.x;
           }` : '';
+    // a BOTTOM's cut for layer i (bottomCut.ts `lowAt`, formula for formula): its waistband's line at this pixel's own
+    // place (`fabricLowPlace`: its rest place and her skin's slip there), its legs' ends and tops by how far along her
+    // leg the pixel is (`vFabricLeg`). EACH EDGE IS ANTIALIASED BY ITS OWN SLOPE, as a top's: her leg's edges cut her
+    // leg's skin alone (`fabricLegShare`), and the rest of her under a waistband is the garment whatever her legs do
+    // (a stocking, which has no waistband, is on her leg's skin alone) -- but her ARM's skin, which hangs beside her
+    // hips under any waistband and is never a bottom's (`fabricNotArm`). A band along each edge, as wide as its number
+    // (`lowBand`); a waistband's stops at a level line above her cleft (`lowWaistBand`, `bottomCut.waistBanded`).
+    // An edge's distance is held to the edge's own range before its slope is taken: far inside a garment the distance
+    // is of no account, and between her legs -- where her axis comes out of her, and a waistband's line "at that place
+    // round her" swings from pixel to pixel -- its slope is no pixel's width.
+    // WHICH OF HER SKIN A PIXEL IS (`vFabricLimb`: 1 her arm's, -1 her leg's, 0 the rest of her -- `bottomCut.limbSkin`)
+    // IS READ INSIDE THE TRIANGLE THE PIXEL IS DRAWN FOR (`centroid`). The flag steps from -1 to 0 across the one row of
+    // her triangles that joins her leg's skin to her trunk's, and a pixel that a triangle only partly covers is told
+    // the triangle's numbers AT THE PIXEL'S MIDDLE, outside the triangle, where they run on past its corners: on a
+    // triangle of that row seen thin, the flag ran on past 0 to a half, "her arm's skin" -- and that part of the pixel
+    // was left bare. MEASURED 2026-11-15 in the room at a phone's 2x, her legs whole in the picture, her front square
+    // on: three pairs of pixels a quarter her skin, one over another down each of her hips' outlines and at the folds
+    // of her groin (the row runs up her hips' sides there) -- the same places of her from 170, 180 and 190 cm, gone
+    // when she was turned 3 degrees, and each part of the cover (her waistband's, her legs' ends', not-her-arm's) all
+    // of it at the pixel's middle. Read inside the triangle the flag stays between its corners'.
+    const lowBand = (d: string, b: string, weight: string, i: number) => `
+          if (${b} > 0.0) {
+            float fa = max(fwidth(${d}) * 0.75, 1e-7), fi = (1.0 - smoothstep(${b} - fa, ${b} + fa, ${d})) * ${weight};
+            if (fabricCutEdge${i}.w >= 0.0) fc = mix(fc, fabricCutEdge${i}.rgb * (fabricCutEdge${i}.w > 0.0 ? clamp(dot(fc, vec3(0.2126, 0.7152, 0.0722)) * fabricCutEdge${i}.w, 0.45, 1.75) : 1.0), fi);
+            else fc *= 1.0 - fabricLowBand${i}.w * fi;
+            fc *= 1.0 - fabricCutSeam.x * ${weight} * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fa, abs(${d} - ${b})));
+          }`;
+    // A WAISTBAND'S BAND (bottomCut.ts `waistBanded`: the same places): inside its line by less than its depth, AND OVER
+    // THE FLOOR -- a level line above her cleft, antialiased by its own slope as each edge is. Under the floor nothing of
+    // it is drawn, whatever the distance inside its line says there (between her legs it says anything). Its seam runs
+    // along its inner edge over the floor, and along the floor where that cuts it.
+    const lowWaistBand = (i: number) => `
+          if (fabricLowBand${i}.x > 0.0) {
+            float fa = max(fwidth(fwd) * 0.75, 1e-7), fh = fabricLowPlace.y - fabricLowFloor, fg = max(fwidth(fh) * 0.75, 1e-7);
+            float fin = 1.0 - smoothstep(fabricLowBand${i}.x - fa, fabricLowBand${i}.x + fa, fwd), fup = smoothstep(-fg, fg, fh), fi = fin * fup;
+            if (fabricCutEdge${i}.w >= 0.0) fc = mix(fc, fabricCutEdge${i}.rgb * (fabricCutEdge${i}.w > 0.0 ? clamp(dot(fc, vec3(0.2126, 0.7152, 0.0722)) * fabricCutEdge${i}.w, 0.45, 1.75) : 1.0), fi);
+            else fc *= 1.0 - fabricLowBand${i}.w * fi;
+            fc *= 1.0 - fabricCutSeam.x * max(fup * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fa, abs(fwd - fabricLowBand${i}.x))), fin * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fg, abs(fh))));
+          }`;
+    const lowLine = (i: number) => `
+        if (fabricLowOn${i} > 0.5) {
+          float fwd = ${LOW_CUT.far.toFixed(1)}, fcw = 1.0;
+          if (fabricLowLeg${i}.z > 0.5) { fwd = fabricLowInside(fabricLowWaist${i}, fabricLowPlace, fabricLowR, fabricLowAcross); fcw = fabricEdge(clamp(0.5 + fwd / (2.0 * fabricLowAxis.w), 0.0, 1.0)); }
+          float fle = fabricLowLeg${i}.x - vFabricLeg, fls = vFabricLeg - fabricLowLeg${i}.y;
+          fe${i} = fcw * mix(fabricLowLeg${i}.z, fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0)), fabricLegShare) * fabricNotArm;${lowWaistBand(i)}${lowBand('fle', `fabricLowBand${i}.y`, 'fabricLegShare', i)}${lowBand('fls', `fabricLowBand${i}.z`, 'fabricLegShare', i)}
+        }`;
     const cutLine = (i: number, neckOnly: boolean) => `
           float fn = fabricCutValue.x;${band('fn', `fabricCutBand${i}.x`, i)}
           ${neckOnly ? 'float fd = fn;' : `float fl = fabricCutValue.y;
@@ -274,7 +372,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         if (fabricCutOn${i} > 0.5) {${cutLine(i, false)}
           fm${i} = 0.5 + fd / (2.0 * fabricCutDepth.w);
           fe${i} = min(fabricEdge(0.5 + fn / (2.0 * fabricCutDepth.w)), fabricEdge(0.5 + fl / (2.0 * fabricCutDepth.w)));
-        }
+        }${entry.low ? lowLine(i) : ''}
         float fk = (fe${i} < 0.0 ? fabricEdge(fm${i}) : fe${i}) * (1.0 - pow(1.0 - fabricOpacity${i}, 2.2)) * (1.0 - fabricEdge(vFabricAux.x) * step(abs(fabricHangLayer - ${i}.0), 0.5)) * (1.0 - fabricEdge(vFabricAux.y) * step(abs(fabricUnderLayer - ${i}.0), 0.5));\n        diffuseColor.rgb = mix(diffuseColor.rgb, fc, fk);`
           : cut
             // a sheet in a top's fabric (her cleavage bridge): it ends at the cut's rim as her skin's paint does, and
@@ -344,6 +442,9 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           vec2 place = vFabricPos.xy + vFabricSlip.xy;
           return vec4(place.x - fabricCutLimb.x, place.y, 1.0, max(length(fwidth(place)), 1e-7) * 0.75);
         }`] : []),
+      // a drawn bottom: her measures, each layer's own cut, and the functions (bottomCut.ts `lowGlsl`)
+      ...(masked && entry.low ? ['varying float vFabricLeg;', 'centroid varying float vFabricLimb;', 'uniform vec4 fabricLowAxis;', 'uniform vec4 fabricLowSpineA;', 'uniform vec4 fabricLowSpineB;', 'uniform float fabricLowFloor;',
+        ...idx.flatMap((i) => [`uniform float fabricLowOn${i};`, `uniform vec4 fabricLowWaist${i};`, `uniform vec4 fabricLowLeg${i};`, `uniform vec4 fabricLowBand${i};`]), lowGlsl()] : []),
       ...idx.flatMap((i) => [`uniform float fabricOn${i};`, `uniform sampler2D fabricMap${i};`, `uniform float fabricTile${i};`, `uniform float fabricOpacity${i};`, `uniform float fabricRough${i};`]),
       shader.fragmentShader,
     ].join('\n').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, fabricRoughness, fabricMatte);')
@@ -360,15 +461,19 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       ${cut ? `bool fabricCutWorn = ${idx.map((i) => `fabricCutOn${i}`).join(' + ')} > 0.5;
       vec3 fabricCutValue = fabricCutWorn ? fabricCutAt() : vec3(0.0);${masked ? '' : '\n      float fabricCover = 0.0;'}${entry.details ? `
       vec4 fabricDetPlace = fabricCutWorn ? fabricDetailPlace() : vec4(0.0);
-      float fabricDetFacing = normalize(vFabricNrm).z * fabricCutLimb.w;` : ''}` : ''}
+      float fabricDetFacing = normalize(vFabricNrm).z * fabricCutLimb.w;` : ''}` : ''}${masked && entry.low ? `
+      vec3 fabricLowPlace = vFabricPos + vFabricTint.xyz * (1.0 - fabricShowRegions);
+      vec3 fabricLowR = fabricLowRound(fabricLowPlace);
+      float fabricLowAcross = vFabricTint.w * (1.0 - fabricShowRegions);
+      float fabricLegShare = smoothstep(0.4, 0.6, -vFabricLimb), fabricNotArm = 1.0 - smoothstep(0.4, 0.6, vFabricLimb);` : ''}
       ${idx.map(sample).join('\n')}
       ${cut && !masked ? 'if (fabricCutWorn) { if (fabricCover < 0.004) discard; diffuseColor.a *= fabricCover; }' : ''}
       ${masked ? 'if (fabricShowRegions > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vFabricTint.rgb, 0.78 * vFabricTint.a);' : ''}
     }`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v17${entry.details ? '-detail' : ''}`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v17${entry.details ? '-detail' : ''}${entry.low ? '-low' : ''}`; };
   material.needsUpdate = true;
-  const entry: Patched = { uniforms, layers, masked, cut, details: false };
+  const entry: Patched = { uniforms, layers, masked, cut, details: false, low: false };
   patched.set(material, entry);
   return entry;
 }
@@ -410,6 +515,21 @@ export function setFabricLayer(mesh: THREE.Mesh, material: THREE.Material, index
       if (d) (uniforms[`fabricTopDet${index}`].value as THREE.Vector4[]).forEach((v, k) => v.set(d.pack[k * 4], d.pack[k * 4 + 1], d.pack[k * 4 + 2], d.pack[k * 4 + 3]));
     }
   }
+  // a bottom's cut: this layer's own waistband, legs and bands
+  if (masked) {
+    const w = on ? layer?.low ?? null : null;
+    if (w) withLow(material);
+    if (patched.get(material)?.low) {
+      uniforms[`fabricLowOn${index}`].value = w ? 1 : 0;
+      if (w) {
+        (uniforms[`fabricLowWaist${index}`].value as THREE.Vector4).fromArray(w.waist ?? [0, 0, 0, 1]);
+        (uniforms[`fabricLowLeg${index}`].value as THREE.Vector4).set(w.end ?? LOW_CUT.far, w.start ?? -LOW_CUT.far, w.waist ? 1 : 0, 0);
+        (uniforms[`fabricLowBand${index}`].value as THREE.Vector4).set(w.band[0], w.band[1], w.band[2], w.shade);
+        const e = w.edging ?? null;
+        (uniforms[`fabricCutEdge${index}`].value as THREE.Vector4).set(e ? e.colour[0] : 0, e ? e.colour[1] : 0, e ? e.colour[2] : 0, e ? Math.max(0, e.knit) : -1);
+      }
+    }
+  }
   // a designed garment's field
   const field = masked && on ? layer?.field ?? null : null;
   uniforms[`fabricFieldOn${index}`].value = field ? 1 : 0;
@@ -441,6 +561,68 @@ function withDetails(material: THREE.Material): void {
     p.uniforms[`fabricTopDet${i}`] = { value: Array.from({ length: DETAIL_PACK / 4 }, () => new THREE.Vector4()) };
   }
   material.needsUpdate = true;
+}
+
+/**
+ * Her skin's material given a bottom's code and uniforms, once: it compiles again. (Its cache key is handed on through
+ * a new function, so a material that follows hers by her functions' identity -- her opening's area's, `vulvaMesh.ts`
+ * `keepMat` -- sees the change and compiles again with it.)
+ */
+function withLow(material: THREE.Material): void {
+  const p = patched.get(material);
+  if (!p?.masked || p.low) return;
+  p.low = true;
+  const v4 = () => new THREE.Vector4();
+  Object.assign(p.uniforms, {
+    fabricLowAxis: { value: new THREE.Vector4(0, 1, 0, 1) }, fabricLowSpineA: { value: v4() }, fabricLowSpineB: { value: v4() }, fabricLowFloor: { value: -LOW_CUT.far },
+    fabricLowLegL: { value: [v4(), v4(), v4()] }, fabricLowLegR: { value: [v4(), v4(), v4()] },
+  });
+  for (let i = 0; i < p.layers; i++) {
+    p.uniforms[`fabricLowOn${i}`] = { value: 0 };
+    p.uniforms[`fabricLowWaist${i}`] = { value: v4() };
+    p.uniforms[`fabricLowLeg${i}`] = { value: new THREE.Vector4(LOW_CUT.far, -LOW_CUT.far, 0, 0) };
+    p.uniforms[`fabricLowBand${i}`] = { value: v4() };
+  }
+  const key = material.customProgramCacheKey;
+  material.customProgramCacheKey = function () { return key.call(this); };
+  material.needsUpdate = true;
+}
+/**
+ * Her own measures for a drawn bottom laid on her skin's material (`FabricLow`), her legs' cuts as they are at rest; or
+ * every layer's bottom taken off (null). Nothing on a material no layer of which has been a drawn bottom.
+ */
+export function setFabricLow(material: THREE.Material, low: FabricLow | null): void {
+  const p = patched.get(material);
+  if (!p?.low) return;
+  const u = p.uniforms;
+  if (!low) { for (let i = 0; i < p.layers; i++) u[`fabricLowOn${i}`].value = 0; return; }
+  (u.fabricLowAxis.value as THREE.Vector4).fromArray(low.axis);
+  (u.fabricLowSpineA.value as THREE.Vector4).fromArray(low.spineA);
+  (u.fabricLowSpineB.value as THREE.Vector4).fromArray(low.spineB);
+  u.fabricLowFloor.value = low.floor;
+  // (which of her two bones' measures her skin takes is told at rest: it is laid here and not again)
+  (u.fabricLowLegL.value as THREE.Vector4[])[2].fromArray(low.legL[2]);
+  (u.fabricLowLegR.value as THREE.Vector4[])[2].fromArray(low.legR[2]);
+  (u.fabricCutSeam.value as THREE.Vector2).fromArray(low.seam);
+}
+/**
+ * Each leg's two cuts as her bones carry them now (her leg on the side of x over her middle, then her other): her
+ * thigh's and her shin's, four numbers each as `FabricLow.legL` -- how far along her leg a POSED place p of her mesh's
+ * own space is, is `p . (the first three) + the fourth`. Laid once a frame while a drawn bottom is worn: a leg's end is
+ * then a flat ring square to the bone it is on in any pose.
+ */
+export function setFabricLowLegs(material: THREE.Material, legL: readonly [V4, V4], legR: readonly [V4, V4]): void {
+  const p = patched.get(material);
+  if (!p?.low) return;
+  const L = p.uniforms.fabricLowLegL.value as THREE.Vector4[], R = p.uniforms.fabricLowLegR.value as THREE.Vector4[];
+  L[0].fromArray(legL[0]); L[1].fromArray(legL[1]); R[0].fromArray(legR[0]); R[1].fromArray(legR[1]);
+}
+/** Whether any paint layer of a material is drawn from a bottom's cut now. */
+export function fabricLowWorn(material: THREE.Material): boolean {
+  const p = patched.get(material);
+  if (!p?.low) return false;
+  for (let i = 0; i < p.layers; i++) if ((p.uniforms[`fabricLowOn${i}`]?.value ?? 0) > 0.5) return true;
+  return false;
 }
 
 /**
@@ -483,8 +665,9 @@ export function fabricCutWorn(material: THREE.Material): boolean {
   return false;
 }
 /**
- * Which of her skin is her ARM's (one value a vertex: 1 her arm's, 0 the rest of her), for a top's cut: a sleeve's end
- * cuts her arm's skin and a hem the rest of her. Laid once a body.
+ * Which of her skin is a LIMB's (one value a vertex: 1 her arm's, -1 her leg's, 0 the rest of her: `bottomCut.limbSkin`):
+ * a top's sleeve's end cuts her arm's skin and its hem the rest of her; a bottom's legs' ends cut her leg's skin. Laid
+ * once a body.
  */
 export function setArmSkin(mesh: THREE.Mesh, arm: ArrayLike<number>, rest: ShapeFields | null): void {
   const g = mesh.geometry as THREE.BufferGeometry;

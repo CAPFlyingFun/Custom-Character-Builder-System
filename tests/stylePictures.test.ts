@@ -10,8 +10,9 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PAINT_LAYER_COUNT } from '../src/sarahlab/bodyPaint';
-import { COVERAGE_TEMPLATES, GARMENT_SETS, pieceKind, templateCut } from '../src/sarahlab/paintTemplates';
-import { OUTFITS, RECOVERED_GARMENTS, RECOVERED_SHIRTS, SHEET_TOPS, offeredOutfits, outfitNamed, outfitThumbPath, type Garment } from '../src/sarahlab/sarahLabTool';
+import { isDrawnBottom } from '../src/sarahlab/bottomCut';
+import { COVERAGE_TEMPLATES, GARMENT_SETS, RISES, pieceKind, templateCut } from '../src/sarahlab/paintTemplates';
+import { OUTFITS, RECOVERED_GARMENTS, RECOVERED_SHIRTS, SHEET_BOTTOMS, SHEET_BOTTOMS_TEE_HEM, SHEET_TOPS, offeredOutfits, outfitNamed, outfitThumbPath, type Garment } from '../src/sarahlab/sarahLabTool';
 import { STYLE_FRAME, isHelperStyle, picturedAs, picturedStyles, stylePictureLayers, styleThumbPath } from '../src/sarahlab/stylePictures';
 import { TOP_DETAIL_STYLES } from '../src/sarahlab/topDetails';
 import { TOP_OUTLINES } from '../src/sarahlab/topCut';
@@ -38,7 +39,7 @@ describe('a style\'s picture', () => {
     // one-pieces and which has no top of its own: as a bottom, under a tee (as a one-piece it was her bare to the waist)
     for (const s of pictured) expect(s.kind, s.id).toBe(s.id === 'bikiniBottom' ? 'bottom' : pieceKind(s.id));
     expect(picturedAs('bikiniBottom')).toBe('bottom');
-    expect(stylePictureLayers('bikiniBottom', 'bottom').map((l) => l.template)).toEqual(['bikiniBottom', 'teeShort']);
+    expect(stylePictureLayers('bikiniBottom', 'bottom').map((l) => l.template)).toEqual(['bikiniBottom', 'cropTee']);
     for (const id of ['swimsuit', 'bodysuit', 'bodysuitFull']) expect(picturedAs(id), id).toBe('onePiece');
     // each kind of piece has a frame, and it is a part of her that is some of her
     for (const kind of new Set(pictured.map((s) => s.kind))) { const f = STYLE_FRAME[kind]; expect(f.to).toBeGreaterThan(f.from); expect(f.from).toBeGreaterThanOrEqual(0); expect(f.to).toBeLessThanOrEqual(1); }
@@ -52,16 +53,42 @@ describe('a style\'s picture', () => {
       expect(layers.length, id).toBeLessThanOrEqual(PAINT_LAYER_COUNT);
       for (const l of layers) expect(known.has(l.template), `${id}: ${l.template}`).toBe(true);
       expect(layers.filter((l) => l.template === id).length, id).toBe(1);
-      // a top lies over leggings, a one-piece on her alone, a bottom under a tee
+      // a top lies over leggings, a one-piece on her alone, a bottom under a crop tee, legwear under shorts and a tee
       if (kind === 'top') expect(layers.map((l) => l.template)).toEqual(['leggingsFull', id]);
       if (kind === 'onePiece') expect(layers.map((l) => l.template)).toEqual([id]);
-      if (kind === 'bottom') expect(layers[layers.length - 1].template).toBe('teeShort');
+      if (kind === 'bottom') expect(layers[layers.length - 1].template).toBe('cropTee');
+      if (kind === 'legwear') expect(layers.map((l) => l.template)).toEqual([id, 'shortsMid', 'teeShort']);
+      // (the style itself is as its template has it: no slider of it is set for its picture)
+      expect(layers.find((l) => l.template === id)!.dials, id).toBeUndefined();
     }
     // a style whose edging is what it is keeps it: the ringer's navy bands, the raglan's maroon sleeves
     expect(stylePictureLayers('teeRinger', 'top')[1].edging).toBeDefined();
     expect(stylePictureLayers('teeRaglan', 'top')[1].edging?.tint).toBe(SHEET_TOPS.maroon);
     // and a set's bottom wears its edging under it
-    expect(stylePictureLayers('athleticBottom', 'bottom').map((l) => l.template)).toEqual(['athleticBottomEdge', 'athleticBottom', 'teeShort']);
+    expect(stylePictureLayers('athleticBottom', 'bottom').map((l) => l.template)).toEqual(['athleticBottomEdge', 'athleticBottom', 'cropTee']);
+  });
+
+  it('shows a bottom\'s WAIST: under a crop tee whose hem is over every waistband his sheet tells apart, in a frame that reaches over that hem', () => {
+    // (his sheet of bottoms tells a high rise from a low one by its waistband; under a tee to her hips four leggings were one picture)
+    const bottoms = picturedStyles().filter((s) => s.kind === 'bottom');
+    expect(bottoms.length).toBeGreaterThanOrEqual(12);
+    for (const { id, kind } of bottoms) {
+      const tee = stylePictureLayers(id, kind).at(-1)!;
+      expect(tee.template, id).toBe('cropTee');
+      expect(tee.dials, id).toEqual({ hem: SHEET_BOTTOMS_TEE_HEM });
+      expect(tee.fabric.tint, id).not.toBe(stylePictureLayers(id, kind).find((l) => l.template === id)!.fabric.tint);
+    }
+    // the hem is over the high rise's line, the low rise's and the under-belly's: each is seen under it
+    for (const rise of [RISES.high, RISES.low, RISES.underBelly]) for (const h of [rise.front, rise.side, rise.back]) expect(SHEET_BOTTOMS_TEE_HEM).toBeGreaterThan(h);
+    // and the frame's top is over the hem: on her rest shape her hip joints are 0.8865 m up and the base of her neck
+    // 1.4111 (`bottomCut.lowFrame`'s measures of her: a trunk of 0.5246 m), so a height t of her trunk is at
+    // (0.8865 + 0.5246 t) / 1.4111 of the way from the floor to the base of her neck
+    const up = (t: number) => (0.8865 + 0.5246 * t) / 1.4111;
+    expect(STYLE_FRAME.bottom.to).toBeGreaterThan(up(SHEET_BOTTOMS_TEE_HEM) + 0.02);
+    expect(STYLE_FRAME.bottom.to).toBeLessThan(up(0.62));   // ...and under her bust: it is a picture of a bottom
+    expect(STYLE_FRAME.bottom.from).toBe(0);
+    // legwear is as it was: under shorts and a tee to her hips, to her waist
+    expect(STYLE_FRAME.legwear.to).toBeLessThan(STYLE_FRAME.bottom.to);
   });
 
   it('is in public/ for every style (scripts/bakeStyleThumbs.mjs): a small picture', () => {
@@ -126,6 +153,44 @@ describe('the rest of his sixteen tops, as outfits', () => {
     expect(OUTFITS[first - 1].name).toBe('painted long-sleeve tee + leggings');
     NEW.forEach(([name], k) => expect(outfitNamed(name)).toBe(first + k));
     expect(OUTFITS[first + NEW.length].name).toBe('painted swimsuit');
-    expect(OUTFITS[OUTFITS.length - 1].name).toBe('painted leotard');
+    expect(OUTFITS[first + NEW.length + 1].name).toBe('painted leotard');
+  });
+});
+
+describe('his sheet of bottoms\' tight ones, as outfits', () => {
+  const SIX: readonly (readonly [string, string, string])[] = [
+    ['painted high-rise leggings', 'leggingsHigh', SHEET_BOTTOMS.black], ['painted low-rise leggings', 'leggingsLow', SHEET_BOTTOMS.slate],
+    ['painted over-belly leggings', 'leggingsFull', SHEET_BOTTOMS.plum], ['painted under-belly leggings', 'leggingsUnder', SHEET_BOTTOMS.green],
+    ['painted capri leggings', 'leggingsCapri', SHEET_BOTTOMS.charcoal], ['painted bike shorts', 'shortsBike', SHEET_BOTTOMS.maroon],
+  ];
+
+  it('each is a drawn bottom in his sheet\'s colour under the grey crop tee his figures wear, and is offered on her', () => {
+    const offered = offeredOutfits(v2).map((i) => OUTFITS[i].name);
+    for (const [name, template, tint] of SIX) {
+      const o = OUTFITS[outfitNamed(name)];
+      expect(o, name).toBeDefined();
+      expect(o.garments).toEqual([]);
+      expect(o.paint?.map((l) => l.template)).toEqual([template, 'cropTee']);
+      const [bottom, tee] = o.paint!;
+      expect(isDrawnBottom(COVERAGE_TEMPLATES.find((x) => x.id === template)!.params), template).toBe(true);
+      expect(bottom.fabric).toEqual({ family: 'athletic', colour: 0, tint });
+      expect(bottom.dials).toBeUndefined();
+      // the tee ends a hand over her navel, over the high rise's band: higher than its style's own hem
+      expect(tee.fabric.tint).toBe(SHEET_BOTTOMS.tee);
+      expect(tee.dials).toEqual({ hem: SHEET_BOTTOMS_TEE_HEM });
+      expect(SHEET_BOTTOMS_TEE_HEM).toBeGreaterThan(COVERAGE_TEMPLATES.find((x) => x.id === 'cropTee')!.params.hemFront!);
+      expect(SHEET_BOTTOMS_TEE_HEM).toBeGreaterThan(RISES.high.front);
+      expect(offered).toContain(name);
+    }
+    // six bottoms, six colours
+    expect(new Set(SIX.map(([, , tint]) => tint)).size).toBe(6);
+    for (const tint of Object.values(SHEET_BOTTOMS)) expect(tint).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  it('are put after everything there was, in his sheet\'s order: no outfit has moved', () => {
+    const first = outfitNamed(SIX[0][0]);
+    expect(OUTFITS[first - 1].name).toBe('painted leotard');
+    SIX.forEach(([name], k) => expect(outfitNamed(name)).toBe(first + k));
+    expect(first + SIX.length).toBe(OUTFITS.length);
   });
 });

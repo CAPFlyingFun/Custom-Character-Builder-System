@@ -3942,6 +3942,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const frameWaiters: { left: number; done: () => void }[] = [];
   const frames = (n: number) => new Promise<void>((done) => frameWaiters.push({ left: n, done }));
   /**
+   * (the bakes') Until a drawn bottom's waistband is where she is: her skin's slip about her hips is worked out a little
+   * each frame (`fabricPanel.ts` `layLowSlip`), and a picture taken before it lands is of a line on her rest skin --
+   * torn, as it was before it was drawn. Two frames more, for what landed to be drawn.
+   */
+  async function lowSlipSettled(): Promise<void> {
+    for (let tries = 0; tries < 900; tries++) { const low = fabric?.lowState(); if (!low?.worn || !low.slip?.pending) break; await frames(1); }
+    await frames(2);
+  }
+  /**
    * THE BUILT-IN OUTFITS' PICTURES, for `npm run bake:outfits` (scripts/bakeOutfitThumbs.mjs), which opens the room with
    * `?bake=outfits`: each outfit the room offers (or each of those named) is put on her in turn and pictured the way a
    * saved one is.
@@ -3955,6 +3964,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       dress(i);
       for (let tries = 0; tries < 600 && !(outfit === i && wantedOutfit === null && model?.visible); tries++) await frames(1);
       await frames(12);
+      await lowSlipSettled();
       out.push({ name: OUTFITS[i].name, path: outfitThumbPath(OUTFITS[i].name), picture: thumbnail() });
     }
     return out;
@@ -3976,6 +3986,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       applyLook(); refresh();
       // (its fabrics are fetched the first time one is worn; a designed garment's field the first time it is)
       await frames(first ? 14 : 7); first = false;
+      await lowSlipSettled();
       out.push({ id, path: styleThumbPath(id), picture: partPicture(kind) });
     }
     return out;
@@ -8990,6 +9001,29 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           vulva.mesh.getVertexPosition(p0, v); vulva.mesh.localToWorld(v); b.mesh.getVertexPosition(src, w); b.mesh.localToWorld(w);
           return { nan, n: pa.count, local0: [arr[p0 * 3], arr[p0 * 3 + 1], arr[p0 * 3 + 2]], bodyLocal: [b.mesh.geometry.getAttribute('position').getX(src), b.mesh.geometry.getAttribute('position').getY(src), b.mesh.geometry.getAttribute('position').getZ(src)], world0: v.toArray(), bodyWorld: w.toArray(), meshVisible: vulva.mesh.visible, layers: vulva.mesh.layers.mask, bodyLayers: b.mesh.layers.mask, matVisible: (vulva.mesh.material as THREE.Material).visible, renderOrder: [vulva.mesh.renderOrder, b.mesh.renderOrder], bodyParentIsScene: b.mesh.parent === vulva.mesh.parent, drawn: ud.drawn, calls: ctx.renderer.gl.info.render.calls, solo: vulva.solo, parentVisible: vulva.mesh.parent?.visible, dbg: vulva.debug() };
         },
+        // (a probe's) THE AREA'S OWN SEAMS: its points that are one place (a copy for each piece of her texture that
+        // meets there: `vulvaPatch.ts`) and how far apart each thing a vertex carries is between a place's copies -- its
+        // laid position (mm), and the most any other attribute's numbers differ (its own units); `only`: the ones that
+        // matter to where a vertex is drawn or to what is painted on it
+        vulvaCopies: () => {
+          if (!vulva) return null;
+          const bk = vulva.bake, P = bk.count, g = vulva.mesh.geometry, places = new Map<number, number[]>();
+          for (let q = 0; q < P; q++) { const k = bk.ring[q] * 65536 + bk.column[q]; (places.get(k) ?? places.set(k, []).get(k)!).push(q); }
+          const seams = [...places.values()].filter((l) => l.length > 1), mm = 1000 / GEOMETRY_PER_METRE;
+          const apart: Record<string, number> = {}, over: Record<string, number> = {};
+          const each = (name: string, a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
+            let most = 0, count = 0;
+            for (const l of seams) for (let q = 1; q < l.length; q++) { let d = 0; for (let c = 0; c < a.itemSize; c++) d = Math.max(d, Math.abs(a.getComponent(l[0], c) - a.getComponent(l[q], c))); if (d > most) most = d; if (d > 1e-6) count++; }
+            apart[name] = +most.toPrecision(4); over[name] = count;
+          };
+          for (const [name, a] of Object.entries(g.attributes)) each(name, a as THREE.BufferAttribute);
+          (g.morphAttributes.position ?? []).forEach((a, k) => each(`morph${k}`, a as THREE.BufferAttribute));
+          const pos = g.getAttribute('position') as THREE.BufferAttribute, A = new THREE.Vector3(), B = new THREE.Vector3();
+          let worst = 0, at = -1;
+          for (const l of seams) for (let q = 1; q < l.length; q++) { const d = A.fromBufferAttribute(pos, l[0]).distanceTo(B.fromBufferAttribute(pos, l[q])) * mm; if (d > worst) { worst = d; at = l[0]; } }
+          const differing = Object.fromEntries(Object.entries(apart).filter(([, v]) => v > 1e-6));
+          return { points: P, places: seams.length, copies: seams.reduce((n, l) => n + l.length - 1, 0), laidApartMm: +worst.toFixed(4), worstAt: at >= 0 ? { ring: bk.ring[at], column: bk.column[at] } : null, differing, over };
+        },
         // a wireframe look (Joshua, 2026-10-30: "how about doing a wireframe view of the body and it"): her body grey, the
         // rebuilt area blue, the tube red, nothing solid
         wireView: (on: boolean) => {
@@ -10239,6 +10273,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (a probe's) which of her paint layers are drawn from a designed garment's mask (fabricMaterial.ts), and her UVs for it
         // (a probe's) her skin's points as base64 Float32 triples: 'local' as her shapes leave them before her bones move
         // them (model units), 'rest' as her fabric is laid by (fabricRest), 'posed' as drawn (metres, the room's frame)
+        // (a probe's) one of her skin's attributes as it is laid now, by its name: how many numbers a vertex, and the
+        // numbers themselves as base64 Float32 -- to read what a pixel of her is told (a limb's flag, her slip) offline
+        bodyAttribute: (name: string) => {
+          const a = bodyOf()?.mesh.geometry.getAttribute(name) as THREE.BufferAttribute | undefined; if (!a) return null;
+          const out = Float32Array.from(a.array as ArrayLike<number>), bytes = new Uint8Array(out.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          return { size: a.itemSize, count: a.count, data: btoa(s) };
+        },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
           const b = bodyOf()?.mesh; if (!b) return null;
           const g = b.geometry, n = g.getAttribute('position').count, out = new Float32Array(n * 3), v = new THREE.Vector3();
@@ -10299,6 +10340,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         wornFabrics: () => { const c = fabric?.clothes(); return c && fabric ? { match: fabric.setMatched(), garments: c.garments, layers: c.layers.map((l) => (l ? { fabric: l.choice.fabric, stitch: l.choice.stitch, template: l.template?.id ?? null } : null)) } : null; },
         // (a probe's) the drawn top she wears (topCut.ts): her measures, its cut, her slip about her neck, her bridge under it
         paintCutState: (detail?: boolean) => fabric?.cutState(!!detail) ?? null,
+        // (a probe's) the drawn bottoms she wears (bottomCut.ts): her measures, each layer's waistband and legs, her skin's slip about her hips
+        paintLowState: () => fabric?.lowState() ?? null,
+        // (a probe's) painted layers put on by hand, bottom first -- a template in a fabric each, as an outfit's are (`FabricPanel.wearOutfit`)
+        paintWear: (layers: { template: string; fabric: { family: string; colour: number; tint?: string }; edging?: { family: string; colour: number; tint?: string }; dials?: Record<string, number> }[] | null) => fabric?.wearOutfit(layers as Parameters<NonNullable<typeof fabric>['wearOutfit']>[0]) ?? false,
         paintBridgeOff: (off: boolean) => { fabric?.bridgeLeftOff(!!off); return !!off; },
         paintFieldState: () => { const b = bodyOf()?.mesh; if (!b) return null; const m = (Array.isArray(b.material) ? b.material[0] : b.material) as THREE.Material, g = b.geometry; const areaSlip = vulva?.mesh.geometry.getAttribute('fabricSlip') as THREE.BufferAttribute | undefined; let areaLongest = 0; if (areaSlip) for (let i = 0; i < areaSlip.count; i++) areaLongest = Math.max(areaLongest, Math.hypot(areaSlip.getX(i), areaSlip.getY(i), areaSlip.getZ(i)));
           return { field: fabricFieldState(m), slip: fabric?.slipState() ?? null, area: vulva ? { visible: vulva.mesh.visible, points: vulva.mesh.geometry.getAttribute('position').count, slip: !!areaSlip, longest: areaLongest, attributes: Object.keys(vulva.mesh.geometry.attributes).length } : null, attributes: Object.keys(g.attributes).length, shaderAttributes: (ctx.renderer.gl.info.programs ?? []).map((q) => Object.keys(q.getAttributes() as object)).sort((x, y) => y.length - x.length)[0] ?? [], attributeLimit: ctx.renderer.gl.getContext().getParameter(ctx.renderer.gl.getContext().MAX_VERTEX_ATTRIBS) as number, material: m.name, count: g.getAttribute('position').count }; },

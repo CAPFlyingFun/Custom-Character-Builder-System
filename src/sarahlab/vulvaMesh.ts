@@ -451,8 +451,10 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // place is -- not as a texture coordinate is, through her texture's own copy of the triangle, which may reach past the
   // triangle to keep a piece of her texture whole. MEASURED 2026-11-12 (standing, the default look): read through the
   // texture's copy, 31 of the area's 6,191 points had a rest place more than 1 mm off (10.4 mm the worst), and a
-  // designed garment's field is looked up at that place.
-  const IN_HER_TRIANGLE = new Set(['fabricRest', 'fabricSlip']);
+  // designed garment's field is looked up at that place. A drawn bottom's slip (`fabricMaterial.LOW_SLIP_ATTRIBUTE`:
+  // it rides in the SHOW REGIONS overlay's attribute, whose tint is by a point's place as well) is added to that place
+  // for its waistband's look-up, and is read the same way.
+  const IN_HER_TRIANGLE = new Set(['fabricRest', 'fabricSlip', 'fabricRegionTint']);
   const extras: { name: string; from: THREE.BufferAttribute | THREE.InterleavedBufferAttribute; version: number }[] = [];
   const readExtras = (): boolean => {
     let changed = false;

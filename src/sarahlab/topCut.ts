@@ -547,8 +547,8 @@ export function outlinePath(spec: TopCutSpec, frame: TopFrame, front: boolean): 
  * THE ARMHOLE'S SIDE PROFILE IS HIS DRAWING (Joshua, 2026-11-14, on the pictures of the four outlines from her side and
  * her three-quarter, his green line over each: "Update to the side profile… make it smoother…"; "basically, the side
  * cutout profile matches the side profile of the breasts"; before that, of the tank's front: "make the side a smoother
- * curve… it looks like it changes shape in the curve… like these two images… round the sides of the breasts";
- * `docs/reference/tops/`).
+ * curve… it looks like it changes shape in the curve… like these two images… round the sides of the breasts"; the two
+ * were kept in `docs/reference/tops/` while it was built, to v0.9.27 -- git, 6e0b67b).
  *
  * An armhole is an opening round her arm, and seen from her SIDE it is one smooth C: down from the strap, forward round
  * the side of her bust, and back under her arm. Her front's drawing can not say that: the side of her bust and the root
