@@ -219,8 +219,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   with her arms down it is round and smooth at all three.
 - A PIECE ADDED BY HAND STAYS ON under the next outfit put on (`wearOutfit` clears only what the last outfit laid): a
   probe that adds one pictures it last.
-- NOT DONE: the other ten of his sixteen (tank, sports bra, raglan, henley, polo, mock neck, camisole, boxy crop,
-  wrap, button-up); the level-cut tops' sheet, which still shows the patch under a large bust; a band at a hem
+- NOT DONE (the other ten of his sixteen are drawn since 2026-11-15: "The rest of his sixteen tops", below): the
+  level-cut tops' sheet, which still shows the patch under a large bust; a band at a hem
   (above); and, seen from her side at her largest bust, a hairline and a sliver of her skin 3 cm long where the
   scoop's rim passes from the sheet onto her near breast (the sheet stands up to 44 mm off her there; from her front
   the two rims agree to 0.9 mm).
@@ -243,6 +243,73 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (or a second and a half after), AND STEP NOTHING IN BETWEEN: a probe's `animate` before the picture lifts the repair
   again until it lands once more (MEASURED the same evening: dark dashes under a breast at her 200% belly with SIZE
   +100, pictured a step after the repair and gone when pictured with none).
+
+## The rest of his sixteen tops
+
+- **Every one of his sixteen is a style and an outfit** (Joshua, 2026-11-14: "finish all 10 remaining shirt tops";
+  2026-11-15: "Looks great to push, but finish the head (face, hair, eyes, etc) part, the remaining clothes, then push it
+  all at once"). In his sheet's order and colours (`sarahLabTool.ts` `SHEET_TOPS`, GAME TUNING by eye off it): 06 the
+  tank, 07 the sports bra, 08 the raglan, 09 the henley, 10 the polo, 11 the mock neck, 12 the square neck, 13 the
+  camisole, 14 the boxy crop tee, 15 the wrap, 16 the button-up -- each `painted <top> + leggings` in `OUTFITS`, put
+  after the tops there were (no outfit before them has moved), each with its card's picture
+  (`scripts/bakeOutfitThumbs.mjs`).
+- **AN OUTLINE** (`topCut.ts` `TOP_OUTLINES`: the tank, the sports bra with its racerback and the wide band under her
+  bust, the camisole, the mock neck) is a drawn top of a kind of its own: straps, armholes, a straight top edge or a
+  collar, no sleeves; the boxy crop tee is a crew tee with a hem of its own (`CutTopKind`). Its front and its back are
+  drawings as a tee's are (`outlinePath`).
+- **AN ARMHOLE'S SIDE PROFILE IS HIS DRAWING** (Joshua, 2026-11-14, of the tanks: "make the side a smoother curve… it
+  looks like it changes shape in the curve… round the sides of the breasts"; his green line over each, from her side
+  and her three-quarter: "Update to the side profile… make it smoother…"; "basically, the side cutout profile matches
+  the side profile of the breasts"). Each outline has an ARMSCYE of its own (`ARMSCYES`): one C seen from her side --
+  [how far ahead of her shoulder joints, how far under the base of her neck] -- from the strap round the side of her
+  bust to level under her arm. It is a THIRD drawing, of her side, kept in the cut picture's alpha; skin further out
+  from her middle than `gate` is covered where it lies in front of or under the C (`armscyeAt`), and the corner
+  between it and her front's and her back's is rounded (`smoothMax`, `ARMSCYE.join` 5 mm). Her front keeps only a LIMIT
+  line down from the strap (`FRONT_ARM`, each top's `armLimit`); a camisole's begins at its peak (`CAMI_FALL`).
+  MEASURED on her rest skin (`tests/topOutline.test.ts`), the edge's turn in 4 mm at the most, from her front, her
+  three-quarter and her side: the tank 12.8, 15.3 and 14.0 degrees; the sports bra 14.4, 15.8, 13.8; the camisole 21.6,
+  24.7, 17.7 (its peak); the mock neck 9.1, 8.0, 7.5. Her areolas are 14 mm and more inside every one.
+- **WHAT IS DRAWN ON A TOP** (`topDetails.ts` `TOP_DETAIL_STYLES`, his sheet's 08, 09, 10, 15, 16): the raglan's sleeves,
+  shoulders and neckband in its EDGING colour (his maroon on his heather grey); the henley's placket and three buttons;
+  the polo's collar, placket and two buttons; the wrap's crossing edge to a knot at her left waist; the button-up's
+  collar, its placket to its hem and its chest pocket. One table (`DETAIL_LOOK`) read by the CPU and written into the
+  shader formula for formula; a program has the details' code only when a layer wears one (its key ends `-detail`).
+- **ALL OF IT MET A GRAPHICS CARD FOR THE FIRST TIME ON 2026-11-15** (the build machine's software renderer; until then
+  it was judged on `scripts/preview/`'s sketches). MEASURED in the room, the base model at 0%: each of the eleven new
+  ones put on from its card and pictured from her front, her three-quarter and her side, ten of them from her back as
+  well; the tank at SIZE +100 and at -100; no error on the page. Two faults were found, fixed and told:
+  - A DOTTED HAIRLINE DOWN THE FRONT OF EACH SHOULDER of a sleeveless top, in the top's shade, stepped as her triangles
+    are. A sleeveless top has her arm's skin bare by a distance of a metre and more, which comes in across the one row
+    of triangles that joins her arm to her trunk; the layer's edge was antialiased on the NEARER of its two distances
+    (its neck opening's, and its sleeve's or its hem's), whose slope there is some twenty ranges a pixel, and the edge
+    function, which draws a line a pixel wide by that slope, put a third of the cloth on the first pixel of it. Now
+    EACH EDGE IS ANTIALIASED BY ITS OWN SLOPE and the layer is there where both have it (`fabricMaterial.ts` `fe`). It
+    was in v0.9.26 on the sleeveless shirt too. The CPU can not show it (it has no pixels' slopes):
+    `tests/topDetails.test.ts` holds the shader's lines.
+  - A SPORTS BRA'S AND A CROP TEE'S HEM WAS TORN, in teeth of 3 to 5 mm. A shirt's hem is under its drape's band; these
+    two have none, and their hem was a level line on her REST skin -- her file's shape, with its 100% belly -- which
+    her shapes slide along her, each triangle by its own amount. Their hem is the top's OWN edge now
+    (`FabricCut.ownHem`): level on her AS SHE IS SHAPED, at the height each pixel stands about her frame, as its neck
+    opening is looked up; her points' movement off her frame is worked out down past it (`CUT_SLIP_HEM_M`). A shirt's
+    hem is as it was.
+- **STYLE IS A ROW OF PICTURES** in the outfit editor (Joshua, 2026-11-14: "are the new shirts available now in the
+  clothing tab with updated images of their style?… or modify the UI to work better"): the four kinds of piece above a
+  row that scrolls sideways, each style its cut on her in one colour over what a person would wear with it
+  (`stylePictures.ts`; `fabricPanel.ts` `fillStyleStrip`), the list under it as before. Baked by
+  `node scripts/bakeStyleThumbs.mjs` into `public/sarahlab/styles/`: run it again when a style is added or its cut
+  changes (ONLY=<ids> for just those), then build. A style with no picture shows its initials. A piece with no top of
+  its own (the tied bikini bottom, which the editor keeps with the one-pieces) is pictured as a bottom, under a tee
+  (`picturedAs`): as a one-piece it was a picture of her bare to the waist.
+- NOT DONE, AND NAMED: the painted LEGGINGS' WAISTBAND is still painted a value a vertex and is torn the same way
+  wherever a top leaves her middle bare (under the sports bra: seen in its card); the RAGLAN's second colour is ragged
+  where its seam runs out under her arm and over the top of her shoulder (there its edge is her arm's skin's own, a
+  value a vertex); the polo's and the button-up's collars lie on a closed crew (no opening between the leaves); the
+  mock neck's collar is its bound edge alone; a camisole whose top edge is taken lower has no band from its peak to
+  its armscye past its limit; the tank's neck opening is the scoop's, with the scoop's chip at its corner at her
+  smallest bust.
+- After anything changes an outline, an armscye, a detail or the edge's lines: `tests/topOutline.test.ts`,
+  `tests/topDetails.test.ts`, `tests/topCut.test.ts`, `tests/stylePictures.test.ts`; then the room: the four outlines
+  from her front, three-quarter, side and back, and the sports bra's and the crop tee's hems at 0%.
 
 ## A modelled garment and the shapes laid on her afterwards
 
@@ -354,6 +421,60 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `tests/garmentShapeTransfer.test.ts`, `tests/cordEvening.test.ts`, `tests/bikiniTopMilk.test.ts`,
   `tests/bikiniTopSmoothings.test.ts`; then the room: her top as the room opens her, at MILK 50 and 100, at SIZE +100,
   and with both, from her front and her side and close on her strings; and at her 100% and 200% bellies.
+
+## Her head
+
+- **One record, and `null` is HER OWN** (Joshua, 2026-11-14: "making the eye color adjustable and more hairstyles and
+  colors so we can do Lena and add more of a customizable character, as it's kind of limited hair and face wise to one
+  look"; "create different hairstyles, hair length and color, different face types, eye and lip colors").
+  `headLook.ts` `HeadLook`: her hair (style, length, colour), her eyes, her brows, her lips, her lashes and the shape
+  of her face. A colour is '#rrggbb' or `null`, what the part drew before it could be chosen, by the part's own
+  numbers: `HEAD_DEFAULT` draws exactly as the room did before. Stats and numbers: a character's save keeps it with
+  her body (`characterSaves.ts` `headOf`, `savedHead`: nothing at all for the head she always had), and a game is
+  handed it.
+- **HER HAIR IS A STYLE, A LENGTH AND A COLOUR.** `hairStyles.ts` `HAIR_STYLES`: the ponytail she has had, Lena's wavy
+  low ponytail, long loose hair, a braid, a high bun and a bob. Each is one small file of its own on the hair toolkit
+  (`scripts/hair/styles/<id>.mjs`, `node scripts/hair/bake.mjs --style <id>`; its contract is `scripts/hair/glb.mjs`:
+  one skinned mesh on her skeleton, one material `sarahHair`, one morph `shorter`, a LIGHT twin for a game with many
+  characters). The room wears the style of her head's look: another style's file is fetched, the one before stays on
+  her until it is in, and its memory is let go (`loadHair`, `dropHair`); LENGTH is its `shorter` morph at 1 - length;
+  its COLOUR is worked out in its material from its texture's tone (`hairColours.ts`, `hairMaterial.setHairColour`:
+  not compiled in until a colour is first chosen). Her brows follow her hair's colour unless they have one of their
+  own (`browFromHair`). The light twins and the file her first style was baked from (which the story's bake still
+  reads: `?bake=story`) are not fetched ahead (`keepList.ts` `NOT_AHEAD`).
+- **HER FACE'S COLOURS** (`faceLook.ts`): thirteen eye colours, twelve lip shades, any colour a picker gives; a picked
+  eye colour is given a collar and a ring of its own so that the iris, over its area, IS that colour (`irisPalette`).
+- **THE SHAPE OF HER FACE IS TWENTY-ONE SLIDERS AND SEVEN FACE TYPES** (`faceShapes.ts`): each slider a smooth, mirrored
+  field in space, eased to nothing down her neck; a type is a set of sliders (ROUND is Lena's). The room lays a
+  slider's field on her skin and on her hair the first time the look moves it (`faceShapeFields.ts`: the field read at
+  each of a mesh's points, its normals turned as the surface it moves turns) and weighs it with her other shape fields
+  (`face:<slider>`, `fieldWeightsAt`): her hairline stays on her forehead.
+- **HER FACE'S PAINTED LAYER RIDES HER SKIN.** Her eyes, brows and lips are drawn by where a point is ON HER SCULPT
+  (`faceRig.ts`). That was the point's `position`, which nothing of hers moved on her head; a shaped face moves it. The
+  layer reads `fabricRest` instead -- her skin's place before any shape -- which her skin's material carries once the
+  fabric's program is on it (`FACE_REST_DEFINE`, said by `fabricMaterial.ts`; the room puts that program on with the
+  first shape: `ensureSkinFabric`; no attribute is added, her skin has none left). A bigger eye is the eye drawn there,
+  bigger; a lifted brow carries its brow. Her mouth's inside is told from the SCULPT's point turned with her jaw, so a
+  longer chin is not read as an open mouth.
+- **THE FACE TAB'S PANEL** (`headPanel.ts`, written by an agent, wired by the lead): HAIR (style chips and None, LENGTH,
+  colour swatches: her own, the list, custom), EYES, BROWS (match her hair or custom; amount), LASHES, LIPS, FACE SHAPE
+  (type chips, the sliders in groups that say how many are moved, RESET FACE), RESET HEAD. The room owns the look
+  (`setHead`); the panel keeps no copy. Swatches are 32 px with 8 px between (Joshua: "it's hard to press certain
+  buttons").
+- MEASURED in the room 2026-11-15 (the build machine's software renderer): each of the six styles from her front, her
+  side and her back, in her own copper and in six other colours, three at a short LENGTH; Lena's look whole -- black
+  wavy ponytail, dark brown eyes, a rose lip, the ROUND face -- from her front and her three-quarter: her eyes and her
+  lips lie where her shaped face has them, her hair on her head; and on a phone's upright screen (430 px) the panel
+  used by real touches: a style, a hair colour, an eye colour, a lip shade, a face type and a slider, each landing on
+  her. No error on the page. Her skin's program then: the fabric's, with `|face-rig-v3`.
+- NOT DONE, AND NAMED: the BOB reads a little like a wig (a straight front cut, lumpy over her ear); LONG LOOSE HAIR's
+  side falls bunch seen from her front, and under about 40% of its LENGTH its hem is a row of thin strands; a few
+  wisps stand off her shoulder on the wavy ponytail and the long hair; no fringe or parting of its own to choose yet;
+  RANDOMIZE leaves her head as it is; a head's look is not in the story's bake.
+- After anything changes her head: `tests/headLook.test.ts`, `tests/headPanel.test.ts`, `tests/faceShapes.test.ts`,
+  `tests/faceShapeFields.test.ts`, `tests/faceLook.test.ts`, `tests/faceRig.test.ts`, `tests/hairStyles.test.ts`,
+  `tests/hairColours.test.ts`, `tests/characterSaves.test.ts`; then the room: her head from her front and her side in
+  a style and a colour that is not her own, with a face type on.
 
 ## Her opening's area and her skin round it
 
@@ -700,6 +821,11 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   nothing, then as before; a new build (new code, one changed skin) fetches 1.2 MB, shows itself at once, and the old
   code and the old skin are gone from the device; with no internet she stands dressed. Her seconds to dressed there:
   22.2 on the first visit, 12.3 to 13.9 after.
+- NOT MEASURED AGAIN since her head and the rest of his tops went in (2026-11-15), only added up from the files: the
+  room's own first visit wears `models/hair/ponytail.glb` (0.87 MB) where it wore `models/sarah-v2-hair.glb` (0.81 MB);
+  fetched ahead as well are the five other hairstyles (4.57 MB), thirty-eight STYLE pictures and eleven more outfit
+  cards (some 4 KB each). The hairstyles' light twins (2.2 MB, a game's) and the old hair file (the story's bake's) are
+  on the site and are not fetched ahead (`NOT_AHEAD`).
 - **What the worker answers with depends on what may change behind an address** (`keeper.ts` `kindOf`). The page is asked
   of the server first, past the browser's ten-minute copy, so a new build shows the moment it is live; the page kept
   here answers with no network, or none in 3 s. A file that can not change behind its address -- Vite's bundles, and a
@@ -759,7 +885,9 @@ keep one local preview running while you work and reuse the same browser page
 for all your screenshots instead of reloading or restarting for each one. Only
 screenshot the parts that changed. Shut the preview down when you're done").
 Open the room once and drive that page for every reading and picture of a piece
-of work; load it again only when `dist` has been built again; picture the panel
+of work (the probe's `picture` hands back what the room's own camera sees in one
+frame; a screenshot through the page costs some ten, two seconds each on the
+build machine); load it again only when `dist` has been built again; picture the panel
 or the part of her that changed, not the whole screen each time; and close the
 browser and the preview when the work is done. A software renderer's frame
 costs by the pixel and the page answers between frames: read and measure at 1x,
