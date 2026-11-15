@@ -5,7 +5,7 @@
  * of her) and a band along each edge shown darker. A sketch to shape a cut by: no fabric's weave, no drape at its hem,
  * no cleavage bridge, and her rest pose only -- the room's own pictures are what a cut is judged by.
  *
- *   npx tsx scripts/preview/top.mts --template tank|sportsBra|camisole|mockNeck|cropTee|teeV|... [--out /tmp/top.png]
+ *   npx tsx scripts/preview/top.mts --template tank|sportsBra|camisole|mockNeck|cropTee|teeV|... [--no-arms] [--out /tmp/top.png]
  * (a template as the room cuts it; a shirt's LENGTH, which needs her body map, is pictured at a tee's hem, 0.04)
  *   npx tsx scripts/preview/top.mts [--style crew|u|v|scoop|square] [--neck 0..1] [--sleeve -1..1] [--hem trunk] [--out /tmp/top.png]
  * (`--hem`: her hem on her trunk, 0 her hip joints and 1 the base of her neck; a tee's is about 0.04)
@@ -39,6 +39,16 @@ export function topViews(body: Awaited<ReturnType<typeof loadBody>>, cut: TopCut
   const mesh = wornMesh(body, cut);
   return beside([0, 90, 180].map((yaw) => draw({ width: size, height: Math.round(size * 1.3), yaw, centre: [0, 1.17, 0], span: 0.62, meshes: [mesh] })));
 }
+/**
+ * `--no-arms`: her front, three-quarter front (yaw 40), her left side and her back, her arms' skin left out (`armShare`
+ * over a half at any corner of a triangle), closer on her chest: so her side under her arm is seen.
+ */
+export function topViewsNoArms(body: Awaited<ReturnType<typeof loadBody>>, cut: TopCut, size = 420) {
+  const all = within(body, { yFrom: 0.85 }), keep: number[] = [];
+  for (let k = 0; k + 2 < all.length; k += 3) if (body.armShare[all[k]] <= 0.5 && body.armShare[all[k + 1]] <= 0.5 && body.armShare[all[k + 2]] <= 0.5) keep.push(all[k], all[k + 1], all[k + 2]);
+  const mesh = wornMesh(body, cut, undefined, Uint32Array.from(keep));
+  return beside([0, 40, 90, 180].map((yaw) => draw({ width: size, height: size, yaw, centre: [0, 1.25, 0], span: 0.42, meshes: [mesh] })));
+}
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const body = await loadBody(), frame = topFrame({ rest: body.rest, index: body.index, unitsPerMetre: 1, joints: body.frameJoints });
@@ -48,7 +58,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (!t) throw new Error(`no template ${id}`);
     const p = t.params, hem = p.length === null && p.hemFront !== null ? p.hemFront : 0.04;
     const cut = topCut(topCutSpec(p, frame, hem), frame), out = option('out', '/tmp/top.png');
-    await savePng(out, topViews(body, cut));
+    await savePng(out, process.argv.includes('--no-arms') ? topViewsNoArms(body, cut) : topViews(body, cut));
     console.log(out);
     process.exit(0);
   }

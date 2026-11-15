@@ -211,7 +211,7 @@ export function detailOf(P: ArrayLike<number>, u: number, y: number, front: numb
 export function topDetailAt(detail: TopDetailSpec, cut: TopCut, x: number, y: number, z: number, armShare: number, normalZ = 1, aa = 0.0005 * cut.frame.unitsPerMetre): TopDetailValue {
   if (!(cutAt(cut, x, y, z, armShare) > 0)) return { shade: 1, edging: 0, button: 0 };
   const { frame } = cut, U = frame.unitsPerMetre;
-  const front = smooth(-TOP_CUT.sideBlend * U, TOP_CUT.sideBlend * U, z * frame.facing - midDepthAt(frame, x, y));
+  const blend = cut.spec.sideBlend ?? TOP_CUT.sideBlend * U, front = smooth(-blend, blend, z * frame.facing - midDepthAt(frame, x, y));
   // the neck opening's own distance: on her trunk her hem is far below anything a detail reads it for
   const e = cutEdgeAt({ ...cut, spec: { ...cut.spec, hemY: -Infinity } }, x, y, z, 0);
   const neck = e.edge === 0 && e.distance < 0.98 * TOP_CUT.range * U ? e.distance : TOP_CUT.range * U;

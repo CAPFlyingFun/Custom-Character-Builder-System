@@ -795,7 +795,12 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   }
   /** A drawn top's layer beside its fabric: its bands, its EDGING and what is drawn on it. */
   const cutLayerOf = (worn: WornCut, c: FabricChoice) => ({ ...cutLayer(worn.cut), edging: edgingOf(c), detail: worn.detail ? { pack: worn.detail.pack } : null });
-  /** A cut as her skin's material reads it (`fabricMaterial.FabricCut`): its picture, made the first time it is worn. */
+  /**
+   * A cut as her skin's material reads it (`fabricMaterial.FabricCut`): its picture, made the first time it is worn.
+   * Its two drawings are blended over the cut's own depth (`TopCutSpec.sideBlend`: an outline's front and back armholes
+   * end at feet of their own, and under her arm the edge slopes from one to the other across that depth), a tee's
+   * over `TOP_CUT.sideBlend`.
+   */
   function fabricCutOf(worn: WornCut): FabricCut {
     const { cut, key } = worn, f = cut.frame, U = f.unitsPerMetre;
     let texture = cutTextures.get(key);
@@ -807,7 +812,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     }
     const arm = (a: TopFrame['arms'][number]) => sleevePlane(a, cut.spec.sleeve, U);
     return {
-      texture, rect: [f.x0, f.y0, 1 / (f.cols * f.cell), 1 / (f.rows * f.cell)], depth: [f.zLo, f.zHi - f.zLo, TOP_CUT.sideBlend * U, TOP_CUT.range * U],
+      texture, rect: [f.x0, f.y0, 1 / (f.cols * f.cell), 1 / (f.rows * f.cell)], depth: [f.zLo, f.zHi - f.zLo, cut.spec.sideBlend ?? TOP_CUT.sideBlend * U, TOP_CUT.range * U],
       armL: arm(f.arms[0]), armR: arm(f.arms[1]), limb: [f.mid, cut.spec.sleeve, Number.isFinite(cut.spec.hemY) ? cut.spec.hemY : -1e9, f.facing], seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U],
     };
   }

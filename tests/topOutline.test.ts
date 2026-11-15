@@ -13,7 +13,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
-  NECK_STYLES, TOP_CUT, TOP_OUTLINES, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, topCut, topCutSpec, topFrame,
+  NECK_STYLES, TOP_OUTLINES, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, topCut, topCutSpec, topFrame,
   type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind,
 } from '../src/sarahlab/topCut';
 import { COVERAGE_TEMPLATES, OUTLINE_NECK, dialsFor, templateCut, wornParams, type CoverageParams } from '../src/sarahlab/paintTemplates';
@@ -59,7 +59,7 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     for (const kind of KINDS) {
       const cut = outlineOn(kind), out = { line: 0, band: 0, places: 0 };
       const test = (x: number, y: number, z: number) => {
-        if (y < frame.neckY - 0.06 || y > frame.neckY + 0.08 || Math.abs(x - frame.mid) > 0.22 || Math.abs(z - midDepthAt(frame, x, y)) > TOP_CUT.sideBlend) return;
+        if (y < frame.neckY - 0.06 || y > frame.neckY + 0.08 || Math.abs(x - frame.mid) > 0.22 || Math.abs(z - midDepthAt(frame, x, y)) > cut.spec.sideBlend!) return;
         const f = drawingAt(cut, x, y, 1), b = drawingAt(cut, x, y, -1), lo = Math.min(f, b), hi = Math.max(f, b);
         if (hi < -0.002) return;
         out.places++;
@@ -134,6 +134,52 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     expect(e.edge).toBe(2); expect(e.distance).toBeCloseTo(0.01, 6);
   });
 
+  it('MEASURED: under her arm the blended edge is one smooth line down her side, from the front\'s foot to the back\'s', () => {
+    // her left side seen square on from her left, her arm's skin left out: for each 1 mm of depth the outermost skin of
+    // her trunk at each height, and up it from under the feet the first place `cutAt` (the two drawings blended by
+    // depth, as the shader blends them) calls bare -- the edge as it lies on her side -- then that line in 3 mm steps
+    const cell = 0.001, z0 = -0.2, y0 = frame.neckY - 0.25, nz = 400, ny = 250, X = new Float32Array(nz * ny).fill(-1);
+    for (let k = 0; k + 2 < index.length; k += 3) {
+      const v = [index[k], index[k + 1], index[k + 2]];
+      if (v.some((i) => arm[i] > 0.5 || rest[i * 3] < 0.05)) continue;
+      const p = v.map((i) => [rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2]]), us = p.map((q) => (q[2] - z0) / cell), vs = p.map((q) => (q[1] - y0) / cell);
+      const den = (vs[1] - vs[2]) * (us[0] - us[2]) + (us[2] - us[1]) * (vs[0] - vs[2]);
+      if (Math.abs(den) < 1e-9) continue;
+      for (let j = Math.max(0, Math.floor(Math.min(...vs))); j <= Math.min(ny - 1, Math.ceil(Math.max(...vs))); j++) for (let i = Math.max(0, Math.floor(Math.min(...us))); i <= Math.min(nz - 1, Math.ceil(Math.max(...us))); i++) {
+        const w0 = ((vs[1] - vs[2]) * (i - us[2]) + (us[2] - us[1]) * (j - vs[2])) / den, w1 = ((vs[2] - vs[0]) * (i - us[2]) + (us[0] - us[2]) * (j - vs[2])) / den, w2 = 1 - w0 - w1;
+        if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+        const x = w0 * p[0][0] + w1 * p[1][0] + w2 * p[2][0];
+        if (x > X[j * nz + i]) X[j * nz + i] = x;
+      }
+    }
+    const worst: Record<string, number> = {};
+    for (const kind of KINDS) {
+      const cut = outlineOn(kind), edge: [number, number][] = [];
+      for (let i = 0; i < nz; i++) for (let j = 1; j < ny; j++) {
+        const x = X[j * nz + i], z = z0 + i * cell;
+        if (x < 0.1 || !(cutAt(cut, x, y0 + j * cell, z, 0) < 0)) continue;
+        let lo = y0 + (j - 1) * cell, hi = y0 + j * cell;
+        for (let it = 0; it < 20; it++) { const m = (lo + hi) / 2; if (cutAt(cut, x, m, z, 0) < 0) hi = m; else lo = m; }
+        edge.push([z, hi]); break;
+      }
+      const p = [edge[0]];
+      for (const q of edge) if (Math.hypot(q[0] - p[p.length - 1][0], q[1] - p[p.length - 1][1]) >= 0.003) p.push(q);
+      let most = 0;
+      for (let k = 1; k + 1 < p.length; k++) {
+        const ax = p[k][0] - p[k - 1][0], ay = p[k][1] - p[k - 1][1], bx = p[k + 1][0] - p[k][0], by = p[k + 1][1] - p[k][1];
+        most = Math.max(most, (Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by))))) * 180) / Math.PI);
+      }
+      worst[kind] = +most.toFixed(1);
+      // it runs from the front's foot in front to the back's behind
+      expect(edge.length, kind).toBeGreaterThan(200);
+      expect(Math.abs(edge[edge.length - 1][1] - cut.spec.outline!.frontY), kind).toBeLessThan(0.01);
+      expect(edge.some((q) => Math.abs(q[1] - cut.spec.outline!.armY) < 0.006), kind).toBe(true);
+    }
+    // MEASURED 2026-11-14, the front's foot 12.8 cm under her neck joint and the back's 18.3: tank 16.0, sports bra 26.8,
+    // camisole 22.7, mock neck 26.6 degrees in 3 mm at the most (the front's foot 13.5 cm under: 28.6, 26.8, 17.1, 23.3)
+    for (const kind of KINDS) expect(worst[kind], kind).toBeLessThan(30);
+  });
+
   it('the paths have no corner: over any 3 mm of them they turn no more than a smooth curve does', () => {
     // (the tightest turn drawn is a camisole's, 8.4 mm round, where its top edge leaves the strap: about 20 degrees in 3 mm,
     // the 3 mm steps taken a point late up to 27; a corner would be 90)
@@ -196,6 +242,8 @@ function checksum(c: TopCut): number {
 }
 const OLD_SUMS: Record<NeckStyle, number> = { crew: 2130584800, u: 3189439200, v: 436907168, scoop: 530353056, square: 2856051008 };
 /** MEASURED 2026-11-14 (mm): the two drawings over her shoulders, on the line and a band's width in, with a little room. */
-// (MEASURED: tank 0.06 and 0.44, sports bra 0.08 and 0.56, camisole and mock neck 0.00 -- outside its neck opening an
-// outline is one line in both drawings)
-const BAR: Record<TopOutlineKind, readonly [number, number]> = { tank: [0.3, 0.8], sportsBra: [0.3, 0.8], camisole: [0.1, 0.1], mockNeck: [0.1, 0.1] };
+// (MEASURED 2026-11-14, within an outline's own blend, 4 cm either side of her middle depth: tank 2.73 and 2.77, sports
+// bra 3.90 and 3.92 -- its racer's straps among them -- camisole 0.00, mock neck 2.90 and 2.68; a tee's, within 6 mm,
+// 1.1 to 2.5. Over her shoulder the two are one line; under the ridge the front's armhole leans out and the back's
+// comes in, and 4 cm of depth reaches that far)
+const BAR: Record<TopOutlineKind, readonly [number, number]> = { tank: [3.1, 3.1], sportsBra: [4.3, 4.3], camisole: [0.1, 0.1], mockNeck: [3.3, 3.1] };
