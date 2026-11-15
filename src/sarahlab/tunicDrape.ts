@@ -78,6 +78,19 @@ const OPAQUE_FROM = 0.75;
 /** How far (trunk heights) the drape must hang clear of her skin before the skin under it loses the shirt's paint; fully by twice that. */
 const HANG_FROM = 0.012;
 /**
+ * (Only its hem band.) Her skin's paint is taken off below the band's bottom edge by a value a vertex of her skin
+ * (`hang`), which the shader cuts where it crosses one half. The value runs STRAIGHT for this many rows either side of
+ * that edge -- about 42 mm on her, further than her hips' triangles reach (37 mm) -- so the half-way line across any of
+ * them is the edge's own level.
+ * It ran from 0 to 1 over two rows, about a centimetre, round a line one row above the edge, and was held there: across
+ * one of her hips' triangles a vertex well above the line said 0 and one well below it 1, and the half-way line fell
+ * where the triangle's shape put it -- up past where the band, lying 0.4 mm off her, is in front of her skin. MEASURED
+ * 2026-11-14 in the room, on v0.9.23 and on v0.9.24 alike: two chips of what is under the shirt (her leggings, or her
+ * skin), each about 35 mm by 11 and straight-sided, just above its hem at her side. A fault found (Joshua's standing
+ * rule of 2026-11-13).
+ */
+export const HEM_PAINT_ROWS = 8;
+/**
  * IN FRONT, UNDER HER BELLY, THE SHIRT HANGS (Joshua, 2026-10-23: from below, "the leggings under the belly should
  * win", and then, of a hem cut off on her belly: "the shirt still needs to be in front of the leggings... as there is
  * a sharp edge"). A tee falls from the fullest point of a bump nearly straight down, in front of it, and is open
@@ -914,8 +927,8 @@ export class TunicDrape {
       // below the hem, as she stands now, no shirt at all: a big bump hangs lower than the shirt reaches, but its paint
       // (measured on her at rest) still ran on down it -- seen from below, red under the hem
       const row = (hipY + T_TOP * T - py[k]) / (step * T);
-      // (only its hem band: the paint goes from a row above the band's bottom edge, under the solid band, so that edge --
-      // level and smooth -- is the shirt's bottom edge all round, not the paint's own, which wobbles)
+      // (only its hem band: the paint goes from the band's bottom edge, so that edge -- level and smooth -- is the
+      // shirt's bottom edge all round, not the paint's own: `HEM_PAINT_ROWS`)
       // (seated, where it is cut between this direction and the next round her, not at the nearer one: in front, where a
       // stretch knit goes on down between her thighs, the cut drops steeply from one direction to the next, and taken
       // a direction at a time its paint ended on her in a stair)
@@ -924,7 +937,9 @@ export class TunicDrape {
         const f = (((Math.atan2(dz, dx) / (2 * Math.PI)) * COLUMNS) % COLUMNS + COLUMNS) % COLUMNS, c0 = Math.floor(f) % COLUMNS, u = f - Math.floor(f);
         edgeRow = (T_TOP - (cutT[c0] * (1 - u) + cutT[(c0 + 1) % COLUMNS] * u)) / step;
       }
-      const below = this.bandOnly ? (row - edgeRow) / 2 + 1 : 0.5 + (row - (rows - 1) - 0.5) / 2;
+      // (and AT that edge, not a row above it: the line is the edge's own level now, so where the band lies under her
+      // skin her paint's end is the same level line, and nothing under the shirt shows above it)
+      const below = this.bandOnly ? 0.5 + (row - edgeRow) / (2 * HEM_PAINT_ROWS) : 0.5 + (row - (rows - 1) - 0.5) / 2;
       this.hang[cand[k]] = Math.max(this.hang[cand[k]], Math.max(0, Math.min(1, below)));
     }
     this.hangVersion++;

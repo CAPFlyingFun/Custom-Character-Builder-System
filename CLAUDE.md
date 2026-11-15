@@ -221,11 +221,18 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (above); and, seen from her side at her largest bust, a hairline and a sliver of her skin 3 cm long where the
   scoop's rim passes from the sheet onto her near breast (the sheet stands up to 44 mm off her there; from her front
   the two rims agree to 0.9 mm).
-- FOUND 2026-11-14 AND NOT YET FIXED, both on v0.9.23 as well (pictured side by side with it): at her side, just above
-  a painted shirt's hem, two chips of what is under the shirt (her leggings, or her skin), each about 35 mm by 11 and
-  straight-sided, as whole triangles of her skin are (why her skin there is neither painted nor covered by the hem
-  band's sheet is not yet measured); and under a bust at SIZE +100 the line where her breasts meet her chest is
-  frayed (her T-pose on v0.9.23; with her arms down on this build).
+- **A PAINTED SHIRT'S HEM: her paint ends at the hem band's own bottom edge, on a line that is straight across her
+  biggest triangles** (a fault found and fixed; Joshua, 2026-11-14: "Go ahead and push then fix the issues you see";
+  `tunicDrape.ts` `HEM_PAINT_ROWS`, `paintTemplates.templateCut`). MEASURED 2026-11-14 on v0.9.23 and on v0.9.24 alike:
+  at her side, just above a painted shirt's hem, two chips of what is under the shirt (her leggings, or her skin), each
+  about 35 mm by 11 and straight-sided. Her skin's paint was taken off below a line one row above the band's edge by a
+  value a vertex of her skin that ran from 0 to 1 over a centimetre: across her hips' triangles (37 mm) the half-way
+  line fell where each triangle's shape put it, up to 11 mm above the hem, and the band lies 0.4 mm off her -- under
+  her skin there. Now the value runs straight for 42 mm either side of the band's own edge, the line is AT that edge,
+  and a DRAWN top's paint runs to the hem itself (it stopped 5.5 mm short, as a top painted per vertex still does).
+  `tests/tunicDrapeHemPaint.test.ts`; then the room: her hem from her side, her back and her front.
+- FOUND 2026-11-14, NOT YET FIXED, on v0.9.23 as well: under a bust at SIZE +100 the line where her breasts meet her
+  chest is frayed (her T-pose on v0.9.23; with her arms down on v0.9.24).
 
 ## Her opening's area and her skin round it
 

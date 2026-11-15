@@ -628,12 +628,15 @@ function layField(f: { readonly path: string; readonly dims: readonly [number, n
 
 /**
  * A DRAWN top's cut on her (`topCut.ts`), for a template whose top is one (`isCutTop`): its neck opening by its style
- * and its NECKLINE slider, its sleeves' ends by its SLEEVE, its hem by its LENGTH (the paint stops just short of the
- * hem itself, as below: the drape's hem band is the edge there). Null for any other template, or with no frame.
+ * and its NECKLINE slider, its sleeves' ends by its SLEEVE, its hem by its LENGTH. Its paint runs to the hem ITSELF: its
+ * own edge is a level line drawn pixel by pixel, so under the drape's hem band (the edge there, lying 0.4 mm off her)
+ * her skin is the shirt's all the way down, and where the band lies under her skin nothing under the shirt shows. (A
+ * top painted per vertex stops 0.3 of an edge short, below: MEASURED 2026-11-14, a drawn tee stopping short as well,
+ * her leggings showed in the 5.5 mm between at her side.) Null for any other template, or with no frame.
  */
 export function templateCut(map: BodyMap, p: CoverageParams, frame: TopFrame | null): TopCut | null {
   if (!frame || !isCutTop(p)) return null;
-  return topCut(topCutSpec(p, frame, shirtHem(map, p.length ?? 0) + 0.3 * EDGE), frame);
+  return topCut(topCutSpec(p, frame, shirtHem(map, p.length ?? 0)), frame);
 }
 /**
  * GAME TUNING: how much darker a band is drawn in its own fabric (a collar's rib, a turned hem: his sheet's read a
