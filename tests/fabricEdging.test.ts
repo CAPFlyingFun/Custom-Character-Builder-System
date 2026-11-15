@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { DEFAULT_CHOICE, SWATCH_HEX, edgingOf, pickHex, type FabricChoice } from '../src/sarahlab/fabricLibrary';
 import { hexToLinear } from '../src/sarahlab/fabricTint';
 import { setFabricLayer } from '../src/sarahlab/fabricMaterial';
-import { OUTFITS } from '../src/sarahlab/sarahLabTool';
+import { OUTFITS, SHEET_TOPS } from '../src/sarahlab/sarahLabTool';
 import { COVERAGE_TEMPLATES } from '../src/sarahlab/paintTemplates';
 import { isCutTop } from '../src/sarahlab/topCut';
 
@@ -123,7 +123,10 @@ describe('the room\'s own ringer', () => {
     const choice: FabricChoice = { ...DEFAULT_CHOICE, fabric: tee.fabric, match: false, trim: tee.edging! };
     expect(edgingOf(choice)!.colour).toEqual(hexToLinear('#1b2246'));
     expect(COVERAGE_TEMPLATES.some((x) => x.id === 'teeRingerEdge')).toBe(false);
-    // no other built-in top has an edging of its own: they wear their bands as they did
-    for (const o of OUTFITS) for (const l of o.paint ?? []) if (o !== ringer) expect(l.edging, o.name).toBeUndefined();
+    // no other built-in top has an edging of its own -- they wear their bands as they did -- but the raglan, whose
+    // sleeves, shoulders and neckband ARE its edging (his maroon on his heather grey: `topDetails.ts`, 2026-11-15)
+    const raglan = OUTFITS.find((o) => o.name === 'painted raglan tee + leggings')!;
+    expect(raglan.paint![1].edging).toEqual({ family: 'jersey', colour: 0, tint: SHEET_TOPS.maroon });
+    for (const o of OUTFITS) for (const l of o.paint ?? []) if (o !== ringer && o !== raglan) expect(l.edging, o.name).toBeUndefined();
   });
 });

@@ -633,6 +633,16 @@ export const BIKINI_EDGING_FABRIC = Object.freeze({ family: 'athletic' as const,
 /** GAME TUNING: his sheet of sixteen tops' colours, by eye off it (2026-11-14): 04 the scoop's plum, 02 the ringer's cream and its bands' navy, 05 the long sleeve's blue. */
 export const SHEET_PLUM = '#6e2c48', SHEET_CREAM = '#e8e1d2', SHEET_NAVY = '#1b2246', SHEET_DENIM = '#5d7fb3';
 /**
+ * ...and the other eleven's (2026-11-15, GAME TUNING by eye off the same sheet): 06 the tank's olive, 07 the sports bra's
+ * navy, 08 the raglan's heather grey with its maroon sleeves, 09 the henley's oatmeal, 10 the polo's forest green, 11 the
+ * mock neck's burgundy, 12 the square neck's blue, 13 the camisole's dusty rose, 14 the boxy crop's lilac, 15 the wrap's
+ * rust and 16 the button-up's chambray.
+ */
+export const SHEET_TOPS = Object.freeze({
+  olive: '#5c6f36', navy: '#28325e', heather: '#b4b4b8', maroon: '#7a1a2e', oatmeal: '#cfc5b2', forest: '#2f5f3c', burgundy: '#6c2743',
+  blue: '#5b80c2', rose: '#c27d7a', lilac: '#b59ae2', rust: '#a9472b', chambray: '#7090d2',
+});
+/**
  * One layer of a built-in outfit: a template and its fabric, a pack colour or a custom one (`tint`, fabricTint.ts).
  * `edging`: a drawn top's bands in a colour of their own (`fabricLibrary.edgingOf`); without one they match its fabric.
  */
@@ -684,6 +694,24 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'painted scoop-neck tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeScoop', fabric: { family: 'jersey', colour: 0, tint: SHEET_PLUM } }] },
   { name: 'painted ringer tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeRinger', fabric: { family: 'jersey', colour: 0, tint: SHEET_CREAM }, edging: { family: 'jersey', colour: 0, tint: SHEET_NAVY } }] },
   { name: 'painted long-sleeve tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeLong', fabric: { family: 'jersey', colour: 0, tint: SHEET_DENIM } }] },
+  // THE REST OF HIS SIXTEEN (Joshua, 2026-11-14: "finish all 10 remaining shirt tops"; 2026-11-15: "finish... the
+  // remaining clothes"), in his sheet's order and colours: 06 the tank, 07 the sports bra, 08 the raglan -- its sleeves,
+  // shoulders and neckband in its EDGING, his maroon on his heather grey -- 09 the henley, 10 the polo, 11 the mock neck,
+  // 12 the square neck, 13 the camisole, 14 the boxy crop tee, 15 the wrap and 16 the button-up
+  ...([
+    ['painted tank top + leggings', 'tank', SHEET_TOPS.olive], ['painted sports bra + leggings', 'sportsBra', SHEET_TOPS.navy],
+    ['painted raglan tee + leggings', 'teeRaglan', SHEET_TOPS.heather, SHEET_TOPS.maroon], ['painted henley + leggings', 'henley', SHEET_TOPS.oatmeal],
+    ['painted polo shirt + leggings', 'polo', SHEET_TOPS.forest], ['painted mock-neck top + leggings', 'mockNeck', SHEET_TOPS.burgundy],
+    ['painted square-neck tee + leggings', 'teeSquare', SHEET_TOPS.blue], ['painted camisole + leggings', 'camisole', SHEET_TOPS.rose],
+    ['painted crop tee + leggings', 'cropTee', SHEET_TOPS.lilac], ['painted wrap top + leggings', 'wrap', SHEET_TOPS.rust],
+    ['painted button-up shirt + leggings', 'buttonUp', SHEET_TOPS.chambray],
+  ] as const).map(([name, template, tint, edging]): BuiltInOutfit => ({
+    name, garments: [],
+    // (the leggings every painted outfit here has. TRIED 2026-11-15 under the two that leave her middle bare, the sports
+    // bra and the boxy crop: the leggings that sit under her belly, as his sheet's sit low -- on her at 0% their front
+    // is a deep V down to her pubic bone, cut for a bump)
+    paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template, fabric: { family: 'jersey', colour: 0, tint }, ...(edging ? { edging: { family: 'jersey' as const, colour: 0, tint: edging } } : {}) }],
+  })),
   { name: 'painted swimsuit', garments: [], paint: [{ template: 'swimsuit', fabric: { family: 'athletic', colour: 14 } }] },
   { name: 'painted leotard', garments: [], paint: [{ template: 'bodysuit', fabric: { family: 'athletic', colour: 15 } }] },
 ];

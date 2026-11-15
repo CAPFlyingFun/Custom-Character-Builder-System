@@ -11,6 +11,7 @@
  * word Sarah and keep everything generic"; the cards before were of Sarah at 73%). Run it again when an outfit is
  * added, its look changes, or what the room opens on does; then build. A fresh browser, so the LIGHT theme.
  * ONLY=<outfit names, comma separated> pictures just those (ONLY=bikini), and leaves the other cards as they are.
+ * NO_BUILD=1 serves dist/ as it is.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -33,13 +34,14 @@ function chromiumPath() {
   throw new Error('no Chromium found; this script never runs `playwright install`');
 }
 
-log('building');
-await build({ root: ROOT, logLevel: 'error' });
+if (!process.env.NO_BUILD) { log('building'); await build({ root: ROOT, logLevel: 'error' }); }
 const server = await preview({ root: ROOT, preview: { host: '127.0.0.1', port: 4199, strictPort: false, open: false }, logLevel: 'error' });
 const browser = await chromium.launch({ executablePath: chromiumPath(), args: ['--use-gl=angle', '--use-angle=swiftshader', '--disable-dev-shm-usage'] });
 let failed = false;
 try {
-  const page = await browser.newPage({ viewport: { width: 932, height: 430 }, deviceScaleFactor: 2 });
+  // (VIEWPORT=600x800 DSF=1: fewer pixels for a software renderer to draw; a card is 168 x 224 either way)
+  const [vw, vh] = (process.env.VIEWPORT ?? '932x430').split('x').map(Number);
+  const page = await browser.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: Number(process.env.DSF ?? 2) });
   page.on('pageerror', (e) => { failed = true; log(`page error: ${e.message}`); });
   await page.goto(`${server.resolvedUrls.local[0]}?open=CharacterRoom&bake=outfits`);
   await page.waitForFunction(() => typeof globalThis.__sarahLabBakeOutfits === 'function' && document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });

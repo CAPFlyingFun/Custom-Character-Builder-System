@@ -49,6 +49,8 @@ import { HAIR_STYLE_FIRST, HEAD_DEFAULT, normaliseHead, type HeadLook } from './
 import { faceRigLook } from './faceLook';
 import { FACE_FIELD_PREFIX, faceFieldOn, faceFieldWeights, faceSlidersMoved, headPoints, type HeadPoints } from './faceShapeFields';
 import { HeadPanel } from './headPanel';
+import { STYLE_FRAME, picturedStyles, stylePictureLayers, styleThumbPath } from './stylePictures';
+import type { PieceKind } from './paintTemplates';
 import { PAINT_LAYER_COUNT } from './bodyPaint';
 import { lookOpenedOn } from './sarahLook';
 import { BIRTH_KINDS, PREGNANCY_OPENING, PREGNANCY_RANGE, PREGNANCY_RULE, bellySize, numbersLine, pregnancyOf, pregnantLine, typeBirths, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
@@ -3651,6 +3653,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         return box;
       },
       changed: () => outfits?.changed(),
+      // a style's picture (stylePictures.ts, baked by scripts/bakeStyleThumbs.mjs): none for a style not pictured yet
+      stylePicture: (id) => (assets.assetBytes(styleThumbPath(id)) !== null ? assetUrl(styleThumbPath(id)) : null),
       // the light tee lies over her nipples and navel, as cloth or as the fitted tee: it counts for AUTO's detail
       clothOver: () => (clothWorn() ? { name: 'shirtSpandexLite', label: 'cloth tee' } : fittedTee() ? { name: 'shirtSpandexLite', label: 'spandex tee' } : null),
       // what of her shape is her pose's: a designed garment rides it (fabricPanel.ts)
@@ -3954,6 +3958,49 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       out.push({ name: OUTFITS[i].name, path: outfitThumbPath(OUTFITS[i].name), picture: thumbnail() });
     }
     return out;
+  }
+  /**
+   * THE STYLES' PICTURES, for `npm run bake:styles` (scripts/bakeStyleThumbs.mjs), which opens the room with
+   * `?bake=styles`: each style the outfit editor's STYLE offers (or each of those named) is painted on her in one colour
+   * over what a person would wear with it (`stylePictures.ts`) and pictured, the part of her that kind of piece is on.
+   */
+  async function bakeStylePictures(only?: readonly string[]): Promise<{ id: string; path: string; picture: string | null }[]> {
+    const out: { id: string; path: string; picture: string | null }[] = [], bare = OUTFITS.findIndex((o) => o.name === 'none');
+    wornFrom = null; pendingClothes = null; nextSource = null;
+    dress(bare);
+    for (let tries = 0; tries < 600 && !(outfit === bare && wantedOutfit === null && model?.visible); tries++) await frames(1);
+    let first = true;
+    for (const { id, kind } of picturedStyles()) {
+      if (only && !only.includes(id)) continue;
+      fabric?.wearOutfit(stylePictureLayers(id, kind));
+      applyLook(); refresh();
+      // (its fabrics are fetched the first time one is worn; a designed garment's field the first time it is)
+      await frames(first ? 14 : 7); first = false;
+      out.push({ id, path: styleThumbPath(id), picture: partPicture(kind) });
+    }
+    return out;
+  }
+  /** Her between two of her heights, as a style's picture frames a kind of piece (`STYLE_FRAME`); the card's size. */
+  function partPicture(kind: PieceKind): string | null {
+    const sk = herSkinned();
+    if (!model?.visible || !sk || !measure) return null;
+    model.updateMatrixWorld(true);
+    const F = STYLE_FRAME[kind], at = new THREE.Vector3(), mid = new THREE.Vector3();
+    const neck = sk.skeleton.bones[measure.joints.neck].getWorldPosition(new THREE.Vector3());
+    let low = Infinity;
+    for (const bone of sk.skeleton.bones) { bone.getWorldPosition(at); low = Math.min(low, at.y); mid.add(at); }
+    mid.divideScalar(Math.max(1, sk.skeleton.bones.length));
+    low = Math.min(low, 0);
+    const from = low + (neck.y - low) * F.from, to = low + (neck.y - low) * F.to + F.over * M;
+    // (as wide as the taller of her and that part of her needs at the card's shape, and never narrower than her shoulders and arms)
+    const half = Math.max(0.27 * M, (to - from) * (THUMB_SIZE.width / THUMB_SIZE.height) / 2);
+    const box = new THREE.Box3(new THREE.Vector3(mid.x - half, from, mid.z - 0.2 * M), new THREE.Vector3(mid.x + half, to, mid.z + 0.2 * M));
+    const size = ctx.renderer.size(), lens = new THREE.PerspectiveCamera(30, 1, 1, 10);
+    frameBox(lens, box, { yaw: F.yaw, pitch: 0.04, renderAspect: size.width / Math.max(1, size.height), fitAspect: THUMB_SIZE.width / THUMB_SIZE.height, margin: 1.0 });
+    lens.far = lens.position.distanceTo(box.getCenter(new THREE.Vector3())) + 3 * M; lens.updateProjectionMatrix();
+    const picture = shootDataUrl(ctx.renderer.gl, three, lens, { width: THUMB_SIZE.width, height: THUMB_SIZE.height, quality: 0.82 });
+    ctx.renderer.render(three, camera);
+    return picture;
   }
   /**
    * SARAH FOR THE STORY PLAYER, for `scripts/sarahV2Recovery/story-sarah.mjs`, which opens the room with `?bake=story`
@@ -8808,6 +8855,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (hooks.beforeLoad) { const load = () => { if (!disposed) loadSarah(); }; void hooks.beforeLoad.then(load, load); } else loadSarah();
       // a bake of the built-in outfits' card pictures asks for it by address (scripts/bakeOutfitThumbs.mjs)
       if (new URLSearchParams(globalThis.location?.search ?? '').get('bake') === 'outfits') (globalThis as unknown as Record<string, unknown>).__sarahLabBakeOutfits = bakeOutfitPictures;
+      // ...and a bake of the outfit editor's STYLE pictures (scripts/bakeStyleThumbs.mjs)
+      if (new URLSearchParams(globalThis.location?.search ?? '').get('bake') === 'styles') (globalThis as unknown as Record<string, unknown>).__sarahLabBakeStyles = bakeStylePictures;
       // ...and a bake of her for the story player (scripts/sarahV2Recovery/story-sarah.mjs)
       if (new URLSearchParams(globalThis.location?.search ?? '').get('bake') === 'story') (globalThis as unknown as Record<string, unknown>).__sarahLabStory = { ready: storyReady, bake: bakeForStory };
       // ?probe=cloth: run the cloth tee N frames at a fixed step between pictures (a software renderer draws ~1 a second)
@@ -10690,6 +10739,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         picture: (width?: number, height?: number, quality = 0.9) => {
           return shootDataUrl(ctx.renderer.gl, three, camera, { ...(width && height ? { width, height } : {}), quality });
         },
+        // a style's picture as the bake takes it (`bakeStylePictures`): what she wears now, framed as that kind of piece
+        partPicture: (kind: PieceKind) => partPicture(kind),
         // every mesh drawn now (name, material, vertices): to tell what is what on screen
         drawn: () => { const out: string[] = []; three.traverseVisible((n) => { const m = n as THREE.Mesh; if (m.isMesh) out.push(`${m.name}|${(Array.isArray(m.material) ? m.material[0] : m.material).name}|${m.geometry.getAttribute('position')?.count}`); }); return out; },
         // the cloth's triangles folded over into her, and the particles they hold

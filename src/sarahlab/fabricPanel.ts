@@ -99,6 +99,9 @@ export type PaintView = 'layer' | 'all' | 'clear';
 export const FABRIC_ACTION = Object.freeze({
   /** A piece: `layer:<i>`, `garment:<name>`, or `new`. */
   piece: (id: string) => `sarahlab:fabric:piece:${id}`,
+  /** STYLE's pictures: a style by its template's id, and the kind of piece whose styles are shown. */
+  style: (id: string) => `sarahlab:fabric:style:${id}`,
+  styleKind: (k: PieceKind) => `sarahlab:fabric:style-kind:${k}`,
   space: (s: EditorSpace) => `sarahlab:fabric:space:${s}`,
   view: (v: PaintView) => `sarahlab:fabric:view:${v}`,
   isolate: 'sarahlab:fabric:isolate',
@@ -128,7 +131,7 @@ export const FABRIC_ACTION = Object.freeze({
 });
 export const FABRIC_FIELD = Object.freeze({
   nippleKeep: 'fabric-nipple-keep', navelKeep: 'fabric-navel-keep', vulvaKeep: 'fabric-vulva-keep', detailInfo: 'fabric-detail-info',
-  style: 'fabric-style', stitch: 'fabric-stitch', opacity: 'fabric-opacity', brush: 'fabric-brush', status: 'fabric-status', pieces: 'fabric-pieces',
+  style: 'fabric-style', styles: 'fabric-styles', stitch: 'fabric-stitch', opacity: 'fabric-opacity', brush: 'fabric-brush', status: 'fabric-status', pieces: 'fabric-pieces',
 });
 
 export interface WornGarment { readonly name: string; readonly label: string; readonly trim: boolean }
@@ -189,6 +192,13 @@ export interface FabricHooks {
   reshape(): void;
   /** The SAVE workspace's contents (the room's outfit operations), if the room has them. */
   saveSection?(): HTMLElement | null;
+  /**
+   * A style's PICTURE (Joshua, 2026-11-14, of the new shirts in the clothing tab: "with updated images of their style?…
+   * or modify the UI to work better"): the address of the small picture of a template's cut on her
+   * (`sarahLabTool.styleThumbPath`, baked by `scripts/bakeStyleThumbs.mjs`), or null where there are none. A style whose
+   * picture does not load shows its name alone.
+   */
+  stylePicture?(templateId: string): string | null;
   /** Her clothes changed (a fabric, a style, a stroke, the detail): the room's SAVE status follows. */
   changed?(): void;
   /**
@@ -444,7 +454,45 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   const dials = new Map(COVERAGE_DIALS.map((d) => [d.id, slider(`fabric-dial-${d.id}`, { min: d.min, max: d.max, step: 0.01 }, (v) => moveDial(d.id, v))]));
   const dialBox = el('div', 'display:flex;flex-direction:column;gap:6px');
   for (const d of dials.values()) dialBox.append(d.wrap);
-  const styleBox = el('div', 'display:flex;flex-direction:column;gap:6px'); styleBox.append(heading('STYLE'), styleSelect, dialBox);
+  // STYLE AS PICTURES: the styles of one kind of piece in a row that scrolls sideways, each a small picture of its cut on
+  // her with its name under it; a tap puts it on the piece. The kinds are a row of four above it (the piece's own kind is
+  // shown when a piece is picked); the list under it still names every style
+  const STYLE_KINDS: readonly PieceKind[] = ['top', 'bottom', 'onePiece', 'legwear'];
+  const STYLE_KIND_NAMES: Readonly<Record<PieceKind, string>> = { top: 'TOPS', bottom: 'BOTTOMS', onePiece: 'ONE-PIECE', legwear: 'LEGWEAR' };
+  /** Templates that are another's other half (a set's edging layer): put on with it, not picked as a style. */
+  const helperStyles = new Set(Object.values(GARMENT_SETS).map((x) => x.edging));
+  let stripKind: PieceKind = 'top', stripFor = '', stripSeen = '';
+  const styleKinds = el('div', 'display:grid;grid-template-columns:repeat(4,1fr);gap:4px');
+  const styleKindButtons = new Map(STYLE_KINDS.map((k) => { const b = button(STYLE_KIND_NAMES[k], FABRIC_ACTION.styleKind(k), () => { stripKind = k; draw(); }); b.style.minHeight = '32px'; b.style.padding = '4px 2px'; b.style.fontSize = '10px'; return [k, b] as const; }));
+  styleKinds.append(...styleKindButtons.values());
+  const styleStrip = el('div', 'display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:thin;touch-action:pan-x;overscroll-behavior-x:contain');
+  styleStrip.dataset.field = FABRIC_FIELD.styles;
+  const styleTiles = new Map<string, HTMLButtonElement>();
+  let stripShown: PieceKind | null = null;
+  function fillStyleStrip(): void {
+    if (stripShown === stripKind) return;
+    stripShown = stripKind; styleTiles.clear();
+    styleStrip.replaceChildren(...COVERAGE_TEMPLATES.filter((t) => pieceKind(t.id) === stripKind && !helperStyles.has(t.id)).map((t) => {
+      const b = el('button', 'flex:none;width:84px;display:flex;flex-direction:column;gap:3px;padding:3px 3px 5px;border-radius:9px;border:2px solid var(--sl-btn-line,#ffffff30);background:var(--sl-btn,#151b23);color:var(--sl-ink,#e8e2d8);text-align:center');
+      b.type = 'button'; b.dataset.action = FABRIC_ACTION.style(t.id); b.title = t.name; b.setAttribute('aria-label', t.name);
+      const well = el('div', 'width:100%;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:var(--sl-well,#0b0f14);display:flex;align-items:center;justify-content:center;font:700 10px system-ui;opacity:.9');
+      const src = hooks.stylePicture?.(t.id) ?? null;
+      if (src) {
+        const img = el('img', 'width:100%;height:100%;object-fit:cover;display:block');
+        img.loading = 'lazy'; img.decoding = 'async'; img.alt = ''; img.draggable = false;
+        // (a style baked no picture yet: its name's first letters stand in the well)
+        img.addEventListener('error', () => { well.textContent = t.name.split(/[\s-]+/).map((w) => w[0]).join('').slice(0, 3).toUpperCase(); });
+        img.src = src; well.appendChild(img);
+      } else well.textContent = t.name.split(/[\s-]+/).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
+      const name = el('span', 'font:600 9.5px/1.15 system-ui;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:22px');
+      name.textContent = t.name;
+      b.append(well, name);
+      b.addEventListener('click', (e) => { e.stopPropagation(); applyTemplate(t.id, t.params); });
+      styleTiles.set(t.id, b);
+      return b;
+    }));
+  }
+  const styleBox = el('div', 'display:flex;flex-direction:column;gap:6px'); styleBox.append(heading('STYLE'), styleKinds, styleStrip, styleSelect, dialBox);
   const families = row(), colours = grid();
   const familyButtons = new Map<string, HTMLButtonElement>();
   familyButtons.set('original', button('ORIGINAL', FABRIC_ACTION.family('original'), () => set({ fabric: null })));
@@ -933,6 +981,16 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     styleBox.style.display = onLayer ? 'flex' : 'none';
     if (onLayer) {
       const tpl = templates[i];
+      // the pictures show the piece's own kind when another piece (or another style of another kind) is picked; the
+      // four kinds above them show any other
+      const own = tpl ? pieceKind(tpl.id) : null, key = `${i}:${tpl?.id ?? ''}`;
+      if (key !== stripFor) { stripFor = key; if (own) stripKind = own; }
+      fillStyleStrip();
+      for (const [k, b] of styleKindButtons) press(b, k === stripKind);
+      for (const [id, b] of styleTiles) { const on = id === tpl?.id; b.style.borderColor = on ? GOLD : 'var(--sl-btn-line,#ffffff30)'; b.setAttribute('aria-pressed', String(on)); }
+      // (the one worn is brought into view along the row, without moving the page)
+      const worn = tpl ? styleTiles.get(tpl.id) : undefined;
+      if (worn && stripSeen !== key && styleStrip.clientWidth > 0) { stripSeen = key; styleStrip.scrollLeft = Math.max(0, worn.offsetLeft - styleStrip.offsetLeft - (styleStrip.clientWidth - worn.offsetWidth) / 2); }
       styleSelect.value = tpl?.id ?? '';
       styleSelect.options[0].text = kindOf(i) ? 'Hand painted (choose a style to replace it)' : 'Choose a style…';
       const used = tpl ? dialsFor(tpl.params) : [];
