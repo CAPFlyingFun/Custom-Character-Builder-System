@@ -138,6 +138,8 @@ export class CordEvening {
   private readonly lumpSize: Float32Array;
   private readonly sum: Float32Array;
   private readonly evened: (Evened | null)[];
+  /** per part: how much of a string each of a cord's points is (null: a panel) */
+  private readonly shares: (Float32Array | null)[];
   private readonly normals: Float32Array[];
   private readonly liftEase: number;
 
@@ -183,13 +185,16 @@ export class CordEvening {
     // her as it spans the air, and a lift off her as it lies on her
     const reach2 = reach * reach, near2 = joinNear * joinNear;
     let strings = 0;
-    this.evened = parts.map((p) => {
+    this.shares = parts.map((p) => (p.cord ? new Float32Array(p.pos.length / 3) : null));
+    this.evened = parts.map((p, i) => {
       if (!p.cord) return null;
       const n = p.pos.length / 3, points: number[] = [], along: number[] = [], out: number[] = [], lift: number[] = [], start: number[] = [0], lumpIds: number[] = [], weights: number[] = [];
+      const share = this.shares[i]!;
       for (let v = 0; v < n; v++) {
         if (!follows(p, v)) continue;
         const x = p.pos[v * 3], y = p.pos[v * 3 + 1], z = p.pos[v * 3 + 2];
         const d2 = panels.nearest2(x, y, z, near2), string = d2 === Infinity ? 1 : ease((Math.sqrt(d2) - joinNear) / Math.max(1e-12, joinFar - joinNear));
+        share[v] = string;
         if (!string) continue;
         // the lumps within reach, by the bell: (1 - (d / reach)^2)^3, times how many points each lump is
         const from = lumpIds.length;
@@ -205,6 +210,13 @@ export class CordEvening {
     });
     this.strings = strings;
   }
+
+  /**
+   * How much of a STRING each point of a part is: nothing for the cord sewn round a panel (a cord point within
+   * `joinNearM` of one), all of one `joinFarM` from every panel, eased between; null for a panel, which has none. What
+   * is not a string is one layer of cloth with the panel it is sewn to: whatever is done to the one is done to the other.
+   */
+  stringShare(part: number): Float32Array | null { return this.shares[part] ?? null; }
 
   /**
    * Even `moves` in place: one array a part, xyz a point, what her skin's field alone gives each point. Only strings'

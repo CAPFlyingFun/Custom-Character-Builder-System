@@ -237,7 +237,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   161 crossings and leaves 26 and none, 128 to 493 ms later on the build machine). A probe that steps the room and
   pictures her at once catches the repair lifted: with it switched off (`creaseOff`) the line is frayed; with it laid it
   is smooth, in her T-pose and with her arms down. PICTURE HER AFTER A CHANGE OF SHAPE ONCE `crease().pending` IS CLEAR
-  (or a second and a half after).
+  (or a second and a half after), AND STEP NOTHING IN BETWEEN: a probe's `animate` before the picture lifts the repair
+  again until it lands once more (MEASURED the same evening: dark dashes under a breast at her 200% belly with SIZE
+  +100, pictured a step after the repair and gone when pictured with none).
 
 ## A modelled garment and the shapes laid on her afterwards
 
@@ -294,19 +296,61 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   evened on the garment at all; but some of her skin's points then slide a centimetre from where they do now, and a
   slide along her skin AT REST is not along it once her milk has turned it -- it has to be laid along her FILLED
   skin, which is a bake.
-- FOUND 2026-11-14, NOT YET FIXED: AT HER BIGGEST BELLY HER TOP'S CORNERS SHOW SLIVERS OF HER SKIN, AND HER NECK
-  STRINGS' FEET SINK INTO HER, WITH NO MILK IN IT. At 200%, SIZE and MILK at 0: at the inner lower corner and the
-  lower edge of her right cup and at the top corner of her left. THE CAUSE, MEASURED on the room's files: her skin's
-  SMOOTHINGS are laid on her body from a file of their own as well (`shape:chest:`, her cleavage's; `shape:sides:`;
-  `shape:zeroRefine`), and her top has none of them. Under her top's points at 200% her cleavage's smoothing moves
-  her skin up to 9.0 mm, 2.4 mm out from her at her left cup's top corner and 2.8 under a neck string's foot; her
-  sides' 2.0 mm out under her cups' lower edges and 4.4 under the string round her back (at 100%: 2.2 and 4.5; at 0%
-  her cleavage's 0.3 under her cups). They can not simply be given to her top as her milk is: they are relaxations of
-  her skin that slide it up to 9.5 mm, and offline her top's strings rode that into zigzags (the string round her
-  back turned up to 72 degrees over 9 mm of it, 17 at rest, its rings stepped 6 mm apart).
-- After anything changes which garments are given her shapes, how, or the evening: `tests/garmentShapeTransfer.test.ts`,
-  `tests/cordEvening.test.ts`, `tests/bikiniTopMilk.test.ts`; then the room: her top as the room opens her, at MILK
-  50 and 100, at SIZE +100, and with both, from her front and her side and close on her strings.
+- **Her skin's SMOOTHINGS lift her top, and never slide it** (a fault found in the same pictures: at her 200% belly,
+  SIZE and MILK at 0, slivers of her skin at the inner lower corner and the lower edge of her right cup and at the top
+  corner of her left, and her neck strings' feet sunk into her; of the three things found, Joshua, 2026-11-14: "Okay.
+  Sounds good. Push when fixed:)"). THE CAUSE, MEASURED on the room's files: her skin's smoothings are laid on her
+  body from a file of their own as well (`zeroRefine.ts` `smoothsHerSkin`: her cleavage's `shape:chest:`, her sides',
+  her 0% shape refined, her upper belly's, her groin's), and her top has none of them. Under her top's points at 200%
+  her cleavage's moves her skin up to 9.0 mm: 2.4 mm out from her at her left cup's top corner, 2.8 under a neck
+  string's foot; her sides' 2.0 mm out under her cups' lower edges and 4.4 under the string round her back (at 100%:
+  2.2 and 4.5; at 0% her cleavage's 0.3 under her cups).
+  - THEY CAN NOT BE GIVEN TO HER TOP AS HER MILK IS. They are relaxations of her skin: they slide her skin's points up
+    to 9.5 mm along her, each triangle its own way. Taken as her milk is, her top's strings rode that into zigzags
+    (offline, at 200%: the string round her back turned 65 degrees more sharply than at rest over 9 mm of it; at 0%,
+    as the room opens her, 93).
+  - SO EACH POINT OF HER TOP IS LIFTED, straight out from her skin as she rests, by as far as a smoothing brings her
+    skin out under it, and left where it is where her skin goes in (`GarmentShapeTransfer.syncSet`'s `lifts`; the
+    room, `followMissingGarmentFields`, for a garment of `FOLLOWS_HER_SHAPES` WHILE IT IS WORN: nothing is bound for a
+    top she does not have on). A STRING's point is lifted less by the room it had over her beyond `LIFT_KEEP_M` (a
+    millimetre: a string that spans the air is lifted only once her skin has come that near it).
+  - A PANEL, AND THE CORD SEWN ROUND IT, ARE LIFTED WHOLE however far off her they lie (`CordEvening.stringShare`: what
+    is not a string is one layer of cloth on another). Her cups lie up to 2.2 mm off her at their edges and the cord
+    round each up to 2.5. MEASURED 2026-11-14 with that room taken off EVERY point alike, at 200%: 1,456 of her cups'
+    points and some 420 of each cup cord's were laid at ONE height, a millimetre over her skin as it then is -- 60 of
+    a cord's points level with the cup under them and 3 beneath it, a cord's point lifted up to 0.82 mm less than its
+    cup's -- and in the room her right cup showed through its own cord along 8 mm of its lower edge. Lifted whole, a
+    cord's point and the cup's nearest it are lifted within 0.30 mm of one another.
+  MEASURED after, the same files: at 200% her cups are lifted up to 2.4 mm, her neck strings' feet 2.6 and 2.8, the
+  string round her back 1.0 (it stands off her at her side); at 100% her cups 2.2; as the room opens her, at 0%,
+  her cups 0.33 and nothing 0.8; no cord turns 12 degrees more sharply than at rest (11.6: the cord round her left cup
+  at its top corner, where her skin itself comes out in a bump). IN THE ROOM, HER SKIN'S FOLDS REPAIRED BEFORE EACH
+  PICTURE (the `followed` probe says what each part was given: nothing before her top is on; her cleavage's 0% shape
+  lifting 516 and 564 of the two cup cords' points, 0.35 and 0.27 mm): v0.9.23 has the slivers and the sunk feet as
+  found; now, at 100% and at 200%, no sliver at any corner, each cup's cord whole round it and her neck strings on her
+  to their feet -- from her front, from her right, and close on her strings and on her right cup's lower edge -- and
+  the same at 200% with SIZE +100.
+- NOT FIXED, WITH MILK AT HER BIGGEST BELLY: at 200% with MILK 100 a chip of her skin 4 mm across is left at her right
+  cup's top corner, a speck at her left cup's and one at her right cup's inner lower corner; with SIZE +100 as well a
+  chip at each top corner (before the lift: both top corners, her right cup's inner lower corner and lower edge, and
+  her neck strings' feet sunk). ITS CAUSE IS NOT KNOWN. MEASURED, what it is not: the room's repair of her skin's
+  folds (the chips are there with it laid and with it off, `creaseOff`); and her milk being taken from her REST skin,
+  which her cleavage's smoothing has slid 9 mm under that corner (offline, by the shapes laid on her from files
+  alone, her cups clear her skin there -- 14 points under it, 0.08 mm at the deepest -- and worse if her milk is taken
+  from her smoothed skin instead: 290 points, 0.66 mm). Not yet looked at: her belly's and her bust's own morphs,
+  which her top carries in its file and offline leaves out.
+- FOUND IN THE SAME PICTURES, HER SKIN'S AND NOT HER TOP'S, NOT LOOKED INTO: at her largest of everything (200%, SIZE
+  +100, MILK 100) a few hairlines low in her cleavage, a fifth of a millimetre wide and up to 6 mm long, with her
+  skin's folds repaired and with the repair off, with the lift and without it.
+- PICTURE HER TOP WITH HER SKIN'S FOLDS REPAIRED, AND STEP NOTHING BEFORE THE PICTURE ("A painted top, drawn": the
+  repair lands `CREASE_SETTLE_MS` after her controls rest, and a probe's `animate` lifts it again). MEASURED
+  2026-11-14: dark dashes under her right breast at 200% with SIZE +100, written here for an hour as a fault of her
+  skin's, were her skin's folds pictured a step of the clock after the repair -- wait for `crease().pending` to
+  clear, a second and a half more, and picture her with no step between.
+- After anything changes which garments are given her shapes, how, the evening or the lift:
+  `tests/garmentShapeTransfer.test.ts`, `tests/cordEvening.test.ts`, `tests/bikiniTopMilk.test.ts`,
+  `tests/bikiniTopSmoothings.test.ts`; then the room: her top as the room opens her, at MILK 50 and 100, at SIZE +100,
+  and with both, from her front and her side and close on her strings; and at her 100% and 200% bellies.
 
 ## Her opening's area and her skin round it
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { baseShapeFields, applyShapeFields } from '../src/view/bodyShapeView';
-import { GarmentShapeTransfer } from '../src/sarahlab/garmentShapeTransfer';
+import { GarmentShapeTransfer, LIFT_KEEP_M } from '../src/sarahlab/garmentShapeTransfer';
+import { UNITS_PER_METRE } from '../src/sarahlab/softBody';
 import { FOLLOWS_HER_SHAPES, GARMENTS, RECOVERED_SHIRTS, followsHerShapes } from '../src/sarahlab/sarahLabTool';
 
 function setup() {
@@ -173,5 +174,119 @@ describe('a garment of several parts bound as one, its strings evened', () => {
     const a = dense(string.fields.basePos, was), b = dense(string.fields.basePos, now);
     for (let v = 0; v < a.length; v += 3) { expect(b[v + 1]).toBeCloseTo(2 * a[v + 1], 6); expect(b[v + 2]).toBeGreaterThanOrEqual(0.008 - 1e-7); }
     expect(second.fields[0].fields.get(NAME)).toBe(own);
+  });
+});
+
+/**
+ * ONE OF HER SKIN'S SMOOTHINGS LIFTS A GARMENT AND NEVER SLIDES IT (`syncSet`'s `lifts`; Joshua's standing rule of
+ * 2026-11-13 on a fault found, here at her 200% belly: slivers of her skin at her bikini top's corners with no milk in
+ * it). Her skin's smoothings are baked on her body alone and slide her skin's points up to a centimetre along her; a
+ * garment that rode that would have its strings in zigzags. Here her skin is the flat sheet again, and its smoothing
+ * slides each column sideways by up to 5 mm, brings her skin 2 mm OUT over the low columns and 2 mm IN over the high.
+ */
+describe('one of her skin\'s smoothings under a garment bound as one', () => {
+  const SLIDE = [0.004, -0.003, 0.005, -0.001, 0.003, -0.005, 0.002, -0.004, 0.004, -0.002, 0.003, -0.004, 0.001];
+  const OUT = [0.002, 0.002, 0.002, 0.002, 0.002, 0.002, 0, -0.002, -0.002, -0.002, -0.002, -0.002, -0.002];
+  const SMOOTH = 'shape:chest:200', MILK = 'shape:milk:5:200', RINGS = 56;
+  function skin(out = OUT) {
+    const pos: number[] = [], nrm: number[] = [], index: number[] = [], COLS = SLIDE.length, ROWS = 7;
+    for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) { pos.push(c * 0.008, (r - 3) * 0.008, 0); nrm.push(0, 0, 1); }
+    for (let c = 0; c + 1 < COLS; c++) for (let r = 0; r + 1 < ROWS; r++) { const a = c * ROWS + r, b = a + ROWS; index.push(a, b, a + 1, a + 1, b, b + 1); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); g.setIndex(index);
+    const body = new THREE.SkinnedMesh(g), fields = baseShapeFields(body), n = pos.length / 3, all = Uint32Array.from({ length: n }, (_x, i) => i);
+    const col = (k: number) => Math.floor(k / 3 / ROWS);
+    const smooth = { index: all, pos: Float32Array.from({ length: n * 3 }, (_x, k) => (k % 3 === 1 ? SLIDE[col(k)] : k % 3 === 2 ? out[col(k)] : 0)), nrm: Float32Array.from({ length: n * 3 }, (_x, k) => (k % 3 === 0 ? 0.1 : 0)) };
+    const milk = { index: all, pos: Float32Array.from({ length: n * 3 }, (_x, k) => (k % 3 === 1 ? 0.001 : k % 3 === 2 ? 0.003 : 0)), nrm: null };
+    return { body, fields: { ...fields, fields: new Map<string, { index: Uint32Array; pos: Float32Array; nrm: Float32Array | null }>([[SMOOTH, smooth], [MILK, milk]]) } };
+  }
+  /** A lace along x (four points a ring, rings 1.5 mm apart) with its middle line at `y`, `off` her skin. */
+  const lace = (y: number, off: number): number[] => { const pos: number[] = []; for (let r = 0; r < RINGS; r++) for (const [side, up] of [[-1, 0], [1, 0], [1, 1], [-1, 1]]) pos.push(0.004 + r * 0.0015, y + side * 0.001, off + up * 0.0003); return pos; };
+  function garment() {
+    const panelPos: number[] = [];
+    for (let r = 0; r < RINGS; r++) for (let y = -0.012; y <= 0.0001; y += 0.001) panelPos.push(0.004 + r * 0.0015, y, 0.0003);
+    const part = (pos: number[], cord: boolean) => { const m = new THREE.Mesh(new THREE.BufferGeometry()); m.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); return { mesh: m, fields: baseShapeFields(m), cord }; };
+    // a panel 0.3 mm off her, the cord sewn along its edge, and a string lying on her (0.7 mm off)
+    return [part(panelPos, false), part(lace(-0.001, 0.0007), true), part(lace(0.01, 0.0007), true)];
+  }
+  /** A garment that is one string spanning the air, 6 mm off her. */
+  const spanning = () => { const m = new THREE.Mesh(new THREE.BufferGeometry()); m.geometry.setAttribute('position', new THREE.Float32BufferAttribute(lace(0, 0.006), 3)); return [{ mesh: m, fields: baseShapeFields(m), cord: true }]; };
+  const dense = (base: Float32Array, field: { index: Uint32Array; pos: Float32Array }): Float32Array => { const move = new Float32Array(base.length); field.index.forEach((v, k) => move.set(field.pos.subarray(k * 3, k * 3 + 3), v * 3)); return move; };
+  /** How far her skin comes out under x, as its field is laid: straight from one column's to the next's. */
+  const outAt = (x: number, out = OUT): number => { const c = Math.min(SLIDE.length - 2, Math.floor(x / 0.008)), t = x / 0.008 - c; return out[c] + t * (out[c + 1] - out[c]); };
+
+  it('lifts what lies on her by as far as her skin comes out under it, and leaves it where her skin goes in', () => {
+    const { body, fields } = skin(), parts = garment();
+    const result = new GarmentShapeTransfer(body, fields, 0.05).syncSet(parts, fields, () => true, (name) => name === SMOOTH);
+    expect(result.added).toBe(6);
+    for (const i of [0, 1, 2]) {
+      const f = result.fields[i].fields.get(SMOOTH)!, base = parts[i].fields.basePos, move = dense(base, f);
+      // no turn of its normals comes with a lift
+      expect(f.nrm).not.toBeNull(); expect(f.nrm!.every((x) => x === 0)).toBe(true);
+      let lifted = 0;
+      for (let v = 0; v < move.length; v += 3) {
+        // never slid along her: her skin's slide under it is up to 5 mm
+        expect(move[v]).toBe(0); expect(move[v + 1]).toBe(0);
+        expect(move[v + 2]).toBeCloseTo(Math.max(0, outAt(base[v])), 6);
+        if (move[v + 2] > 0) lifted++;
+      }
+      expect(lifted).toBeGreaterThan(move.length / 3 / 3);
+      expect(f.index.length).toBe(lifted);
+    }
+  });
+
+  it('a panel and the cord sewn round it are lifted whole however far off her they lie, one layer on the other; a string that far off her is not', () => {
+    // (her top's cups lie up to 2.2 mm off her at their edges and the cord round each up to 2.5: with the room each had
+    // over her beyond `LIFT_KEEP_M` taken off it they were laid at ONE height, and the cup showed through its own cord)
+    const { body, fields } = skin(), panelPos: number[] = [];
+    for (let r = 0; r < RINGS; r++) for (let y = -0.012; y <= 0.0001; y += 0.001) panelPos.push(0.004 + r * 0.0015, y, 0.0016);
+    const part = (pos: number[], cord: boolean) => { const m = new THREE.Mesh(new THREE.BufferGeometry()); m.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); return { mesh: m, fields: baseShapeFields(m), cord }; };
+    // a panel 1.6 mm off her, the cord sewn along its edge 2.0 to 2.3 mm off her, and a string as far off her 12 mm from the panel
+    const parts = [part(panelPos, false), part(lace(-0.001, 0.002), true), part(lace(0.012, 0.002), true)];
+    const result = new GarmentShapeTransfer(body, fields, 0.05).syncSet(parts, fields, () => true, (name) => name === SMOOTH);
+    for (const i of [0, 1]) {
+      const base = parts[i].fields.basePos, move = dense(base, result.fields[i].fields.get(SMOOTH)!);
+      for (let v = 0; v < move.length; v += 3) { expect(move[v]).toBe(0); expect(move[v + 1]).toBe(0); expect(move[v + 2]).toBeCloseTo(Math.max(0, outAt(base[v])), 6); }
+    }
+    // so the cord stands over the panel by what it did: 0.4 and 0.7 mm, wherever her skin has come out 2 mm under them
+    const KEEP = LIFT_KEEP_M * UNITS_PER_METRE, base = parts[2].fields.basePos, move = dense(base, result.fields[2].fields.get(SMOOTH)!);
+    let less = 0;
+    for (let v = 0; v < move.length; v += 3) {
+      expect(move[v]).toBe(0); expect(move[v + 1]).toBe(0);
+      if (base[v] > 0.036) continue;
+      // the string, where her skin comes out 2 mm: lifted by that less its room beyond `LIFT_KEEP_M` (0.9 and 1.2 mm), evened a little along itself
+      expect(Math.abs(move[v + 2] - (0.002 - (base[v + 2] - KEEP)))).toBeLessThan(0.0001);
+      expect(move[v + 2]).toBeLessThan(0.0013); less++;
+    }
+    expect(less).toBeGreaterThan(60);
+  });
+
+  it('a string that spans the air is lifted only once her skin has come within `LIFT_KEEP_M` of it', () => {
+    // (6 mm off her: some 5 mm of room before her skin is that near it -- `LIFT_KEEP_M` is in her mesh's units, 1.11 a metre)
+    const KEEP = LIFT_KEEP_M * UNITS_PER_METRE;
+    const two = skin(), one = spanning();
+    expect(new GarmentShapeTransfer(two.body, two.fields, 0.05).syncSet(one, two.fields, () => true, (name) => name === SMOOTH).fields[0].fields.get(SMOOTH)!.index.length).toBe(0);
+    // her skin comes out 7 mm under its low end: its points, 6.0 and 6.3 mm off her, want lifting 2.1 and 1.8 mm there,
+    // and each ring is lifted by the mean of its points' (it spans the air: it takes all of the evened move), 1.96 mm...
+    const seven = skin(OUT.map((o) => 3.5 * o)), far = spanning();
+    const f = new GarmentShapeTransfer(seven.body, seven.fields, 0.05).syncSet(far, seven.fields, () => true, (name) => name === SMOOTH).fields[0].fields.get(SMOOTH)!;
+    const base = far[0].fields.basePos, move = dense(base, f), need = (v: number) => Math.max(0, outAt(base[v], OUT.map((o) => 3.5 * o)) - (base[v + 2] - KEEP));
+    for (let v = 0; v < move.length; v += 3) if (base[v] < 0.02) expect(Math.abs(move[v + 2] - need(v))).toBeLessThan(0.00016);
+    expect(Math.max(...Array.from(move))).toBeCloseTo(0.007 - (0.00615 - KEEP), 5);
+    // ...and where the lift ends it ends eased, not in a corner: a spanning string takes the mean of it along itself
+    // (never slid along her, and never lifted where her skin is nowhere near it)
+    let eased = 0;
+    for (let v = 0; v < move.length; v += 3) { expect(Math.abs(move[v])).toBeLessThan(1e-6); expect(Math.abs(move[v + 1])).toBeLessThan(1e-6); expect(move[v + 2]).toBeGreaterThanOrEqual(0); if (base[v] > 0.07) expect(move[v + 2]).toBe(0); if (Math.abs(move[v + 2] - need(v)) > 1e-5) eased++; }
+    expect(eased).toBeGreaterThan(10);
+  });
+
+  it('and a field that is not a smoothing is taken as ever in the same call: her milk moves the panel as it moves her skin', () => {
+    const { body, fields } = skin(), parts = garment();
+    const result = new GarmentShapeTransfer(body, fields, 0.05).syncSet(parts, fields, () => true, (name) => name === SMOOTH);
+    const milk = dense(parts[0].fields.basePos, result.fields[0].fields.get(MILK)!);
+    for (let v = 0; v < milk.length; v += 3) { expect(milk[v + 1]).toBeCloseTo(0.001, 7); expect(milk[v + 2]).toBeCloseTo(0.003, 7); }
+    // asked again, nothing is laid again
+    const again = new GarmentShapeTransfer(body, fields, 0.05), first = again.syncSet(parts, fields, () => true, (name) => name === SMOOTH);
+    expect(again.syncSet(parts.map((p, i) => ({ ...p, fields: first.fields[i] })), fields, () => true, (name) => name === SMOOTH).added).toBe(0);
   });
 });

@@ -333,7 +333,7 @@ import { easeLegsOpen, legSpreadDeg, legsOpen } from './legsOpen';
 const KNEE_SMOOTH = Object.freeze({ near: 0.06, far: 0.12, passes: 60, lambda: 0.6, restore: 0 });
 import { DEFAULT_VULVA_KEEP } from './detailMaterials';
 import { attachJiggle, bellyTune, breastTune, createJiggleUniforms, feltAcceleration, GRAVITY, GRAVITY_SHARE, LEG_TUNE, restingMass, stepMass, type LegBones, type Mass } from './softBody';
-import { applyMilk, applyWomb, applyZeroRefine, babyAnchors, babyWeightState, chestAnchors, chestFieldWeights, groinAnchors, groinFieldWeights, loadMilk, milkAnchors, milkBalanceState, milkFieldWeights, milkState, MILK_PATH, babyFieldWeights, loadWomb, loadZeroRefine, sidesAnchors, sidesFieldWeights, zeroRefineWeight, UPPER_FIELD_PREFIX, WOMB_PATH, ZERO_FIELD, ZERO_REFINE_PATH } from './zeroRefine';
+import { applyMilk, applyWomb, applyZeroRefine, babyAnchors, babyWeightState, chestAnchors, chestFieldWeights, groinAnchors, groinFieldWeights, loadMilk, milkAnchors, milkBalanceState, milkFieldWeights, milkState, MILK_PATH, babyFieldWeights, loadWomb, loadZeroRefine, sidesAnchors, sidesFieldWeights, smoothsHerSkin, zeroRefineWeight, UPPER_FIELD_PREFIX, WOMB_PATH, ZERO_FIELD, ZERO_REFINE_PATH } from './zeroRefine';
 import { NAVEL_MORPHS, type NavelPiece } from './navelPiece';
 import { ArmJoints } from './armJoints';
 import { clothingVertex } from './clothingPose';
@@ -341,7 +341,7 @@ import { createNavelSoft, type NavelSoft } from './navelSoft';
 import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
 import {
-  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, followsHerShapes, OUTFITS, outfitLine, modelLine, nextModel, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
+  SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, followingGarment, OUTFITS, outfitLine, modelLine, nextModel, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn, outfitNamed, modelName, modelsOnMenu,
@@ -2360,19 +2360,22 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function followMissingGarmentFields(weights: Readonly<Record<string, number>>): void {
     const b = bodyOf(), source = b ? shaped.find((s) => s.mesh === b.mesh) : undefined;
     if (!b || !source) return;
-    const wanted = new Set([...source.fields.fields.keys()].filter((n) => !!weights[n] && (n.startsWith('shape:baby:') || n.startsWith('shape:milk:'))));
-    if (!wanted.size) return;
-    const targets = shaped.filter((s) => s.mesh !== b.mesh && (s.mesh.userData.recoveredShirt || s.mesh.userData.recoveredLeggings));
-    // her body file's own garments that have none of these (her bikini top, `followsHerShapes`): all of its parts as ONE
-    // garment, so that its strings are evened along themselves (`cordEvening.ts`)
-    const materialName = (mesh: THREE.Mesh) => (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material)?.name ?? '';
-    const own = shaped.filter((s) => s.mesh !== b.mesh && followsHerShapes(materialName(s.mesh)));
+    const laid = [...source.fields.fields.keys()].filter((n) => !!weights[n]);
+    const wanted = new Set(laid.filter((n) => n.startsWith('shape:baby:') || n.startsWith('shape:milk:')));
+    // her skin's smoothings (her cleavage's, her sides', her 0% refined): her body file's own garments have none of those
+    // either, and are lifted where one brings her skin out under them
+    const smoothings = new Set(laid.filter(smoothsHerSkin));
+    if (!wanted.size && !smoothings.size) return;
+    const targets = wanted.size ? shaped.filter((s) => s.mesh !== b.mesh && (s.mesh.userData.recoveredShirt || s.mesh.userData.recoveredLeggings)) : [];
+    // her body file's own garments that have none of these (her bikini top, `FOLLOWS_HER_SHAPES`), while worn: all of a
+    // garment's parts as ONE, so that its strings are evened along themselves (`cordEvening.ts`)
+    const garmentOf = (mesh: THREE.Mesh) => followingGarment((Array.isArray(mesh.material) ? mesh.material[0] : mesh.material)?.name ?? '');
+    const own = shaped.filter((s) => { if (s.mesh === b.mesh) return false; const g = garmentOf(s.mesh); return g !== null && shownNow(g); });
     if (!targets.length && !own.length) return;
     let transfer = garmentTransfers.get(b.mesh);
     if (!transfer) { transfer = new GarmentShapeTransfer(b.mesh, source.fields); garmentTransfers.set(b.mesh, transfer); }
-    const follow = (name: string) => wanted.has(name);
-    for (const target of targets) target.fields = transfer.sync(target.mesh, target.fields, source.fields, follow).fields;
-    if (own.length) transfer.syncSet(own.map((s) => ({ mesh: s.mesh, fields: s.fields, cord: s.mesh.userData.cord === true })), source.fields, follow).fields.forEach((fields, i) => { own[i].fields = fields; });
+    for (const target of targets) target.fields = transfer.sync(target.mesh, target.fields, source.fields, (name) => wanted.has(name)).fields;
+    if (own.length) transfer.syncSet(own.map((s) => ({ mesh: s.mesh, fields: s.fields, cord: s.mesh.userData.cord === true })), source.fields, (name) => wanted.has(name) || smoothings.has(name), (name) => smoothings.has(name)).fields.forEach((fields, i) => { own[i].fields = fields; });
   }
 
   function applyLook(): void {
@@ -10082,6 +10085,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // in from the outline they are (cm bins, outside negative)
         // (a probe's) its modelled cords hidden or shown, to see the paint alone
         bikiniCords: (show: boolean) => { cordsHidden = !show; applyLook(); return { made: !!clothBrief, visible: clothBrief?.mesh.visible ?? false }; },
+        // (a probe's) what her body file's own garments have been given of her skin's shapes (`followMissingGarmentFields`):
+        // each part's material, whether it is a cord, and each field it was given with how many of its points that moves
+        // and the most it moves one (mm) -- at full weight, whatever weight it is laid at now
+        followed: () => {
+          const b = bodyOf(); if (!b) return null;
+          const mm = 1000 / GEOMETRY_PER_METRE;
+          return shaped.filter((s) => s.mesh !== b.mesh && followingGarment((Array.isArray(s.mesh.material) ? s.mesh.material[0] : s.mesh.material)?.name ?? '') !== null).map((s) => ({
+            material: (Array.isArray(s.mesh.material) ? s.mesh.material[0] : s.mesh.material).name, cord: s.mesh.userData.cord === true, points: s.fields.basePos.length / 3,
+            given: [...s.fields.fields].filter(([name]) => name.startsWith('shape:milk:') || name.startsWith('shape:baby:') || smoothsHerSkin(name)).map(([name, f]) => { let most = 0; for (let k = 0; k < f.pos.length; k += 3) most = Math.max(most, Math.hypot(f.pos[k], f.pos[k + 1], f.pos[k + 2])); return { name, points: f.index.length, mostMm: +(most * mm).toFixed(2) }; }),
+          }));
+        },
         // (a probe's) red dots where three.js poses her vertices that lie on the bikini's outline (|field| < 3 mm)
         outlineDots: () => {
           const b = bodyOf()?.mesh; if (!b) return 0;

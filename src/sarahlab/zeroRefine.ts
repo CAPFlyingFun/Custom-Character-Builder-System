@@ -78,6 +78,17 @@ export const CHEST_FIELD_PREFIX = 'shape:chest:';
  */
 export const GROIN_FIELD_PREFIX = 'shape:groin:';
 
+/**
+ * Whether a field is one of HER SKIN'S SMOOTHINGS: her 0% shape refined, her upper belly's, her sides', her cleavage's,
+ * her groin's. Each is a relaxing of her skin baked on her body alone: it slides her skin's points along her (MEASURED
+ * 2026-11-14 under her bikini top: up to 9.5 mm) and moves her shape a millimetre or two (up to 4.4 out). A garment
+ * modelled in her body file has none of them, and is never slid by one: it is lifted where one brings her skin out under
+ * it (`GarmentShapeTransfer.syncSet`'s `lifts`).
+ */
+export function smoothsHerSkin(name: string): boolean {
+  return name === ZERO_FIELD || name.startsWith(UPPER_FIELD_PREFIX) || name.startsWith(SIDES_FIELD_PREFIX) || name.startsWith(CHEST_FIELD_PREFIX) || name.startsWith(GROIN_FIELD_PREFIX);
+}
+
 /** What an anchored field carries (the file's own numbers). */
 export const ANCHOR_KIND = { sides: 0, light: 1, heavyHalf: 2, heavy: 3, chest: 4, milkLeft: 5, milkRight: 6, milkBoth: 7, groin: 8 } as const;
 export interface AnchoredPart extends Part { readonly kind: number; readonly slider: number }

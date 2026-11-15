@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { ShapeFields } from '../view/bodyShapeView';
 import { BodySurface } from './bodySurface';
 import { CordEvening } from './cordEvening';
+import { UNITS_PER_METRE } from './softBody';
 
 type Field = ShapeFields['fields'] extends ReadonlyMap<string, infer F> ? F : never;
 interface BoundGarment {
@@ -19,7 +20,15 @@ export interface GarmentPart {
   /** a closed tube (a string, the cord round a cup) rather than a panel of cloth */
   readonly cord: boolean;
 }
-interface BoundSet { key: string; evening: CordEvening; moves: Float32Array[]; turns: Float32Array[] }
+interface BoundSet { key: string; evening: CordEvening; moves: Float32Array[]; turns: Float32Array[]; normals: Float32Array[]; offs: Float32Array[] }
+/**
+ * GAME TUNING (metres): a STRING's point that one of her skin's SMOOTHINGS is laid under (`syncSet`'s `lifts`) is kept as
+ * far off her skin as it lay at rest, or this far if it lay further: a string lying on her is lifted by all that her
+ * skin comes out under it; one that spans the air only once her skin has come this near it. A PANEL'S point, and the
+ * cord's sewn round it, are lifted by all of it however far off her they lie (`CordEvening.stringShare`): they are one
+ * layer of cloth on another, and a room taken off each by its own height lays them all at one height.
+ */
+export const LIFT_KEEP_M = 0.001;
 
 export class GarmentShapeTransfer {
   private readonly surface: BodySurface;
@@ -126,9 +135,20 @@ export class GarmentShapeTransfer {
    * string shows as corners. Its panels, and the cord sewn round each, are exactly as `sync` has them. The same rules as
    * `sync` for which fields, a part's own (native) field and a source replaced since. Hand the same parts in, in the
    * same order, every time: they are bound as one.
+   *
+   * A FIELD THAT `lifts` NAMES IS ONE OF HER SKIN'S SMOOTHINGS (her cleavage's, her sides', her 0% refined): a relaxing
+   * of her skin that slides her skin's points up to a centimetre along her and moves her shape a millimetre or two. A
+   * garment is never slid by it. Each of its points is LIFTED, straight out from her skin as she rests, by as far as
+   * the smoothing brings her skin out under it -- a string's, less the room it had over her beyond `LIFT_KEEP_M` --
+   * and left where it is where her skin goes in: so her skin does not come through it, and its lines stay as they were
+   * cut. A panel and the cord sewn round it are lifted WHOLE, as one layer on another. MEASURED 2026-11-14 on her
+   * bikini top at her 200% belly with that room taken off every point alike: 1,456 of her cups' points (they lie up to
+   * 2.2 mm off her at their edges) and some 420 of each cup cord's (up to 2.5 mm) were laid at ONE height, a
+   * millimetre over her skin as it then is -- 60 of a cord's points level with the cup under them and 3 beneath it,
+   * and in the room the cup showed through its own cord along 8 mm of its lower edge.
    */
   syncSet(parts: readonly GarmentPart[], source: ShapeFields,
-    accept = (name: string) => name.startsWith('shape:baby:') || name.startsWith('shape:milk:')): { fields: ShapeFields[]; added: number } {
+    accept = (name: string) => name.startsWith('shape:baby:') || name.startsWith('shape:milk:'), lifts: (name: string) => boolean = () => false): { fields: ShapeFields[]; added: number } {
     const unchanged = { fields: parts.map((p) => p.fields), added: 0 };
     const wanted = [...source.fields].filter(([name]) => accept(name));
     if (!wanted.length || !parts.length) return unchanged;
@@ -160,6 +180,21 @@ export class GarmentShapeTransfer {
           move[o] = x; move[o + 1] = y; move[o + 2] = z; turn[o] = nx; turn[o + 1] = ny; turn[o + 2] = nz;
         }
       });
+      if (lifts(name)) {
+        // one of her skin's smoothings: no slide and no turn -- each point lifted off her by what her skin comes out under it
+        const keep = LIFT_KEEP_M * UNITS_PER_METRE;
+        parts.forEach((_p, i) => {
+          const move = set.moves[i], n = set.normals[i], off = set.offs[i], string = set.evening.stringShare(i);
+          for (let v = 0; v < off.length; v++) {
+            // (the room a string had over her is hers to come out into; a panel and its own cord have none: one layer)
+            const o = v * 3, out = move[o] * n[o] + move[o + 1] * n[o + 1] + move[o + 2] * n[o + 2], room = string ? string[v] * Math.max(0, off[v] - keep) : 0, lift = Math.max(0, out - room);
+            move[o] = lift * n[o]; move[o + 1] = lift * n[o + 1]; move[o + 2] = lift * n[o + 2];
+          }
+          set.turns[i].fill(0);
+        });
+      }
+      // (a lift is evened as well: it is all out from her skin, so what lies on her keeps it exactly, and a string that
+      // spans the air, lifted at the few rings her skin comes nearest, takes the mean of it instead of a bump)
       set.evening.even(set.moves);
       parts.forEach((_p, i) => {
         if (!takes[i]) return;
@@ -176,12 +211,13 @@ export class GarmentShapeTransfer {
     return { fields: parts.map((p, i) => (touched[i] ? { ...p.fields, fields: maps[i], last: '' } : p.fields)), added };
   }
 
-  /** The parts bound as one garment: where each point lies on her (her skin's way out there, how far off her), for the evening. */
+  /** The parts bound as one garment: where each point lies on her (her skin's way out there, how far off her), for the evening and a lift. */
   private boundSet(parts: readonly GarmentPart[], bindings: readonly BoundGarment[]): BoundSet {
     const key = parts.map((p) => `${p.mesh.uuid}${p.cord ? 'c' : 'p'}`).join(' ');
     let set = this.sets.get(parts[0].mesh);
     if (set && set.key === key) return set;
     const N = this.skinNormal(), R = this.rest;
+    const normals: Float32Array[] = [], offs: Float32Array[] = [];
     const evening = new CordEvening(parts.map((p, i) => {
       const b = bindings[i], pos = p.fields.basePos, n = b.valid.length, normal = new Float32Array(n * 3), off = new Float32Array(n);
       for (let v = 0; v < n; v++) {
@@ -198,9 +234,10 @@ export class GarmentShapeTransfer {
         normal[o] = x / l; normal[o + 1] = y / l; normal[o + 2] = z / l;
         off[v] = Math.hypot(pos[o] - px, pos[o + 1] - py, pos[o + 2] - pz);
       }
+      normals.push(normal); offs.push(off);
       return { pos, cord: p.cord, normal, off };
     }));
-    set = { key, evening, moves: parts.map((p) => new Float32Array(p.fields.basePos.length)), turns: parts.map((p) => new Float32Array(p.fields.basePos.length)) };
+    set = { key, evening, moves: parts.map((p) => new Float32Array(p.fields.basePos.length)), turns: parts.map((p) => new Float32Array(p.fields.basePos.length)), normals, offs };
     this.sets.set(parts[0].mesh, set);
     return set;
   }

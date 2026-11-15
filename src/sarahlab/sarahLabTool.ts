@@ -513,13 +513,19 @@ export type Garment = (typeof GARMENTS)[number] | (typeof RECOVERED_SHIRTS)[numb
  * v0.9.24 alike: her breasts out through both cups, a sliver of each cup left under them.
  * By the name of a part's material, its edging's as well (`bikiniTrim`: the cord round each cup, its strings). Her body
  * file's tee and swimsuit, off the menu, are not in it: they have not been read in the room with it.
+ *
+ * Such a garment's parts are bound as ONE (`GarmentShapeTransfer.syncSet`), while it is worn: its strings are evened
+ * along themselves (`cordEvening.ts`), and her skin's SMOOTHINGS, which it has none of either, lift it where they bring
+ * her skin out under it (`zeroRefine.ts` `smoothsHerSkin`).
  */
 export const FOLLOWS_HER_SHAPES: readonly Garment[] = Object.freeze(['bikini']);
-/** Whether a part with this material's name is one of those (`FOLLOWS_HER_SHAPES`), its edging's parts with it. */
-export function followsHerShapes(materialName: string): boolean {
+/** Which of those garments (`FOLLOWS_HER_SHAPES`) a part with this material's name is of, its edging's parts with it; null: none. */
+export function followingGarment(materialName: string): Garment | null {
   const name = materialName.endsWith('Trim') ? materialName.slice(0, -4) : materialName;
-  return (FOLLOWS_HER_SHAPES as readonly string[]).includes(name);
+  return FOLLOWS_HER_SHAPES.find((g) => g === name) ?? null;
 }
+/** Whether a part with this material's name is one of those (`FOLLOWS_HER_SHAPES`), its edging's parts with it. */
+export function followsHerShapes(materialName: string): boolean { return followingGarment(materialName) !== null; }
 
 /**
  * THE RECOVERED v2 CLOTHES, ONE FILE EACH, LOADED AS THEY ARE WORN (Joshua, 2026-10-20: "load the room and selected
