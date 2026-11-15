@@ -37,6 +37,14 @@ export const HAIR_STYLES: readonly HairStyle[] = Object.freeze([
   { id: 'ponytail', name: 'Ponytail', file: 'models/hair/ponytail.glb', lightFile: 'models/hair/ponytail-light.glb', hasLength: true },
   // Lena's (`docs/reference/lena/lena-look-2026-11-14.png`)
   { id: 'wavy-ponytail', name: 'Wavy low ponytail', file: 'models/hair/wavy-ponytail.glb', lightFile: 'models/hair/wavy-ponytail-light.glb', hasLength: true },
+  // long, parted in the middle, to the middle of her back; shoulder length at its shortest
+  { id: 'long-loose', name: 'Long loose hair', file: 'models/hair/long-loose.glb', lightFile: 'models/hair/long-loose-light.glb', hasLength: true },
+  // one three-strand plait down the middle of her back, tied near its tip
+  { id: 'braid', name: 'Braid', file: 'models/hair/braid.glb', lightFile: 'models/hair/braid-light.glb', hasLength: true },
+  // a bun on the top of her head (its LENGTH is the bun's size)
+  { id: 'high-bun', name: 'High bun', file: 'models/hair/high-bun.glb', lightFile: 'models/hair/high-bun-light.glb', hasLength: true },
+  // cut level just over her shoulders; at her jaw at its shortest
+  { id: 'bob', name: 'Bob', file: 'models/hair/bob.glb', lightFile: 'models/hair/bob-light.glb', hasLength: true },
 ].map((s) => Object.freeze(s)));
 
 /** A style by id; undefined for 'none' or one not known. */
