@@ -219,7 +219,21 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         // where a shirt's drape hangs clear of her (tunicDrape.ts), that shirt's paint comes off the skin under it (x);
         // where her top's cleavage bridge spans her (cleavageBridge.ts), that top's paint comes off the skin behind it
         // (y); and whether the skin is her arm's, for a top's cut (z): one attribute (AUX_ATTRIBUTE says why)
-        `attribute vec3 ${AUX_ATTRIBUTE};`, 'varying vec3 vFabricAux;',
+        // WHICH OF HER SKIN A PIXEL IS (z: 1 her arm's, -1 her leg's, 0 the rest of her -- `bottomCut.limbSkin`) GOES
+        // TO THE PIXEL A SECOND TIME, READ INSIDE THE TRIANGLE THE PIXEL IS DRAWN FOR (`vFabricLimb`, `centroid`). The
+        // flag steps across the one row of her triangles that joins a limb's skin to her trunk's, and a pixel that a
+        // triangle only partly covers is told the triangle's numbers AT THE PIXEL'S MIDDLE, outside the triangle,
+        // where they run on past its corners': on a triangle of the row that joins her LEG's skin to her trunk's, seen
+        // thin, the flag ran on from -1 past 0 to a half -- "her arm's skin". A bottom left that part of the pixel
+        // bare (no bottom is on her arm); a top cut it by its SLEEVE's end and not its hem, which at her hips is bare
+        // too unless its sleeves reach that far down her arm. MEASURED 2026-11-15 in the room at a phone's 2x, her
+        // legs whole in the picture, her front square on: three pairs of pixels a quarter her skin, one over another
+        // down each of her hips' outlines and a few at the folds of her groin (the row runs there) -- the same places
+        // of her from 170, 180 and 190 cm, gone when she was turned 3 degrees; in a drawn bottom, and in a
+        // short-sleeved tee to her hips as v0.9.27 drew it (not in a long-sleeved one). Read inside the triangle the
+        // flag stays between its corners'. (The other two numbers are a paint's ramp, cut where it crosses a half:
+        // running on past a corner moves that line a part of a pixel, and they are read as they were.)
+        `attribute vec3 ${AUX_ATTRIBUTE};`, 'varying vec3 vFabricAux;', 'centroid varying float vFabricLimb;',
         // detail through paint (bodyDetail.ts): her nipples' and navel's surface detail, taken back under paint only
         'attribute vec4 fabricDetail;', 'attribute vec4 fabricDetailN;', 'varying float vFabricDetailKeep;',
         // how far this point's rest place is from where a designed garment's field is looked up for it: its slip
@@ -236,10 +250,10 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         : cut ? ['attribute vec3 fabricSlip;', 'varying vec3 vFabricSlip;'] : []),
       // a drawn bottom's legs (bottomCut.ts): how far along her leg this point is, measured where her leg's bones are
       // now -- by her thigh's bone and by her shin's, blended round her knee by where the point lies at rest
-      ...(masked && entry.low ? ['uniform vec4 fabricLowLegL[3];', 'uniform vec4 fabricLowLegR[3];', 'uniform vec4 fabricLowAxis;', 'varying float vFabricLeg;', 'centroid varying float vFabricLimb;'] : []),
+      ...(masked && entry.low ? ['uniform vec4 fabricLowLegL[3];', 'uniform vec4 fabricLowLegR[3];', 'uniform vec4 fabricLowAxis;', 'varying float vFabricLeg;'] : []),
       shader.vertexShader,
     ].join('\n');
-    const mask = masked ? `\nvFabricMask = fabricPaint;\nvFabricTint = fabricRegionTint;\nvFabricAux = ${AUX_ATTRIBUTE};\nvFabricSlip = fabricSlip;` : '';
+    const mask = masked ? `\nvFabricMask = fabricPaint;\nvFabricTint = fabricRegionTint;\nvFabricAux = ${AUX_ATTRIBUTE};\nvFabricLimb = ${AUX_ATTRIBUTE}.z;\nvFabricSlip = fabricSlip;` : '';
     // each layer keeps its own share of her detail (detailMaterials.ts): where layers overlap, the one that hides most
     // decides, and every share is scaled by how much of that layer covers the vertex
     const fmax = (xs: string[]) => xs.reduce((a, b) => `max(${a}, ${b})`);
@@ -262,7 +276,6 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
   vec4 fabricPosed = vec4(transformed, 1.0);
   float fabricByThigh = dot(fabricLegLeft ? fabricLowLegL[0] : fabricLowLegR[0], fabricPosed), fabricByShin = dot(fabricLegLeft ? fabricLowLegL[1] : fabricLowLegR[1], fabricPosed);
   vFabricLeg = mix(fabricByThigh, fabricByShin, smoothstep(-1.0, 1.0, dot(fabricLegLeft ? fabricLowLegL[2] : fabricLowLegR[2], vec4(fabricRest, 1.0))));
-  vFabricLimb = ${AUX_ATTRIBUTE}.z;
 }` : ''}`);
     // a top's cut for layer i: its line, and its bands -- a touch darker (or in the layer's edging colour), a seam
     // along their inner side. `fd`, how far inside the line this pixel is; `fm`, the same on the paint's scale.
@@ -304,16 +317,8 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     // An edge's distance is held to the edge's own range before its slope is taken: far inside a garment the distance
     // is of no account, and between her legs -- where her axis comes out of her, and a waistband's line "at that place
     // round her" swings from pixel to pixel -- its slope is no pixel's width.
-    // WHICH OF HER SKIN A PIXEL IS (`vFabricLimb`: 1 her arm's, -1 her leg's, 0 the rest of her -- `bottomCut.limbSkin`)
-    // IS READ INSIDE THE TRIANGLE THE PIXEL IS DRAWN FOR (`centroid`). The flag steps from -1 to 0 across the one row of
-    // her triangles that joins her leg's skin to her trunk's, and a pixel that a triangle only partly covers is told
-    // the triangle's numbers AT THE PIXEL'S MIDDLE, outside the triangle, where they run on past its corners: on a
-    // triangle of that row seen thin, the flag ran on past 0 to a half, "her arm's skin" -- and that part of the pixel
-    // was left bare. MEASURED 2026-11-15 in the room at a phone's 2x, her legs whole in the picture, her front square
-    // on: three pairs of pixels a quarter her skin, one over another down each of her hips' outlines and at the folds
-    // of her groin (the row runs up her hips' sides there) -- the same places of her from 170, 180 and 190 cm, gone
-    // when she was turned 3 degrees, and each part of the cover (her waistband's, her legs' ends', not-her-arm's) all
-    // of it at the pixel's middle. Read inside the triangle the flag stays between its corners'.
+    // Which of her skin a pixel is, is read inside the triangle the pixel is drawn for (`vFabricLimb`: the vertex
+    // shader's note says why).
     const lowBand = (d: string, b: string, weight: string, i: number) => `
           if (${b} > 0.0) {
             float fa = max(fwidth(${d}) * 0.75, 1e-7), fi = (1.0 - smoothstep(${b} - fa, ${b} + fa, ${d})) * ${weight};
@@ -386,7 +391,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         if (fabricRough${i} >= 0.0) { fabricMatte = max(fabricMatte, fk); fabricRoughness = fabricRough${i}; }
       }`;
     shader.fragmentShader = [
-      'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;', ...(masked ? ['varying vec3 vFabricMask;', 'varying vec4 vFabricTint;', 'uniform float fabricShowRegions;', 'varying float vFabricDetailKeep;', 'varying vec3 vFabricAux;', 'varying float vFabricAlong;', 'uniform float fabricHangLayer;', 'uniform float fabricUnderLayer;',
+      'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;', ...(masked ? ['varying vec3 vFabricMask;', 'varying vec4 vFabricTint;', 'uniform float fabricShowRegions;', 'varying float vFabricDetailKeep;', 'varying vec3 vFabricAux;', 'centroid varying float vFabricLimb;', 'varying float vFabricAlong;', 'uniform float fabricHangLayer;', 'uniform float fabricUnderLayer;',
         'varying vec3 vFabricSlip;', 'uniform highp sampler3D fabricFieldMap;', 'uniform vec3 fabricFieldScale;', 'uniform vec3 fabricFieldOffset;', ...idx.flatMap((i) => [`uniform float fabricFieldOn${i};`, `uniform float fabricFieldLevel${i};`]),
         // a designed garment's field at this pixel's own place on her skin (where the garment was designed: her rest
         // place, her points' slip taken off and their carry to the garment's pose added); nothing outside its block
@@ -422,7 +427,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             float sh = max(fabricCutSide.w - abs(neck - arm), 0.0) / fabricCutSide.w;
             neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;
           }
-          float a = smoothstep(0.4, 0.6, vFabricAux.z);
+          float a = smoothstep(0.4, 0.6, vFabricLimb);
           return vec3(neck, mix(vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, fabricCutLimb.y - vFabricAlong, a), a);
         }`
           // (a sheet across her front: her front's drawing alone)
@@ -443,7 +448,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           return vec4(place.x - fabricCutLimb.x, place.y, 1.0, max(length(fwidth(place)), 1e-7) * 0.75);
         }`] : []),
       // a drawn bottom: her measures, each layer's own cut, and the functions (bottomCut.ts `lowGlsl`)
-      ...(masked && entry.low ? ['varying float vFabricLeg;', 'centroid varying float vFabricLimb;', 'uniform vec4 fabricLowAxis;', 'uniform vec4 fabricLowSpineA;', 'uniform vec4 fabricLowSpineB;', 'uniform float fabricLowFloor;',
+      ...(masked && entry.low ? ['varying float vFabricLeg;', 'uniform vec4 fabricLowAxis;', 'uniform vec4 fabricLowSpineA;', 'uniform vec4 fabricLowSpineB;', 'uniform float fabricLowFloor;',
         ...idx.flatMap((i) => [`uniform float fabricLowOn${i};`, `uniform vec4 fabricLowWaist${i};`, `uniform vec4 fabricLowLeg${i};`, `uniform vec4 fabricLowBand${i};`]), lowGlsl()] : []),
       ...idx.flatMap((i) => [`uniform float fabricOn${i};`, `uniform sampler2D fabricMap${i};`, `uniform float fabricTile${i};`, `uniform float fabricOpacity${i};`, `uniform float fabricRough${i};`]),
       shader.fragmentShader,
@@ -471,7 +476,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       ${masked ? 'if (fabricShowRegions > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vFabricTint.rgb, 0.78 * vFabricTint.a);' : ''}
     }`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v17${entry.details ? '-detail' : ''}${entry.low ? '-low' : ''}`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v18${entry.details ? '-detail' : ''}${entry.low ? '-low' : ''}`; };
   material.needsUpdate = true;
   const entry: Patched = { uniforms, layers, masked, cut, details: false, low: false };
   patched.set(material, entry);

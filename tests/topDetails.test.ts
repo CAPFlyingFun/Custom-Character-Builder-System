@@ -233,7 +233,9 @@ describe('a top\'s details in the shader', () => {
     // with the armscye and before the program said `fabricRest` is there to read, for her face's layer: 7cdec1ff… and 57ffa7a5…)
     // (and before each of a cut's edges was antialiased by its own slope: 4dcfa78a… her skin's; a sheet has one edge)
     // (...and before a top's own hem was level on her as she is shaped: d27c39a7… and 23dfa6e1…)
-    expect(compiled(true, 3, null).hash).toBe('04c1d084426897d89207a1ac7ddeec95004ae8a75b0b2da2309819c5707dff5c');
+    // (...and before which of her skin a pixel is was read inside the triangle the pixel is drawn for: 04c1d084… her
+    // skin's; a sheet does not ask)
+    expect(compiled(true, 3, null).hash).toBe('e5eb05f2d3311a1f9eee17b7552652aaf011ce6d556dc1746c3b11e275c311a1');
     expect(compiled(false, 1, null).hash).toBe('3fac908ee59b894ad4cb7ae0f0ab5d217cc4f17ad16bccba7bce24f571e8b005');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
@@ -250,6 +252,24 @@ describe('a top\'s details in the shader', () => {
     }
     expect(skin.fragmentShader).not.toMatch(/float fk = fabricEdge\(fm\d\) \* /);
     expect(sheet.fragmentShader).not.toContain('fe0');
+    // WHICH OF HER SKIN A PIXEL IS -- her arm's, cut by a sleeve's end; the rest of her, by the hem -- IS READ INSIDE
+    // THE TRIANGLE THE PIXEL IS DRAWN FOR (`vFabricLimb`, `centroid`). A pixel a triangle only partly covers is told
+    // the triangle's numbers at the pixel's middle, outside the triangle, where they run on past its corners': on the
+    // row that joins her LEG's skin to her trunk's the flag ran on from -1 past 0 to "her arm's", and a short-sleeved
+    // tee to her hips was cut there by its sleeve's end (MEASURED 2026-11-15 in the room, a phone's 2x, her front
+    // square on: pairs of pixels a quarter her skin down her hips' outlines -- v0.9.27's)
+    expect(skin.fragmentShader).toContain('float a = smoothstep(0.4, 0.6, vFabricLimb);');
+    expect(skin.fragmentShader).toContain('centroid varying float vFabricLimb;');
+    expect(skin.vertexShader).toContain('centroid varying float vFabricLimb;');
+    expect(skin.vertexShader).toContain('vFabricLimb = fabricAux.z;');
+    // (the flag as it is told at the pixel's middle is read by nothing; a paint's two ramps, cut where they cross a
+    // half, are)
+    expect(skin.fragmentShader).not.toContain('vFabricAux.z');
+    expect(skin.fragmentShader).toContain('fabricEdge(vFabricAux.x)');
+    expect(skin.fragmentShader).toContain('fabricEdge(vFabricAux.y)');
+    // (a sheet across her front has no limb to ask of)
+    expect(sheet.fragmentShader).not.toContain('vFabricLimb');
+    expect(sheet.vertexShader).not.toContain('vFabricLimb');
     // A TOP'S OWN HEM (a sports bra's, a boxy crop tee's: no drape's band over it) is level on her AS SHE IS SHAPED: at
     // the height the pixel stands about her frame -- its rest place and its slip -- while `fabricCutHem` is 1; a
     // shirt's, under its drape's band, at its rest height as before (0, the uniform's own value)
@@ -279,7 +299,7 @@ describe('a top\'s details in the shader', () => {
     // off until a cut with an armscye is laid: its rounding is 0, and a camisole's line is nowhere
     expect((skin.uniforms.fabricCutSide.value as THREE.Vector4).toArray()).toEqual([0, 0, 1, 0]);
     expect((skin.uniforms.fabricCutStart.value as THREE.Vector3).toArray()).toEqual([0, 1e9, 0]);
-    expect(skin.key).toContain('-v17');
+    expect(skin.key).toContain('-v18');
   });
 
   it('a layer with one is given the detail\'s code, its uniforms and the table\'s own numbers', () => {

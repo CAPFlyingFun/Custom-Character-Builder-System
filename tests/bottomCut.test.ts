@@ -522,7 +522,7 @@ describe('a bottom\'s cut in the shader', () => {
   it('her skin\'s program is exactly as it was until a layer is a drawn bottom', () => {
     const plain = compiled(null);
     // (the hash `tests/topDetails.test.ts` holds her skin's program to)
-    expect(plain.hash).toBe('04c1d084426897d89207a1ac7ddeec95004ae8a75b0b2da2309819c5707dff5c');
+    expect(plain.hash).toBe('e5eb05f2d3311a1f9eee17b7552652aaf011ce6d556dc1746c3b11e275c311a1');
     expect(plain.key).not.toContain('-low');
     expect(plain.fragmentShader).not.toContain('fabricLow');
     expect(plain.vertexShader).not.toContain('vFabricLeg');

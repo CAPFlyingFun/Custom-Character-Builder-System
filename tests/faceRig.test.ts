@@ -732,7 +732,7 @@ describe('the patch', () => {
       for (const name of [...UNIFORMS, 'fabricOn0', 'fabricOn1', 'fabricShowRegions']) expect(shader.uniforms[name], name).toBeDefined();
       const key = material.customProgramCacheKey();
       expect(key).toContain('|face-rig-v3');
-      expect(key).toContain('|fabric-2-painted-v17');
+      expect(key).toContain('|fabric-2-painted-v18');
       // the fabric's program says her rest place is there, before the face's own lines read it -- in either order
       expect(vert.indexOf(`#define ${FABRIC_REST_DEFINE} 1`)).toBeGreaterThanOrEqual(0);
       expect(vert.indexOf(`#define ${FABRIC_REST_DEFINE} 1`)).toBeLessThan(vert.indexOf(`#ifdef ${FACE_REST_DEFINE}`));
