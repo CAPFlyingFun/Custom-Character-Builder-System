@@ -413,10 +413,21 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   the pictures for him, fixed and told.
   - A PROBE THAT STAYED: `bodyAttribute(name)` hands back one of her skin's attributes as it is laid (base64 Float32),
     beside `bodyPoints`.
-  - THE SAME IN A DRAWN TOP (v0.9.27's): `fabricCutAt` reads the flag at the pixel's middle too, and on that row a
-    part of a pixel is told "her arm's skin": cut by the sleeve's end, not the hem. MEASURED the same hour, a
-    short-sleeved tee to her hips in charcoal, the same view: the same pairs of pixels at the same places (a long
-    sleeve's reach past her hips hides it). Mended next, as a change of its own.
+  - THE SAME IN A DRAWN TOP, v0.9.27's (a fault found, fixed and told): `fabricCutAt` read the flag at the pixel's
+    middle too, and on that row a part of a pixel was told "her arm's skin" -- cut by the sleeve's END and not the
+    hem, which at her hips is bare unless the sleeve reaches that far down her arm. MEASURED the same hour, a
+    short-sleeved tee to her hips in charcoal, the same view: the same pairs of pixels at the same places, a fifth
+    lighter (102, 99 and 94 where the cloth is 78); a long-sleeved one had none. So the flag is read inside the
+    triangle by EVERY program of her painted skin (`vFabricLimb` beside `vFabricAux`; the fabric program's key is
+    `-v18`; `tests/topDetails.test.ts` holds its text's hash, and `tests/bottomCut.test.ts` the same). After: 91, 77
+    and 77 there.
+  - LEFT IN THE TEE, AND NAMED: a line a tenth lighter, a pixel wide, along that row at her hips' outlines (83 to 91
+    on 78; with its drape hidden as well: 80 to 90), where the capri has none. ITS CAUSE AS THE CODE READS, NOT
+    MEASURED: a top's cut MIXES ITS TWO DISTANCES -- to its hem, to its sleeve's end -- by the flag and draws one
+    edge from the mix, a pixel wide by the mix's slope; a pixel's slope is told from its neighbours, the neighbours
+    of a partly covered pixel are still told the flag past the triangle's corners, and the edge can take up to 7% of
+    the cloth off. A bottom keeps each edge its own and mixes the two COVERS by the flag (`lowLine`), and has no such
+    line. Not changed in a top: its armhole at the row that joins her arm to her trunk is drawn by that same mix.
 - **HIS SHEET OF BOTTOMS' TIGHT ONES ARE STYLES AND OUTFITS** (`docs/reference/bottoms/`; GAME TUNING to it, on her at
   0%: her navel is 12.2 cm over her hip joints, 0.232 of her trunk -- MEASURED): 01 HIGH-RISE LEGGINGS (`leggingsHigh`:
   `RISES.high`, 0.39 in front and 0.38 round her, level a hand over her navel; its band 10.5 cm deep, its seam 2.3 cm
