@@ -60,7 +60,11 @@ import {
 } from './paintTemplates';
 
 /** A drawn top's cut as the editor keeps it: what it is cut to (its key), the cut, and what is drawn on it. */
-interface WornCut { readonly key: string; readonly cut: TopCut; readonly detail: TopDetailSpec | null }
+interface WornCut {
+  readonly key: string; readonly cut: TopCut; readonly detail: TopDetailSpec | null;
+  /** Its hem is the top's OWN edge -- above a LENGTH's reach, no drape's band over it: the sports bra, the boxy crop tee (`FabricCut.ownHem`). */
+  readonly ownHem: boolean;
+}
 
 export const FABRIC_PANEL_ROLE = 'sarahlab-fabric';
 /**
@@ -82,6 +86,12 @@ export const SLIP_MARGIN_M = 0.04;
  * sleeves' ends and her hem are looked up at her rest places themselves.
  */
 export const CUT_SLIP_REACH_M = Object.freeze({ across: 0.22, below: 0.3, above: 0.07 });
+/**
+ * GAME TUNING (metres): how far under a top's OWN hem (a sports bra's, a boxy crop tee's: `FabricCut.ownHem`) her
+ * points' movement off her frame is worked out as well -- the hem is looked up by it, and a triangle that crosses the
+ * hem has to have it at all three corners (her triangles across her belly reach 37 mm).
+ */
+export const CUT_SLIP_HEM_M = 0.06;
 /**
  * GAME TUNING (metres): her FRAME for a drawn top's neck opening (`skinSlip.makeFrameSlip`) -- the skin her bust and her
  * belly do not move: her back (behind her neck's axis) from this far under the base of her neck up, and all of her
@@ -356,8 +366,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   const fields = new Map<string, THREE.Data3DTexture>(), fieldLoads = new Map<string, Promise<void>>();
   /** Her points' slip, kept while she wears a designed garment (`laySlip`): its region's, with the garment's carry to the pose it was designed in. */
   let slip: (KeptSlip & { readonly path: string; readonly carry: Float32Array | null; readonly turn: Float32Array | null; readonly unitsPerMetre: number; readonly block: { readonly lo: readonly number[]; readonly hi: readonly number[] }; /** which of her vertices are in its region */ readonly own: Uint8Array }) | null = null;
-  /** Her points' slip about her neck, kept while she wears a drawn top (`laySlip`, `CUT_SLIP_REACH_M`). */
-  let cutSlip: KeptSlip | null = null;
+  /** Her points' slip about her neck, kept while she wears a drawn top (`laySlip`, `CUT_SLIP_REACH_M`), and how far under the base of her neck it reaches (her units). */
+  let cutSlip: KeptSlip | null = null, cutSlipBelow = 0;
   /** What `fabricSlip` was last laid from (`laySlip`): the body, the designed garment and whether a drawn top's slip is in it. */
   let slipMerged = '';
   /** Her own measures for a drawn top's cut (`topCut.topFrame`), once a body; the cuts laid from them by what they are cut to; and each one's picture. */
@@ -839,7 +849,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (cuts.size >= 24) { const oldest = cuts.keys().next().value as string; cuts.delete(oldest); cutTextures.get(oldest)?.dispose(); cutTextures.delete(oldest); }
     }
     cuts.set(key, made);
-    return { key, cut: made.cut, detail: made.detail };
+    return { key, cut: made.cut, detail: made.detail, ownHem: params.length === null && params.hemFront !== null };
   }
   /** A drawn top's layer beside its fabric: its bands, its EDGING and what is drawn on it. */
   const cutLayerOf = (worn: WornCut, c: FabricChoice) => ({ ...cutLayer(worn.cut), edging: edgingOf(c), detail: worn.detail ? { pack: worn.detail.pack } : null });
@@ -864,6 +874,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       texture, rect: [f.x0, f.y0, 1 / (f.cols * f.cell), 1 / (f.rows * f.cell)], depth: [f.zLo, f.zHi - f.zLo, cut.spec.sideBlend ?? TOP_CUT.sideBlend * U, TOP_CUT.range * U],
       armL: arm(f.arms[0]), armR: arm(f.arms[1]), limb: [f.mid, cut.spec.sleeve, Number.isFinite(cut.spec.hemY) ? cut.spec.hemY : -1e9, f.facing], seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U],
       side: S ? [S.z0, S.gate, ARMSCYE.feather * U, ARMSCYE.join * U] : null, start: S && Number.isFinite(S.startY) ? [S.startX, S.startY, S.slope] : null,
+      ownHem: worn.ownHem,
     };
   }
   function moveDial(dial: (typeof COVERAGE_DIALS)[number]['id'], value: number): void {
@@ -1232,8 +1243,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
    * - A drawn top's cut (`topCut.ts`): about her neck (`CUT_SLIP_REACH_M`), where its neck opening's rim is looked up,
    *   her points' movement OFF HER FRAME (`skinSlip.makeFrameSlip`, `CUT_FRAME_M`): its rim stays where it was drawn
    *   about her neck and shoulders, following her build and not her bust or her belly under it -- her own shapes' and
-   *   her morphs', not her pose's or her motion's (`MOTION_SHAPES`), which it rides as it rides her bones. (Its hem is
-   *   looked up at her rest places themselves, and its sleeves' ends where her arms' bones carry them: `layCutArms`.)
+   *   her morphs', not her pose's or her motion's (`MOTION_SHAPES`), which it rides as it rides her bones. (A shirt's
+   *   hem, under its drape's band, is looked up at her rest places themselves; a hem that is the top's OWN edge -- a
+   *   sports bra's, a boxy crop tee's -- where her points stand about her frame, as its rim is, so the reach goes down
+   *   past it: `FabricCut.ownHem`, `CUT_SLIP_HEM_M`. Its sleeves' ends are where her arms' bones carry them: `layCutArms`.)
    * The two are laid in one attribute: where a vertex is in both regions the designed garment's stands (they do not
    * meet on her: the bottom's block ends at her waist). Nothing is done with neither on.
    */
@@ -1270,10 +1283,16 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     }
     const field = worn && slip && slip.mesh === body && slip.path === worn.path ? slip : null;
     // ---- a drawn top's
-    if (wornCut && fabricCutWorn(material) && cutSlip?.mesh !== body) {
-      const frame = frameOf?.mesh === body ? frameOf.frame : null;
+    // (a top whose hem is its OWN edge -- a sports bra's, a boxy crop tee's -- looks its hem up where her points stand
+    // about her frame as well (`FabricCut.ownHem`): the reach goes down past it, and is made again when one worn after
+    // needs more than the last)
+    const cutFrame = wornCut && frameOf?.mesh === body ? frameOf.frame : null;
+    const below = cutFrame && wornCut ? Math.max(CUT_SLIP_REACH_M.below * cutFrame.unitsPerMetre, wornCut.ownHem && Number.isFinite(wornCut.cut.spec.hemY) ? cutFrame.neckY - wornCut.cut.spec.hemY + CUT_SLIP_HEM_M * cutFrame.unitsPerMetre : 0) : 0;
+    if (wornCut && fabricCutWorn(material) && (cutSlip?.mesh !== body || cutSlipBelow < below)) {
+      const frame = cutFrame;
       if (frame) {
-        const U = frame.unitsPerMetre, R = CUT_SLIP_REACH_M, x0 = frame.mid - R.across * U, x1 = frame.mid + R.across * U, y0 = frame.neckY - R.below * U, y1 = frame.neckY + R.above * U;
+        const U = frame.unitsPerMetre, R = CUT_SLIP_REACH_M, x0 = frame.mid - R.across * U, x1 = frame.mid + R.across * U, y0 = frame.neckY - below, y1 = frame.neckY + R.above * U;
+        cutSlipBelow = below;
         // her frame's points: her back down to `CUT_FRAME_M.back` under the base of her neck, and all of her at it
         const map = regionMap(), behind = map ? map.forward ?? map.front : null, at = (g.getAttribute('fabricRest') as THREE.BufferAttribute).array;
         const backY = frame.neckY - CUT_FRAME_M.back * U, neckY = frame.neckY - CUT_FRAME_M.neck * U;

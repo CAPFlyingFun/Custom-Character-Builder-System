@@ -12,7 +12,7 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { cutAt, neckDefault, topCut, topCutSpec, topFrame, type TopCut, type TopFrame } from '../src/sarahlab/topCut';
 import { DETAIL_LOOK, TOP_DETAIL_STYLES, detailOf, topDetailAt, topDetailGlsl, topDetailSpec, type TopDetailParams, type TopDetailSpec } from '../src/sarahlab/topDetails';
-import { setFabricLayer } from '../src/sarahlab/fabricMaterial';
+import { setFabricCut, setFabricLayer } from '../src/sarahlab/fabricMaterial';
 import { COVERAGE_TEMPLATES, pieceKind, templateDetail } from '../src/sarahlab/paintTemplates';
 import { isCutTop } from '../src/sarahlab/topCut';
 import { readBody } from '../scripts/sarahV2SideLock.mjs';
@@ -232,8 +232,9 @@ describe('a top\'s details in the shader', () => {
     // (2026-11-14, before an outline's armscye was read from the cut's picture: a5541172… her skin's, b570892d… a sheet's;
     // with the armscye and before the program said `fabricRest` is there to read, for her face's layer: 7cdec1ff… and 57ffa7a5…)
     // (and before each of a cut's edges was antialiased by its own slope: 4dcfa78a… her skin's; a sheet has one edge)
-    expect(compiled(true, 3, null).hash).toBe('d27c39a7f2a0a6e578c9784be1fc4421e59e42d249322d50634017b83018fbe2');
-    expect(compiled(false, 1, null).hash).toBe('23dfa6e159cd254884d1852047ae2e642124986f2897f0fb78a91f375d85a07e');
+    // (...and before a top's own hem was level on her as she is shaped: d27c39a7… and 23dfa6e1…)
+    expect(compiled(true, 3, null).hash).toBe('04c1d084426897d89207a1ac7ddeec95004ae8a75b0b2da2309819c5707dff5c');
+    expect(compiled(false, 1, null).hash).toBe('3fac908ee59b894ad4cb7ae0f0ab5d217cc4f17ad16bccba7bce24f571e8b005');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
     // shoulder joints -- and rounds the corner between it and her front's and back's (topCut.ts `armscyeAt`, `smoothMax`);
@@ -249,6 +250,29 @@ describe('a top\'s details in the shader', () => {
     }
     expect(skin.fragmentShader).not.toMatch(/float fk = fabricEdge\(fm\d\) \* /);
     expect(sheet.fragmentShader).not.toContain('fe0');
+    // A TOP'S OWN HEM (a sports bra's, a boxy crop tee's: no drape's band over it) is level on her AS SHE IS SHAPED: at
+    // the height the pixel stands about her frame -- its rest place and its slip -- while `fabricCutHem` is 1; a
+    // shirt's, under its drape's band, at its rest height as before (0, the uniform's own value)
+    expect(skin.fragmentShader).toContain('mix(vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, fabricCutLimb.y - vFabricAlong, a)');
+    expect((skin.uniforms.fabricCutHem as { value: number }).value).toBe(0);
+    // ...and a cut says which it is when it is laid on her skin's material (`FabricCut.ownHem`; left out: a shirt's)
+    {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
+      const m = new THREE.MeshStandardMaterial(), mesh = new THREE.Mesh(g, m);
+      setFabricLayer(mesh, m, 0, { texture: new THREE.Texture(), tile: 1, opacity: 1, cut: { band: [0.01, 0.01, 0], shade: 0.1, detail: null } }, { layers: 3, masked: true, rest: null, cut: true });
+      const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '', fragmentShader: '' };
+      m.onBeforeCompile(s as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
+      const cut = { texture: new THREE.DataTexture(new Uint8Array(4), 1, 1), rect: [0, 0, 1, 1], depth: [0, 1, 0.01, 0.03], armL: [0, -1, 0, 0], armR: [0, -1, 0, 0], limb: [0, -1, 0.3, 1], seam: [0.2, 0.001] } as const;
+      setFabricCut(m, { ...cut, ownHem: true });
+      expect(s.uniforms.fabricCutHem.value).toBe(1);
+      setFabricCut(m, cut);
+      expect(s.uniforms.fabricCutHem.value).toBe(0);
+      setFabricCut(m, { ...cut, ownHem: false });
+      expect(s.uniforms.fabricCutHem.value).toBe(0);
+    }
+    // the tops whose hem is their own are the ones cut above a shirt's LENGTH: the sports bra and the boxy crop tee
+    expect(COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params) && t.params.length === null && t.params.hemFront !== null).map((t) => t.id).sort()).toEqual(['cropTee', 'sportsBra']);
     expect(skin.fragmentShader).toContain('vec2(fabricCutLimb.x + place.z * fabricCutLimb.w - fabricCutSide.x, place.y)');
     expect(skin.fragmentShader).toContain('neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;');
     expect(sheet.fragmentShader).not.toContain('fabricCutSide.x');
