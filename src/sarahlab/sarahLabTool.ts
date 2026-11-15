@@ -500,6 +500,26 @@ export const BELLY_KEYS: readonly (readonly [number, string | null])[] = [
 export const GARMENTS = ['shirt', 'leggings', 'bikini', 'swimsuit', 'shirtAthletic', 'leggingsLow'] as const;
 export const RECOVERED_SHIRTS = ['shirtRelaxedHigh', 'shirtRelaxedLow', 'shirtSpandexHigh', 'shirtSpandexLow', 'shirtSpandexLite'] as const;
 export type Garment = (typeof GARMENTS)[number] | (typeof RECOVERED_SHIRTS)[number];
+/**
+ * WHICH OF HER BODY FILE'S OWN GARMENTS TAKE THE SHAPES OF HERS THEY HAVE NONE OF (Joshua, 2026-11-14, of her bikini: "when
+ * I add more Milk size, it doesn't follow the skin but everything else [does]. I set everything at max (size) and it
+ * covered but milk for some reason didn't").
+ *
+ * Her milk and her baby's weight are shapes laid on her BODY from files of their own (`zeroRefine.ts`: `shape:milk:`,
+ * `shape:baby:`), after her body file was made: a garment in that file has every other shape of hers (her bust's SIZE,
+ * her belly) and none of these. The recovered shirts and leggings are given them from her skin under each of their
+ * points (`GarmentShapeTransfer`, `SarahLabScene.followMissingGarmentFields`); her bikini top was not, so MILK filled
+ * her breasts and its cups stayed where they were -- MEASURED 2026-11-14 in the room at MILK 100, on v0.9.23 and on
+ * v0.9.24 alike: her breasts out through both cups, a sliver of each cup left under them.
+ * By the name of a part's material, its edging's as well (`bikiniTrim`: the cord round each cup, its strings). Her body
+ * file's tee and swimsuit, off the menu, are not in it: they have not been read in the room with it.
+ */
+export const FOLLOWS_HER_SHAPES: readonly Garment[] = Object.freeze(['bikini']);
+/** Whether a part with this material's name is one of those (`FOLLOWS_HER_SHAPES`), its edging's parts with it. */
+export function followsHerShapes(materialName: string): boolean {
+  const name = materialName.endsWith('Trim') ? materialName.slice(0, -4) : materialName;
+  return (FOLLOWS_HER_SHAPES as readonly string[]).includes(name);
+}
 
 /**
  * THE RECOVERED v2 CLOTHES, ONE FILE EACH, LOADED AS THEY ARE WORN (Joshua, 2026-10-20: "load the room and selected

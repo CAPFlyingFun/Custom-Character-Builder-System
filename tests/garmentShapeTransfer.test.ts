@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { baseShapeFields, applyShapeFields } from '../src/view/bodyShapeView';
 import { GarmentShapeTransfer } from '../src/sarahlab/garmentShapeTransfer';
+import { FOLLOWS_HER_SHAPES, GARMENTS, RECOVERED_SHIRTS, followsHerShapes } from '../src/sarahlab/sarahLabTool';
 
 function setup() {
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,1,0,0,0,1,0],3));g.setIndex([0,1,2]);
@@ -53,4 +54,22 @@ it('prepares only requested nonzero fields so untouched presets do not allocate 
  expect(inactive.added).toBe(0);expect(inactive.fields).toBe(garment);
  const active=transfer.sync(cloth,garment,source,n=>n.startsWith('shape:milk:'));
  expect(active.added).toBe(1);expect(active.fields.fields.has('shape:baby:1:100')).toBe(false);
+});
+
+/**
+ * WHICH OF HER BODY FILE'S OWN GARMENTS ARE GIVEN THEM (Joshua, 2026-11-14, of her bikini: "when I add more Milk size, it
+ * doesn't follow the skin but everything else [does]"). Her milk's and her baby's weight's shapes are laid on her body
+ * from files of their own, so a garment in her body file has none of them: her bikini top stayed where it was while MILK
+ * filled her breasts out through its cups (MEASURED in the room at MILK 100, on v0.9.23 and v0.9.24 alike).
+ */
+describe('her body file\'s garments that take her milk from her skin', () => {
+  it('her bikini top does: its cups, and its edging\'s parts with them (the cord round each cup, its strings)', () => {
+    expect(followsHerShapes('bikini')).toBe(true);
+    expect(followsHerShapes('bikiniTrim')).toBe(true);
+  });
+  it('nothing else is named: not her skin, her hair, a recovered shirt (those are told by their own mark) or a name like it', () => {
+    for (const name of ['', 'skin', 'hair', 'bikiniBottom', 'Trim', 'bikiniTrimTrim', ...RECOVERED_SHIRTS, ...GARMENTS.filter((g) => !FOLLOWS_HER_SHAPES.includes(g))]) expect(followsHerShapes(name), name).toBe(false);
+    expect(FOLLOWS_HER_SHAPES).toEqual(['bikini']);
+    for (const g of FOLLOWS_HER_SHAPES) expect(GARMENTS as readonly string[]).toContain(g);
+  });
 });

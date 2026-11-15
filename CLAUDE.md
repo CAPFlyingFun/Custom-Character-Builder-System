@@ -231,8 +231,48 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   her skin there. Now the value runs straight for 42 mm either side of the band's own edge, the line is AT that edge,
   and a DRAWN top's paint runs to the hem itself (it stopped 5.5 mm short, as a top painted per vertex still does).
   `tests/tunicDrapeHemPaint.test.ts`; then the room: her hem from her side, her back and her front.
-- FOUND 2026-11-14, NOT YET FIXED, on v0.9.23 as well: under a bust at SIZE +100 the line where her breasts meet her
-  chest is frayed (her T-pose on v0.9.23; with her arms down on v0.9.24).
+- MEASURED 2026-11-14, NOT A FAULT (it stood here as one for an afternoon): the line where her breasts meet her chest,
+  pictured frayed under a bust at SIZE +100. It is her skin's own fold there BEFORE THE ROOM'S REPAIR OF IT LANDS
+  (`bodyCrease.ts`: a worker, `CREASE_SETTLE_MS` after her controls rest -- at SIZE +100 it finds 716 folded edges and
+  161 crossings and leaves 26 and none, 128 to 493 ms later on the build machine). A probe that steps the room and
+  pictures her at once catches the repair lifted: with it switched off (`creaseOff`) the line is frayed; with it laid it
+  is smooth, in her T-pose and with her arms down. PICTURE HER AFTER A CHANGE OF SHAPE ONCE `crease().pending` IS CLEAR
+  (or a second and a half after).
+
+## A modelled garment and the shapes laid on her afterwards
+
+- **Her bikini top takes her milk's and her baby's weight's shapes from her skin** (a fault Joshua found, 2026-11-14:
+  "There is a bug for the breasts when wearing a bikini 👙 where when I add more "Milk" size, it doesn't follow the skin
+  but everything else doesn't. I set everything at max (size) and it covered but milk for some reason didn't… should
+  fix soon…"). Those two are laid on her BODY from files of their own (`zeroRefine.ts`: `shape:milk:`, `shape:baby:`),
+  made after her body file was: a garment modelled in that file has her bust's SIZE and her belly, and none of these.
+  The room gave them to the recovered shirts and leggings (`SarahLabScene.followMissingGarmentFields`,
+  `garmentShapeTransfer.ts`: each of a garment's points moves as the place of her rest skin nearest it does) and never
+  to her top. MEASURED in the room on v0.9.23 and v0.9.24 alike: at MILK 50 and at 100 her breasts were out through
+  both cups, a sliver of each cup left under them. Now `FOLLOWS_HER_SHAPES` (`sarahLabTool.ts`: her bikini, its
+  edging's parts with it, by the name of a part's material) names the garments of her body file that are given them the
+  same way. MEASURED after, in the room, her belly at 0%: her cups cover her at MILK 50, at MILK 100, and at MILK 100
+  with SIZE +100; as the room opens her and at SIZE +100 alone she is as she was.
+- Her body file's tee and swimsuit, off the menu, are not named there: they have not been read in the room with it.
+- FOUND 2026-11-14, NOT YET FIXED, the same pictures:
+  - AT HIGH MILK HER TOP'S STRINGS RUN IN CORNERS, and each cup's edge by her arm in waves. One of her shapes moves her
+    skin's SHAPE and SLIDES her skin's points along her skin, each of her triangles by its own amount (her slip,
+    `skinSlip.ts`); nobody sees the slide on her skin or on a cup lying on it, and a string, a line across her, turns a
+    corner where it passes from one of her triangles to the next. MEASURED on the room's files at MILK 100, her belly
+    at 0% (the roughest of her milk's shapes): a neck string turned 50 degrees more sharply than at rest over 9 mm of
+    it, the string between her cups 20 (it spans the air, and the place of her nearest it changes sides), the cord
+    round a cup 44; a cord's rings, 1.5 mm apart, stepped up to 2.6 mm from one to the next. At her 100% and 200%
+    bellies' milk: 18 and 23 degrees.
+  - A FIRST TRY AT IT, NOT KEPT: each cord's move evened along the cord, and each cup's edge with its cord. Her
+    strings and edges ran smooth; and at SIZE +100 with MILK 100 a chip of her skin stood through a cup's edge. A cup
+    lies half a millimetre off her, and it covers her because it and her skin under it are moved BY THE SAME NUMBERS:
+    whatever is slid along her skin by other numbers is under her skin as soon as another of her shapes turns it. So a
+    panel, and the cord sewn round it, are never to be slid along her apart from her skin.
+  - AT HER BIGGEST BELLY HER TOP'S CORNERS SHOW SLIVERS OF HER SKIN, WITH NO MILK IN IT: at 200%, SIZE and MILK at 0,
+    at the inner lower corner and the lower edge of her right cup and at the top corner of her left, where its neck
+    string stands a little off it (and the same with SIZE +100, and with MILK 100).
+- After anything changes which garments are given her shapes, or how: `tests/garmentShapeTransfer.test.ts`; then the
+  room: her top as the room opens her, at MILK 50 and 100, at SIZE +100, and with both, from her front and her side.
 
 ## Her opening's area and her skin round it
 
