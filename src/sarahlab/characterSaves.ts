@@ -71,7 +71,7 @@ export interface SavedBody {
   readonly head?: HeadLook;
 }
 /** A saved body's head: what it kept, or the head she had before a head could be chosen. */
-export function headOf(body: Pick<SavedBody, 'head'> | null | undefined): HeadLook {
+export function headOf(body: SavedBody | null | undefined): HeadLook {
   return body?.head ? normaliseHead(body.head) : HEAD_DEFAULT;
 }
 /** A head as a save keeps it: nothing at all when it is `HEAD_DEFAULT` (a save from before and a save of an untouched head are the same text). */

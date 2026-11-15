@@ -43,8 +43,8 @@ describe('her head in a character\'s save', () => {
     expect(savedHead(HEAD_DEFAULT)).toEqual({});
     // Lena's: kept with her body, read back the same, and held to what a head may be
     const lena = normaliseHead({ hair: { style: 'wavy-ponytail', length: 0.7, colour: '#1c1b1d' }, eyes: { colour: '#4a2e1c' }, face: { cheeks: 0.5 } });
-    let book = saveInto(EMPTY_BOOK, 'Lena', 'body', { ...body, ...savedHead(lena) }, { layers: [], garments: {}, shirtLength: null }, 't1');
-    book = saveInto(book, 'Plain', 'body', body, { layers: [], garments: {}, shirtLength: null }, 't2');
+    let book = saveInto(EMPTY_BOOK, 'Lena', 'body', { ...body, ...savedHead(lena) }, { outfit: 'none', layers: [], garments: {}, shirtLength: 0.3 }, 't1');
+    book = saveInto(book, 'Plain', 'body', body, { outfit: 'none', layers: [], garments: {}, shirtLength: 0.3 }, 't2');
     const back = importBook(exportBook(book));
     const of = (name: string) => back!.characters.find((c) => c.name === name)!.body!;
     expect(headOf(of('Lena'))).toEqual(lena);
