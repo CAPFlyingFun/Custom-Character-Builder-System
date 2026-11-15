@@ -33,3 +33,25 @@ describe('her head\'s look', () => {
     expect(colourLinear('#000000')).toEqual([0, 0, 0]); expect(colourLinear('#ffffff')).toEqual([1, 1, 1]);
   });
 });
+
+describe('her head in a character\'s save', () => {
+  it('a body saved before her head could be chosen has the head she had, and a head not touched is not written', async () => {
+    const { EMPTY_BOOK, exportBook, headOf, importBook, saveInto, savedHead } = await import('../src/sarahlab/characterSaves');
+    const { NO_RULES } = await import('../src/actor/bodyRandom');
+    const body = { model: 'v2-body', bump: 0, shape: '', refine: false, random: NO_RULES };
+    expect(headOf(body)).toEqual(HEAD_DEFAULT); expect(headOf(null)).toEqual(HEAD_DEFAULT);
+    expect(savedHead(HEAD_DEFAULT)).toEqual({});
+    // Lena's: kept with her body, read back the same, and held to what a head may be
+    const lena = normaliseHead({ hair: { style: 'wavy-ponytail', length: 0.7, colour: '#1c1b1d' }, eyes: { colour: '#4a2e1c' }, face: { cheeks: 0.5 } });
+    let book = saveInto(EMPTY_BOOK, 'Lena', 'body', { ...body, ...savedHead(lena) }, { layers: [], garments: {}, shirtLength: null }, 't1');
+    book = saveInto(book, 'Plain', 'body', body, { layers: [], garments: {}, shirtLength: null }, 't2');
+    const back = importBook(exportBook(book));
+    const of = (name: string) => back!.characters.find((c) => c.name === name)!.body!;
+    expect(headOf(of('Lena'))).toEqual(lena);
+    expect('head' in of('Plain')).toBe(false);
+    expect(headOf(of('Plain'))).toEqual(HEAD_DEFAULT);
+    // what is not a head is the head she had
+    const odd = importBook(exportBook(book).replace('"wavy-ponytail"', '"WAVY PONYTAIL!"'));
+    expect(headOf(odd!.characters.find((c) => c.name === 'Lena')!.body!).hair.style).toBe('ponytail');
+  });
+});

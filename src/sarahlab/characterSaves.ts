@@ -38,6 +38,7 @@ import type { RandomRule, RandomRules } from '../actor/bodyRandom';
 import { builtToJson, sanitizeBuilt, type BuiltPieces } from './strapData';
 import { readTint } from './fabricTint';
 import { readPregnancy, type Pregnancy } from './pregnancy';
+import { HEAD_DEFAULT, isDefaultHead, normaliseHead, type HeadLook } from './headLook';
 import {
   GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, sameGarment, type GarmentRecord, type GarmentSettings,
 } from './garment/settings';
@@ -61,6 +62,21 @@ export interface SavedBody {
    * `pregnancyOf` reads from her shape.
    */
   readonly pregnancy?: Pregnancy;
+  /**
+   * Her head's look (`headLook.ts`: her hair's style, length and colour, her eyes', brows' and lips' colours and amounts,
+   * her lashes, her face's sliders; Joshua, 2026-11-14: "making the eye color adjustable and more hairstyles and colors so
+   * we can do Lena"). Left out when it is the head she always had (`HEAD_DEFAULT`), and by every save from before:
+   * `headOf` reads those as that head.
+   */
+  readonly head?: HeadLook;
+}
+/** A saved body's head: what it kept, or the head she had before a head could be chosen. */
+export function headOf(body: Pick<SavedBody, 'head'> | null | undefined): HeadLook {
+  return body?.head ? normaliseHead(body.head) : HEAD_DEFAULT;
+}
+/** A head as a save keeps it: nothing at all when it is `HEAD_DEFAULT` (a save from before and a save of an untouched head are the same text). */
+export function savedHead(head: HeadLook): { readonly head?: HeadLook } {
+  return isDefaultHead(head) ? {} : { head: normaliseHead(head) };
 }
 
 export interface SavedLayer {
@@ -394,7 +410,7 @@ function readRandom(v: unknown): RandomRules {
 }
 function readBody(v: unknown): SavedBody | null {
   if (!isRecord(v) || typeof v.model !== 'string') return null;
-  return { model: str(v.model, 40), bump: num(v.bump, 0, 1000, 0), shape: str(v.shape, 20_000), refine: v.refine === true, random: readRandom(v.random), ...(isRecord(v.pregnancy) ? { pregnancy: readPregnancy(v.pregnancy) } : {}) };
+  return { model: str(v.model, 40), bump: num(v.bump, 0, 1000, 0), shape: str(v.shape, 20_000), refine: v.refine === true, random: readRandom(v.random), ...(isRecord(v.pregnancy) ? { pregnancy: readPregnancy(v.pregnancy) } : {}), ...(isRecord(v.head) ? savedHead(normaliseHead(v.head)) : {}) };
 }
 function readRef(v: unknown): OutfitRef | null {
   if (!isRecord(v) || typeof v.basedOn !== 'string' || !isRecord(v.overrides)) return null;
