@@ -320,7 +320,8 @@ export interface TopDetailStyle {
  *   joint, its most forward point 14 cm under. The pocket was first 10 by 11 with its top 15 cm under: below her
  *   nipple line, its lower edge across the fold under her breast and onto the top of her belly.)
  */
-export const TOP_DETAIL_STYLES: Readonly<Record<'raglan' | 'henley' | 'polo' | 'wrap' | 'buttonUp', TopDetailStyle>> = Object.freeze({
+export type TopDetailName = 'raglan' | 'henley' | 'polo' | 'wrap' | 'buttonUp';
+export const TOP_DETAIL_STYLES: Readonly<Record<TopDetailName, TopDetailStyle>> = Object.freeze({
   raglan: { sheet: '08 Raglan Tee', neckStyle: 'crew', neckFront: null, sleeve: 0.72, band: {}, detail: { raglan: { fromRim: 0.015, under: 0.075, inFrom: 0, power: 1.4 } } },
   henley: { sheet: '09 Henley', neckStyle: 'crew', neckFront: null, sleeve: 0.32, band: {}, detail: { placket: { length: 0.09, width: 0.026 }, buttons: { count: 3, size: 0.01, tone: 0.75, first: 0.018 } } },
   polo: { sheet: '10 Fitted Polo', neckStyle: 'crew', neckFront: null, sleeve: 0.3, band: { sleeve: 0.02 }, detail: { collar: { width: 0.028, pointOut: 0.04, pointDrop: 0.07 }, placket: { length: 0.075, width: 0.026 }, buttons: { count: 2, size: 0.01, tone: 0.8, first: 0.028 } } },

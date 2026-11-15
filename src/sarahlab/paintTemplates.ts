@@ -18,6 +18,7 @@ import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
 import { NECK_STYLES, TOP_OUTLINES, cutCoverage, isCutTop, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
+import { TOP_DETAIL_STYLES, topDetailSpec, type TopDetailName, type TopDetailSpec } from './topDetails';
 
 export interface CoverageParams {
   /**
@@ -114,6 +115,13 @@ export interface CoverageParams {
    * Its strap, armhole and neckBack numbers are its outline's, not the old `strap` / `strapIn` / `armhole` / `neckBack`.
    */
   readonly top?: CutTopKind | null;
+  /**
+   * What is DRAWN ON a drawn top (`topDetails.ts` `TOP_DETAIL_STYLES`, his sheet's 08, 09, 10, 15 and 16): 'raglan' (its
+   * sleeves, shoulders and neckband in its EDGING colour), 'henley' (a short placket, three buttons), 'polo' (a collar,
+   * a placket, two buttons), 'wrap' (a crossing edge to a knot at her left waist), 'buttonUp' (a collar, a placket to
+   * its hem, a chest pocket). Absent: nothing but its cut and its bands.
+   */
+  readonly detail?: TopDetailName | null;
 }
 
 const NONE: CoverageParams = Object.freeze({ riseFront: null, riseSide: null, riseBack: null, riseFrontWidth: 1, legStart: 0, legEnd: 0, feet: false, hemFront: null, hemBack: null, neckFront: null, neckBack: null, sleeve: -1, topFront: null, topBack: null, topSide: null, strap: 0, strapIn: 0, armhole: null, neckStyle: 'crew', legCut: null, length: null });
@@ -382,6 +390,15 @@ const SPORTS_BRA_BANDS = Object.freeze({ hem: 0.035 });
 export const OUTLINE_NECK = Object.freeze({
   tank: +(1 - TOP_OUTLINES.tank.depth / HER_TRUNK_M).toFixed(3), sportsBra: +(1 - TOP_OUTLINES.sportsBra.depth / HER_TRUNK_M).toFixed(3), camisole: +(1 - TOP_OUTLINES.camisole.depth / HER_TRUNK_M).toFixed(3),
 });
+/**
+ * A top with something drawn on it, from its style's own numbers (`TOP_DETAIL_STYLES`: one table for its cut and its
+ * details): its neck style and NECKLINE (the style's own drawn depth unless it says), its SLEEVE, its bands, a shirt's
+ * LENGTH.
+ */
+const detailed = (name: TopDetailName): CoverageParams => {
+  const s = TOP_DETAIL_STYLES[name];
+  return upper(LINES.hemHip, LINES.hemHip, s.neckFront === null ? DRAWN_NECK[s.neckStyle] : +s.neckFront.toFixed(3), s.sleeve, { ...SHIRT, neckStyle: s.neckStyle, ...(Object.keys(s.band).length ? { band: s.band } : {}), detail: name });
+};
 const NO_RISE = Object.freeze({ front: -9, side: -9, back: -9 });
 const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 /**
@@ -425,6 +442,14 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['teeThreeQuarter', '3/4-sleeve T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 0.72, SHIRT)],
   // (his 05: a long sleeve ends in a ribbed cuff)
   ['teeLong', 'Long-sleeve shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 1.0, { ...SHIRT, band: LONG_SLEEVE_BANDS })],
+  // THE TOPS WITH SOMETHING DRAWN ON THEM (`topDetails.ts`; his sheet's 08, 09, 10, 15 and 16): each its style's own
+  // cut and what is drawn on its cloth. A raglan's sleeves, shoulders and neckband are its EDGING colour's (with none
+  // picked, its own fabric a shade darker); a collar and a placket are its own fabric, raised
+  ['teeRaglan', 'Raglan T-shirt', 'Shirts', detailed('raglan')],
+  ['henley', 'Henley', 'Shirts', detailed('henley')],
+  ['polo', 'Polo shirt', 'Shirts', detailed('polo')],
+  ['wrap', 'Wrap top', 'Shirts', detailed('wrap')],
+  ['buttonUp', 'Button-up shirt', 'Shirts', detailed('buttonUp')],
   ['crop', 'Crop top', 'Shirts', upper(LINES.hemCrop, LINES.hemCrop - 0.04, LINES.neckScoop, 0.25)],
   ['maternity', 'Maternity T-shirt', 'Shirts', upper(LINES.hemMaternity, LINES.hemHip + 0.06, LINES.neckCrew, 0.32)],
   // (his 07: a scoop between wide straps, a racerback, a wide band under her bust; drawn, `TOP_OUTLINES.sportsBra`)
@@ -683,6 +708,15 @@ export const BAND_SHADE = 0.1;
 export function cutLayer(cut: TopCut): { readonly band: readonly [number, number, number]; readonly shade: number } {
   const b = cut.spec.bands;
   return { band: [b.neck, b.sleeve, b.hem], shade: BAND_SHADE };
+}
+/**
+ * What is drawn ON a drawn top (`CoverageParams.detail`), laid on her for this cut -- its placket from the rim's lowest
+ * point, its collar along the rim, its raglan seam to her underarm (`topDetails.topDetailSpec`); null for a top with
+ * nothing drawn on it. It goes on the layer with its bands (`FabricLayer.cut.detail`).
+ */
+export function templateDetail(p: Pick<CoverageParams, 'detail'>, cut: TopCut): TopDetailSpec | null {
+  const style = p.detail ? TOP_DETAIL_STYLES[p.detail] : null;
+  return style ? topDetailSpec(style.detail, cut.spec, cut.frame) : null;
 }
 /**
  * A SAVED template's parameters as they are worn now: what the save says, and, for what it does not say -- a field its

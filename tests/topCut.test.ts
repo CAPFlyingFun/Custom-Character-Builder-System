@@ -162,7 +162,8 @@ describe('a top\'s cut: its numbers from a template\'s sliders', () => {
   it('says which templates are drawn: a shirt with a neck opening and a level hem, no straps', () => {
     const drawn = COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params)).map((t) => t.id);
     // (and, since his sheet's outlines, the tank, the camisole, the mock neck, the crop tee and the sports bra: `tests/topOutline.test.ts`)
-    expect(drawn).toEqual(['tank', 'camisole', 'mockNeck', 'cropTee', 'sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong', 'sportsBra']);
+    // (...and the five with something drawn on them, the raglan, the henley, the polo, the wrap and the button-up: `tests/topDetails.test.ts`)
+    expect(drawn).toEqual(['tank', 'camisole', 'mockNeck', 'cropTee', 'sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong', 'teeRaglan', 'henley', 'polo', 'wrap', 'buttonUp', 'sportsBra']);
     for (const id of ['crop', 'maternity', 'bandeau', 'swimsuit', 'bodysuit', 'leggingsFull', 'athleticBottom']) expect(drawn, id).not.toContain(id);
   });
 });

@@ -13,6 +13,8 @@ import { MeshoptDecoder } from 'meshoptimizer';
 import { cutAt, neckDefault, topCut, topCutSpec, topFrame, type TopCut, type TopFrame } from '../src/sarahlab/topCut';
 import { DETAIL_LOOK, TOP_DETAIL_STYLES, detailOf, topDetailAt, topDetailGlsl, topDetailSpec, type TopDetailParams, type TopDetailSpec } from '../src/sarahlab/topDetails';
 import { setFabricLayer } from '../src/sarahlab/fabricMaterial';
+import { COVERAGE_TEMPLATES, pieceKind, templateDetail } from '../src/sarahlab/paintTemplates';
+import { isCutTop } from '../src/sarahlab/topCut';
 import { readBody } from '../scripts/sarahV2SideLock.mjs';
 
 const MM = 0.001;
@@ -185,6 +187,32 @@ describe('a top\'s details on her own rest skin (the room\'s body file)', () => 
     const knot = (u: number) => detailOf(P, u, P[19], 1, 1, 1, 0.012, 0.0005).shade;
     expect(knot(P[18] + P[26])).toBeLessThan(0.7);
     expect(knot(-P[18] - P[26])).toBe(1);
+  });
+
+  it('each of the five is a template: a drawn top of its style\'s own cut, with its details laid on that cut', () => {
+    const ids = { raglan: 'teeRaglan', henley: 'henley', polo: 'polo', wrap: 'wrap', buttonUp: 'buttonUp' } as const;
+    for (const name of Object.keys(ids) as (keyof typeof ids)[]) {
+      const t = COVERAGE_TEMPLATES.find((x) => x.id === ids[name])!, s = TOP_DETAIL_STYLES[name];
+      expect(t, name).toBeDefined();
+      expect(isCutTop(t.params), name).toBe(true);
+      expect(pieceKind(t.id), name).toBe('top');
+      expect(t.params.detail).toBe(name);
+      expect(t.params.neckStyle).toBe(s.neckStyle);
+      expect(t.params.sleeve).toBe(s.sleeve);
+      // on her: the template's cut is the one its style was pictured on (a NECKLINE is kept to three places: under a millimetre)
+      const cut = topCut(topCutSpec(t.params, frame, -0.1), frame), own = dressed(name);
+      expect(Math.abs(cut.spec.dipY - own.cut.spec.dipY), name).toBeLessThan(1 * MM);
+      expect(cut.spec.sleeve).toBe(own.cut.spec.sleeve);
+      expect(cut.spec.bands).toEqual(own.cut.spec.bands);
+      // and what is drawn on it is its style's, laid on that cut
+      const d = templateDetail(t.params, cut)!;
+      expect(Array.from(d.pack), name).toEqual(Array.from(topDetailSpec(s.detail, cut.spec, frame).pack));
+      expect(d.pack.some((x) => x !== 0)).toBe(true);
+    }
+    // no other template has anything drawn on it
+    expect(COVERAGE_TEMPLATES.filter((t) => t.params.detail).map((t) => t.id)).toEqual(Object.values(ids));
+    const tee = COVERAGE_TEMPLATES.find((x) => x.id === 'teeShort')!;
+    expect(templateDetail(tee.params, topCut(topCutSpec(tee.params, frame, -0.1), frame))).toBeNull();
   });
 });
 

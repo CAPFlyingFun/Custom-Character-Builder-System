@@ -41,6 +41,7 @@ import {
 import { ensureRest, fabricCutWorn, fabricFieldWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricLayer, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer } from './fabricMaterial';
 import { MOTION_SHAPES } from './levelLine';
 import { TOP_CUT, cutPicture, isCutTop, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
+import type { TopDetailSpec } from './topDetails';
 import { layCarried, poseTurns, settleCarry } from './designPose';
 import { besideShapes, makeFrameSlip, makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
 import { PUSH_ATTRIBUTE } from './softBody';
@@ -55,8 +56,11 @@ import { HEM_LIFT_FLAT, HEM_LIFT_RIBBED, TunicDrape } from './tunicDrape';
 import { AUTO_DETAIL, type DetailOverride, type SavedClothes } from './characterSaves';
 import {
   COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, GARMENT_SETS, PIECE_KIND_NAMES, TEMPLATE_GROUPS, armSkinOf, coverage, cutLayer, designedField, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
-  templateCut, withDial, wornParams, type CoverageParams, type DesignedField, type PieceKind,
+  templateCut, templateDetail, withDial, wornParams, type CoverageParams, type DesignedField, type PieceKind,
 } from './paintTemplates';
+
+/** A drawn top's cut as the editor keeps it: what it is cut to (its key), the cut, and what is drawn on it. */
+interface WornCut { readonly key: string; readonly cut: TopCut; readonly detail: TopDetailSpec | null }
 
 export const FABRIC_PANEL_ROLE = 'sarahlab-fabric';
 /**
@@ -348,9 +352,9 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   let slipMerged = '';
   /** Her own measures for a drawn top's cut (`topCut.topFrame`), once a body; the cuts laid from them by what they are cut to; and each one's picture. */
   let frameOf: { readonly mesh: THREE.Mesh; readonly frame: TopFrame | null } | null = null;
-  const cuts = new Map<string, TopCut>(), cutTextures = new Map<string, THREE.DataTexture>();
-  /** The drawn top's cut laid on her skin now (the topmost shown), and its key. */
-  let wornCut: { readonly key: string; readonly cut: TopCut } | null = null;
+  const cuts = new Map<string, { readonly cut: TopCut; readonly detail: TopDetailSpec | null }>(), cutTextures = new Map<string, THREE.DataTexture>();
+  /** The drawn top's cut laid on her skin now (the topmost shown), what is drawn on it (`topDetails.ts`), and its key. */
+  let wornCut: WornCut | null = null;
   let target: Target = { kind: 'layer', index: 0 };
   let space: EditorSpace = 'design', paintView: PaintView = 'layer', isolated = false, active = true;
   let tool: PaintTool = 'brush', brushCm: number = BRUSH_RANGE_CM.initial;
@@ -770,24 +774,29 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     return frameOf.frame;
   }
   /** A template's drawn cut on her (`paintTemplates.templateCut`), kept by what it is cut to; null for any other template. */
-  function cutOf(params: CoverageParams | null | undefined): { readonly key: string; readonly cut: TopCut } | null {
+  function cutOf(params: CoverageParams | null | undefined): WornCut | null {
     const map = regionMap(), frame = params ? topFrameNow() : null;
     if (!params || !map || !frame) return null;
-    const key = JSON.stringify([params.neckStyle, params.neckFront, params.sleeve, params.length, params.band ?? null]);
-    let cut = cuts.get(key);
-    if (cut) cuts.delete(key);
+    // (everything a cut and what is drawn on it are laid from: a kind of its own -- an outline, the crop tee -- and a
+    // hem of its own where a top has no LENGTH are among it since 2026-11-14. Without them a camisole whose NECKLINE
+    // was moved to a tank's wore the tank's cut)
+    const key = JSON.stringify([params.neckStyle, params.neckFront, params.sleeve, params.length, params.band ?? null, params.top ?? null, params.length === null ? params.hemFront : null, params.detail ?? null]);
+    let made = cuts.get(key);
+    if (made) cuts.delete(key);
     else {
-      const made = templateCut(map, params, frame);
-      if (!made) return null;
-      cut = made;
+      const cut = templateCut(map, params, frame);
+      if (!cut) return null;
+      made = { cut, detail: templateDetail(params, cut) };
       // (a slider dragged lays a cut for every stop: the ones longest unused are let go)
       if (cuts.size >= 24) { const oldest = cuts.keys().next().value as string; cuts.delete(oldest); cutTextures.get(oldest)?.dispose(); cutTextures.delete(oldest); }
     }
-    cuts.set(key, cut);
-    return { key, cut };
+    cuts.set(key, made);
+    return { key, cut: made.cut, detail: made.detail };
   }
+  /** A drawn top's layer beside its fabric: its bands, its EDGING and what is drawn on it. */
+  const cutLayerOf = (worn: WornCut, c: FabricChoice) => ({ ...cutLayer(worn.cut), edging: edgingOf(c), detail: worn.detail ? { pack: worn.detail.pack } : null });
   /** A cut as her skin's material reads it (`fabricMaterial.FabricCut`): its picture, made the first time it is worn. */
-  function fabricCutOf(worn: { readonly key: string; readonly cut: TopCut }): FabricCut {
+  function fabricCutOf(worn: WornCut): FabricCut {
     const { cut, key } = worn, f = cut.frame, U = f.unitsPerMetre;
     let texture = cutTextures.get(key);
     if (!texture) {
@@ -1288,7 +1297,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (Math.abs(flatten - lastFlatten) > 1e-3) { lastFlatten = flatten; queueMicrotask(() => hooks.reshape()); }
       // a DRAWN top (`topCut.ts`): the topmost layer shown whose template is one. Its cut is laid on her skin's material
       // (one at a time), and every layer shown that is cut the same way is drawn from it
-      let worn: { readonly key: string; readonly cut: TopCut } | null = null;
+      let worn: WornCut | null = null;
       const shown = (i: number) => !!p && p.has(i) && layerShown(i) && !!paintChoices[i].fabric;
       for (let i = PAINT_LAYER_COUNT - 1; i >= 0 && !worn; i--) if (shown(i) && templates[i]) worn = cutOf(templates[i]!.params);
       for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
@@ -1296,7 +1305,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         // a layer shows once something is painted on it and while the editor is not hiding it: an empty or hidden
         // layer leaves her approved skin shader alone (its paint is kept)
         const l = p && p.has(i) && layerShown(i) ? layerFor(body, c, c.fabric, 'plain') : null;
-        const t = templates[i], mine = l && worn && t && cutOf(t.params)?.key === worn.key ? { ...cutLayer(worn.cut), edging: edgingOf(c) } : null;
+        const t = templates[i], mine = l && worn && t && cutOf(t.params)?.key === worn.key ? cutLayerOf(worn, c) : null;
         setFabricLayer(body, material, i, l ? { ...l, field: fieldFor(i, body), cut: mine } : null, { layers: PAINT_LAYER_COUNT, masked: true, rest: hooks.rest(body) });
       }
       wornCut = worn;
@@ -1392,7 +1401,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const mine = wornCut ? cutOf(params) : null, cut = mine && wornCut && mine.key === wornCut.key ? wornCut : null;
     bridge.wear({ params, covered: (v) => p.coverAt(v, [under]), drawn: !!cut });
     const sheet = bridge.mesh.material as THREE.Material, l = layerFor(body, c, c.fabric, 'plain');
-    setFabricLayer(bridge.mesh, sheet, 0, l ? { ...l, cut: cut ? { ...cutLayer(cut.cut), edging: edgingOf(c) } : null } : null, { layers: 1, masked: false, rest: null, cut: true });
+    setFabricLayer(bridge.mesh, sheet, 0, l ? { ...l, cut: cut ? cutLayerOf(cut, c) : null } : null, { layers: 1, masked: false, rest: null, cut: true });
     setFabricCut(sheet, cut ? fabricCutOf(cut) : null);
     bridge.feathered();
   }
