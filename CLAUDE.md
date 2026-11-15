@@ -299,9 +299,11 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `node scripts/bakeStyleThumbs.mjs` into `public/sarahlab/styles/`: run it again when a style is added or its cut
   changes (ONLY=<ids> for just those), then build. A style with no picture shows its initials. A piece with no top of
   its own (the tied bikini bottom, which the editor keeps with the one-pieces) is pictured as a bottom, under a tee
-  (`picturedAs`): as a one-piece it was a picture of her bare to the waist.
-- NOT DONE, AND NAMED: the painted LEGGINGS' WAISTBAND is still painted a value a vertex and is torn the same way
-  wherever a top leaves her middle bare (under the sports bra: seen in its card); the RAGLAN's second colour is ragged
+  (`picturedAs`): as a one-piece it was a picture of her bare to the waist. (A bottom's tee is a crop tee since
+  2026-11-15, so its waist is in its picture: "A painted bottom, drawn", below.)
+- (The painted LEGGINGS' WAISTBAND, torn wherever a top left her middle bare -- under the sports bra, seen in its card
+  -- is drawn since 2026-11-15: "A painted bottom, drawn", below.)
+- NOT DONE, AND NAMED: the RAGLAN's second colour is ragged
   where its seam runs out under her arm and over the top of her shoulder (there its edge is her arm's skin's own, a
   value a vertex); the polo's and the button-up's collars lie on a closed crew (no opening between the leaves); the
   mock neck's collar is its bound edge alone; a camisole whose top edge is taken lower has no band from its peak to
@@ -310,6 +312,185 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - After anything changes an outline, an armscye, a detail or the edge's lines: `tests/topOutline.test.ts`,
   `tests/topDetails.test.ts`, `tests/topCut.test.ts`, `tests/stylePictures.test.ts`; then the room: the four outlines
   from her front, three-quarter, side and back, and the sports bra's and the crop tee's hems at 0%.
+
+## A painted bottom, drawn
+
+- **A bottom's edges are DRAWN, as a top's are** (Joshua, 2026-11-15: "Looks good!!! Let's work on all the bottoms…"; of
+  his sheet of sixteen, the same morning: "Here is 16 bottoms ChatGPT did (you can save to your branch), but let's still
+  fix the ragged edges for the painted bottoms to still work like pantyhose or tighter bottoms… this has a few looser
+  ones which would need extra "fabric" to do, but not impossible"; "the length of the legs and top are still adjustable
+  like how the painted bottoms work, just in a straight line on the body that also matches her (body) curves"). A
+  template with a waistband or a leg's top, legs, and no top, leg cut or outline of its own (`bottomCut.ts`
+  `isDrawnBottom`: the leggings, the shorts, the stockings and the socks; not the one-pieces, not her bikini's designed
+  bottoms) is one paint layer whose edges the shader draws for each pixel (`fabricMaterial.ts` `FabricLayer.low`; a
+  program has the code only while a layer wears one, its key ends `-low`, and her skin's program without one is the
+  text it was, to the letter):
+  - its WAISTBAND is the line it always was -- a height at her front's middle, at her sides and at her back's middle,
+    eased round her (`waistLine`) -- now looked up at each pixel's own place on her REST skin with her skin's slip
+    PULLED BACK through her skin's own stretch (`pulledSlip.ts`), so it lies on the skin it was put on and is a line at
+    every size of belly;
+  - its LEGS' ENDS, and a stocking's or a sock's top, are FLAT RINGS square to the bone they are on, CARRIED BY THAT
+    BONE each frame (`legPlanes`, `setFabricLowLegs`; her thigh's, her shin's and her foot's bones: `boneCarry`), as a
+    drawn top's sleeves are: how far along her leg a place is, is counted in her own rest lengths down her thigh's bone
+    and on down her shin's (a leg her build has made longer keeps its hem at the same share of it), the two blended
+    round her knee by where the skin lies at rest (`LOW_CUT.kneeBlend`, 4 cm). A leg's end cuts her LEG's skin (her
+    bones say which, `limbSkin`: her seat and her hips' sides hang from her thigh bones and are among it); the rest of
+    her under a waistband is covered whatever her legs do; her ARM's skin, which hangs beside her hips under any
+    waistband, never (`fabricNotArm`: a first build painted her hands as gloves);
+  - BANDS (`LOW_BANDS`: a waistband 3 cm deep, a hem 1.2 cm at each leg's end, a welt 3 cm at a stocking's top; a
+    template's own in `CoverageParams.lowBand`; GAME TUNING): the bottom's own fabric a tenth darker with a seam, or its
+    EDGING colour -- the editor's EDGING is offered for a drawn bottom as for a drawn top.
+- **THE SLIDERS ARE AS THEY WERE**: WAISTBAND (FRONT), HIPS & BACK RISE, LEG LENGTH, LEG TOP move the same numbers
+  (`withDial`), her paint per vertex (`paintTemplates.coverage`) is laid exactly as before for what reads it (a save,
+  a brush, her navel's flattening, AUTO's detail), and A SAVED LOOK KEEPS ITS NUMBERS. MEASURED in the room by the
+  editor's own inputs: a bike short's LEG LENGTH from 0.23 to 0.40 moved its legs' ends from 17.9 to 31.2 cm down her
+  leg, its WAISTBAND from 0.39 to 0.20 and its HIPS & BACK RISE to 0.24 its line to those heights; a stocking's LEG TOP
+  from 0.22 to 0.36.
+- **WHY HER SLIP, AND WHY PULLED BACK** (`pulledSlip.ts`; MEASURED 2026-11-15 on her skin's points read out of the room
+  at 0, 73, 100, 150 and 200% of her belly: a waistband's line found on her triangles, its turns from one triangle to
+  the next counted, pieces under 1.5 mm left out). A value a vertex rides her points, and her shapes slide her points
+  along her skin, each triangle by its own amount: the over-belly leggings' waistband, a line on her body file (3.4
+  degrees at its turns' 90th percentile, 8.7 at the most), turned 29 and 49 degrees as the room draws her at 100%, 34
+  and 67 at 0%, 29 and 75 at 200%. Her slip as `skinSlip.ts` tells it mends that at the sizes near her body file's and
+  not at 200% (22 and 53): a slip is told where her points STAND and laid on her REST skin, and her belly's skin at
+  200% is half as long again. Pulled back through the smooth movement's own stretch and turn at each point: 3.9 and
+  6.5 at 200%, 4.0 and 6.3 at 150%, 4.3 and 5.7 at 100%, 4.8 and 6.7 at 73%, 6.1 and 11.4 at 0% -- no turn over 15
+  degrees at any size. (`tests/bottomCut.test.ts` holds it on her body file's own `belly200` and `belly` morphs: 16.7
+  and 61 torn, 4.0 and 7.9 pulled back; 31.0 and 68, and 5.7 and 20.6.)
+  - IT STAYS ON HER SKIN, and is not held level in the room: the skin under an under-belly waistband stands 8.6 cm
+    lower at 200% than on her body file (4.8 at 150%), and a line held level would cut across her bump. From her body
+    file's 100% belly to none her skin keeps its heights (within 8 mm, from under her hips to under her bust) and comes
+    in up to 13.8 cm: a level waistband is level at 0%.
+  - IT IS WORKED OUT A LITTLE AT A TIME: her middle is 23,527 points (from 8 cm under her hip joints to 40 over them),
+    a movement's smoothing costs a tenth of a second on the build machine, so it is a job stepped within a share of
+    each frame (`fabricPanel.ts` `LOW_SLIP_BUDGET_MS`), kept a part for her shapes and a part for each morph and summed
+    by their weights; the pull itself is 7 to 24 ms. A slider dragged leaves the line a few tenths of a second behind
+    her shape, never the frame. MEASURED in the room: standing at 73% for three seconds, and walking for three, nothing
+    is smoothed again (one movement more as her pose changes).
+  - IT RIDES IN THE SHOW REGIONS OVERLAY'S ATTRIBUTE (`fabricMaterial.LOW_SLIP_ATTRIBUTE`): her skin's vertex shader
+    has no attribute left, and her opening's area is drawn by a mesh of its own that reads her skin's attributes
+    (`vulvaMesh.ts`, which reads this one where each of its points lies in her triangle, as it does her rest place).
+    While SHOW REGIONS is on a waistband is looked up at her rest place itself.
+- **A BAND IS SQUARE TO ITS LINE AS THE LINE LIES ON HER** (`waistAt`'s `across`; the attribute's fourth number,
+  `PULLED_SLIP.across`): how much longer her skin is ACROSS her there than at rest, by the same stretch. MEASURED: at 0%
+  her belly's skin is 0.55 to 0.6 as long across her in front, and 0.32 to 0.37 where an under-belly line climbs her
+  hips; at 200% up to twice as long.
+- **A WAISTBAND'S BAND STOPS AT A LEVEL LINE ABOVE HER CLEFT** (`LOW_CUT.bandFloor`: 2.6 cm under her hip joints; the
+  top of her cleft is 3.45 under them), and an edge's distance is held to the edge's own range before its slope is
+  taken. Between her legs WHERE A PLACE STANDS ROUND HER HAS NO MEANING: her axis comes out of her there. MEASURED in
+  the room in a black edging, the under-belly cut at 0%: a band run to her crotch had its lower edge dotted and two
+  dark ovals under its point; held to a depth by its line's height alone, black streaks from its corners down to her
+  cleft; cut at the floor by a distance, a dashed seam along where its old edge ran. Drawn as two edges, each
+  antialiased by its own slope -- inside the line by less than its depth, and over the floor -- none of them.
+- **A PLACE IS NEVER NEARER A WAISTBAND'S LINE THAN IT IS UNDER THE LOWEST OF IT, OR OVER THE HIGHEST** (`waistAt`, the
+  shader's `fabricLowInside`: the distance to a straight line, held to those two). The same place between her legs, in
+  the garment's own edge: where a place's distance from her axis goes to nothing the line's climb round her goes to no
+  end and the distance "square to the line" to nothing, a hand under any waistband -- drawn part cloth, part her skin.
+  MEASURED 2026-11-15 on her rest skin (twenty-eight places a triangle, from 12 cm under her hip joints up to 2 cm
+  under the lowest of the line): told to be within 1.5 cm of the line, 2,291 of 339,444 places under an under-belly
+  line (the nearest a quarter of a millimetre, 2.8 cm under the lowest of it), 54 under a low rise, 22 under an
+  over-belly one (24.8 cm under it), none under the high rise; the nearest within a millimetre of her axis, 3.8 cm
+  under her hip joints. IN THE ROOM it was a pale hairline V under the point of an under-belly front, seen from below
+  at 100% (its two strokes the two directions round her in which the line climbs), and one speck under an over-belly
+  one. With the bound none of the places (`tests/bottomCut.test.ts`); between the lowest and the highest of a line it
+  changes nothing, and a band's depth as it lies on her (below) reads the same to a tenth of a millimetre. Found in the
+  pictures for him, fixed and told.
+- **WHICH OF HER SKIN A PIXEL IS, IS READ INSIDE THE TRIANGLE THE PIXEL IS DRAWN FOR** (`fabricMaterial.ts` `vFabricLimb`,
+  a `centroid` varying: 1 her arm's skin, -1 her leg's, 0 the rest of her). The flag steps from -1 to 0 across the one
+  row of her triangles that joins her leg's skin to her trunk's -- up her hips' sides and along the folds of her groin
+  -- and a pixel a triangle only partly covers is told the triangle's numbers AT THE PIXEL'S MIDDLE, outside the
+  triangle, where they run on past its corners': on a triangle of that row seen thin, the flag ran on past 0 to a
+  half, "her arm's skin", which no bottom covers -- and that part of the pixel was bare. MEASURED 2026-11-15 in the
+  room at a phone's 2x, her legs whole in the picture, her front square on: three pairs of pixels a quarter her skin
+  down each of her hips' outlines, and a few at her groin's folds -- at the same places of her from 170, 180 and 190
+  cm, gone when she was turned 3 degrees, on a light stage and a dark one alike. WHAT IT WAS NOT, each tried first:
+  the pixel's slope on a sliver of a triangle (held to a third of the edge's range, they stayed; there is no sliver
+  there: the least of 596 triangles by her outline is 3 mm long); a hole through her (they do not take the stage's
+  colour); what her points are told (the copies of a point at her texture's seams agree, at 10,780 places, in flag,
+  slip and stretch). The cover's three parts shown as colours (a view put in the shader for an hour and taken out)
+  were each all of it at the pixel's middle; the cover itself was 0.9 there. Read inside the triangle the flag stays
+  between its corners': none of them, at the same pixels, the high rise in black and the capri in charcoal. Found in
+  the pictures for him, fixed and told.
+  - A PROBE THAT STAYED: `bodyAttribute(name)` hands back one of her skin's attributes as it is laid (base64 Float32),
+    beside `bodyPoints`.
+  - THE SAME IN A DRAWN TOP (v0.9.27's): `fabricCutAt` reads the flag at the pixel's middle too, and on that row a
+    part of a pixel is told "her arm's skin": cut by the sleeve's end, not the hem. MEASURED the same hour, a
+    short-sleeved tee to her hips in charcoal, the same view: the same pairs of pixels at the same places (a long
+    sleeve's reach past her hips hides it). Mended next, as a change of its own.
+- **HIS SHEET OF BOTTOMS' TIGHT ONES ARE STYLES AND OUTFITS** (`docs/reference/bottoms/`; GAME TUNING to it, on her at
+  0%: her navel is 12.2 cm over her hip joints, 0.232 of her trunk -- MEASURED): 01 HIGH-RISE LEGGINGS (`leggingsHigh`:
+  `RISES.high`, 0.39 in front and 0.38 round her, level a hand over her navel; its band 10.5 cm deep, its seam 2.3 cm
+  under her navel -- at 7.5 it ran through her navel's hollow), 02 LOW-RISE LEGGINGS (`leggingsLow`: `RISES.low`, 0.125
+  in front, 0.175 over her hips, 0.2 behind; its band 4.5 cm), 03 OVER-BELLY and 04 UNDER-BELLY (the two there were,
+  as they were), 05 CAPRI (`leggingsCapri`: the high rise to 0.72 of her leg -- it was the over-belly rise to 0.78) and
+  06 BIKE SHORTS (`shortsBike`: the high rise to 0.23 -- it was the under-belly rise to 0.36). A look saved before
+  keeps the rise and length it was saved with, and on a rise that is not its style's now it wears the plain band
+  (`wornParams`: a hand-deep band is its style's own rise's). Each is an outfit in his sheet's colour
+  (`sarahLabTool.ts` `SHEET_BOTTOMS`) under the grey crop tee his figures wear, its hem at 0.42 (`PaintedLayer.dials`:
+  a built-in outfit may set a template's sliders), put after everything there was: `painted high-rise leggings`,
+  `painted low-rise leggings`, `painted over-belly leggings`, `painted under-belly leggings`, `painted capri leggings`,
+  `painted bike shorts`.
+- **A BOTTOM'S STYLE PICTURE SHOWS ITS WAIST** (`stylePictures.ts`): his sheet tells a high rise from a low one by its
+  waistband, each figure in a crop tee, and under a tee to her hips the four full-length leggings were one picture four
+  times. A bottom is pictured under the pale CROP tee, its hem where his sheet's outfits have it (0.42), from the floor
+  to just over that hem (`STYLE_FRAME.bottom.to` 0.82; it was 0.74 under a tee to her hips). Legwear is as it was, under
+  shorts and a tee. GAME TUNING.
+- **THE PICTURES BAKED AGAIN** (2026-11-15): the twenty-seven outfit cards that wear a drawn bottom, his six among them,
+  and the eighteen style pictures that show one's edge or a bottom's new frame -- the twelve bottoms', the three
+  legwear's, and the sports bra's, the crop top's and the bandeau's, whose leggings' waistband is seen. The other
+  twenty-two styles' are as they were (a top to her hips covers its leggings' waistband, and its picture ends under her
+  hips, over her leggings' ends). BOTH BAKES WAIT FOR HER SLIP (`SarahLabScene.ts` `lowSlipSettled`): a picture taken
+  before it lands is of a line on her rest skin, torn.
+- MEASURED in the room 2026-11-15 (the build machine's software renderer, the base model at 0% unless said, no error
+  on the page): each of his six from her front; the high rise from her three-quarter, her side and her back, squatting
+  (front and side), seated and with her legs apart; the low rise from her three-quarter and her back; the capri and the
+  bike shorts from her three-quarter (and the bike shorts put on by its card: the tee's hem where the outfit sets it);
+  the over-belly leggings' waistband under the sports bra, the one that was torn; the under-belly band in a black
+  edging at 0% from her front and her three-quarter (and the short shorts', which is the same line, from below), and
+  at 100 and 200% from her three-quarter and from below; every short and legging length and the stockings, knee socks
+  and crew socks standing, squatting and seated, their hems close. And for him, at a phone's 2x on the build as
+  committed: his six from her front, the over-belly and the under-belly at 100% from her front and her side as his
+  sheet has them; the over-belly waistband under the sports bra, the high rise's band and her ankles close; the bike
+  shorts with LEG LENGTH and WAISTBAND moved in the editor.
+- A BAND'S DEPTH AS IT LIES ON HER (MEASURED on her skin's points from the room: from the band's inner edge straight
+  to its line): the high rise's 10.5 cm is 11.3 at 0%, 11.6 at 100%, 12.1 at 200% (a band is counted by height, and
+  her belly's skin leans); the low rise's 4.5 is 4.8, 5.0, 5.1; an under-belly band's 3 cm is 3.1 to 3.2 where its
+  line runs level at every size, and BESIDE WHERE IT CLIMBS HER HIPS 1.7 at 0%, 2.4 at 73%, 2.9 at 100%, 3.2 at 150%,
+  3.4 at 200% (by her rest skin alone: 1.3 at 0%, 5.2 at 200%).
+- NOT DONE, AND NAMED:
+  - THE LOOSER TEN of his sheet (07 running shorts, 08 denim shorts, 09 jeans, 10 wide-leg trousers, 11 cargo pants,
+    12 joggers, 13 flared yoga pants, 14 and 15 the skirts, 16 the skort): they hang off her and want fabric of their
+    own over the paint. He is shown the first before the rest.
+  - AN UNDER-BELLY BAND IS NARROW BESIDE WHERE ITS LINE CLIMBS HER HIPS, half its depth at 0% (above). Its cause is
+    known: a place's distance is told by the line's slope AT THAT PLACE ROUND HER, which is the distance to a straight
+    line, and at 0% the whole climb, from her front to her side, is 3 cm of her skin across her (11 on her body file)
+    -- past her side the line "there" runs level 10 cm above. TRIED offline (`bottomCut.waistAt`'s comment): the
+    distance to the line itself, its heights eight steps either side of a place: 3.1 cm at 73%, 3.4 at 100%, 3.3 at
+    150%, 3.4 at 200%, and 2.0 at 0% (her skin's length across her changes threefold within the climb, and a place
+    has one number for it) -- nine looks at the line a pixel, for a band nobody would tell apart: not taken.
+  - THE OTHER SHORTS AND THE KNEE-LENGTH LEGGINGS KEEP THEIR MATERNITY RISES (short and mid-thigh shorts the
+    under-belly's, knee shorts and knee leggings the over-belly's): on the base model at 0% an under-belly front is a V
+    down to her pubic bone, cut for a bump. ASKED OF HIM, with a picture.
+  - the under-belly line's corners (where its level front turns up her hips, and where it levels at her sides) are the
+    line's own easing, a centimetre and a half round, and are seen as corners now its edge is crisp; it keeps a
+    handful of sharp turns where it crosses the creases at the tops of her thighs, as it does on her body file.
+  - his sheet's deep bands have a seam that dips at her front's middle; ours is level with the band's top.
+  - a leg's end between her legs (LEG LENGTH under about 0.08) and a waistband dragged under the floor: not looked at.
+  - FOUND, NOT ACTED ON (the room's `vulvaCopies` probe: her opening's area has 752 places where pieces of her texture
+    meet, a copy of the point for each piece, 779 copies): the copies are laid at one place (0 mm apart), with one
+    rest place, one slip and the same weights -- but they are told her rest NORMAL, her limbs' and her drapes' flags
+    and her paint through her texture's own copy of a triangle, and disagree (her normal by up to 1.3 at 768 of them,
+    a flag by 1 at 25, her paint by 0.04 at 155). Nothing drawn was traced to it.
+- A SKETCH WITHOUT A BROWSER: `npx tsx scripts/preview/bottom.mts --template shortsBike` (`--all`: every drawn bottom, a
+  row each), her rest shape from four sides, each pixel asking the cut as the shader does.
+- After anything changes a bottom's cut, its bands, her slip about her hips or the edge's lines:
+  `tests/bottomCut.test.ts`, `tests/pulledSlip.test.ts`, `tests/topDetails.test.ts` (her skin's program without a
+  bottom), `tests/stylePictures.test.ts`, `tests/sarahLabFabric.test.ts`; then the room: the high rise, the low rise
+  and the under-belly leggings from her front, three-quarter and back at 0%, the under-belly at 100 and 200% and from
+  below in an EDGING that is not its fabric's, short shorts' hems standing and squatting, her slip's state
+  (`paintLowState`: not `pending`, nothing smoothed again while nothing changes) -- and, at a phone's 2x with her legs
+  whole in the picture and her front square on, her hips' outlines and the point of an under-belly front from below
+  READ PIXEL BY PIXEL for single lighter ones (both faults above were a pixel or two wide).
 
 ## A modelled garment and the shapes laid on her afterwards
 
@@ -825,7 +1006,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   room's own first visit wears `models/hair/ponytail.glb` (0.87 MB) where it wore `models/sarah-v2-hair.glb` (0.81 MB);
   fetched ahead as well are the five other hairstyles (4.57 MB), thirty-eight STYLE pictures and eleven more outfit
   cards (some 4 KB each). The hairstyles' light twins (2.2 MB, a game's) and the old hair file (the story's bake's) are
-  on the site and are not fetched ahead (`NOT_AHEAD`).
+  on the site and are not fetched ahead (`NOT_AHEAD`). With the drawn bottoms (the same day): two more STYLE pictures
+  (forty) and six more outfit cards.
 - **What the worker answers with depends on what may change behind an address** (`keeper.ts` `kindOf`). The page is asked
   of the server first, past the browser's ten-minute copy, so a new build shows the moment it is live; the page kept
   here answers with no network, or none in 3 s. A file that can not change behind its address -- Vite's bundles, and a
