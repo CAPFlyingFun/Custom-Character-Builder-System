@@ -57,7 +57,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   ("the front strap isn't a smooth curve. It should naturally curve in her groove from her pelvis to her upper
   thigh/hips"): no corner where it leaves a panel. He draws on her own DRAWING SHEETS
   (`scripts/probe-body-sheets.mjs`: "so that way I can draw directly on her model so the proportions match exactly").
-  His reference pictures and marked-up sheets never go in the repo.
+  A reference picture he shares may be kept in the repo WHILE WHAT IT SHOWS IS BEING BUILT, and is taken out once it
+  is (`docs/reference/`; Joshua, 2026-11-14: "I don't mind if reference images are on the Repo while building it
+  especially on your branch, but anything I share with visible watermarks, I would pass on them" -- until then they
+  never went in). Never one with a visible watermark, and never his marked-up sheets of her bare body.
 - **Her bikini's top and bottom are one set, matched by default** (Joshua, 2026-11-12: "match up the bikini top and
   bottom together now and can use the default texture we have now in the builder under athletic fabric... just have
   them matching by default (sync)"). Both wear the pack's ATHLETIC knit in his red, their edging his black
@@ -763,6 +766,26 @@ costs by the pixel and the page answers between frames: read and measure at 1x,
 and draw at a phone's 2x only for the pictures a person will see. (A preview
 left running in the background is stopped by the session after two hours: past
 that, open it for a bounded batch of readings and close it.)
+
+## Several agents, one lead
+
+- **Agents write, the lead reads, checks and puts together** (Joshua, 2026-11-14: "Can you run multiple agents to maybe
+  code each remaining top, hair, face, etc?... they would code, you review, implement, test, and adjust as needed… You
+  can also set the models less to maybe Opus on Low, or Sonnet on medium depending on how complex it is"; and
+  TRADDOMIUM's rule of 2026-09-08, carried: agents only write code, one file or folder each, 8 at most, no separate
+  review or test agent, `SarahLabScene.ts` touched by one hand). Each agent works in a worktree of its own
+  (`/home/claude/wt/<name>`, branch `agent/<name>`) on files that are its alone; `SarahLabScene.ts`, `fabricPanel.ts`,
+  `characterSaves.ts` and anything two pieces of work meet in are the lead's. THE ROOM IS THE LEAD'S: one browser, and
+  an agent never starts one, never builds `dist`, never pushes.
+- **What the parts of her head agree on is `headLook.ts`**: one record a character (her hair's style, length and
+  colour, her eyes', brows' and lips' colours and amounts, her lashes, her face's sliders). A colour is `null` -- her
+  own, drawn by the part's own numbers exactly as before it could be chosen -- or '#rrggbb'.
+- **A picture without a browser** (`scripts/preview/`): `raster.mjs` draws triangles square on, in software, into a PNG
+  in about a second; `body.mjs` reads her body file into her rest METRES with her skin's picture, her joints and her
+  arm's skin; `head.mjs` pictures her head and a hair file from four sides (`node scripts/preview/head.mjs`), `top.mts`
+  a drawn top's cut on her, each pixel asking the cut as the shader does (`npx tsx scripts/preview/top.mts --style v`).
+  A SKETCH TO WORK BY: her file's own shape, one light, none of the room's shaders. Work is judged by the room's own
+  pictures ("Verification").
 
 ## Git
 
