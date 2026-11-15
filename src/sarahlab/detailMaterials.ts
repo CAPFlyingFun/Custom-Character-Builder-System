@@ -61,6 +61,8 @@ export const detailMaterial = (id: string): DetailMaterial | undefined => DETAIL
 /** Each fabric family's own row. */
 export const FAMILY_MATERIAL: Readonly<Record<FabricFamilyId, string>> = Object.freeze({
   jersey: 'fineJersey', athletic: 'athleticKnit', sweater: 'chunkySweater', ribbed: 'ribbedKnit', pantyhose: 'sheerNylon',
+  // (a colour with no weave: as thin and smooth as the fine jersey)
+  flat: 'fineJersey',
 });
 
 /**

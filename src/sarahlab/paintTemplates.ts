@@ -17,6 +17,7 @@ import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
+import { NECK_STYLES, cutCoverage, isCutTop, topCut, topCutSpec, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
 
 export interface CoverageParams {
   /**
@@ -65,8 +66,18 @@ export interface CoverageParams {
    * The front neckline's shape (Joshua, 2026-10-22: "depending on the type of shirt... U-neck and V-neck"): `crew`, the
    * plain opening round her neck; `u`, a round dip down to `neckFront`; `v`, a point down to `neckFront`. Behind, every
    * style is the crew's. The cleavage bridge (`cleavageBridge.ts`) is cut to the same line.
+   *
+   * On a top whose cut is DRAWN (`topCut.ts`, `isCutTop`: a shirt with a level hem and no straps) the style is one of
+   * `NECK_STYLES` -- these three, and `scoop` and `square` -- and `neckFront` is the height of its rim's lowest point.
    */
-  readonly neckStyle: 'crew' | 'u' | 'v';
+  readonly neckStyle: NeckStyle;
+  /**
+   * A drawn top's BANDS, metres wide (`topCut.ts`: its collar along its neck opening's rim, its sleeves' hems or cuffs,
+   * its hem's); what is not said is a tee's (`TEE_BANDS`), 0 is none there. They are drawn in the top's own fabric, a
+   * touch darker with a seam -- or in an EDGING colour of their own, when its fabric has one (Joshua, 2026-11-14: "for
+   * the collars and sleeve bands, are those colors also adjustable?": the layer's trim, `fabricPanel.ts` `edgingOf`).
+   */
+  readonly band?: Partial<TopBands> | null;
   /**
    * A one-piece's leg openings, cut high (a leotard; see `legCutLine`). Heights are on the trunk: `crotch` where the
    * strip between her legs ends; `side` / `sideBack` the top of the cut over her hips in front and behind. Widths are
@@ -144,6 +155,13 @@ export const LINES = Object.freeze({
  * and at the bottom corners of a neckline inside the straps, a scoop.
  */
 export const ROUND = Object.freeze({ armhole: 0.13, neckline: 0.1 });
+/**
+ * A DRAWN top's NECKLINE until its slider moves it: the height of its rim's lowest point on her trunk, by style
+ * (`topCut.NECK_STYLES`' `depth` under the base of her neck, on her trunk of 0.524 m: MEASURED on her rest shape
+ * 2026-11-14, her neck joint 1.411 m and her hip joints 0.887 m up). GAME TUNING to his sheet of tops.
+ */
+const HER_TRUNK_M = 0.524;
+export const DRAWN_NECK = Object.freeze(Object.fromEntries((Object.keys(NECK_STYLES) as NeckStyle[]).map((k) => [k, +(1 - NECK_STYLES[k].depth / HER_TRUNK_M).toFixed(3)])) as Record<NeckStyle, number>);
 /**
  * A high-cut one-piece's leg openings, drawn to Joshua's own outline on her bare body (2026-10-21: front, back and 45
  * degrees). `across` is in hip-joint spacings out from her midline.
@@ -341,6 +359,8 @@ export function legCutBack(g: NonNullable<CoverageParams['legCut']>, across: num
 }
 /** A shirt: its hem is its LENGTH, level all round (the tank, the tees, the sleeveless shirt). */
 const SHIRT: Partial<CoverageParams> = Object.freeze({ length: DEFAULT_SHIRT_LENGTH });
+/** GAME TUNING (metres) to his sheet: a ringer's collar and sleeve bands (its hem has none), and a long sleeve's cuff. */
+const RINGER_BANDS = Object.freeze({ neck: 0.016, sleeve: 0.016, hem: 0 }), LONG_SLEEVE_BANDS = Object.freeze({ sleeve: 0.05 });
 const NO_RISE = Object.freeze({ front: -9, side: -9, back: -9 });
 const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 /**
@@ -360,13 +380,22 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['shortsBike', 'Bike shorts', 'Shorts', lower(RISES.underBelly, 0.36)],
   ['shortsKnee', 'Knee-length shorts', 'Shorts', lower(RISES.overBelly, 0.44)],
   ['tank', 'Tank top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckTank, -1, { strapIn: 1.0, strap: 0.55, neckBack: 0.9, armhole: LINES.armhole, length: DEFAULT_SHIRT_LENGTH })],
-  ['sleeveless', 'Sleeveless shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckCrew, 0.07, SHIRT)],
-  ['teeShort', 'Short-sleeve T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckCrew, 0.32, SHIRT)],
-  // U- and V-neck tees (Joshua, 2026-10-22): the dip goes down between her breasts, and the cleavage bridge follows it
-  ['teeU', 'U-neck T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckU, 0.32, { ...SHIRT, neckStyle: 'u' })],
-  ['teeV', 'V-neck T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckV, 0.32, { ...SHIRT, neckStyle: 'v' })],
-  ['teeThreeQuarter', '3/4-sleeve T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckCrew, 0.72, SHIRT)],
-  ['teeLong', 'Long-sleeve shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, LINES.neckCrew, 1.0, SHIRT)],
+  // THE DRAWN TOPS (`topCut.ts`; Joshua, 2026-11-14, from his sheet of sixteen tops): shirts with a level hem and no
+  // straps. Their neck opening is a drawn curve, their sleeves' ends and hem flat cuts, each with its band
+  ['sleeveless', 'Sleeveless shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 0.07, SHIRT)],
+  ['teeShort', 'Short-sleeve T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 0.32, SHIRT)],
+  // U- and V-neck tees (Joshua, 2026-10-22): the dip goes down toward her breasts, and the cleavage bridge follows it
+  ['teeU', 'U-neck T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.u, 0.32, { ...SHIRT, neckStyle: 'u' })],
+  ['teeV', 'V-neck T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.v, 0.32, { ...SHIRT, neckStyle: 'v' })],
+  // (his 04: wide on her shoulders and round; his 12: straight down from her shoulders to a level edge)
+  ['teeScoop', 'Scoop-neck T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.scoop, 0.32, { ...SHIRT, neckStyle: 'scoop' })],
+  ['teeSquare', 'Square-neck T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.square, 0.2, { ...SHIRT, neckStyle: 'square' })],
+  // (his 02, a ringer: a collar and sleeve bands and no band at its hem -- what makes it a ringer is their colour, its
+  // fabric's EDGING: the room's own ringer wears navy on cream, `sarahLabTool.ts`)
+  ['teeRinger', 'Ringer T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 0.32, { ...SHIRT, band: RINGER_BANDS })],
+  ['teeThreeQuarter', '3/4-sleeve T-shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 0.72, SHIRT)],
+  // (his 05: a long sleeve ends in a ribbed cuff)
+  ['teeLong', 'Long-sleeve shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 1.0, { ...SHIRT, band: LONG_SLEEVE_BANDS })],
   ['crop', 'Crop top', 'Shirts', upper(LINES.hemCrop, LINES.hemCrop - 0.04, LINES.neckScoop, 0.25)],
   ['maternity', 'Maternity T-shirt', 'Shirts', upper(LINES.hemMaternity, LINES.hemHip + 0.06, LINES.neckCrew, 0.32)],
   ['sportsBra', 'Sports bra', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckScoop - 0.02, -1, { strapIn: 0.85, strap: 0.65, neckBack: 0.86, armhole: LINES.armhole - 0.02 }), 'sportsBra'],
@@ -597,9 +626,54 @@ function layField(f: { readonly path: string; readonly dims: readonly [number, n
   };
 }
 
-/** The coverage of `p` at every vertex of the map, 0 to 1. */
-export function coverage(map: BodyMap, p: CoverageParams): Float32Array {
+/**
+ * A DRAWN top's cut on her (`topCut.ts`), for a template whose top is one (`isCutTop`): its neck opening by its style
+ * and its NECKLINE slider, its sleeves' ends by its SLEEVE, its hem by its LENGTH (the paint stops just short of the
+ * hem itself, as below: the drape's hem band is the edge there). Null for any other template, or with no frame.
+ */
+export function templateCut(map: BodyMap, p: CoverageParams, frame: TopFrame | null): TopCut | null {
+  if (!frame || !isCutTop(p)) return null;
+  return topCut(topCutSpec(p, frame, shirtHem(map, p.length ?? 0) + 0.3 * EDGE), frame);
+}
+/**
+ * GAME TUNING: how much darker a band is drawn in its own fabric (a collar's rib, a turned hem: his sheet's read a
+ * shade under the tee's).
+ */
+export const BAND_SHADE = 0.1;
+/**
+ * What a drawn top's layer is drawn by, beside its cut (`fabricMaterial.FabricLayer.cut`; her mesh's units): its bands'
+ * widths -- along its neck opening's rim, its sleeves' ends and its hem -- and how much darker they are drawn in its own
+ * fabric (`BAND_SHADE`), when they have no colour of their own.
+ */
+export function cutLayer(cut: TopCut): { readonly band: readonly [number, number, number]; readonly shade: number } {
+  const b = cut.spec.bands;
+  return { band: [b.neck, b.sleeve, b.hem], shade: BAND_SHADE };
+}
+/**
+ * A SAVED template's parameters as they are worn now: what the save says, and, for what it does not say -- a field its
+ * template has gained since it was saved (a long sleeve's cuff: `band`) -- the template's own. So a look saved before a
+ * template gained something wears it with that, and everything it did say is as it was saved.
+ */
+export function wornParams(id: string, saved: CoverageParams): CoverageParams {
+  const t = COVERAGE_TEMPLATES.find((x) => x.id === id);
+  return t ? { ...t.params, ...saved } : saved;
+}
+const armSkins = new WeakMap<BodyMap, Float32Array>();
+/** Which of her skin is her arm's, a value a vertex (`bodyRegions.armSkin`), worked out once a map. */
+export function armSkinOf(map: BodyMap): Float32Array {
+  let a = armSkins.get(map);
+  if (!a) { a = new Float32Array(map.region.length); for (let v = 0; v < a.length; v++) a[v] = Number.isFinite(map.arm[v]) ? 1 : 0; armSkins.set(map, a); }
+  return a;
+}
+
+/**
+ * The coverage of `p` at every vertex of the map, 0 to 1. `cut`: a drawn top's cut (`templateCut`), whose line the
+ * values are then laid about (a ramp either side of it: `topCut.cutCoverage`) -- what reads her paint per vertex finds
+ * the garment where the room draws it.
+ */
+export function coverage(map: BodyMap, p: CoverageParams, cut: TopCut | null = null): Float32Array {
   const n = map.region.length, out = new Float32Array(n);
+  if (cut && map.rest && map.rest.length === n * 3) return cutCoverage(cut, map.rest, armSkinOf(map), out);
   if (p.outline === 'bikiniBottom') {
     // how far in from the brief's outline each point of her is (metres), a straight ramp either side of it: the paint's
     // crisp edge falls on the outline itself (see EDGE); none where her body is not the one it was traced on

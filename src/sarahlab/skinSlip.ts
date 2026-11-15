@@ -160,6 +160,77 @@ export interface SlipSource {
 }
 
 /**
+ * HER POINTS' MOVEMENT OFF HER FRAME, in a slip's clothes (2026-11-14): for what hangs from her FRAME and not from her
+ * skin -- a drawn top's neck opening (`topCut.ts`), which sits about her neck and shoulders wherever her bust or her
+ * belly is under it.
+ *
+ * WHAT WAS WRONG (MEASURED 2026-11-14 in the room, the scoop and the U over her bust from its smallest to its largest).
+ * Her slip above is only what is NOT smooth in her points' movement; the smooth part of it a design on her skin rides.
+ * A change of her bust is smooth, and moves the skin of her breasts by a centimetre and more against the skin of her
+ * chest beside them: a neck opening's rim that runs from one onto the other rode it, and bent where it crossed --
+ * the scoop's lower corners stepped about a centimetre at her smallest bust and at her largest, on her skin itself
+ * (her cleavage bridge left off), with the same rim a clean curve at the bust she has at rest.
+ *
+ * WHAT THIS GIVES. A movement is split another way: what her FRAME does -- the one stretch, turn and carry (an affine
+ * map of her rest places) that best fits the movement of her frame's points, the skin her bust and her belly do not
+ * move (`frame`: her back and the base of her neck, for a top) -- and the rest, each point's movement OFF her frame.
+ * Looked up at (its rest place + that), a design drawn on her from her front and her back stays where it was drawn
+ * about her frame: it follows her build, which moves her frame, and not her bust or her belly, which move her skin
+ * under it. With no frame points to fit (fewer than four, or all in one plane) it is the whole movement.
+ *
+ * LINEAR, as her slip is, so the same driver keeps it (`slipDriver`): one for her shapes, one for each morph.
+ */
+export function makeFrameSlip(rest: ArrayLike<number>, inRegion: (x: number, y: number, z: number) => boolean, frame: (v: number) => boolean): SkinSlip {
+  const count = rest.length / 3, list: number[] = [];
+  for (let v = 0; v < count; v++) if (inRegion(rest[v * 3], rest[v * 3 + 1], rest[v * 3 + 2])) list.push(v);
+  const vertices = Uint32Array.from(list), n = vertices.length;
+  // her frame's points among them, their rest places about their own middle (q = x, y, z, 1), and the inverse of the
+  // sum of q qT over them: what turns the sums of q * movement into the fitted map
+  const held: number[] = [];
+  for (let k = 0; k < n; k++) if (frame(vertices[k])) held.push(k);
+  const mid = [0, 0, 0];
+  for (const k of held) for (let c = 0; c < 3; c++) mid[c] += rest[vertices[k] * 3 + c] / held.length;
+  const q = (k: number, c: number) => (c < 3 ? rest[vertices[k] * 3 + c] - mid[c] : 1);
+  const G = new Float64Array(16);
+  for (const k of held) for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) G[a * 4 + b] += q(k, a) * q(k, b);
+  const inverse = held.length >= 4 ? invert4(G) : null;
+  return {
+    vertices, points: n,
+    slip(move, out = new Float32Array(n * 3)) {
+      if (!inverse) { for (let i = 0; i < n * 3; i++) out[i] = move[i]; return out; }
+      // the fitted map, a row a coordinate of the movement: (sum over her frame of q * movement) through the inverse
+      const B = new Float64Array(12), A = new Float64Array(12);
+      for (const k of held) for (let c = 0; c < 3; c++) { const m = move[k * 3 + c]; for (let a = 0; a < 4; a++) B[c * 4 + a] += q(k, a) * m; }
+      for (let c = 0; c < 3; c++) for (let a = 0; a < 4; a++) { let sum = 0; for (let b = 0; b < 4; b++) sum += inverse[a * 4 + b] * B[c * 4 + b]; A[c * 4 + a] = sum; }
+      for (let k = 0; k < n; k++) {
+        const x = q(k, 0), y = q(k, 1), z = q(k, 2);
+        for (let c = 0; c < 3; c++) out[k * 3 + c] = move[k * 3 + c] - (A[c * 4] * x + A[c * 4 + 1] * y + A[c * 4 + 2] * z + A[c * 4 + 3]);
+      }
+      return out;
+    },
+  };
+}
+/** The inverse of a symmetric 4 x 4 (row by row), by elimination with pivoting; null when it has none worth using. */
+function invert4(m: ArrayLike<number>): Float64Array | null {
+  const a = Array.from({ length: 4 }, (_, r) => [m[r * 4], m[r * 4 + 1], m[r * 4 + 2], m[r * 4 + 3], r === 0 ? 1 : 0, r === 1 ? 1 : 0, r === 2 ? 1 : 0, r === 3 ? 1 : 0]);
+  let scale = 0;
+  for (let r = 0; r < 4; r++) scale = Math.max(scale, Math.abs(a[r][r]));
+  for (let c = 0; c < 4; c++) {
+    let p = c;
+    for (let r = c + 1; r < 4; r++) if (Math.abs(a[r][c]) > Math.abs(a[p][c])) p = r;
+    // (her frame's points all in one plane or on one line leave a pivot at nothing beside the others)
+    if (!(Math.abs(a[p][c]) > 1e-9 * scale)) return null;
+    [a[c], a[p]] = [a[p], a[c]];
+    const d = a[c][c];
+    for (let k = 0; k < 8; k++) a[c][k] /= d;
+    for (let r = 0; r < 4; r++) if (r !== c) { const f = a[r][c]; if (f !== 0) for (let k = 0; k < 8; k++) a[r][k] -= f * a[c][k]; }
+  }
+  const out = new Float64Array(16);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) out[r * 4 + c] = a[r][4 + c];
+  return out;
+}
+
+/**
  * What is laid on her shapes beside them, for `SlipSource.pushed` (written into `out`, three numbers a vertex; null when
  * there is nothing): `push`, a movement added to her shapes point by point before her bones (her belly's push for her
  * baby), LESS what of her shape is her POSE's -- each of `posed` a shape field laid on her by how she is posed (the

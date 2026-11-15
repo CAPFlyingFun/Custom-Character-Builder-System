@@ -6,7 +6,7 @@
  * with what is laid on her shapes beside them: her belly's push counted, what of her shape is her pose's taken off.
  */
 import { describe, expect, it } from 'vitest';
-import { SLIP_MORPH_FLOOR, SLIP_STEP, besideShapes, makeSkinSlip, slipDriver, type SlipSource } from '../src/sarahlab/skinSlip';
+import { SLIP_MORPH_FLOOR, SLIP_STEP, besideShapes, makeFrameSlip, makeSkinSlip, slipDriver, type SlipSource } from '../src/sarahlab/skinSlip';
 
 /** A repeatable 0..1 (mulberry32). */
 function random(seed: number): () => number {
@@ -194,5 +194,85 @@ describe('her slip kept as she changes (slipDriver)', () => {
     // nothing laid beside her shapes: nothing to give; a field at no weight is none
     expect(besideShapes(new Float32Array(n * 3), null, [])).toBeNull();
     expect(besideShapes(new Float32Array(n * 3), null, [{ index, pos: w.slides, weight: 0 }])).toBeNull();
+  });
+});
+
+/**
+ * HER POINTS' MOVEMENT OFF HER FRAME (`makeFrameSlip`, 2026-11-14): what a drawn top's neck opening is looked up by. A
+ * trunk to try it on: a tube of skin 30 cm across and 20 deep, 40 cm tall, its back half her frame.
+ */
+function trunk() {
+  const rest: number[] = [], back: boolean[] = [];
+  for (let j = 0; j <= 40; j++) for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2;
+    rest.push(0.15 * Math.sin(a), 1 + j * 0.01, 0.1 * Math.cos(a)); back.push(Math.cos(a) < -0.2);
+  }
+  return { rest: Float32Array.from(rest), back, count: back.length };
+}
+/** A bust: her front's points about (0, 1.25) pushed out and down, most at its middle, none on her back. */
+const bust = (t: ReturnType<typeof trunk>, out = 0.04, down = 0.012) => Float32Array.from({ length: t.count * 3 }, (_, i) => {
+  const v = Math.floor(i / 3), x = t.rest[v * 3], y = t.rest[v * 3 + 1], z = t.rest[v * 3 + 2];
+  const b = z > 0 ? Math.exp(-(x * x + (y - 1.25) ** 2) / (2 * 0.06 ** 2)) : 0;
+  return i % 3 === 2 ? out * b : i % 3 === 1 ? -down * b : 0;
+});
+/** A build: all of her a tenth taller about y = 1, a twentieth wider, turned a little and carried. */
+const build = (t: ReturnType<typeof trunk>) => Float32Array.from({ length: t.count * 3 }, (_, i) => {
+  const v = Math.floor(i / 3), x = t.rest[v * 3], y = t.rest[v * 3 + 1], z = t.rest[v * 3 + 2];
+  return i % 3 === 0 ? 0.05 * x + 0.02 * z + 0.003 : i % 3 === 1 ? 0.1 * (y - 1) - 0.004 : -0.02 * x + 0.001;
+});
+const longest = (a: ArrayLike<number>) => { let m = 0; for (let i = 0; i < a.length; i += 3) m = Math.max(m, Math.hypot(a[i], a[i + 1], a[i + 2])); return m; };
+
+describe('her points\' movement off her frame (2026-11-14)', () => {
+  it('is none of what her frame does: her build is ridden, however far it moves her', () => {
+    const t = trunk(), s = makeFrameSlip(t.rest, () => true, (v) => t.back[v]);
+    expect(s.vertices.length).toBe(t.count);
+    const move = build(t);
+    expect(longest(move)).toBeGreaterThan(0.03);
+    // (her front is not her frame's, and moves as her frame's map says: no movement off it)
+    expect(longest(s.slip(move))).toBeLessThan(1e-7);
+  });
+
+  it('is all of what her bust does: her frame does not move with it', () => {
+    const t = trunk(), s = makeFrameSlip(t.rest, () => true, (v) => t.back[v]), move = bust(t), slip = s.slip(move);
+    expect(longest(move)).toBeGreaterThan(0.04);
+    for (let i = 0; i < move.length; i++) expect(slip[i]).toBeCloseTo(move[i], 9);
+    // so a place on her bust is looked up where it stands now: her rest place and all of its movement
+  });
+
+  it('tells the two apart when she has both, and adds', () => {
+    const t = trunk(), s = makeFrameSlip(t.rest, () => true, (v) => t.back[v]), a = bust(t), b = build(t);
+    const both = s.slip(Float32Array.from(a, (x, i) => x + b[i])), alone = s.slip(a);
+    for (let i = 0; i < a.length; i++) expect(both[i]).toBeCloseTo(alone[i], 7);
+    // (a new array each time unless one is given to write into)
+    const out = new Float32Array(a.length);
+    expect(s.slip(a, out)).toBe(out);
+    expect(s.slip(a)).not.toBe(s.slip(a));
+  });
+
+  it('keeps to its region, and with no frame to fit is the whole movement', () => {
+    const t = trunk(), upper = (_x: number, y: number) => y >= 1.2;
+    const s = makeFrameSlip(t.rest, upper, (v) => t.back[v]);
+    expect(Array.from(s.vertices).every((v) => t.rest[v * 3 + 1] >= 1.2)).toBe(true);
+    expect(s.vertices.length).toBe(21 * 48);
+    // no frame points at all, three of them, or all of them on one line: nothing to fit
+    const move = build(t);
+    for (const frame of [() => false, (v: number) => v < 3, (v: number) => v % 48 === 0]) {
+      const whole = makeFrameSlip(t.rest, () => true, frame), slip = whole.slip(move);
+      for (let i = 0; i < move.length; i += 97) expect(slip[i]).toBeCloseTo(move[i], 9);
+    }
+  });
+
+  it('is kept by the same driver as her slip: her shapes\' and each morph\'s by its weight', () => {
+    const t = trunk(), s = makeFrameSlip(t.rest, () => true, (v) => t.back[v]);
+    const grown = bust(t), taller = build(t), shaped = Float32Array.from(t.rest, (x, i) => x + taller[i]);
+    const weights = [0.5];
+    const driver = slipDriver(s, () => ({ rest: t.rest, shaped, pushed: null, shapedVersion: 1, weights, morph: (_k, v, out) => { out[0] = grown[v * 3]; out[1] = grown[v * 3 + 1]; out[2] = grown[v * 3 + 2]; } }));
+    const target = new Float32Array(t.count * 3);
+    expect(driver.update(target)).toBe(true);
+    // her shapes are her build: ridden. Her morph is her bust at half: half of its movement, whole
+    for (let i = 0; i < target.length; i += 31) expect(target[i]).toBeCloseTo(0.5 * grown[i], 6);
+    weights[0] = 1;
+    expect(driver.update(target)).toBe(true);
+    for (let i = 0; i < target.length; i += 31) expect(target[i]).toBeCloseTo(grown[i], 6);
   });
 });

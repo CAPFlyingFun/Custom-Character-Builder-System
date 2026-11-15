@@ -6,23 +6,46 @@
  */
 import { describe, expect, it } from 'vitest';
 import { existsSync, statSync } from 'node:fs';
+import sharp from 'sharp';
+import { tintPixels } from '../src/sarahlab/fabricTint';
 import {
-  DEFAULT_CHOICE, FABRIC_COLOURS, FABRIC_FAMILIES, PAINT_FILLS, base64ToBytes, bytesToBase64, colourName, matchSet, opacityOf, samePick, setMatches, swatchRect, tileUnits, trimPick,
+  DEFAULT_CHOICE, FABRIC_COLOURS, FABRIC_FAMILIES, PAINT_FILLS, SWATCH_HEX, base64ToBytes, bytesToBase64, colourName, matchSet, opacityOf, samePick, setMatches, swatchRect, tileUnits, trimPick,
   type FabricChoice, type FabricSet,
 } from '../src/sarahlab/fabricLibrary';
 import { PAINT_LAYER_COUNT, clearLayer, dab, fillLayer, packLayer, unpackLayer, vertexNeighbours } from '../src/sarahlab/bodyPaint';
 import { BIKINI_EDGING, BIKINI_EDGING_FABRIC, BIKINI_FABRIC, BIKINI_RED, OUTFITS, coverMask } from '../src/sarahlab/sarahLabTool';
 
 describe('the fabric pack', () => {
-  it('serves all ten atlases at full resolution, a plain and a trim for each of five families', () => {
-    expect(FABRIC_FAMILIES.map((f) => f.id)).toEqual(['jersey', 'athletic', 'sweater', 'ribbed', 'pantyhose']);
+  it('serves all ten of the pack\'s atlases at full resolution, a plain and a trim for each of its five families', () => {
+    expect(FABRIC_FAMILIES.map((f) => f.id)).toEqual(['jersey', 'athletic', 'sweater', 'ribbed', 'pantyhose', 'flat']);
     for (const f of FABRIC_FAMILIES) for (const path of [f.plain, f.trim]) {
       expect(existsSync(`public/${path}`), path).toBe(true);
-      expect(statSync(`public/${path}`).size, `${path} is the pack's full-size file`).toBeGreaterThan(900_000);
+      if (f.id !== 'flat') expect(statSync(`public/${path}`).size, `${path} is the pack's full-size file`).toBeGreaterThan(900_000);
     }
     expect(FABRIC_COLOURS).toHaveLength(16);
     expect(colourName('pantyhose', 12)).toBe('Mint');
     expect(colourName('jersey', 11)).toBe('Olive');
+  });
+
+  it('has a sixth family with no weave, FLAT: its atlases are its sixteen colours and nothing else (Joshua, 2026-11-14)', async () => {
+    // (`scripts/makeFlatFabric.mjs` draws them from SWATCH_HEX.flat: a colour changed there and not drawn again fails here)
+    const flat = FABRIC_FAMILIES.find((f) => f.id === 'flat')!, hex = SWATCH_HEX.flat;
+    expect(hex).toHaveLength(16);
+    expect(flat.sheer).toBe(false);
+    for (const [path, layout] of [[flat.plain, 'grid'], [flat.trim, 'strips']] as const) {
+      const { data, info } = await sharp(`public/${path}`).raw().toBuffer({ resolveWithObject: true });
+      expect(info.width).toBe(info.height);
+      for (let i = 0; i < 16; i++) {
+        // every pixel of the swatch as the room cuts it is exactly its colour
+        const r = swatchRect(layout, i, info.width), seen = new Set<string>();
+        for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) { const o = (y * info.width + x) * info.channels; seen.add(`#${[data[o], data[o + 1], data[o + 2]].map((b) => b.toString(16).padStart(2, '0')).join('')}`); }
+        expect([...seen], `${path} colour ${i}`).toEqual([hex[i]]);
+      }
+    }
+    // a custom colour dyes its White: with no weave to keep, the colour picked is the colour worn, to the byte
+    const white = hex[0].slice(1).match(/../g)!.map((h) => parseInt(h, 16)), px = Uint8ClampedArray.from([...white, 255, ...white, 255]);
+    tintPixels(px, '#f06a9a', hex[0]);
+    expect(Array.from(px)).toEqual([0xf0, 0x6a, 0x9a, 255, 0xf0, 0x6a, 0x9a, 255]);
   });
 
   it('cuts a swatch from inside its cell, or the knit band from the middle of its strip', () => {

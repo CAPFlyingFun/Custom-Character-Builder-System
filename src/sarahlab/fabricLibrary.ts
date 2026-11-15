@@ -8,13 +8,21 @@
  * order. The pack's two hosiery files were the other way round (09 "plain" was the strips, 10 "trim" the grid); they
  * are stored here by what they are, so `pantyhose-plain.jpg` is the grid.
  *
+ * A SIXTH FAMILY IS MADE HERE, NOT THE PACK'S: FLAT, a colour with no weave at all (Joshua, 2026-11-14, of the custom
+ * colour picker, which dyes a knit: "we do have a solid custom color picker option set up under all the textures, or
+ * does it just alter the texture color?" -- it alters the texture's; of a flat one beside the knits: "go ahead and add
+ * that in since I thought it was"). Its two atlases are small pictures of its sixteen colours and nothing else, drawn
+ * from `SWATCH_HEX.flat` by `scripts/makeFlatFabric.mjs`: every other part of the room takes it as a family like the
+ * rest, and a custom colour dyes its White to exactly the colour picked.
+ *
  * Pure data and arithmetic: `fabricMaterial.ts` puts a swatch on a material, `fabricPanel.ts` is the editor.
  */
 
 import type { LayerDetail } from './detailMaterials';
 import type { CoverageParams } from './paintTemplates';
+import { hexToLinear } from './fabricTint';
 export type FabricLayout = 'grid' | 'strips';
-export type FabricFamilyId = 'jersey' | 'athletic' | 'sweater' | 'ribbed' | 'pantyhose';
+export type FabricFamilyId = 'jersey' | 'athletic' | 'sweater' | 'ribbed' | 'pantyhose' | 'flat';
 
 export interface FabricFamily {
   readonly id: FabricFamilyId;
@@ -43,6 +51,8 @@ export const FABRIC_FAMILIES: readonly FabricFamily[] = Object.freeze(([
   { id: 'sweater', name: 'Sweater', plain: 'fabrics/sweater-plain.jpg', trim: 'fabrics/sweater-trim.jpg', tileCm: 10, sheer: false, roughness: 0.97, stretch: 0.15 },
   { id: 'ribbed', name: 'Ribbed', plain: 'fabrics/ribbed-plain.jpg', trim: 'fabrics/ribbed-trim.jpg', tileCm: 8, sheer: false, roughness: 0.9, stretch: 0.75 },
   { id: 'pantyhose', name: 'Pantyhose', plain: 'fabrics/pantyhose-plain.jpg', trim: 'fabrics/pantyhose-trim.jpg', tileCm: 3, sheer: true, roughness: 0.6, stretch: 1 },
+  // (no weave: its tile's size shows nothing. Matte as a cotton jersey is, and gives as one does: GAME TUNING)
+  { id: 'flat', name: 'Flat', plain: 'fabrics/flat-plain.png', trim: 'fabrics/flat-trim.png', tileCm: 3, sheer: false, roughness: 0.92, stretch: 0.5 },
 ] as FabricFamily[]).map((f) => Object.freeze(f)));
 
 export const fabricFamily = (id: FabricFamilyId): FabricFamily => FABRIC_FAMILIES.find((f) => f.id === id)!;
@@ -66,6 +76,9 @@ export const SWATCH_HEX: Readonly<Record<FabricFamilyId, readonly string[]>> = O
   sweater: Object.freeze(['#dfdedc', '#a0a3aa', '#66656e', '#2d2f37', '#18191f', '#d2b291', '#623823', '#b4152b', '#c40909', '#e85810', '#eec415', '#466e26', '#0b7e3a', '#0994b3', '#1231b9', '#5e10b6']),
   ribbed: Object.freeze(['#e4e3e3', '#9c9ca3', '#56545b', '#2a292f', '#1a191d', '#deb88b', '#693722', '#c3182c', '#ca0b0a', '#e85210', '#efcf19', '#456e28', '#148d46', '#0babcf', '#1631bc', '#5f11bd']),
   pantyhose: Object.freeze(['#ece5df', '#acaab0', '#6c6b70', '#323035', '#141416', '#dea285', '#7c5248', '#ef2a7b', '#d91914', '#f26411', '#f5d217', '#0e8551', '#65dfb0', '#11b8f1', '#2431e5', '#5c21dd']),
+  // FLAT's are not measured: they ARE its swatches (`scripts/makeFlatFabric.mjs` draws its atlases from this line), the
+  // pack's sixteen colours in its order, each a plain clear colour. GAME TUNING.
+  flat: Object.freeze(['#f2f2f2', '#b0b0b6', '#6c6c74', '#34343a', '#121216', '#e6cfa8', '#5e3420', '#f06a9a', '#d81e1e', '#f0641a', '#f2d21a', '#56702a', '#1e8e46', '#16a6d2', '#1e3ccc', '#5e1ec8']),
 });
 
 export interface Rect { readonly x: number; readonly y: number; readonly w: number; readonly h: number }
@@ -111,6 +124,25 @@ export const opacityOf = (choice: FabricChoice): number => choice.opacity ?? (ch
 /** The trim a choice dresses the edging in: the fabric's own colour from the family's trim atlas while matched. */
 export function trimPick(choice: FabricChoice): FabricPick | null {
   return choice.match ? choice.fabric : choice.trim;
+}
+
+/** A pick as one colour: its custom colour, or its swatch's (`SWATCH_HEX`). */
+export const pickHex = (pick: FabricPick): string => pick.tint ?? SWATCH_HEX[pick.family][Math.max(0, Math.min(15, Math.floor(pick.colour)))];
+
+/**
+ * A DRAWN TOP'S EDGING (Joshua, 2026-11-14: "for the collars and sleeve bands, are those colors also adjustable? So
+ * for example can pick a solid pink shirt with solid red color edging"): its bands -- its collar and its sleeve bands
+ * or cuffs (a tee has no band at its hem: `topCut.TEE_BANDS`) -- in a colour of their own, when its fabric's trim does not MATCH (one colour for all of a top's
+ * bands; with MATCH, as every look saved before this is, they are the top's own fabric a touch darker). What the
+ * shader draws them by (`fabricMaterial.FabricLayer.cut.edging`): `colour`, the trim's in linear light; `knit`, one
+ * over the top's own fabric's average light, so the colour is laid on the top's own knit -- or 0, flat, for a trim
+ * picked from the FLAT family. Null: no colour of their own.
+ */
+export function edgingOf(choice: FabricChoice): { readonly colour: readonly [number, number, number]; readonly knit: number } | null {
+  if (choice.match || !choice.trim || !choice.fabric) return null;
+  const base = hexToLinear(pickHex(choice.fabric)), light = 0.2126 * base[0] + 0.7152 * base[1] + 0.0722 * base[2];
+  // (a fabric as dark as the pack's blacks still has a knit to keep: its light is held off nothing)
+  return { colour: hexToLinear(pickHex(choice.trim)), knit: choice.trim.family === 'flat' ? 0 : 1 / Math.max(light, 0.002) };
 }
 
 /** Whether two picks are one fabric: the same family, colour and dye (two of none are; one of none and a fabric are not). */

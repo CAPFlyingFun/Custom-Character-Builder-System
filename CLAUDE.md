@@ -114,6 +114,119 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - A drawing sheet's marks are carried back to her skin by its corner squares and `sheets.json` (the sheets' script),
   each to its pixel's own place on her legs-apart skin, as the room looks that pixel up.
 
+## A painted top, drawn
+
+- **A shirt's cut is DRAWN, not painted per vertex** (Joshua, 2026-11-14: "fix the painted clothes and add smooth edges,
+  shirt collars/sleeves like how you did the bikini bottom"; of his sheet of sixteen tops: "Hopefully these will help to
+  get started and have more than our list"). A top with a neck opening, a level hem and no straps (`topCut.ts`
+  `isCutTop`: the sleeveless shirt, the crew, U, V, scoop and square tees, the ringer, the 3/4 and the long sleeve) is
+  one paint layer whose edge the shader draws for each pixel (`fabricMaterial.ts` `FabricLayer.cut`):
+  - its NECK OPENING's rim is two drawings, from her front and from her back, on her rest shape: a picture about the
+    base of her neck, 1.25 mm a cell, holding how far inside the rim each place is (to 30 mm). A pixel reads her front's
+    or her back's by its depth against her middle depth, the two blended across 6 mm; on top of her shoulders they
+    agree to a few millimetres (MEASURED, `tests/topCut.test.ts`). `NECK_STYLES` are his sheet's, and a style's
+    NECKLINE until it is moved is his sheet's depth on her (`DRAWN_NECK`: crew 0.966 of her trunk, U 0.809, V 0.819,
+    scoop 0.838, square 0.847 -- the crew was 0.94, the U 0.76 and the V 0.72 before; GAME TUNING);
+  - its SLEEVES end at a plane square to the bone the sleeve ends on (`sleevePlane`), CARRIED BY THAT BONE each frame and
+    measured on her posed skin (`setFabricCutArms`): a flat ring round her arm in any pose. Looked up on her rest
+    skin, the end ran ragged toward her armpit, where her arm's skin and her trunk's share points (MEASURED in her
+    T-pose, a ringer's band);
+  - its HEM is level, at its LENGTH (the drape's band is the edge there).
+- **A SAVED LOOK KEEPS ITS NUMBERS** (`paintTemplates.wornParams`): a tee saved with NECKLINE 94% opens at 94% (his
+  three characters of 2026-11-14 do), and a field a template has gained since (a long sleeve's cuff) is the
+  template's. Only a style picked afresh starts at his sheet's depth.
+- **Her mesh's units**: her rest places are 1.11142 units a metre (`rig.bindScale`, the panel's `unitsPerMetre` hook);
+  the cut is laid in them. FOUND 2026-11-14 AND LEFT: the panel's older `unitsPerCm` reads her mesh's node and says 100
+  a metre, so a fabric's weave and a brush's size are a tenth under their numbers -- they were approved by eye as
+  they are; changing it changes every fabric on her.
+- **BANDS** (`TEE_BANDS`: collar 16 mm, sleeve hem 18; a ringer 16 and 16; a long sleeve's cuff 5 cm; GAME TUNING to
+  his sheet): inside the cut's line, the top's own fabric a tenth darker with a seam. Each edge's band is shaded by ITS
+  OWN distance: taken from the nearer of the neck's and the sleeve's, the shade's edge was drawn where the nearer one
+  changed -- a dashed line 3 cm from the rim all round her collar (MEASURED, the ringer).
+  NONE AT A HEM YET. A shirt's hem is its drape's hem band (`tunicDrape.ts`): a sheet in the shirt's own fabric, solid
+  over the last 18 mm above the hem, which covers her skin's paint there. A band drawn on her skin at her hem (20 mm,
+  his sheet's stitched hem) showed only where that sheet dips under her skin -- MEASURED 2026-11-14 in the room: a grey
+  patch at her side in the top's own fabric, and, a pink tee with a red edging, chips of red at her side and hairlines
+  of it round her. To draw a stitched hem the drape's band has to draw it as well (a template may still ask for one:
+  `band.hem`).
+- **EDGING: one colour of its own for a top's bands, or MATCH** (Joshua, 2026-11-14: "for the collars and sleeve bands,
+  are those colors also adjustable? So for example can pick a solid pink shirt with solid red color edging"). A drawn
+  top's layer shows the editor's trim controls as EDGING: MATCH (the default: every look saved before wears its bands
+  as it did) or a colour -- any swatch or the picker -- for its collar and its sleeve bands or cuffs together
+  (`fabricLibrary.edgingOf`, kept as the layer's `match` / `trim`). The shader lays that colour on the top's
+  own knit (each pixel's light over the fabric's average), or flat when the trim is FLAT's. The room's ringer is a tee
+  with his navy for its edging: one layer (it was two for an afternoon, bands under fill).
+- **FLAT, a sixth fabric family with no weave** (Joshua, 2026-11-14, of the custom colour picker, which dyes a knit: "we
+  do have a solid custom color picker option set up under all the textures, or does it just alter the texture color?"
+  -- it alters the texture's; of a flat one: "go ahead and add that in since I thought it was"). Its two atlases are
+  small pictures of its sixteen colours (`SWATCH_HEX.flat`, drawn by `scripts/makeFlatFabric.mjs`: run it again after
+  changing one); a custom colour dyes its White to exactly the colour picked.
+- **ITS NECK OPENING HANGS FROM HER FRAME, NOT FROM HER BUST'S SKIN** (`skinSlip.makeFrameSlip`, `CUT_FRAME_M`). What the
+  shader adds to a pixel's rest place for the drawings' look-up is her points' movement OFF HER FRAME: all that her
+  shapes and morphs move a point, less the one stretch, turn and carry that best fits what they do to her frame -- her
+  back down to 22 cm under the base of her neck, and the base of her neck all round. So the rim stays where it was
+  drawn about her neck and shoulders: it follows her build, and not her bust or her belly under it. (Her pose's and
+  her motion's shapes, `MOTION_SHAPES`, are left out: it rides them as it rides her bones.) MEASURED 2026-11-14 with
+  it riding her skin instead (her slip alone taken off, as a designed garment's is): a change of her bust moves her
+  breasts' skin a centimetre and more against her chest's beside it, and the scoop's lower corners stepped about a
+  centimetre at her smallest bust and at her largest -- on her skin itself, her cleavage bridge left off -- and the U
+  was squeezed to a funnel at her largest.
+- **HER CLEAVAGE BRIDGE UNDER A DRAWN TOP** (Joshua, 2026-11-14: "need to just make sure the bridge skin between the
+  breasts need to be able to work from the smallest to maximum size the sliders allow"; `cleavageBridge.ts`). The
+  sheet spans all of her cleavage and is cut by the top's rim pixel by pixel, as her skin is: a V keeps its point
+  between her breasts (the level-cut sheet gave it a flat bar as wide as her cleavage). Each of its points has a rest
+  place (its weave's) and a slip of its own (the rim's look-up), and WHEREVER IT LIES ON HER SKIN IT SAYS WHAT HER SKIN
+  SAYS: under each column of each slice the point of her skin seen there from her front (`skinSeen`, `spots`).
+  - At its top, where it goes back onto her, and at its bottom, where it grows out of her cleavage, it lies on those
+    points themselves -- posed with her each frame, lit as her skin faces there -- and rises from them straight forward
+    to the span, so it is never behind the skin that is seen.
+  - Beside its ends, and all of a small bust's sheet, its rest place and slip are her skin's own while it is within
+    `OWN_NEAR` of her (4 mm: as far as her skin behind it keeps its paint, which shows through the opening the rim
+    cuts in the sheet) and ease into the even spread between its ends by `OWN_FAR`.
+  - A top whose cut is not drawn (the tank, the crop, the sports bra...) keeps the level-cut sheet as it was.
+  MEASURED in the room 2026-11-14 (`paintCutState(true)`'s junction: at each of the sheet's points, how far the place
+  it looks the rim up at is from her skin's own there, as seen from her front), her bust at its smallest (SIZE -100),
+  as the room opens her, at SIZE +100, and at her largest (her belly at 200%, SIZE +100, MILK 100):
+  - its top row and its bottom row lie on her skin at all four (0.0 mm apart, 0.0 off; her largest's bottom 0.1 and
+    0.4), and its ends say what her skin says to 0.1 mm;
+  - wherever it is seen within 4.4 mm of her skin: within 0.3, 0.4, 0.2 and 0.3 mm of her skin's own place;
+  - anywhere it is seen at all, however far it stands off her (up to 29 mm): within 0.4, 0.4, 0.2 and 0.9 mm -- the
+    rim is looked up where a point stands about her frame, which a point of the sheet and the skin behind it share;
+  - of its 605 to 616 points that are seen, 5, 1, 17 and 15 are behind her skin by more than 0.3 mm (3.0 mm at the
+    most: its ends, evened from slice to slice, sit a little inside her breasts' fronts).
+  A READING MOVES A FEW TENTHS OF A MILLIMETRE WITH HER BREATH AND HER SOFT BODY (the spans are chosen when her shape
+  changes; she goes on breathing). Read again on the code as committed, straight after each change of bust: within 4.4 mm
+  of her 0.6, 0.7, 0.5 and 0.6 mm, anywhere 0.7, 0.7, 0.5 and 0.9; and at the bust the room opens her with, three
+  readings 2 and 3 seconds of her clock apart: 0.2, 0.2 and 0.1 mm, anywhere 0.4, 0.2 and 0.3.
+  BEFORE, the same day, measured the same way as each part went in: with its rest places spread evenly between its ends
+  and her slip alone taken off, where it lay on her beside its ends (within 1.5 mm, solid) it was 3.8 mm off her
+  skin's own place at her smallest bust, 0.3 as the room opens her, 5.9 at SIZE +100 and 11.9 at her largest, and 10.1,
+  1.6, 11.0 and 16.4 mm anywhere; a first try at its top (her skin's rest places read off a level line at each
+  slice's height) stepped the V's point 2 to 3 mm at the bust the room opens her with; and at its bottom, on the two
+  straight runs, it came out through the undersides of a large bust from 2.8 mm behind her skin to 9.8 in front in
+  one row -- the dark patch under each breast, gone from a drawn top now (pictured at SIZE +100 and at her largest).
+- After anything changes the cut, its look-up, the bridge or her frame: `tests/topCut.test.ts`,
+  `tests/cleavageBridge.test.ts`, `tests/skinSlip.test.ts`, `tests/fabricEdging.test.ts`,
+  `tests/sarahLabFabric.test.ts`; then the room: the junction at those four busts, and the V, the scoop and the U
+  pictured over each (`paintBridgeOff` leaves the bridge off, to tell what is the sheet's and what her skin's).
+- **PICTURE A NECK OPENING WITH HER ARMS DOWN AS WELL** (STAND, then the ARMS slider at 0: T-POSE sets it to 90 and
+  STAND leaves it there). In her T-pose its corners by her shoulders ride her raised arms' skin, as paint does.
+  MEASURED 2026-11-14, the scoop: in her T-pose its corners kinked 1 to 2 mm at the bust the room opens her with, and
+  stepped 6 mm by 2 where they cross the crease between a large bust and her shoulder (SIZE +100, and her largest);
+  with her arms down it is round and smooth at all three.
+- A PIECE ADDED BY HAND STAYS ON under the next outfit put on (`wearOutfit` clears only what the last outfit laid): a
+  probe that adds one pictures it last.
+- NOT DONE: the other ten of his sixteen (tank, sports bra, raglan, henley, polo, mock neck, camisole, boxy crop,
+  wrap, button-up); the level-cut tops' sheet, which still shows the patch under a large bust; a band at a hem
+  (above); and, seen from her side at her largest bust, a hairline and a sliver of her skin 3 cm long where the
+  scoop's rim passes from the sheet onto her near breast (the sheet stands up to 44 mm off her there; from her front
+  the two rims agree to 0.9 mm).
+- FOUND 2026-11-14 AND NOT YET FIXED, both on v0.9.23 as well (pictured side by side with it): at her side, just above
+  a painted shirt's hem, two chips of what is under the shirt (her leggings, or her skin), each about 35 mm by 11 and
+  straight-sided, as whole triangles of her skin are (why her skin there is neither painted nor covered by the hem
+  band's sheet is not yet measured); and under a bust at SIZE +100 the line where her breasts meet her chest is
+  frayed (her T-pose on v0.9.23; with her arms down on this build).
+
 ## Her opening's area and her skin round it
 
 - Her opening's rebuilt area (`vulvaMesh.ts`) is drawn in place of her own skin there, and every point of its edge is

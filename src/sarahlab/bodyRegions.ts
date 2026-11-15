@@ -160,6 +160,13 @@ export interface BodyMap {
   readonly facing: number;
   /** The vertex at each vertex's mirror image across her midline (for MIRROR); -1 where none was found. */
   readonly mirror: Int32Array;
+  /**
+   * What the map was made on, for what is laid on her by PLACE and not by vertex (a top's cut: `topCut.ts`): her
+   * vertices at rest (three numbers each) and her named joints, in the map's own space. Optional: a map made by hand
+   * (a test's) has none.
+   */
+  readonly rest?: ArrayLike<number>;
+  readonly joints?: Readonly<Record<HumanJointName, readonly [number, number, number]>>;
 }
 
 const LIMB_OF: Partial<Record<HumanJointName, 'armL' | 'armR' | 'legL' | 'legR' | 'head'>> = {
@@ -293,7 +300,19 @@ export function mapBody(input: BodyMapInput): BodyMap {
     }
     region[v] = num.get(id)!;
   }
-  return { region, trunk, leg, arm, side, front, across, collar, forward, lateral, around, trunkLength: trunkLen, neckRadius: Number.isFinite(neckRadius) && neckRadius > 0 ? neckRadius : 1, hipSpan, sideFacing, upFacing, legAround, facing, mirror };
+  return { region, trunk, leg, arm, side, front, across, collar, forward, lateral, around, trunkLength: trunkLen, neckRadius: Number.isFinite(neckRadius) && neckRadius > 0 ? neckRadius : 1, hipSpan, sideFacing, upFacing, legAround, facing, mirror, rest: P, joints: J };
+}
+
+/**
+ * Which of her skin is her ARM's, a value a vertex (1 her arm's, 0 the rest of her): her shoulder, her upper arm, her
+ * forearm and her hand -- the skin the bone that weighs most on it, followed up her skeleton, gives to an arm (as her
+ * regions are told, with her two sides made the same). What a top's cut asks: a sleeve's end cuts her arm's skin, a hem
+ * the rest of her (`topCut.ts`).
+ */
+export function armSkin(map: BodyMap): Float32Array {
+  const out = new Float32Array(map.region.length);
+  for (let v = 0; v < out.length; v++) out[v] = Number.isFinite(map.arm[v]) ? 1 : 0;
+  return out;
 }
 
 /** Each vertex's partner across the midline x = `mid`: the nearest vertex to its reflection, by a spatial hash. */

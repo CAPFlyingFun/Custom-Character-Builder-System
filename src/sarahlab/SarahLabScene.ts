@@ -3532,6 +3532,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       worn: () => wornGarments(outfit, garments).map(g => ({ name: g, label: GARMENT_LABEL[g] ?? g, trim: skinned.some(m => (Array.isArray(m.material) ? m.material : [m.material]).some(x => x.name === `${g}Trim`)) })),
       rest: (mesh) => shaped.find(x => x.mesh === mesh)?.fields ?? null,
       unitsPerCm: (mesh) => { mesh.getWorldScale(scaleOf); return (M / 100) / (scaleOf.x || 1); },
+      // (her rest shape's own units a metre: her skeleton's say, not her node's)
+      unitsPerMetre: (mesh) => { if (rig && rig.bindScale > 0) return rig.bindScale; mesh.getWorldScale(scaleOf); return M / (scaleOf.x || 1); },
+      // (how one of her arm's bones carries a place of her rest shape, in her mesh's own space: as her skinning does)
+      boneCarry: (mesh, bone, out) => {
+        const sk = mesh as THREE.SkinnedMesh, i = measure?.joints[bone];
+        if (!sk.isSkinnedMesh || i === undefined || !sk.skeleton?.bones[i]) return null;
+        return out.copy(sk.bindMatrixInverse).multiply(sk.skeleton.bones[i].matrixWorld).multiply(sk.skeleton.boneInverses[i]).multiply(sk.bindMatrix);
+      },
       loadImage: (path) => assets.loadTexture(path).then(t => { const image = (t?.image ?? null) as (CanvasImageSource & { width: number; height: number }) | null; t?.dispose(); return image; }),
       garmentsShown: (which) => { garmentView = which; applyLook(); refresh(); },
       view: () => ({ camera, ...ctx.renderer.size() }),
@@ -10140,6 +10148,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (a probe's) what she has on as a save would keep it -- her garments' fabrics, and each paint layer's fabric and
         // style -- and whether a set's two halves are kept in one fabric (the editor's TOP + BOTTOM MATCH)
         wornFabrics: () => { const c = fabric?.clothes(); return c && fabric ? { match: fabric.setMatched(), garments: c.garments, layers: c.layers.map((l) => (l ? { fabric: l.choice.fabric, stitch: l.choice.stitch, template: l.template?.id ?? null } : null)) } : null; },
+        // (a probe's) the drawn top she wears (topCut.ts): her measures, its cut, her slip about her neck, her bridge under it
+        paintCutState: (detail?: boolean) => fabric?.cutState(!!detail) ?? null,
+        paintBridgeOff: (off: boolean) => { fabric?.bridgeLeftOff(!!off); return !!off; },
         paintFieldState: () => { const b = bodyOf()?.mesh; if (!b) return null; const m = (Array.isArray(b.material) ? b.material[0] : b.material) as THREE.Material, g = b.geometry; const areaSlip = vulva?.mesh.geometry.getAttribute('fabricSlip') as THREE.BufferAttribute | undefined; let areaLongest = 0; if (areaSlip) for (let i = 0; i < areaSlip.count; i++) areaLongest = Math.max(areaLongest, Math.hypot(areaSlip.getX(i), areaSlip.getY(i), areaSlip.getZ(i)));
           return { field: fabricFieldState(m), slip: fabric?.slipState() ?? null, area: vulva ? { visible: vulva.mesh.visible, points: vulva.mesh.geometry.getAttribute('position').count, slip: !!areaSlip, longest: areaLongest, attributes: Object.keys(vulva.mesh.geometry.attributes).length } : null, attributes: Object.keys(g.attributes).length, shaderAttributes: (ctx.renderer.gl.info.programs ?? []).map((q) => Object.keys(q.getAttributes() as object)).sort((x, y) => y.length - x.length)[0] ?? [], attributeLimit: ctx.renderer.gl.getContext().getParameter(ctx.renderer.gl.getContext().MAX_VERTEX_ATTRIBS) as number, material: m.name, count: g.getAttribute('position').count }; },
         bodyMeshes: (hideBody?: boolean) => { const b = bodyOf()?.mesh; if (b && hideBody !== undefined) b.visible = !hideBody; const out: string[] = []; model?.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh && m.visible) out.push(`${m.name}:${m.geometry.getAttribute('position').count}${m === b ? '*' : ''}:${(m.material as THREE.Material).name}`); }); return out; },

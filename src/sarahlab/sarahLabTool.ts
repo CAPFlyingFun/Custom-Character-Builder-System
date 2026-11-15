@@ -604,8 +604,13 @@ export const BIKINI_RED = '#c42a3c', BIKINI_EDGING = '#1c1416';
  */
 export const BIKINI_FABRIC = Object.freeze({ family: 'athletic' as const, colour: 0, tint: BIKINI_RED });
 export const BIKINI_EDGING_FABRIC = Object.freeze({ family: 'athletic' as const, colour: 0, tint: BIKINI_EDGING });
-/** One layer of a built-in outfit: a template and its fabric, a pack colour or a custom one (`tint`, fabricTint.ts). */
-export interface PaintedLayer { readonly template: string; readonly fabric: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string } }
+/** GAME TUNING: his sheet of sixteen tops' colours, by eye off it (2026-11-14): 04 the scoop's plum, 02 the ringer's cream and its bands' navy, 05 the long sleeve's blue. */
+export const SHEET_PLUM = '#6e2c48', SHEET_CREAM = '#e8e1d2', SHEET_NAVY = '#1b2246', SHEET_DENIM = '#5d7fb3';
+/**
+ * One layer of a built-in outfit: a template and its fabric, a pack colour or a custom one (`tint`, fabricTint.ts).
+ * `edging`: a drawn top's bands in a colour of their own (`fabricLibrary.edgingOf`); without one they match its fabric.
+ */
+export interface PaintedLayer { readonly template: string; readonly fabric: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string }; readonly edging?: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string } }
 /** A modelled garment's fabric in a built-in outfit, as the editor's FABRIC would set it. */
 export type OutfitFabric = PaintedLayer['fabric'];
 /**
@@ -646,6 +651,13 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'painted tee + low leggings', garments: [], paint: [{ template: 'leggingsUnder', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeShort', fabric: { family: 'jersey', colour: 0 } }] },
   { name: 'painted U-neck tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeU', fabric: { family: 'jersey', colour: 0 } }] },
   { name: 'painted V-neck tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeV', fabric: { family: 'jersey', colour: 0 } }] },
+  // DRAWN TOPS from his sheet of sixteen (Joshua, 2026-11-14: "I actually went smarter and had ChatGPT do 16 styles...
+  // Hopefully these will help to get started and have more than our list"; `topCut.ts`), each in his sheet's colour:
+  // 04 the scoop, 02 the ringer -- its collar's and its sleeves' bands in its EDGING colour, his navy on his cream --
+  // and 05 the long sleeve with its cuffs. (01 the crew and 03 the V are the tees above.)
+  { name: 'painted scoop-neck tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeScoop', fabric: { family: 'jersey', colour: 0, tint: SHEET_PLUM } }] },
+  { name: 'painted ringer tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeRinger', fabric: { family: 'jersey', colour: 0, tint: SHEET_CREAM }, edging: { family: 'jersey', colour: 0, tint: SHEET_NAVY } }] },
+  { name: 'painted long-sleeve tee + leggings', garments: [], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }, { template: 'teeLong', fabric: { family: 'jersey', colour: 0, tint: SHEET_DENIM } }] },
   { name: 'painted swimsuit', garments: [], paint: [{ template: 'swimsuit', fabric: { family: 'athletic', colour: 14 } }] },
   { name: 'painted leotard', garments: [], paint: [{ template: 'bodysuit', fabric: { family: 'athletic', colour: 15 } }] },
 ];
