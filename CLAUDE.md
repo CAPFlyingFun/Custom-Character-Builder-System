@@ -1106,8 +1106,15 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - **Left whole** (his, the same morning: "keep the (opening, belly/bellybutton, breasts/nipples, and head) at full
   quality, everywhere else can be less"; then "we forgot to add the hands in"): her head and neck, the front of her
   trunk from under her opening to over her bust, her opening's area, her hands. Her legs, hips and feet are the denser
-  part of the rest (thinned as her arms and back are they stood in facets in SQUAT). 127,704 triangles of her 208,592:
-  her hands alone are some 33,000 -- the first saving to take if he allows them less.
+  part of the rest (thinned as her arms and back are they stood in facets in SQUAT). And HER SHOULDERS, HER ARMPITS AND
+  THE TOPS OF HER ARMS (a fault he found on his phone, 2026-11-16, his Sarah seated in her red tee: "look at the hole in
+  her shirt on her left side only"): the tee is cloth that rests on her triangles (`clothSkin.ts`), a triangle two of
+  whose corners hang from her arm is her ARM's and the tee's body never rests on it, and thinned the triangles over
+  the top of her shoulder were big and counted as her arm's well onto her trunk -- her skin stood through the cloth in
+  six-sided holes. MEASURED in the room with his tee's own settings (ease 0, neck 0.24), seated: holes on the light
+  skin, none on the full one, none with her shoulders whole (`SHOULDER`: from 1.24 to 1.42 m, her arm's skin and what
+  is over 9 cm out from her middle). 143,640 triangles of her 208,592 (it was 127,704): her hands alone are some
+  33,000 -- the first saving to take if he allows them less.
 - A re-meshed body (Meshy, 6,737 points) was looked at and not used: another shape and pose, its points in other
   places, her face lost.
 - WORK ON THE LIGHT SKIN FIRST (`?probe=cloth&body=light`, 1x): what he approves there is applied to the full one.
@@ -1152,6 +1159,15 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - After anything changes them: `tests/graphicsSettings.test.ts`, `tests/settingsPanel.test.ts`,
   `tests/studioLayout.test.ts`, `tests/skinChoice.test.ts`; then the built site opened as a phone: the ⚙ by a real
   touch, a mode, a row by hand, LOAD AGAIN.
+- **CHECK FOR UPDATE**, under ABOUT (Joshua, 2026-11-16: "a check for a newest update… if you press on it if there is
+  one, it will automatically restart the app"). `onDevice.ts` `checkForUpdate`: the server's page asked for afresh --
+  past the worker (`AHEAD_HEADER`) and the browser's copy -- and the bundle it names set beside this page's own
+  (`pageEntry`): another name is another build. Newer: the new build's worker is installed if there is one
+  (`OnDevice.update`, `UPDATE_WAIT_MS`) and the page loaded again, by itself; the same: "This is the newest version";
+  no answer is "no connection", never "newest"; one already known to be kept reads UPDATE NOW. MEASURED in the built
+  room as a phone, its worker in charge: both answers, the second by a server made to answer with another build's
+  page -- one question, the page loaded again, she in again. NOT TRIED: a real second build behind the worker.
+  `tests/onDevice.test.ts`, `tests/settingsPanel.test.ts`.
 - NOT DONE: a computer that draws slowly falling back by itself; the hairstyles' light twins on MAX PERFORMANCE.
 - **Asking him to push is a normal message, never a popup** (Joshua, 2026-11-16: "don't do a popup asking to push or
   not and just a normal message with the question so I can see the images").
