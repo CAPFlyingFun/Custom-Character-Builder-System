@@ -27,6 +27,8 @@ async function start(): Promise<void> {
   const renderer = new Renderer(host);
   const storage = createStorageRoot(localStorageKeyValueStore());
   const skin = new URLSearchParams(location.search).get('skin') === 'ktx2' ? 'ktx2' : null;
+  // (`?body=light`: her light skin, a trial -- `scripts/lightBody.mjs`)
+  const lightBody = new URLSearchParams(location.search).get('body') === 'light';
   // THE ROOM KEPT ON THIS DEVICE (Joshua, 2026-11-13: "load everything at one time and hold it locally especially if I
   // have it saved as a PWA"): the service worker and what it keeps (src/pwa). Nothing on a development server.
   const table = publicTable();
@@ -43,6 +45,7 @@ async function start(): Promise<void> {
     // (there is nowhere to go back to: the room is the whole page)
     onBack: () => { device.reloadAsked(); location.reload(); },
     skin,
+    lightBody,
     device: { line: () => deviceLine(device.state()), note: () => deviceNote(device.state()), watch: (changed) => device.watch(changed) },
     // on a device's first visit her files wait a moment for the worker, so they are kept as they land
     beforeLoad: device.ready,

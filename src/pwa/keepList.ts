@@ -44,6 +44,8 @@ export const stamped = (path: string, rev: string | undefined): string => (rev ?
 export const NOT_AHEAD: readonly RegExp[] = Object.freeze([
   // the KTX2 skin pilot's body and its transcoder: only an address with ?skin=ktx2 asks for them
   /-ktx2\.glb$/, /^libs\/basis\//,
+  // her light skin's triangles, a trial: only an address with ?body=light asks for them
+  /sarah-v2-body-light\.bin$/,
   // her bake for the story player: TMB-Story's, never the room's
   /^models\/sarah-v2-story\.glb$/,
   // the bodies her approved one was built from, off the MODEL button since 2026-11-13 ("disable all other models"):

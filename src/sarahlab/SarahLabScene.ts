@@ -349,7 +349,7 @@ import { clothingVertex } from './clothingPose';
 import { createNavelSoft, type NavelSoft } from './navelSoft';
 import { HumanRig, findSkinnedMesh } from '../view/HumanRig';
 import { UNITS_PER_METRE } from './units';
-import {
+import { LIGHT_BODY_TRIANGLES,
   SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, followingGarment, OUTFITS, outfitLine, modelLine, nextModel, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
@@ -460,6 +460,13 @@ export interface SarahLabHooks {
    * status line says so while it is in force.
    */
   readonly skin?: 'ktx2' | null;
+  /**
+   * `?body=light`: HER LIGHT SKIN, a trial (Joshua, 2026-11-16: "let's focus more on the lighter body mesh first"). Her
+   * own body file, drawn by a second list of triangles over her own points (`LIGHT_BODY_TRIANGLES`,
+   * `scripts/lightBody.mjs`): the list is put on her skin as her file is read, before anything of the room reads her
+   * triangles, so the room is the same room. An override from the address; the status line says so.
+   */
+  readonly lightBody?: boolean;
   /**
    * The character book (`characterSaves.ts`): where saved characters and the outfit library are kept. The app gives the
    * device's storage; without it the panel keeps them for the session only.
@@ -600,6 +607,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let garments: Garment[] = [];
   let hasBelly = false;
   let recovered = false;
+  /** her light skin's triangles while it is on (`hooks.lightBody`), else nothing */
+  let lightBodyOn = 0;
   let loaded = false;
   let failed = false;
   // ------------------------------------------------------------ loading (Joshua, 2026-10-20): what is downloading,
@@ -2091,7 +2100,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     refreshDevice();
     if (fields.status) {
       const shown = loaded && model?.visible === true;
-      fields.status.textContent = statusLine(shown, failed, garments, hasBelly, modelIndex, !!characters?.name().trim()) + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
+      fields.status.textContent = statusLine(shown, failed, garments, hasBelly, modelIndex, !!characters?.name().trim()) + (lightBodyOn ? ` · LIGHT SKIN (${lightBodyOn.toLocaleString('en-US')} triangles)` : '') + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
       // (which model stands there, once she does: what a probe waits for -- the line's words are for people, and change)
       if (shown && !failed) fields.status.dataset.model = SARAH_LAB_MODELS[modelIndex].id; else delete fields.status.dataset.model;
     }
@@ -8156,6 +8165,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       }
       loadedModel.scale.setScalar(M);
       const approvedSkin = findSkinnedMesh(loadedModel);
+      if (hooks.lightBody === true && entry.id === 'v2-body' && approvedSkin?.geometry.attributes.position.count === 115710) {
+        try {
+          const light = new Uint32Array(await (await fetch(assets.assetUrl(LIGHT_BODY_TRIANGLES))).arrayBuffer());
+          if (disposed) { release(loadedModel); return; }
+          if (light.length > 0 && light.length % 3 === 0) { approvedSkin.geometry.setIndex(new THREE.BufferAttribute(light, 1)); lightBodyOn = light.length / 3; }
+        } catch (error) { console.error('[sarahlab] her light skin could not be read; she is drawn whole', error); }
+      }
       recovered = hooks.nativeOutfitPreview !== true && SARAH_LAB_MODELS[modelIndex].id === 'v2-body' && approvedSkin?.geometry.attributes.position.count === 115710 && approvedSkin.skeleton.bones.length === 68;
       // (the modelled brief, its data taken for the cloth, out of her model: never drawn, never shaped)
       const briefOut: THREE.SkinnedMesh[] = [];
