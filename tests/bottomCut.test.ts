@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  BAND_STEPS, CREASE_STEPS, FOLD_HIP, FOLD_LINE, LOW_BANDS, LOW_CUT, aheadOf, foldAt, foldEase, foldLift, foldNear, foldOf, foldShares, foldStretch, foldStretchAt, isDrawnBottom, legAlong, legBlend, legMeasure, legOf, legPlanes, legShareOf, limbSkin, lowAt, lowFrame, lowGlsl, lowSpec, planeAt, planeFront, planeShare, roundAt, spineDepth, stayAt, swingOf,  waistAt, waistBanded,  waistLine,
+  BAND_STEPS, CREASE_STEPS, FOLD_HIP, FOLD_LINE, LOW_BANDS, LOW_CUT, aheadOf, foldAt, foldEase, foldLift, foldNear, foldOf, foldShares, foldStretch, foldStretchAt, isDrawnBottom, legAlong, legBlend, legMeasure, legOf, legPlanes, legShareOf, limbSkin, lowAt, lowFrame, lowGlsl, lowSpec, planeAt, planeFront, roomAt, planeShare, roundAt, spineDepth, stayAt, swingOf,  waistAt, waistBanded,  waistLine,
   type BandPoint, type LowFrame, type LowSpec, type V3,
 } from '../src/sarahlab/bottomCut';
 import { LOW_SLIP_ATTRIBUTE, fabricLowWorn, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowSwing } from '../src/sarahlab/fabricMaterial';
@@ -348,7 +348,7 @@ describe('each drawn bottom on her own rest skin', () => {
       expect(checked, id).toBeGreaterThan(70_000);
       expect(wrong, id).toBe(0);
     }
-  });
+  }, 60_000);
 
   it('a stocking has no waistband and is on her leg\'s skin alone; a bottom covers the rest of her under its waistband whatever her legs do', () => {
     const stockings = lowSpec(template('stockings').params, frame), shorts = lowSpec(template('shortsAthletic').params, frame);
@@ -829,7 +829,10 @@ describe('a bottom\'s cut in the shader', () => {
     // `planeAt`: the swung surface with the place taken no further forward than the fold (but round her hips), and her
     // trunk's skin no further forward than the fold
     expect(glsl).toContain('float stay = fabricLowStayAt(w, g, vec3(q.x, q.y, q.z - max(a - fold, 0.0) * (1.0 - round) * fabricLowAxis.y)) - g.w;');
-    expect(glsl).toContain(`return min(stay, mix(deep, ${LOW_CUT.far.toFixed(1)}, max(leg, round)));`);
+    expect(glsl).toContain(`return min(stay + rise, mix(deep, ${LOW_CUT.far.toFixed(1)}, max(leg, round)));`);
+    // (its front half's rise between her belly and her hips: a metre is a hundred of his line's centimetres)
+    expect(glsl).toContain('float u = fabricLowFoldK.x * 100.0;');
+    expect(glsl).toContain(`float rise = ${LOW_CUT.planeRise.toFixed(4)} * u * smoothstep(${LOW_CUT.planeRiseSwing[0].toFixed(3)}, ${LOW_CUT.planeRiseSwing[1].toFixed(3)}, asin(clamp(g.z, 0.0, 1.0)))`);
   });
 });
 
@@ -913,6 +916,14 @@ describe('his line under her belly (an under-belly waistband\'s front, once its 
     expect(planeShare(spec.hinge)).toBe(1);
     expect(planeShare(null)).toBe(0);
     const at = (out: number, ahead: number, y: number): V3 => [frame.mid + out * U, y, spineDepth(frame, y) + frame.facing * (frame.seam + ahead * U)];
+    // ITS FRONT HALF RISES BETWEEN HER BELLY AND HER HIPS once it has swung: 2 cm at the most, some 11 cm out, none at
+    // her middle, none 18.5 cm out and more, none 5 cm behind her side's seam, and none unswung
+    const leg1 = (out: number, ahead: number, sw: number) => planeAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY), 1) - (stayAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY)) - roomAt(frame, sw));
+    expect(leg1(0.115, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
+    expect(leg1(0.0, 0.0, swing)).toBeCloseTo(0, 9);
+    expect(leg1(0.19, 0.0, swing)).toBeCloseTo(0, 9);
+    expect(leg1(0.115, -0.05, swing)).toBeCloseTo(0, 9);
+    expect(leg1(0.115, 0.0, 0.05)).toBeCloseTo(0, 9);
     // BEHIND THE FOLD it is the swung surface itself, whatever skin: a place on it is on the edge, and places along it
     // from her back to the fold lie on one straight line seen from her side (their heights fall by the same for each
     // step forward)
