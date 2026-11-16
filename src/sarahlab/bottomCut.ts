@@ -133,7 +133,7 @@ export const LOW_CUT = Object.freeze({
   stayReach: 0.03, staySwing: 1.35, stayRoom: 0.015, stayEase: 0.105, stayGroin: 0.09, stayFold: 0, stayWide: 0.2, stayTurn: 0.03, stayRound: 0.01, stayNear: 0.005, stayUnder: 0.02, stayOver: 0.1,
   bandUnder: 0.14, bandOver: 0.4, bandLow: -0.01, bandHigh: 0.045, bandLowAt: -0.06, bandHighAt: 0.17, bandMost: 0.06, bandBridge: 0.34, bandStride: 6,
   moonSoft: 0.012, moonFill: 0.005, moonBlend: 0.03, moonOn: 0.01, moonBack: 0.03, moonMiddle: 0.02, moonStray: 0.01,
-  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.046, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, planeFlat: 0.085, planeDip: 0.03, planeRise: 0.045, planeRiseSwing: [0.1, 0.3] as readonly [number, number], planeRiseOut: [-0.02, -0.01, 0.08, 0.2] as readonly [number, number, number, number], planeRiseAhead: [-0.11, -0.05] as readonly [number, number], foldStretchMin: 0.9, foldStretchMax: 6,
+  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.046, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, planeFlat: 0.085, planeDip: 0.03, planeRise: 0.045, planeRiseSide: 0.45, planeRiseSwing: [0.1, 0.3] as readonly [number, number], planeRiseOut: [-0.02, -0.01, 0.08, 0.14] as readonly [number, number, number, number], planeRiseAhead: [-0.17, -0.03] as readonly [number, number], foldStretchMin: 0.9, foldStretchMax: 6,
 });
 /** How many heights a hoop's front moon is told by, from her middle out to its tips (`frontMoon`; four to a `vec4` of the shader's). */
 export const MOON_STEPS = 16;
@@ -732,7 +732,11 @@ export function planeAt(frame: LowFrame, waist: V4, hinge: readonly [number, num
   // is told `planeRise` higher, well clear of that skin, from her middle out to `planeRiseOut[2]` and eased to none by
   // `planeRiseOut[3]` (her hip's side), and none from `planeRiseAhead` behind her side's seam back: in front the edge
   // is the fold's own (`foldDepth`: the crease), and from her side it is still one line to her hip. GAME TUNING to his.
-  const rise = LOW_CUT.planeRise * U * smoothstep(LOW_CUT.planeRiseSwing[0], LOW_CUT.planeRiseSwing[1], swing) * smoothstep(LOW_CUT.planeRiseOut[0] * U, LOW_CUT.planeRiseOut[1] * U, out) * (1 - smoothstep(LOW_CUT.planeRiseOut[2] * U, LOW_CUT.planeRiseOut[3] * U, out)) * smoothstep(LOW_CUT.planeRiseAhead[0] * U, LOW_CUT.planeRiseAhead[1] * U, ahead);
+  // ROUND HER HIP IT IS HELD AT `planeRiseSide` OF THAT (Joshua, the same morning, an orange arc over the edge at 200%
+  // from her side: "the side, it looks slightly boxy, make it a smooth curve. Front and back is good"): eased to none
+  // by her hip's side the edge was two straight runs with a corner between; held, it is one curve from her hip down
+  // to the fold, and `planeRiseAhead` alone ends it toward her back.
+  const rise = LOW_CUT.planeRise * U * smoothstep(LOW_CUT.planeRiseSwing[0], LOW_CUT.planeRiseSwing[1], swing) * smoothstep(LOW_CUT.planeRiseOut[0] * U, LOW_CUT.planeRiseOut[1] * U, out) * (1 - (1 - LOW_CUT.planeRiseSide) * smoothstep(LOW_CUT.planeRiseOut[2] * U, LOW_CUT.planeRiseOut[3] * U, out)) * smoothstep(LOW_CUT.planeRiseAhead[0] * U, LOW_CUT.planeRiseAhead[1] * U, ahead);
   return Math.min(stay + rise, deep + (LOW_CUT.far - deep) * loose);
 }
 /**
@@ -1323,7 +1327,7 @@ float fabricLowPlane(vec4 w, vec4 g, vec3 q, float leg, float lift) {
   float fold = fabricLowFoldK.z - fabricLowFoldK.w * o * o + lift, deep = fold - a, round = smoothstep(fabricLowFrontK.y * ${(LOW_CUT.foldDeepIn / LOW_CUT.foldOut).toFixed(6)}, fabricLowFrontK.y, o);
   float stay = fabricLowStayAt(w, g, vec3(q.x, q.y, q.z - max(a - fold, 0.0) * (1.0 - round) * fabricLowAxis.y)) - g.w;
   float u = fabricLowFoldK.x * 100.0;
-  float rise = ${LOW_CUT.planeRise.toFixed(4)} * u * smoothstep(${LOW_CUT.planeRiseSwing[0].toFixed(3)}, ${LOW_CUT.planeRiseSwing[1].toFixed(3)}, asin(clamp(g.z, 0.0, 1.0))) * smoothstep(${LOW_CUT.planeRiseOut[0].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[1].toFixed(3)} * u, o) * (1.0 - smoothstep(${LOW_CUT.planeRiseOut[2].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[3].toFixed(3)} * u, o)) * smoothstep(${LOW_CUT.planeRiseAhead[0].toFixed(3)} * u, ${LOW_CUT.planeRiseAhead[1].toFixed(3)} * u, a);
+  float rise = ${LOW_CUT.planeRise.toFixed(4)} * u * smoothstep(${LOW_CUT.planeRiseSwing[0].toFixed(3)}, ${LOW_CUT.planeRiseSwing[1].toFixed(3)}, asin(clamp(g.z, 0.0, 1.0))) * smoothstep(${LOW_CUT.planeRiseOut[0].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[1].toFixed(3)} * u, o) * (1.0 - ${(1 - LOW_CUT.planeRiseSide).toFixed(3)} * smoothstep(${LOW_CUT.planeRiseOut[2].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[3].toFixed(3)} * u, o)) * smoothstep(${LOW_CUT.planeRiseAhead[0].toFixed(3)} * u, ${LOW_CUT.planeRiseAhead[1].toFixed(3)} * u, a);
   return min(stay + rise, mix(deep, ${LOW_CUT.far.toFixed(1)}, max(leg, round)));
 }
 float fabricLowCreaseAt(float x) {
