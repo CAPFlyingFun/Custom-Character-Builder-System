@@ -14,6 +14,7 @@ import { BODY_CONTROLS, type BodyShape } from '../actor/bodyShape';
 import type { RandomSpec } from '../actor/bodyRandom';
 import type { DevTool } from '../devtools/DevTool';
 import type { FabricFamilyId } from './fabricLibrary';
+import type { GarmentSettings } from './garment/settings';
 
 export const SARAH_LAB_SCENE_ID = 'lab:sarah';
 export const SARAH_LAB_TOOL_ID = 'lab.sarah';
@@ -665,6 +666,29 @@ export interface PaintedLayer {
   /** The template's sliders set for this outfit (`paintTemplates.withDial`, by a dial's id): a crop tee's HEM higher than its style's own. */
   readonly dials?: Readonly<Partial<Record<'rise' | 'riseBack' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'sleeve', number>>>;
 }
+/**
+ * THE CLOTH TOPS (Joshua, 2026-11-16: "Can we instead convert all the painted tops to the cloth sim ones? We have a few
+ * sliders already to help with that"; of which, and how: "Just add, don't replace. Just the 10 is fine"). Ten of the
+ * painted tops as the procedural tee simulated as cloth, each a setting of the sliders it already has -- its neckline's
+ * depth, width and shape, its sleeves' length, its own length -- in the colour its painted twin wears: nothing new is
+ * cut or sewn. The ones that want cloth the tee does not have yet stay painted alone: a square neck, a second colour
+ * for bands, plackets and collars, a mock neck, a wrap; and the sports bra and the camisole, which are skin-tight.
+ * GAME TUNING, by eye on her: metres under her front neck point and across her shoulders, and the sliders' own stops.
+ */
+export const CLOTH_TOPS: readonly (readonly [name: string, tint: string | null, cut: Partial<GarmentSettings>, construction?: 'raglan' | 'setIn'])[] = Object.freeze([
+  ['cloth crew tee + leggings', null, { neckDepth: 0.025, neckWidth: 0.18 }],
+  ['cloth U-neck tee + leggings', null, { neckDepth: 0.11, neckWidth: 0.2, neckCurve: 0 }],
+  ['cloth V-neck tee + leggings', null, { neckDepth: 0.13, neckWidth: 0.2, neckCurve: 1 }],
+  ['cloth scoop-neck tee + leggings', SHEET_PLUM, { neckDepth: 0.12, neckWidth: 0.26, neckCurve: 0.15 }],
+  // (these two SET-IN: MEASURED in the room on the base model, a raglan cut off at her shoulder leaves its armhole open
+  // down her side to her waist; a set-in's armhole lies round her arm -- and is still deep, seen from her side)
+  ['cloth sleeveless tee + leggings', SHEET_TOPS.olive, { neckDepth: 0.06, neckWidth: 0.2, sleeve: 0 }, 'setIn'],
+  ['cloth cap-sleeve tee + leggings', SHEET_TOPS.rose, { neckDepth: 0.06, neckWidth: 0.2, sleeve: 20 }, 'setIn'],
+  ['cloth three-quarter tee + leggings', SHEET_TOPS.heather, { neckDepth: 0.04, sleeve: 80 }],
+  ['cloth long-sleeve tee + leggings', SHEET_DENIM, { neckDepth: 0.025, sleeve: 100 }],
+  ['cloth crop tee + leggings', SHEET_TOPS.lilac, { neckDepth: 0.04, length: 0 }],
+  ['cloth tunic + leggings', SHEET_TOPS.burgundy, { neckDepth: 0.08, neckWidth: 0.22, length: 50 }],
+]);
 /** A modelled garment's fabric in a built-in outfit, as the editor's FABRIC would set it. */
 export type OutfitFabric = PaintedLayer['fabric'];
 /**
@@ -674,7 +698,9 @@ export type OutfitFabric = PaintedLayer['fabric'];
  * modelled garment's edging in a fabric of its own, where it has an edging (`<garment>Trim`); without one its edging
  * follows its fabric (the editor's MATCH).
  */
-export interface BuiltInOutfit { readonly name: string; readonly garments: readonly Garment[]; readonly paint?: readonly PaintedLayer[]; readonly fabrics?: Partial<Record<Garment, OutfitFabric>>; readonly trims?: Partial<Record<Garment, OutfitFabric>>; readonly procedural?: 'raglan' | 'setIn' }
+export interface BuiltInOutfit { readonly name: string; readonly garments: readonly Garment[]; readonly paint?: readonly PaintedLayer[]; readonly fabrics?: Partial<Record<Garment, OutfitFabric>>; readonly trims?: Partial<Record<Garment, OutfitFabric>>; readonly procedural?: 'raglan' | 'setIn';
+  /** A procedural tee's own settings where they are not the approved tee's (`garment/settings.ts`): its neckline, its sleeves, its length. */
+  readonly cut?: Partial<GarmentSettings> }
 export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'tee + leggings', garments: ['shirtAthletic', 'leggings'] },
   { name: 'top + low leggings', garments: ['shirtAthletic', 'leggingsLow'] },
@@ -744,6 +770,12 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ] as const).map(([name, template, tint]): BuiltInOutfit => ({
     name, garments: [],
     paint: [{ template, fabric: { family: 'athletic', colour: 0, tint } }, { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: SHEET_BOTTOMS_TEE_HEM } }],
+  })),
+  // THE CLOTH TOPS (`CLOTH_TOPS`), over the grey painted leggings their painted twins wear. Put after everything there
+  // was: no outfit has moved.
+  ...CLOTH_TOPS.map(([name, tint, cut, construction]): BuiltInOutfit => ({
+    name, garments: ['shirtSpandexLite'], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }],
+    fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0, ...(tint ? { tint } : {}) } }, procedural: construction ?? 'raglan', cut,
   })),
 ];
 /**

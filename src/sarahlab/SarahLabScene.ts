@@ -2866,7 +2866,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function adoptGarment(record: GarmentRecord | null): void {
     const own = OUTFITS[outfit]?.procedural;
     if (!own) return;
-    garmentSettings = record ? clampGarmentSettings(record.settings) : withConstruction(GARMENT_DEFAULTS, own);
+    // (a save's record, or the outfit's own: the approved tee in its construction, with what the outfit sets of it)
+    garmentSettings = record ? clampGarmentSettings(record.settings) : clampGarmentSettings({ ...withConstruction(GARMENT_DEFAULTS, own), ...(OUTFITS[outfit]?.cut ?? {}) });
     garmentCommitted = tailorKey(garmentSettings);
     if (record) {
       clothTune = { ...CLOTH_TUNE_DEFAULT, ...record.dials };
@@ -4051,6 +4052,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       dress(i);
       for (let tries = 0; tries < 600 && !(outfit === i && wantedOutfit === null && model?.visible); tries++) await frames(1);
       await frames(12);
+      // (a cloth tee is tailored, eased on and let hang before it is pictured: `syncGarment`, DRESS)
+      if (OUTFITS[i].procedural) { for (let tries = 0; tries < 4000 && (garmentTailoring || !garmentRoom || garmentRoom.tailorKey !== garmentCommitted || garmentDressT < DRESS.done + 1.5); tries++) await frames(1); }
       await lowSlipSettled();
       out.push({ name: OUTFITS[i].name, path: outfitThumbPath(OUTFITS[i].name), picture: thumbnail() });
     }

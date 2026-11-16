@@ -20,3 +20,12 @@ picture with a visible watermark. Nothing here is drawn by the room or shipped t
 Taken out, built: `tops/16-womens-tops.jpg`, his sheet of sixteen tops, and `tops/tank-armhole-front.jpg`,
 `tops/tank-armhole-three-quarter.jpg`, the two tank tops he sent for the armhole's curve -- all sixteen have been in the
 room since v0.9.27 (2026-11-15; `CLAUDE.md`, "A painted top, drawn", "The rest of his sixteen tops").
+- `skirts/types-of-skirts-11.jpg`, `skirts/guide-to-skirts-20.jpg` -- skirts (Joshua, 2026-11-16: "Some have duplicates,
+  but can save on your branch until you build them for reference"): A-line, pencil, pleated, maxi, mini, wrap, tulle,
+  asymmetrical, ruffled, skater; accordion, box and knife pleated, bubble, circle, draped, godet, gypsy, layered,
+  mermaid, paneled, tube, tulip, yoke-waist. A third sheet he sent carries a maker's mark and is not kept.
+  WHAT HE ASKED OF A SKIRT, before any is built: its TOP is one of two, over her belly or under it, as the leggings'
+  are; its LENGTH runs from a mini to the floor from either top ("you can set above belly to look like a mini skirt or
+  below belly as a mini skirt at the same length... both can reach the floor length"); and how close it lies to her
+  can be chosen. Paint and cloth together: the fitted part painted, the loose part cloth. A skirt is the pilot; a
+  jacket is worn over a painted top to begin with, and waits until the bottoms are done.

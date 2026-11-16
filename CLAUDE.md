@@ -315,6 +315,26 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `tests/topDetails.test.ts`, `tests/topCut.test.ts`, `tests/stylePictures.test.ts`; then the room: the four outlines
   from her front, three-quarter, side and back, and the sports bra's and the crop tee's hems at 0%.
 
+## The cloth tops
+
+- **Ten of the painted tops as the cloth tee, ADDED beside them** (Joshua, 2026-11-16: "Can we instead convert all the
+  painted tops to the cloth sim ones? We have a few sliders already to help with that"; "Just add, don't replace. Just
+  the 10 is fine"). `sarahLabTool.ts` `CLOTH_TOPS`: the procedural tee (`garment/`) at ten settings of the sliders it
+  has -- crew, U, V and scoop necks, sleeveless, cap, three-quarter and long sleeves, a crop and a tunic -- each
+  `cloth <top> + leggings` in `OUTFITS`, put after everything there was (no outfit has moved), each in its painted
+  twin's colour with its card's picture. An outfit sets its tee's own settings by `BuiltInOutfit.cut`
+  (`adoptGarment`); TEE DEFAULTS still gives the approved tee. Nothing new is cut or sewn.
+- The sleeveless and the cap sleeve are SET-IN: MEASURED in the room on the base model, a raglan cut off at her
+  shoulder leaves its armhole open down her side; a set-in's lies round her arm, and is still deep seen from her side.
+- MEASURED in the room 2026-11-16 (the light skin, the base model at 0%): each of the ten put on from its card and
+  pictured from her front three-quarter and her back; no error on the page.
+- NOT DONE, AND WHY THEY STAY PAINTED ALONE: a square neck (the tee's neckline runs from a U to a V); a second colour
+  for bands (the ringer, the raglan's sleeves); plackets, buttons, pockets and collars; a mock neck; a wrap; and the
+  sports bra and the camisole, which are skin-tight. Every cloth top is simulated each frame; a painted one is free.
+- The card bake waits for a cloth tee to be tailored, eased on and let hang (`bakeOutfitPictures`).
+- NEXT, NOT BEGUN (he is to say when): skirts as paint and cloth together -- `docs/reference/README.md` has what he
+  asked of them.
+
 ## A painted bottom, drawn
 
 - **A bottom's edges are DRAWN, as a top's are** (Joshua, 2026-11-15: "Looks good!!! Let's work on all the bottoms…"; of

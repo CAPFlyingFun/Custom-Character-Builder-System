@@ -191,6 +191,8 @@ describe('his sheet of bottoms\' tight ones, as outfits', () => {
     const first = outfitNamed(SIX[0][0]);
     expect(OUTFITS[first - 1].name).toBe('painted leotard');
     SIX.forEach(([name], k) => expect(outfitNamed(name)).toBe(first + k));
-    expect(first + SIX.length).toBe(OUTFITS.length);
+    // (and after them only the ten cloth tops of 2026-11-16, which were put after everything in their turn)
+    expect(OUTFITS.slice(first + SIX.length).every((o) => o.name.startsWith('cloth ') && !!o.procedural)).toBe(true);
+    expect(OUTFITS.length - (first + SIX.length)).toBe(10);
   });
 });
