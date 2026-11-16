@@ -133,7 +133,7 @@ export const LOW_CUT = Object.freeze({
   stayReach: 0.03, staySwing: 1.35, stayRoom: 0.015, stayEase: 0.105, stayGroin: 0.09, stayFold: 0, stayWide: 0.2, stayTurn: 0.03, stayRound: 0.01, stayNear: 0.005, stayUnder: 0.02, stayOver: 0.1,
   bandUnder: 0.14, bandOver: 0.4, bandLow: -0.01, bandHigh: 0.045, bandLowAt: -0.06, bandHighAt: 0.17, bandMost: 0.06, bandBridge: 0.34, bandStride: 6,
   moonSoft: 0.012, moonFill: 0.005, moonBlend: 0.03, moonOn: 0.01, moonBack: 0.03, moonMiddle: 0.02, moonStray: 0.01,
-  foldIn: 0.09, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.031, foldCurve: 0.85, foldDeepIn: 0.13, foldStretchMin: 0.5, foldStretchMax: 6,
+  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.031, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, foldStretchMin: 0.5, foldStretchMax: 6,
 });
 /** How many heights a hoop's front moon is told by, from her middle out to its tips (`frontMoon`; four to a `vec4` of the shader's). */
 export const MOON_STEPS = 16;
@@ -335,11 +335,11 @@ export function legAlong(leg: LowLeg, fraction: number): number {
 }
 
 /** A template's bottom on her: its waistband by its rises, its legs' ends and tops by its LEG LENGTH and LEG TOP, its bands. */
-export function lowSpec(p: Pick<CoverageParams, 'riseFront' | 'riseSide' | 'riseBack' | 'legStart' | 'legEnd' | 'feet'> & { readonly lowBand?: Partial<LowBands> | null }, frame: LowFrame): LowSpec {
+export function lowSpec(p: Pick<CoverageParams, 'riseFront' | 'riseSide' | 'riseBack' | 'legStart' | 'legEnd' | 'feet'> & { readonly lowBand?: Partial<LowBands> | null; readonly lowBowl?: number | null }, frame: LowFrame): LowSpec {
   const U = frame.unitsPerMetre, at = (t: number) => frame.hipY + t * frame.trunk, along = (f: number) => (legAlong(frame.legs[0], f) + legAlong(frame.legs[1], f)) / 2;
   const front = p.riseFront ?? 0, back = p.riseBack ?? front, side = p.riseSide ?? (front + back) / 2;
   // (legwear -- a leg's top of its own -- has no waistband: `paintTemplates.coverage`)
-  const waist: V4 | null = p.legStart > 0 ? null : [at(front), at(side), at(back), 0];
+  const waist: V4 | null = p.legStart > 0 ? null : [at(front), at(side), at(back), p.lowBowl ?? 0];
   // (a waistband whose front is under her belly is a hoop: its hinge on the middle of her back, and its front's reach
   // -- the furthest from that hinge that the middle of her front stands under its line as she rests; `stayAt`)
   const hold = waist && frame.crease ? 1 - smoothstep(LOW_CUT.stayUnder, LOW_CUT.stayOver, front) : 0, behind = waist && hold > 1e-4 && waist[2] > waist[0] ? rearAt(frame, waist[2]) : null;
@@ -379,19 +379,27 @@ export function lowSpec(p: Pick<CoverageParams, 'riseFront' | 'riseSide' | 'rise
  * turn). A side as high as the back is level all the way round her back, whatever its front's slider does, and sweeps
  * down from her sides. The line's highest and lowest are among its three heights (`waistAt`'s bound reads them).
  *
- * `waist`: [front, side, back] heights (a fourth number is not read: until 2026-11-15 it was the front's reach).
+ * `waist`: [front, side, back] heights, and its front's BOWL (0: the sweep as above).
+ *
+ * THE BOWL (Joshua, 2026-11-15, a yellow U drawn over the under-belly waistband pictured from her front at 0 and at
+ * 100%: "needs to have a rounder curve and not so V shaped but like a U"): three heights in a row are a tilted plane,
+ * and on her at 0% -- her hips' skin a third as long across her as on her body file -- a plane's cut is a V with
+ * straight arms. A bowl holds the line low out from her front's middle and climbs it nearer her side: along the run
+ * from her side to her front's middle the sweep is read at 1 - (1 - t)^(1 + bowl) for t, level where it crosses the
+ * middle of her front. Her side and her back are as they were.
  */
 export function waistLine(waist: readonly number[], around: number): { readonly height: number; readonly slope: number } {
   const front = waist[0], side = waist[1], back = waist[2];
   // the two runs' climb for each unit of `around`: her back's middle to her side, her side to her front's middle
   const d1 = 2 * (side - back), d2 = 2 * (front - side);
   const mid = d1 * d2 > 0 ? (2 * d1 * d2) / (d1 + d2) : 0;
-  const ahead = around >= 0.5, t = clamp01(ahead ? (around - 0.5) * 2 : around * 2);
+  const ahead = around >= 0.5, s = clamp01(ahead ? (around - 0.5) * 2 : around * 2), bowl = ahead ? waist[3] ?? 0 : 0;
+  const t = bowl > 0 ? 1 - Math.pow(1 - s, 1 + bowl) : s, eased = bowl > 0 ? (1 + bowl) * Math.pow(1 - s, bowl) : 1;
   const p0 = ahead ? side : back, p1 = ahead ? front : side, m0 = 0.5 * (ahead ? mid : sweepEnd(d1, d2)), m1 = 0.5 * (ahead ? sweepEnd(d2, d1) : mid);
   const t2 = t * t, t3 = t2 * t;
   return {
     height: (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * m0 + (3 * t2 - 2 * t3) * p1 + (t3 - t2) * m1,
-    slope: 2 * ((6 * t2 - 6 * t) * (p0 - p1) + (3 * t2 - 4 * t + 1) * m0 + (3 * t2 - 2 * t) * m1),
+    slope: 2 * eased * ((6 * t2 - 6 * t) * (p0 - p1) + (3 * t2 - 4 * t + 1) * m0 + (3 * t2 - 2 * t) * m1),
   };
 }
 /** The sweep's steepness at an end (her front's middle, or her back's): `run`, the climb of the run that ends there; `other`, the other run's. */
@@ -609,13 +617,13 @@ export const FOLD_LINE: readonly number[] = Object.freeze([-0.033, -0.033, -0.03
  * her crease dipped into her crotch. The answer: how far under his line the place is (her units), his line `lift`
  * higher (`foldLift`: while the hoop has hardly swung it binds nothing).
  */
-export function foldAt(frame: LowFrame, place: V3, shaped: V3, leg: number, lift: number): { readonly line: number; readonly deep: number } {
+export function foldAt(frame: LowFrame, place: V3, shaped: V3, leg: number, lift: number, ease = 1): { readonly line: number; readonly deep: number } {
   const U = frame.unitsPerMetre, f = Math.min(Math.abs(place[0] - frame.mid) / (0.01 * U), FOLD_LINE.length - 1), k = Math.min(Math.floor(f), FOLD_LINE.length - 2);
   // (square to his line on her rest skin: where it climbs her hips it climbs up to 1.4 cm a centimetre out -- its slope
   // at each knot, between the two either side, eased from knot to knot: a slope stepped from one centimetre to the next
   // stepped the band's inner edge there, in teeth a centimetre apart -- MEASURED 2026-11-15 in the room)
-  const rise = foldRise(k) + (foldRise(k + 1) - foldRise(k)) * (f - k);
-  const line = (frame.hipY + (FOLD_LINE[k] + (FOLD_LINE[k + 1] - FOLD_LINE[k]) * (f - k)) * U + lift - place[1]) / Math.sqrt(1 + rise * rise);
+  const rise = foldRise(k, ease) + (foldRise(k + 1, ease) - foldRise(k, ease)) * (f - k);
+  const line = (frame.hipY + (foldKnot(k, ease) + (foldKnot(k + 1, ease) - foldKnot(k, ease)) * (f - k)) * U + lift - place[1]) / Math.sqrt(1 + rise * rise);
   // (her trunk's skin no further forward than the fold: right by her middle her rest skin under her belly is so
   // stretched that a millimetre of it is a centimetre or two as she is shaped, and his line alone laid patches of cloth
   // up her belly's underside -- MEASURED 2026-11-15 in a sketch at 150 and 200%)
@@ -658,7 +666,7 @@ export function foldStretch(frame: LowFrame, near: ArrayLike<number>, point: Ban
     const shaped: V3 = [at[0], at[1], at[2]], place: V3 = [at[3], at[4], at[5]];
     const b = Math.round(Math.abs(shaped[0] - frame.mid) / (0.01 * U));
     if (b >= K || foldShares(frame, shaped)[1] < 0.5) continue;
-    const f = foldAt(frame, place, shaped, legShareOf(at[6]), lift), cut = Math.min(f.line, f.deep);
+    const f = foldAt(frame, place, shaped, legShareOf(at[6]), lift, foldEase(swing)), cut = Math.min(f.line, f.deep);
     if (cut >= 0 && cut <= FOLD_EDGE * U) edge[b].push(shaped[0], shaped[1], shaped[2]);
     else if (cut > 0 && f.line > FOLD_EDGE * U && f.line < 3 * depth) under.push({ b, x: shaped[0], y: shaped[1], z: shaped[2], d: f.line });
   }
@@ -686,7 +694,21 @@ export function foldStretchAt(frame: LowFrame, stretch: ArrayLike<number> | null
   return stretch[k] + (stretch[k + 1] - stretch[k]) * (f - k);
 }
 /** His line's climb at its `k`th knot (metres a metre out): between the knots either side, or to the one beside it at an end. */
-function foldRise(k: number): number { const a = Math.max(k - 1, 0), b = Math.min(k + 1, FOLD_LINE.length - 1); return (FOLD_LINE[b] - FOLD_LINE[a]) / ((b - a) * 0.01); }
+function foldRise(k: number, ease = 1): number { const a = Math.max(k - 1, 0), b = Math.min(k + 1, FOLD_LINE.length - 1); return (foldKnot(b, ease) - foldKnot(a, ease)) / ((b - a) * 0.01); }
+/** His line's `k`th knot with its climb up her hips eased (`foldEase`): past `FOLD_HIP` out, only `ease` of its climb from there. */
+function foldKnot(k: number, ease: number): number { return k > FOLD_HIP ? FOLD_LINE[FOLD_HIP] + (FOLD_LINE[k] - FOLD_LINE[FOLD_HIP]) * ease : FOLD_LINE[k]; }
+/** The knot his line's climb up her hips is eased from (`foldEase`): 8 cm out from her middle. */
+export const FOLD_HIP = 8;
+/**
+ * HIS LINE MEETS THE HOOP AT HER HIPS (Joshua, 2026-11-15, circling each hip of the 200% pictured from her front, a
+ * smooth arc drawn from her hip down to her middle: "needs to have a rounder curve"). His line ends 15 cm out at her
+ * side's own height, 8.1 cm over her hip joints on her rest skin; the hoop's edge 16 cm out, as it swings, is at 7.3 cm
+ * at 120%, 5.5 at 150% and 2.9 at 200% (MEASURED on the room's points: swings of 10.8, 17.4 and 23.1 degrees), and an
+ * edge eased from one to the other across that gap waved. So his line's climb past `FOLD_HIP` is held to the share
+ * that ends it where the hoop's edge is: 1 - `LOW_CUT.foldEase` x swing^2 (radians) -- 0.86, 0.64 and 0.37 at those
+ * three, the hoop's own 0.90, 0.68 and 0.37 -- never under `LOW_CUT.foldEaseLeast`. GAME TUNING.
+ */
+export function foldEase(swing: number): number { return Math.max(LOW_CUT.foldEaseLeast, 1 - LOW_CUT.foldEase * swing * swing); }
 /** How much higher his line is told as the hoop swings (her units; `foldAt`): `LOW_CUT.foldReach` unswung, none from `foldSwing` radians on. */
 export function foldLift(frame: LowFrame, swing: number): number { return LOW_CUT.foldReach * frame.unitsPerMetre * (1 - smoothstep(0, LOW_CUT.foldSwing, swing)); }
 /** How much of a place his line is laid on (0 to 1; `foldAt`): between her hips (`shaped`, as she is shaped), in front of her. */
@@ -1140,7 +1162,7 @@ export function lowAt(spec: LowSpec, frame: LowFrame, place: V3, along: number, 
     if (wAhead > 0) {
       // (eased into the hoop's edge out towards her hips, and her trunk's skin no further forward than the fold
       // wherever it is laid: `LOW_CUT.foldIn`, `foldDepth`)
-      const f = foldAt(frame, place, shaped, legShareOf(limb), foldLift(frame, swing)), fc = Math.min(line, f.line);
+      const f = foldAt(frame, place, shaped, legShareOf(limb), foldLift(frame, swing), foldEase(swing)), fc = Math.min(line, f.line);
       const front = Math.min(waist + (fc - waist) * wOut, f.deep), frontBand = banded + (f.line * foldStretchAt(frame, inner?.stretch, place) - banded) * wOut;
       waist += (front - waist) * wAhead; banded += (frontBand - banded) * wAhead;
     }
@@ -1213,10 +1235,11 @@ float fabricLowEnd(float run, float other) {
 vec2 fabricLowLine(vec4 w, float u) {
   float d1 = 2.0 * (w.y - w.z), d2 = 2.0 * (w.x - w.y), mid = d1 * d2 > 0.0 ? 2.0 * d1 * d2 / (d1 + d2) : 0.0;
   bool ahead = u >= 0.5;
-  float t = clamp(ahead ? (u - 0.5) * 2.0 : u * 2.0, 0.0, 1.0), t2 = t * t, t3 = t2 * t;
+  float s = clamp(ahead ? (u - 0.5) * 2.0 : u * 2.0, 0.0, 1.0), bowl = ahead ? w.w : 0.0;
+  float t = bowl > 0.0 ? 1.0 - pow(1.0 - s, 1.0 + bowl) : s, eased = bowl > 0.0 ? (1.0 + bowl) * pow(max(1.0 - s, 0.0), bowl) : 1.0, t2 = t * t, t3 = t2 * t;
   float p0 = ahead ? w.y : w.z, p1 = ahead ? w.x : w.y, m0 = 0.5 * (ahead ? mid : fabricLowEnd(d1, d2)), m1 = 0.5 * (ahead ? fabricLowEnd(d2, d1) : mid);
   return vec2((2.0 * t3 - 3.0 * t2 + 1.0) * p0 + (t3 - 2.0 * t2 + t) * m0 + (3.0 * t2 - 2.0 * t3) * p1 + (t3 - t2) * m1,
-    2.0 * ((6.0 * t2 - 6.0 * t) * (p0 - p1) + (3.0 * t2 - 4.0 * t + 1.0) * m0 + (3.0 * t2 - 2.0 * t) * m1));
+    2.0 * eased * ((6.0 * t2 - 6.0 * t) * (p0 - p1) + (3.0 * t2 - 4.0 * t + 1.0) * m0 + (3.0 * t2 - 2.0 * t) * m1));
 }
 float fabricLowInside(vec4 w, vec3 p, vec3 r, float across) {
   vec2 l = fabricLowLine(w, r.x);
@@ -1257,17 +1280,20 @@ float fabricLowMoonShare(vec4 m, vec3 q) {
   float o = abs(q.x - fabricLowAxis.x), a = (q.z - fabricLowSpine(q.y)) * fabricLowAxis.y - fabricLowAxis.z;
   return (1.0 - smoothstep(m.x - fabricLowMoonK.x, m.x, o)) * smoothstep(-fabricLowMoonK.y, -fabricLowMoonK.z, a);
 }
-float fabricLowFoldRise(int k) {
-  int a = max(k - 1, 0), b = min(k + 1, ${FOLD_LINE.length - 1});
-  return (fabricLowFoldT[b] - fabricLowFoldT[a]) / (float(b - a) * fabricLowFoldK.x);
+float fabricLowFoldKnot(int k, float ease) {
+  return k > ${FOLD_HIP} ? mix(fabricLowFoldT[${FOLD_HIP}], fabricLowFoldT[k], ease) : fabricLowFoldT[k];
 }
-vec4 fabricLowFoldLine(vec3 p, vec3 q, float leg, float lift) {
+float fabricLowFoldRise(int k, float ease) {
+  int a = max(k - 1, 0), b = min(k + 1, ${FOLD_LINE.length - 1});
+  return (fabricLowFoldKnot(b, ease) - fabricLowFoldKnot(a, ease)) / (float(b - a) * fabricLowFoldK.x);
+}
+vec4 fabricLowFoldLine(vec3 p, vec3 q, float leg, float lift, float ease) {
   float o = abs(q.x - fabricLowAxis.x), a = (q.z - fabricLowSpine(q.y)) * fabricLowAxis.y - fabricLowAxis.z;
   float wo = 1.0 - smoothstep(fabricLowFrontK.x, fabricLowFrontK.y, o), wa = smoothstep(fabricLowFrontK.z, fabricLowFrontK.w, a);
   float f = min(abs(p.x - fabricLowAxis.x) / fabricLowFoldK.x, ${(FOLD_LINE.length - 1).toFixed(1)}), k = min(floor(f), ${(FOLD_LINE.length - 2).toFixed(1)});
   int i = int(k);
-  float rise = mix(fabricLowFoldRise(i), fabricLowFoldRise(i + 1), f - k);
-  float line = (fabricLowFoldK.y + mix(fabricLowFoldT[i], fabricLowFoldT[i + 1], f - k) + lift - p.y) * inversesqrt(1.0 + rise * rise);
+  float rise = mix(fabricLowFoldRise(i, ease), fabricLowFoldRise(i + 1, ease), f - k);
+  float line = (fabricLowFoldK.y + mix(fabricLowFoldKnot(i, ease), fabricLowFoldKnot(i + 1, ease), f - k) + lift - p.y) * inversesqrt(1.0 + rise * rise);
   float deep = fabricLowFoldK.z - fabricLowFoldK.w * o * o + lift - a;
   return vec4(wo, wa, line, mix(deep, ${LOW_CUT.far.toFixed(1)}, max(leg, smoothstep(fabricLowFrontK.y * ${(LOW_CUT.foldDeepIn / LOW_CUT.foldOut).toFixed(6)}, fabricLowFrontK.y, o))));
 }

@@ -396,7 +396,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           }
           float ffw = 0.0, ffd = 0.0;
           if (fabricLowLeg${i}.z > 0.5 && fabricLowSwing${i}.z > 0.0) {
-            vec4 ffl = fabricLowFoldLine(fabricLowPlace, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x);
+            vec4 ffl = fabricLowFoldLine(fabricLowPlace, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x, fabricLowFront${i}.y);
             ffw = ffl.y * ffl.x;
             ffd = ffl.z * fabricLowFoldStretch(fabricLowPlace);
             fws += (min(mix(fws, min(fwd, ffl.z), ffl.x), ffl.w) - fws) * ffl.y;
@@ -707,7 +707,7 @@ export function setFabricLowLegs(material: THREE.Material, legL: readonly [V4, V
  * Nothing for a layer whose waistband is no hoop (`FabricLayer.low.hinge`), which stays unswung; with no swing a
  * hoop's waistband is its line's alone.
  */
-export function setFabricLowSwing(material: THREE.Material, index: number, swing: number, room: number, front: readonly [number, number] = [0, 0]): void {
+export function setFabricLowSwing(material: THREE.Material, index: number, swing: number, room: number, front: readonly [number, number] = [0, 1]): void {
   const p = patched.get(material);
   if (!p?.low || index >= p.layers) return;
   const u = p.uniforms[`fabricLowSwing${index}`].value as THREE.Vector4;

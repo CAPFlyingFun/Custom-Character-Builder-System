@@ -130,6 +130,8 @@ export interface CoverageParams {
    * there. Drawn in the bottom's own fabric a shade darker with a seam, or in its EDGING colour, as a top's are.
    */
   readonly lowBand?: Partial<LowBands> | null;
+  /** A DRAWN bottom's waistband's BOWL (`bottomCut.waistLine`): how long its front is held low before it climbs to her sides; none is the plain sweep. */
+  readonly lowBowl?: number | null;
 }
 
 const NONE: CoverageParams = Object.freeze({ riseFront: null, riseSide: null, riseBack: null, riseFrontWidth: 1, legStart: 0, legEnd: 0, feet: false, hemFront: null, hemBack: null, neckFront: null, neckBack: null, sleeve: -1, topFront: null, topBack: null, topSide: null, strap: 0, strapIn: 0, armhole: null, neckStyle: 'crew', legCut: null, length: null });
@@ -454,6 +456,8 @@ const NO_RISE = Object.freeze({ front: -9, side: -9, back: -9 });
 const HIGH_RISE_WAIST = 0.105;
 const SHORTS_BANDS = Object.freeze({ leg: 0.015 }), BIKE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST, leg: 0.02 });
 const HIGH_RISE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST }), LOW_RISE_BANDS = Object.freeze({ waist: 0.045 }), UNDER_BELLY_BANDS = Object.freeze({ waist: 0.015 });
+/** The under-belly waistband's bowl (`bottomCut.waistLine`; GAME TUNING to his yellow U over it at 0 and at 100%, 2026-11-15). */
+const UNDER_BELLY_BOWL = 0.7;
 const STOCKING_BANDS = Object.freeze({ top: 0.045 }), KNEE_SOCK_BANDS = Object.freeze({ top: 0.02 }), CREW_SOCK_BANDS = Object.freeze({ top: 0.04 });
 const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 /**
@@ -473,7 +477,7 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // (its edging half as deep as a waistband's: Joshua, 2026-11-15, of it pictured in black from under her belly: "How
   // wide is the edging? Make it half as thick... Looks too wide, or better yet, make it adjustable once it's working
   // properly" -- 3 cm it was, 1.5 it is; GAME TUNING)
-  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0, { lowBand: UNDER_BELLY_BANDS })],
+  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0, { lowBand: UNDER_BELLY_BANDS, lowBowl: UNDER_BELLY_BOWL })],
   // (his 05: a high rise, its legs' ends on her calves' fullest. It was the over-belly rise to 0.78 of her leg until
   // 2026-11-15; MEASURED off his sheet, 0.70 of the way from his figure's crotch to her ankle, which is 0.72 of her
   // leg's line. A look saved before keeps the numbers it was saved with)
@@ -700,7 +704,7 @@ export function aroundLine(front: number, side: number, back: number, frontReach
  */
 export function waistline(p: CoverageParams, around: number): number {
   const front = p.riseFront ?? 0;
-  return waistLine([front, sideOf(p), p.riseBack ?? front], around).height;
+  return waistLine([front, sideOf(p), p.riseBack ?? front, p.lowBowl ?? 0], around).height;
 }
 /**
  * How far INSIDE a rounded corner a point is, in trunk heights: the corner is the quarter-plane u > 0, v > 0 with its

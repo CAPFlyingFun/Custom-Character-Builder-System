@@ -302,8 +302,9 @@ describe('templates wrap round her (Joshua, 2026-10-20: no gaps at the hips, smo
   const t = (id: string) => COVERAGE_TEMPLATES.find((x) => x.id === id)!.params;
 
   it('carries an under-belly waistband in a U under the bump, over the hips and level across the back', () => {
-    // waist skin at the same height (trunk 0.12) in front, at the side, behind, and part way round the front
-    const m = map([0.12, 0.12, 0.12, 0.12, 0], [1, 0.5, 0, 0.65, 0], [NaN, NaN, NaN, NaN, 0.05]);
+    // waist skin at the same height (trunk 0.12) in front, at the side and behind, and part way round the front on the
+    // line itself (0.1 at 0.6 round her, since the line has its bowl: 2026-11-15)
+    const m = map([0.12, 0.12, 0.12, 0.1, 0], [1, 0.5, 0, 0.6, 0], [NaN, NaN, NaN, NaN, 0.05]);
     const c = coverage(m, t('leggingsUnder'));
     expect(c[0]).toBe(0); // under the bump: bare above the low front waistband
     expect(c[1]).toBe(1); // over the hips: covered
