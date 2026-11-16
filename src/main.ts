@@ -17,6 +17,7 @@ import { localStorageKeyValueStore } from './persistence/localStorageStore';
 import { assetUrl, publicTable } from './assets/assets';
 import { aheadFiles, deviceLine, deviceNote, startOnDevice } from './pwa/onDevice';
 import { BUILD_INFO } from './ui/buildInfo';
+import { wearsLightSkin } from './sarahlab/skinChoice';
 
 const MAX_STEP = 1 / 20;
 
@@ -27,14 +28,19 @@ async function start(): Promise<void> {
   const renderer = new Renderer(host);
   const storage = createStorageRoot(localStorageKeyValueStore());
   const skin = new URLSearchParams(location.search).get('skin') === 'ktx2' ? 'ktx2' : null;
-  // (`?body=light`: her light skin, a trial -- `scripts/lightBody.mjs`)
-  const lightBody = new URLSearchParams(location.search).get('body') === 'light';
   // THE ROOM KEPT ON THIS DEVICE (Joshua, 2026-11-13: "load everything at one time and hold it locally especially if I
   // have it saved as a PWA"): the service worker and what it keeps (src/pwa). Nothing on a development server.
   const table = publicTable();
   // (and nothing for a probe or a bake, which open the room by address to measure it: a download in the background is
   // one more thing moving while they do)
   const asked = new URLSearchParams(location.search);
+  // HER LIGHT SKIN FOR A PHONE, A TABLET AND A SMALL SCREEN (skinChoice.ts; `?body=light` / `?body=full` says which)
+  const media = (q: string): boolean => { try { return typeof matchMedia === 'function' && matchMedia(q).matches; } catch { return false; } };
+  const lightBody = wearsLightSkin({
+    asked: asked.get('body'), measuring: asked.has('probe') || asked.has('bake'),
+    coarse: media('(pointer: coarse)'), fine: media('(any-pointer: fine)'),
+    width: typeof screen !== 'undefined' ? screen.width : 0, height: typeof screen !== 'undefined' ? screen.height : 0, ratio: globalThis.devicePixelRatio ?? 1,
+  });
   const device = startOnDevice({
     build: `${BUILD_INFO.version}+${BUILD_INFO.commit}`,
     enabled: import.meta.env.PROD && !asked.has('probe') && !asked.has('bake'),

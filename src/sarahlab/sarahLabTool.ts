@@ -40,7 +40,7 @@ export const SARAH_V2_BODY_MODEL = 'models/sarah-v2-body-slim.glb';
  * on the phone: the room loads it in place of the slim body only when the address says `?skin=ktx2`.
  */
 export const SARAH_V2_BODY_KTX2_MODEL = 'models/sarah-v2-body-slim-ktx2.glb';
-/** Her light skin's triangles over her own points (Uint32, three a triangle; `scripts/lightBody.mjs`): a trial, `?body=light`. */
+/** Her light skin's triangles over her own points (Uint32, three a triangle; `scripts/lightBody.mjs`): what a phone, a tablet and a small screen wear (`skinChoice.ts`). */
 export const LIGHT_BODY_TRIANGLES = 'models/sarah-v2-body-light.bin';
 /** Sarah v2's hair (`scripts/sarahV2Recovery/hair-bake.mjs`, Joshua 2026-10-24): one skinned mesh on her own skeleton. */
 export const SARAH_V2_HAIR_MODEL = 'models/sarah-v2-hair.glb';

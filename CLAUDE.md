@@ -1083,6 +1083,13 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   texture's seams kept): the same vertices, morphs, weights and attributes, fewer triangles between them. Laid at load
   (`SarahLabScene.ts` `lightBodyOn`, `LIGHT_BODY_TRIANGLES`); the status line says LIGHT SKIN (N triangles). Not fetched
   ahead by a device that does not wear it (`NOT_AHEAD`).
+- **Which device wears it** (`skinChoice.ts` `wearsLightSkin`, read once by `main.ts`): a phone or a tablet (its first
+  pointer a finger and no mouse, trackpad or pen beside it), and a screen with fewer pixels of its own than 1920 x 1080
+  (CSS pixels times its pixel ratio); `?body=light` / `?body=full` says which whatever the device. A PROBE OR A BAKE
+  (`?probe=`, `?bake=`) WEARS HER FULL SKIN unless its address says light: what is measured is measured on her, and a
+  card's picture is baked from her, in a window of whatever size the script opened. `tests/skinChoice.test.ts`.
+  NOT DONE: a computer that is drawing slowly falling back to it (his "if it starts to lag…") -- her triangles are
+  read by much of the room as her file is read, and the list is put on her before any of it, once.
 - **Left whole** (his, the same morning: "keep the (opening, belly/bellybutton, breasts/nipples, and head) at full
   quality, everywhere else can be less"; then "we forgot to add the hands in"): her head and neck, the front of her
   trunk from under her opening to over her bust, her opening's area, her hands. Her legs, hips and feet are the denser
@@ -1122,6 +1129,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   cards (some 4 KB each). The hairstyles' light twins (2.2 MB, a game's) and the old hair file (the story's bake's) are
   on the site and are not fetched ahead (`NOT_AHEAD`). With the drawn bottoms (the same day): two more STYLE pictures
   (forty) and six more outfit cards.
+- NOT MEASURED AGAIN since a phone wears her light skin (2026-11-16): a phone's first visit fetches its triangles as
+  well (`models/sarah-v2-body-light.bin`, 1.5 MB), kept as they land; a computer never asks for them. The probe
+  (`scripts/probe-on-device.mjs`) opens the room as a phone, so its megabytes are a phone's now.
 - **What the worker answers with depends on what may change behind an address** (`keeper.ts` `kindOf`). The page is asked
   of the server first, past the browser's ten-minute copy, so a new build shows the moment it is live; the page kept
   here answers with no network, or none in 3 s. A file that can not change behind its address -- Vite's bundles, and a

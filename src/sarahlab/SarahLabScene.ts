@@ -461,7 +461,7 @@ export interface SarahLabHooks {
    */
   readonly skin?: 'ktx2' | null;
   /**
-   * `?body=light`: HER LIGHT SKIN, a trial (Joshua, 2026-11-16: "let's focus more on the lighter body mesh first"). Her
+   * HER LIGHT SKIN, for a phone, a tablet and a small screen (`skinChoice.ts`; Joshua, 2026-11-16: "let's focus more on the lighter body mesh first"). Her
    * own body file, drawn by a second list of triangles over her own points (`LIGHT_BODY_TRIANGLES`,
    * `scripts/lightBody.mjs`): the list is put on her skin as her file is read, before anything of the room reads her
    * triangles, so the room is the same room. An override from the address; the status line says so.
