@@ -39,7 +39,7 @@ import {
   type FabricPick, type FabricSet, type OutfitConfig, type PaintTool,
 } from './fabricLibrary';
 import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricLowWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowMoon, setFabricLowSwing, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer, type FabricLow } from './fabricMaterial';
-import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
+import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, planeShare, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
 import { makePulledSlip, pulledSlipDriver, type PulledDriver } from './pulledSlip';
 import { MOTION_SHAPES } from './levelLine';
 import { ARMSCYE, TOP_CUT, cutPicture, isCutTop, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
@@ -1538,7 +1538,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       }
       lowSwings[i] = swing;
       swung ||= swing > 0;
-      setFabricLowSwing(material, i, swing, roomAt(frame, swing), [foldLift(frame, swing), foldEase(swing)]);
+      setFabricLowSwing(material, i, swing, roomAt(frame, swing), [foldLift(frame, swing), foldEase(swing), planeShare(spec?.hinge ?? null)]);
     }
     if (swung) { groinNow = shapedNow(body, frame.groin, groinNow); lowFold = foldOf(frame, groinNow); setFabricLowFold(material, lowFold); }
   }

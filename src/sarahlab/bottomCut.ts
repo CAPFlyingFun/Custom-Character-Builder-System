@@ -696,6 +696,39 @@ export function foldStretchAt(frame: LowFrame, stretch: ArrayLike<number> | null
   const f = Math.min(Math.abs(place[0] - frame.mid) / (0.01 * frame.unitsPerMetre), stretch.length - 1), k = Math.min(Math.floor(f), stretch.length - 2);
   return stretch[k] + (stretch[k + 1] - stretch[k]) * (f - k);
 }
+/**
+ * A SWUNG HOOP IS ONE PLANE ON HER AS SHE STANDS (Joshua, 2026-11-15, of the edging still uneven round her after a day
+ * of it: "didn't you create a body straight like paint as well as room paint? Try doing body line but set the front
+ * just below the belly with the high at just above the hips at that approximate 35 degrees, and test if it will do
+ * it... in a straight line all around"). It does: the hoop's own swung surface (`stayAt`) told ON HER SHAPED SKIN and
+ * nothing of her rest skin's -- so nothing of how far her skin is drawn out under her belly, which is what made an
+ * edge on her rest skin wave and its band thicken and thin. How far inside it a place is (her units):
+ * - under the swung surface, the place taken no further forward than the fold under her belly (`foldDepth`,
+ *   `foldCurve`): in front of the fold the surface runs LEVEL, at the fold's own height, so her thighs' fronts are
+ *   covered up to there and the edge runs straight across her seen from underneath, where he drew it;
+ * - and, her trunk's skin, no further forward than that fold (her belly's underside is bare), out to her hips.
+ * One number for the edge and for its band: a place is the band's while it is inside by less than the band's depth,
+ * the same all round her. MEASURED 2026-11-15 in a sketch on the room's points at 150 and 200%: one line from her
+ * side, straight across in the fold from underneath, its edging one depth all the way round.
+ */
+export function planeAt(frame: LowFrame, waist: V4, hinge: readonly [number, number], swing: number, shaped: V3, leg: number): number {
+  // (the fold is told `foldLift` further forward while the hoop has hardly swung: until her belly hangs over it there is
+  // no fold, and the surface is the swung one alone -- at 110% a fold told where it is at 150% put the edge there, and
+  // smeared its band, MEASURED in the room. And the surface with none of the room a hoop is given unswung: `roomAt`)
+  const U = frame.unitsPerMetre, out = Math.abs(shaped[0] - frame.mid), x = out / U, fold = (LOW_CUT.foldDepth - LOW_CUT.foldCurve * x * x) * U + foldLift(frame, swing);
+  // (none of the fold round her hips, `foldDeepIn` to `foldOut`: there the surface is the swung one alone -- held level
+  // out there too it stepped where the edge crossed onto her hip, seen from her side at 200%, MEASURED in the room)
+  const round = smoothstep(LOW_CUT.foldDeepIn * U, LOW_CUT.foldOut * U, out);
+  const ahead = aheadOf(frame, shaped[1], shaped[2]), over = Math.max(ahead - fold, 0) * (1 - round);
+  const stay = stayAt(frame, waist, hinge, swing, [shaped[0], shaped[1], shaped[2] - over * frame.facing]) - roomAt(frame, swing);
+  const loose = Math.max(leg, round), deep = fold - ahead;
+  return Math.min(stay, deep + (LOW_CUT.far - deep) * loose);
+}
+/**
+ * How much of a hoop is its plane (`planeAt`): all of it, at every size of belly, swung or not (unswung it is the
+ * waistband's own line told on her as she stands: the same edging at 0% as at 200%). A waistband with no hoop: none.
+ */
+export function planeShare(hinge: readonly [number, number] | null): number { return hinge ? 1 : 0; }
 /** His line's climb at its `k`th knot (metres a metre out): between the knots either side, or to the one beside it at an end. */
 function foldRise(k: number, ease = 1): number { const a = Math.max(k - 1, 0), b = Math.min(k + 1, FOLD_LINE.length - 1); return (foldKnot(b, ease) - foldKnot(a, ease)) / ((b - a) * 0.01); }
 /** His line's `k`th knot with its climb up her hips eased (`foldEase`): past `FOLD_HIP` out, only `ease` of its climb from there. */
@@ -1170,6 +1203,8 @@ export function lowAt(spec: LowSpec, frame: LowFrame, place: V3, along: number, 
       waist += (front - waist) * wAhead; banded += (frontBand - banded) * wAhead;
     }
   }
+  // (and a hoop, swung or not, is ONE PLANE ON HER AS SHE STANDS: `planeAt`)
+  if (shaped && spec.waist && spec.hinge) { const w = planeShare(spec.hinge); if (w > 0) { const plane = planeAt(frame, spec.waist, spec.hinge, swing, shaped, legShareOf(limb)); waist += (plane - waist) * w; banded += (plane - banded) * w; } }
   const end = spec.end === null ? far : spec.end - along, top = spec.start === null ? far : along - spec.start;
   // her leg's skin: every edge; the rest of her: under a waistband, and nothing of a stocking; her arm's skin, which
   // hangs beside her hips under any waistband: never
@@ -1254,6 +1289,12 @@ float fabricLowStayAt(vec4 w, vec4 g, vec3 q) {
   float X = (q.z - fabricLowSpine(q.y)) * fabricLowAxis.y - fabricLowAxis.z - g.x, Y = q.y - w.z;
   float a = g.x + X * g.y - Y * g.z, y = w.z + X * g.z + Y * g.y, o = abs(q.x - fabricLowAxis.x), r = max(length(vec2(o, a)), 1e-9);
   return fabricLowInside(w, vec3(0.0, y, 0.0), vec3(0.5 + 0.5 * a / r, o, r), 0.0) + g.w;
+}
+float fabricLowPlane(vec4 w, vec4 g, vec3 q, float leg, float lift) {
+  float o = abs(q.x - fabricLowAxis.x), a = (q.z - fabricLowSpine(q.y)) * fabricLowAxis.y - fabricLowAxis.z;
+  float fold = fabricLowFoldK.z - fabricLowFoldK.w * o * o + lift, deep = fold - a, round = smoothstep(fabricLowFrontK.y * ${(LOW_CUT.foldDeepIn / LOW_CUT.foldOut).toFixed(6)}, fabricLowFrontK.y, o);
+  float stay = fabricLowStayAt(w, g, vec3(q.x, q.y, q.z - max(a - fold, 0.0) * (1.0 - round) * fabricLowAxis.y)) - g.w;
+  return min(stay, mix(deep, ${LOW_CUT.far.toFixed(1)}, max(leg, round)));
 }
 float fabricLowCreaseAt(float x) {
   float t = min(abs(x - fabricLowAxis.x) / fabricLowStay.x, 1.0) * ${(CREASE_STEPS - 1).toFixed(1)}, k = min(floor(t), ${(CREASE_STEPS - 2).toFixed(1)});
