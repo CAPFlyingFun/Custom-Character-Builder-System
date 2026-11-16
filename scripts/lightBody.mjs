@@ -23,7 +23,7 @@ import { readBody } from './sarahV2SideLock.mjs';
 
 export const LIGHT_FILE = 'public/models/sarah-v2-body-light.bin';
 /** GAME TUNING: its triangles (besides what is left whole), and the denser part's share of them. */
-export const LIGHT = Object.freeze({ triangles: 9000, share: 0.4 });
+export const LIGHT = Object.freeze({ triangles: 26000, share: 0.8 });
 const HIP_Y = 0.8865;
 
 const check = process.argv.includes('--check');
@@ -48,9 +48,12 @@ const at = (v) => [Math.abs(R[v * 3] - body.midX), R[v * 3 + 1], R[v * 3 + 2]];
 // LEFT WHOLE (Joshua, 2026-11-16: "keep the (opening, belly/bellybutton, breasts/nipples, and head) at full quality,
 // everywhere else can be less"): her head and neck; her trunk's front from under her opening up over her bust; her
 // opening's area all round her (the room rebuilds it from her own triangles there)
-const whole = (v) => { const [x, y, z] = at(v); if (isArmV[v]) return false; return y > 1.42 || (x < 0.1 && y > HIP_Y - 0.17 && y < HIP_Y - 0.01) || (y >= HIP_Y - 0.12 && y < 1.36 && z > -0.02 && x < 0.2); };
-// (of the rest, her hands and feet a little denser than her limbs and her back)
-const dense = (v) => { const [x, y] = at(v); return (isArmV[v] && x > 0.2 && y < 0.95) || y < 0.1; };
+const whole = (v) => { const [x, y, z] = at(v); if (isArmV[v]) return x > 0.2 && y < 0.95; return y > 1.42 || (x < 0.1 && y > HIP_Y - 0.17 && y < HIP_Y - 0.01) || (y >= HIP_Y - 0.12 && y < 1.36 && z > -0.02 && x < 0.2); };
+// (and her HANDS whole: Joshua, the same morning, of the light skin on his phone: "we forgot to add the hands in")
+// OF THE REST, HER LEGS, HER HIPS AND HER FEET ARE THE DENSER PART: thinned as her arms and her back are they stood in
+// facets at her knees and her hips as soon as she squatted (MEASURED in the room beside the full skin, 200%, SQUAT:
+// Joshua, "the legs got messed up again in a squat"). The list is fitted to her standing shapes, and a bend wants more.
+const dense = (v) => { const [, y] = at(v); return !isArmV[v] && y < HIP_Y + 0.08; };
 const kind = Uint8Array.from({ length: n }, (_x, v) => (whole(v) ? 2 : dense(v) ? 1 : 0));
 const groups = [[], [], []];
 for (let t = 0; t < index.length; t += 3) {
