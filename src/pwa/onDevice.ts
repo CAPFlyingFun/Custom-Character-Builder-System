@@ -98,6 +98,52 @@ export function reloadAsked(store: TabStore | null): void {
   try { store?.setItem(ASKED_KEY, '1'); } catch { /* a private window: the reload is counted, that is all */ }
 }
 
+/**
+ * IS THERE A NEWER BUILD? (Joshua, 2026-11-16: "add in settings now a check for a newest update? Then if you press on
+ * it if there is one, it will automatically restart the app"). The page on the server is asked for afresh -- past the
+ * worker and past the browser's own copy -- and the bundle it names is set beside the one this page was started from:
+ * a build's bundle carries its version in its name's hash, so another name is another build. It needs no worker: a
+ * browser that keeps nothing can still be told.
+ */
+export type UpdateAnswer =
+  /** the server's page names another bundle */
+  | 'newer'
+  | 'current'
+  /** no connection, or the server did not answer with a page */
+  | 'offline'
+  /** not a built site (a development server): there is nothing to compare */
+  | 'off';
+
+/** The file name of the bundle a page starts from (its module script), or null for a page with none. */
+export function pageEntry(html: string): string | null {
+  for (const tag of html.match(/<script\b[^>]*>/gi) ?? []) {
+    if (!/\btype\s*=\s*["']?module/i.test(tag)) continue;
+    const src = /\bsrc\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1];
+    if (src) return src.split(/[?#]/)[0].split('/').pop() || null;
+  }
+  return null;
+}
+
+export async function checkForUpdate(env: { readonly entry: string | null; readonly online: boolean; readonly fetchPage: () => Promise<string | null> }): Promise<UpdateAnswer> {
+  if (!env.entry) return 'off';
+  if (!env.online) return 'offline';
+  let html: string | null;
+  try { html = await env.fetchPage(); } catch { return 'offline'; }
+  const theirs = html ? pageEntry(html) : null;
+  if (!theirs) return 'offline';
+  return theirs === env.entry ? 'current' : 'newer';
+}
+
+/** What SETTINGS says of an answer. */
+export function updateLine(answer: UpdateAnswer, version: string): string {
+  switch (answer) {
+    case 'newer': return 'A newer version is there: restarting the room…';
+    case 'current': return `This is the newest version (${version}).`;
+    case 'offline': return 'Could not ask: no connection just now. Try again in a moment.';
+    case 'off': return 'Not a published page: there is nothing to check here.';
+  }
+}
+
 export interface AheadFile { readonly url: string; readonly bytes: number }
 
 /**
@@ -163,7 +209,13 @@ export interface OnDevice {
   roomReady(): void;
   /** The room is about to reload the page itself. */
   reloadAsked(): void;
+  /** Ask the server whether a newer build is there (`checkForUpdate`). */
+  check(): Promise<UpdateAnswer>;
+  /** Take the newer build: its worker installed if there is one to install, then the page loaded again. */
+  update(): Promise<void>;
 }
+/** The longest `update` waits for the new build's worker to take over before it loads the page again anyway. */
+export const UPDATE_WAIT_MS = 15000;
 
 /** On a device's first visit the room waits this long, at the most, for the worker to be installed (see `ready`). */
 export const FIRST_VISIT_WAIT_MS = 2500;
@@ -199,7 +251,27 @@ export function startOnDevice(env: OnDeviceEnv): OnDevice {
   const workers = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
   const supported = !!workers && typeof caches !== 'undefined';
   const state = tracked({ ...NO_DEVICE, reloads, of: env.files.length, ofBytes, phase: !env.enabled ? 'off' : supported ? 'starting' : 'unsupported' });
-  const base: OnDevice = { state: state.get, watch: state.watch, ready: Promise.resolve(), roomReady: () => {}, reloadAsked: () => reloadAsked(tab) };
+  const entry = (() => { try { const src = document.querySelector('script[type="module"][src]')?.getAttribute('src'); return src ? pageEntry(`<script type="module" src="${src}">`) : null; } catch { return null; } })();
+  const check = (): Promise<UpdateAnswer> => checkForUpdate({
+    entry: env.enabled ? entry : null, online: typeof navigator === 'undefined' || navigator.onLine !== false,
+    // (past the worker, which would answer with the page kept here when the server is slow, and past the browser's copy)
+    fetchPage: async () => { const r = await fetch(new URL(`./?check=${Date.now()}`, document.baseURI).href, { headers: { [AHEAD_HEADER]: '1' }, cache: 'no-store' }); return r.ok ? r.text() : null; },
+  });
+  const update = async (): Promise<void> => {
+    reloadAsked(tab);
+    try {
+      const workers = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+      const registration = await workers?.getRegistration();
+      if (workers && registration) {
+        // the new build's worker is fetched and installed now; it takes over at once (sw.ts), and then the page it kept is the new one
+        const taken = new Promise<void>((done) => { workers.addEventListener('controllerchange', () => done(), { once: true }); setTimeout(done, UPDATE_WAIT_MS); });
+        await registration.update();
+        if (registration.installing || registration.waiting) await taken;
+      }
+    } catch { /* no worker to renew: the page is asked of the server afresh all the same */ }
+    location.reload();
+  };
+  const base: OnDevice = { state: state.get, watch: state.watch, ready: Promise.resolve(), roomReady: () => {}, reloadAsked: () => reloadAsked(tab), check, update };
   if (!env.enabled || !supported || !workers) return base;
 
   let newerTimer: ReturnType<typeof setTimeout> | null = null;

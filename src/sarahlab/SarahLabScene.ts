@@ -16,6 +16,7 @@ import { frameBox, shoot, shootDataUrl, savePicture } from './snapshot';
 import { History } from './strapData';
 import { GRAPHICS_DEFAULT, type GraphicsInForce, type GraphicsSettings } from './graphicsSettings';
 import { SETTINGS_ACTION, settingsPanel, type SettingsPanel } from './settingsPanel';
+import type { UpdateAnswer } from '../pwa/onDevice';
 import { loadingCard, LOADING_COVERED_VAR, type LoadingCard, type LoadingPlace } from './loadingCard';
 import { LoadMeter } from '../assets/loadMeter';
 import { ClothShirt } from './clothShirt';
@@ -490,7 +491,11 @@ export interface SarahLabHooks {
    * it locally especially if I have it saved as a PWA"): the Library's line, and what should be noticed over the stage
    * (the page was loaded again by the phone, a newer version is ready). Without it the room says nothing of either.
    */
-  readonly device?: { line(): string; note(): string; watch(changed: () => void): void };
+  readonly device?: {
+    line(): string; note(): string; watch(changed: () => void): void;
+    /** SETTINGS' CHECK FOR UPDATE: ask the server for a newer build; take it (the page is loaded again); one is known to be kept already */
+    check?(): Promise<UpdateAnswer>; update?(): Promise<void>; newer?(): boolean;
+  };
   /** Her files are asked for once this resolves (on a device's first visit: once they can be kept as they land). */
   readonly beforeLoad?: Promise<void>;
   /** She is in and drawn, the loading card gone: the page may fetch the rest of the room ahead of need. */
@@ -3932,6 +3937,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       apply: () => hooks.graphics?.apply(),
       theme: () => theme, setTheme: (t) => applyTheme(t), themeAction: SARAH_LAB_ACTION.theme,
       deviceLine: () => hooks.device?.line() ?? '', deviceField: SARAH_LAB_FIELD.device,
+      checkUpdate: hooks.device?.check ? () => hooks.device!.check!() : undefined, update: () => { void hooks.device?.update?.(); }, newer: () => hooks.device?.newer?.() === true,
       notice: () => `${hooks.device?.note() ?? ''}${graphicsNote(graphics)}`.replace(/ · $/, ''),
       skinLine: () => { const b = loaded ? bodyOf() : null, n = b?.mesh.geometry.index ? b.mesh.geometry.index.count / 3 : 0; return n ? `her ${lightBodyOn ? 'light' : 'full'} skin (${n.toLocaleString('en-US')} triangles)` : ''; },
       version: `${BUILD_INFO.version} · ${BUILD_INFO.commit}`,

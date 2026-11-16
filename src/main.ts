@@ -64,7 +64,7 @@ async function start(): Promise<void> {
       change: (g) => { graphicsKept = g; storeGraphics(local(), g); },
       apply: () => { device.reloadAsked(); location.reload(); },
     },
-    device: { line: () => deviceLine(device.state()), note: () => deviceNote(device.state()), watch: (changed) => device.watch(changed) },
+    device: { line: () => deviceLine(device.state()), note: () => deviceNote(device.state()), watch: (changed) => device.watch(changed), check: () => device.check(), update: () => device.update(), newer: () => device.state().newer },
     // on a device's first visit her files wait a moment for the worker, so they are kept as they land
     beforeLoad: device.ready,
     onReady: () => device.roomReady(),

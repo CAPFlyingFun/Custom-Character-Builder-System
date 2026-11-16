@@ -17,6 +17,7 @@
  */
 import { GRAPHICS_MODES, GRAPHICS_MODE_NAMES, sameInForce, setByHand, withMode, type GraphicsInForce, type GraphicsMode, type GraphicsSettings } from './graphicsSettings';
 import type { StudioTheme } from './studioTheme';
+import { updateLine, type UpdateAnswer } from '../pwa/onDevice';
 
 export const SETTINGS_ACTION = Object.freeze({
   /** the ⚙ on the stage */
@@ -26,8 +27,9 @@ export const SETTINGS_ACTION = Object.freeze({
   sharpness: 'sarahlab:settings:sharpness:',
   smoothing: 'sarahlab:settings:smoothing:',
   apply: 'sarahlab:settings:apply',
+  update: 'sarahlab:settings:update',
 });
-export const SETTINGS_FIELD = Object.freeze({ mode: 'sarahlab-settings-mode', pending: 'sarahlab-settings-pending', skin: 'sarahlab-settings-skin', about: 'sarahlab-settings-about', notice: 'sarahlab-settings-notice' });
+export const SETTINGS_FIELD = Object.freeze({ mode: 'sarahlab-settings-mode', pending: 'sarahlab-settings-pending', skin: 'sarahlab-settings-skin', about: 'sarahlab-settings-about', update: 'sarahlab-settings-update', notice: 'sarahlab-settings-notice' });
 /** In a row's `data-action`: the chip that gives the row back to the mode. */
 export const BY_MODE = 'mode';
 
@@ -53,6 +55,14 @@ export interface SettingsPanelHooks {
   /** her skin as she wears it now, in words ('' before she is in) */
   skinLine(): string;
   readonly version: string;
+  /**
+   * CHECK FOR UPDATE (Joshua, 2026-11-16: "a check for a newest update… if you press on it if there is one, it will
+   * automatically restart the app"): ask the server; `update` takes a newer build and loads the room again; `newer`,
+   * one is known to be there already. Without `checkUpdate` the button is not shown.
+   */
+  checkUpdate?(): Promise<UpdateAnswer>;
+  update?(): void;
+  newer?(): boolean;
 }
 
 export interface SettingsPanel { readonly element: HTMLElement; refresh(): void }
@@ -145,6 +155,23 @@ export function settingsPanel(doc: Document, hooks: SettingsPanelHooks): Setting
   const aboutLine = el('div', 'sl-set-note'); aboutLine.dataset.field = SETTINGS_FIELD.about;
   const skinLine = el('div', 'sl-set-note'); skinLine.dataset.field = SETTINGS_FIELD.skin;
   about.append(aboutLine, skinLine);
+  // CHECK FOR UPDATE: pressed, it asks the server, and a newer build restarts the room by itself
+  const updateButton = el('button', 'sl-set-apply'); updateButton.type = 'button'; updateButton.dataset.action = SETTINGS_ACTION.update;
+  const updateSays = el('div', 'sl-set-note'); updateSays.dataset.field = SETTINGS_FIELD.update; updateSays.style.marginTop = '6px';
+  let checking = false, answered = '';
+  updateButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (checking || !hooks.checkUpdate) return;
+    const restart = () => { answered = updateLine('newer', hooks.version); panel.refresh(); hooks.update?.(); };
+    // (one already known to be there: no need to ask)
+    if (hooks.newer?.()) { checking = true; restart(); return; }
+    checking = true; answered = 'Checking…'; panel.refresh();
+    void hooks.checkUpdate().catch((): UpdateAnswer => 'offline').then((answer) => {
+      if (answer === 'newer') { restart(); return; }
+      checking = false; answered = updateLine(answer, hooks.version); panel.refresh();
+    });
+  });
+  if (hooks.checkUpdate) about.append(updateButton, updateSays);
 
   const text = (node: HTMLElement, t: string) => { if (node.textContent !== t) node.textContent = t; };
   const pressed = (b: HTMLButtonElement, on: boolean) => { const v = String(on); if (b.getAttribute('aria-pressed') !== v) b.setAttribute('aria-pressed', v); };
@@ -177,6 +204,9 @@ export function settingsPanel(doc: Document, hooks: SettingsPanelHooks): Setting
       text(deviceLine, kept || 'Nothing is kept on this device here (a development page, or a browser that keeps nothing).');
       text(notice, said); notice.style.display = said ? '' : 'none';
       text(aboutLine, `Character Builder ${hooks.version}`);
+      text(updateButton, checking ? 'CHECKING…' : hooks.newer?.() ? 'UPDATE NOW (restarts the room)' : 'CHECK FOR UPDATE');
+      updateButton.disabled = checking;
+      text(updateSays, answered || (hooks.newer?.() ? 'A newer version is ready.' : ''));
       const skin = hooks.skinLine();
       text(skinLine, skin ? `Now drawn: ${skin}, ${sharpName(now.sharpness).toLowerCase()} sharpness, smoothing ${smoothName(now.smoothing).toLowerCase()}` : '');
     },

@@ -14,9 +14,9 @@ import type { StudioTheme } from '../src/sarahlab/studioTheme';
 
 const pc: SkinDevice = { asked: null, measuring: false, coarse: false, fine: true, width: 2560, height: 1440, ratio: 1 };
 
-function room(device: SkinDevice = pc) {
+function room(device: SkinDevice = pc, server: { answer: 'newer' | 'current' | 'offline' | 'off'; newer?: boolean } = { answer: 'current' }) {
   let kept: GraphicsSettings = GRAPHICS_DEFAULT, theme: StudioTheme = 'light';
-  const started = graphicsInForce(kept, device), apply = vi.fn();
+  const started = graphicsInForce(kept, device), apply = vi.fn(), update = vi.fn();
   const said = { device: 'the whole room is saved here (37 files, 44 MB)', notice: '' };
   const panel = settingsPanel(document, {
     settings: () => kept, inForce: () => started, wouldBe: (g) => graphicsInForce(g, device),
@@ -24,10 +24,11 @@ function room(device: SkinDevice = pc) {
     theme: () => theme, setTheme: (t) => { theme = t; }, themeAction: 'sarahlab:theme',
     deviceLine: () => said.device, notice: () => said.notice,
     skinLine: () => 'her full skin (208,592 triangles)', version: '0.9.35 · abc1234',
+    checkUpdate: async () => server.answer, update, newer: () => server.newer === true,
   });
   const button = (action: string) => panel.element.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
   const field = (id: string) => panel.element.querySelector<HTMLElement>(`[data-field="${id}"]`)!;
-  return { panel, button, field, apply, said, kept: () => kept, theme: () => theme };
+  return { panel, button, field, apply, update, said, kept: () => kept, theme: () => theme };
 }
 const on = (b: HTMLButtonElement) => b.getAttribute('aria-pressed') === 'true';
 
@@ -100,6 +101,49 @@ describe('the settings panel', () => {
     r.panel.refresh();
     expect(r.field(SETTINGS_FIELD.notice).style.display).toBe('');
     expect(r.field(SETTINGS_FIELD.notice).textContent).toBe('page loaded again ×2');
+  });
+});
+
+describe('check for update', () => {
+  const settled = () => new Promise((r) => setTimeout(r, 0));
+  it('says this is the newest when it is, and restarts nothing', async () => {
+    const r = room(pc, { answer: 'current' });
+    const b = r.button(SETTINGS_ACTION.update);
+    expect(b.textContent).toBe('CHECK FOR UPDATE');
+    b.click();
+    expect(b.disabled).toBe(true);
+    await settled();
+    expect(b.disabled).toBe(false);
+    expect(r.field(SETTINGS_FIELD.update).textContent).toContain('newest version (0.9.35');
+    expect(r.update).not.toHaveBeenCalled();
+  });
+
+  it('restarts the room by itself when there is a newer one', async () => {
+    const r = room(pc, { answer: 'newer' });
+    r.button(SETTINGS_ACTION.update).click();
+    await settled();
+    expect(r.update).toHaveBeenCalledTimes(1);
+    expect(r.field(SETTINGS_FIELD.update).textContent).toContain('restarting');
+    // (and a second press while it restarts does nothing more)
+    r.button(SETTINGS_ACTION.update).click();
+    await settled();
+    expect(r.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call no connection "newest"', async () => {
+    const r = room(pc, { answer: 'offline' });
+    r.button(SETTINGS_ACTION.update).click();
+    await settled();
+    expect(r.field(SETTINGS_FIELD.update).textContent).toContain('no connection');
+    expect(r.update).not.toHaveBeenCalled();
+  });
+
+  it('with one already known to be there, the button is UPDATE NOW and takes it without asking', async () => {
+    const r = room(pc, { answer: 'offline', newer: true });
+    const b = r.button(SETTINGS_ACTION.update);
+    expect(b.textContent).toContain('UPDATE NOW');
+    b.click();
+    expect(r.update).toHaveBeenCalledTimes(1);
   });
 });
 

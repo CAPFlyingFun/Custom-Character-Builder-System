@@ -129,3 +129,31 @@ describe('what the room says of it', () => {
     expect(deviceNote(s({ reloads: 1, newer: true }))).toBe('page loaded again ×1 · update ready: reopen · ');
   });
 });
+
+describe('a check for a newer build', () => {
+  it('reads the bundle a page starts from', async () => {
+    const { pageEntry } = await import('../src/pwa/onDevice');
+    expect(pageEntry('<head><script type="module" crossorigin src="./assets/index-CTMXCXcD.js"></script></head>')).toBe('index-CTMXCXcD.js');
+    expect(pageEntry('<script src="/Custom-Character-Builder-System/assets/index-Ab12.js?x=1" type="module"></script>')).toBe('index-Ab12.js');
+    expect(pageEntry('<script src="analytics.js"></script><p>no module here</p>')).toBeNull();
+    expect(pageEntry('')).toBeNull();
+  });
+
+  it('says newer only when the server names another bundle, and never guesses', async () => {
+    const { checkForUpdate, updateLine } = await import('../src/pwa/onDevice');
+    const page = (name: string) => `<script type="module" src="./assets/${name}"></script>`;
+    const ask = (html: string | null | Error, entry: string | null = 'index-A.js', online = true) =>
+      checkForUpdate({ entry, online, fetchPage: async () => { if (html instanceof Error) throw html; return html; } });
+    expect(await ask(page('index-A.js'))).toBe('current');
+    expect(await ask(page('index-B.js'))).toBe('newer');
+    // no connection, a server that did not answer, or an answer that is not the page: not "current", and not "newer"
+    expect(await ask(page('index-B.js'), 'index-A.js', false)).toBe('offline');
+    expect(await ask(new Error('network'))).toBe('offline');
+    expect(await ask(null)).toBe('offline');
+    expect(await ask('<h1>503</h1>')).toBe('offline');
+    // a development page has no built bundle to compare
+    expect(await ask(page('index-B.js'), null)).toBe('off');
+    expect(updateLine('current', '0.9.36')).toContain('0.9.36');
+    expect(updateLine('newer', '0.9.36')).toContain('restarting');
+  });
+});
