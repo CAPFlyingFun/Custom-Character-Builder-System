@@ -290,6 +290,8 @@ export interface FabricPanel {
    * about her hips as it is kept for them (`pulledSlip.ts`: `pending` while what is laid is behind what she is;
    * `across`, the least and the most her skin is longer across her than at rest).
    */
+  /** A fabric's pictures or a designed garment's field are still being fetched for what she wears: she is not dressed yet. */
+  busy(): boolean;
   lowState(): {
     readonly frame: { readonly unitsPerMetre: number; readonly mid: number; readonly hipY: number; readonly trunk: number; readonly facing: number; readonly legs: readonly { readonly name: string; readonly thigh: number; readonly shin: number }[] };
     readonly worn: boolean;
@@ -1203,6 +1205,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   }
 
   let applying = 0;
+  /** fetches in flight for what she wears (`busy`) */
+  let loadsOut = 0;
   async function apply(): Promise<void> {
     const id = ++applying;
     const wanted: [FabricPick, 'plain' | 'trim'][] = [];
@@ -1211,7 +1215,9 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const pending = wanted.filter(([p, w]) => !swatches.has(swatchKey(p, w)));
     if (pending.length) {
       status.textContent = 'Loading fabric…';
-      const got = await Promise.all(pending.map(([p, w]) => swatchTexture(p, w)));
+      loadsOut++;
+      let got: (THREE.Texture | null)[];
+      try { got = await Promise.all(pending.map(([p, w]) => swatchTexture(p, w))); } finally { loadsOut--; }
       if (disposed || id !== applying) return;
       draw();
       if (got.some((t) => !t)) status.textContent = 'That fabric could not be downloaded. Check your connection, then pick it again.';
@@ -1232,7 +1238,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     if (!d) return null;
     const f = d.field, have = fields.get(f.path);
     if (have) return { texture: have, level: d.level, scale: f.scale, offset: f.offset };
-    if (!fieldLoads.has(f.path)) fieldLoads.set(f.path, hooks.loadImage(f.path).then((image) => {
+    if (!fieldLoads.has(f.path)) { loadsOut++; fieldLoads.set(f.path, hooks.loadImage(f.path).finally(() => { loadsOut--; }).then((image) => {
       if (!image || disposed) return;
       // its picture read back as numbers (its slices lie side by side), and laid as one block: linear data, blended
       // between cells, nothing beyond its faces
@@ -1249,7 +1255,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       texture.wrapS = texture.wrapT = texture.wrapR = THREE.ClampToEdgeWrapping; texture.needsUpdate = true;
       fields.set(f.path, texture);
       sync();
-    }));
+    })); }
     return null;
   }
   /**
@@ -1941,6 +1947,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       return { points: slip.points, vertices: slip.vertices.length, solved: slip.driver.stats.solved, morphs: slip.driver.stats.morphs.slice(), longest };
     },
     slipNow() { return slip && slip.mesh === hooks.body() ? slip.plain : null; },
+    busy: () => loadsOut > 0,
     lowState() {
       const body = hooks.body(), frame = body && lowOf?.mesh === body ? lowOf.frame : null;
       if (!body || !frame) return null;

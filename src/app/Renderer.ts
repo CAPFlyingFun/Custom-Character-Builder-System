@@ -17,9 +17,13 @@ export class Renderer {
   private height = 0;
   private readonly listeners = new Set<ResizeListener>();
 
-  constructor(private readonly host: HTMLElement) {
-    this.gl = new THREE.WebGLRenderer({ antialias: true });
-    this.gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+  /**
+   * `antialias` and `maxPixelRatio` are the page's graphics settings (the Character Room's SETTINGS: edge smoothing,
+   * screen sharpness). The graphics are made with them: a change takes a page loaded again.
+   */
+  constructor(private readonly host: HTMLElement, opts: { readonly antialias?: boolean; readonly maxPixelRatio?: number } = {}) {
+    this.gl = new THREE.WebGLRenderer({ antialias: opts.antialias ?? true });
+    this.gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, Math.min(MAX_PIXEL_RATIO, Math.max(1, opts.maxPixelRatio ?? MAX_PIXEL_RATIO))));
     this.gl.domElement.style.display = 'block';
     host.appendChild(this.gl.domElement);
     this.fit();

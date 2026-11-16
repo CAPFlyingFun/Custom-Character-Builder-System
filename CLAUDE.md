@@ -43,8 +43,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   levels: ACTIVE (what she moves by herself) and PASSIVE (placed or loaded).
   A posing system reads it and never keeps its own copy of a number.
   `src/actor/jointLimits.ts` holds a pose to it.
-- **A character appears dressed, all at once, in a game**; the Character Room
-  may show her base body on its own while the rest loads (loading card).
+- **A character appears dressed, all at once** -- in a game, and in the Character Room as it opens (Joshua,
+  2026-11-16: "make sure it doesn't show until the clothes load. Right now it shows when the body loads but clothes
+  are half loaded"): the room draws her behind a cover until she is dressed ("Settings", below).
+
 - **The room may be held upright** on a phone (this whole site is the room).
 - **Her skin is one colour with her own details on it** (Joshua, 2026-11-11: "no image texture, but then allow a
   solid color for the outside skin and then we could add skin color... you can still body paint over the solid
@@ -1090,9 +1092,11 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   I approve, than you can apply to the larger one"). `public/models/sarah-v2-body-light.bin` (Uint32 triples), made by
   `node scripts/lightBody.mjs` (meshoptimizer, fitted to her rest shape and her `belly` and `belly200` morphs, her
   texture's seams kept): the same vertices, morphs, weights and attributes, fewer triangles between them. Laid at load
-  (`SarahLabScene.ts` `lightBodyOn`, `LIGHT_BODY_TRIANGLES`); the status line says LIGHT SKIN (N triangles). Not fetched
+  (`SarahLabScene.ts` `lightBodyOn`, `LIGHT_BODY_TRIANGLES`); SETTINGS says which skin is drawn, and a script reads
+  the status line's `data-skin` (`light` / `full`). Not fetched
   ahead by a device that does not wear it (`NOT_AHEAD`).
-- **Which device wears it** (`skinChoice.ts` `wearsLightSkin`, read once by `main.ts`): a phone or a tablet (its first
+- **Which device wears it** (`skinChoice.ts` `wearsLightSkin`; it is what AUTO picks, and SETTINGS may set it by hand:
+  `graphicsSettings.ts`, read once by `main.ts`): a phone or a tablet (its first
   pointer a finger and no mouse, trackpad or pen beside it), and a screen with fewer pixels of its own than 1920 x 1080
   (CSS pixels times its pixel ratio); `?body=light` / `?body=full` says which whatever the device. A PROBE OR A BAKE
   (`?probe=`, `?bake=`) WEARS HER FULL SKIN unless its address says light: what is measured is measured on her, and a
@@ -1108,6 +1112,47 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   places, her face lost.
 - WORK ON THE LIGHT SKIN FIRST (`?probe=cloth&body=light`, 1x): what he approves there is applied to the full one.
 - After the list is made again: the room on it -- her bust at 0%, SQUAT and RECLINE at 200%, a hand.
+
+## Settings
+
+- **A ⚙ at the stage's top right, where LIGHT / DARK was, opens SETTINGS** (Joshua, 2026-11-16: "add a toggle max
+  performance/max visuals in settings"; "Manual on/off + auto"; "move the Light/Dark theme in settings"; "Move the
+  Settings ⚙️ at the top right and have it replace the UI theme"; "Yes to all"). A section of the layout with no
+  button on the rail (`studioLayout.ts` `STUDIO_OFF_RAIL`: the rail held upright has no room for an eighth); pressed
+  again it folds away. `settingsPanel.ts`, plain DOM, keeps no copy:
+  - PERFORMANCE: AUTO · MAX PERFORMANCE · MAX VISUALS, then three rows a mode sets and a hand may set over it ("Make
+    these with manual overrides from the default for mix and match… Her Skin, Screen Sharpness, Edge Smoothing"):
+    HER SKIN (light / full), SCREEN SHARPNESS (1× / up to 2×), EDGE SMOOTHING (off / on). Each row's first chip is
+    BY MODE and says what the mode picks; a mode picked gives all three back to it.
+  - THEME (LIGHT / DARK, at once; its button keeps `sarahlab:theme`), THIS DEVICE (what is kept here -- the Library's
+    last line until now, still `[data-field="sarahlab-device"]` -- and what the phone did; the notice under her name
+    stays as well), ABOUT (the version and commit, and what is drawn now).
+- **`graphicsSettings.ts`, pure**: AUTO is the room as it was (her skin by the device, up to 2×, smoothed); MAX
+  PERFORMANCE the light skin at 1× unsmoothed; MAX VISUALS her full skin at up to 2×, smoothed (GAME TUNING). By hand
+  wins over the mode, `?body=` over both, and A PROBE OR A BAKE IS NEVER MOVED BY A SETTING. Kept on the device
+  (`character-builder-graphics` in localStorage), not with a character.
+- **A change is kept and takes hold when the room is loaded again**: the graphics are made with all three
+  (`Renderer`'s `antialias` and `maxPixelRatio`, her skin's triangles as her file is read). The panel shows LOAD THE
+  ROOM AGAIN only while what is kept is not what the page was started with, and says to save her first: a reload at
+  each tap would lose her and cost three loads to mix three rows.
+- **SHE IS NOT SHOWN UNTIL SHE IS DRESSED** (`SarahLabScene.ts` `holdOpen`, `dressedWaits`, `OPENING_HOLD_MS` 12 s:
+  GAME TUNING). Her body and her outfit's files were always in before she was shown; what could come in after, in
+  front of him, was her skin's picture, her hair, her painted clothes' fabrics and fields (`fabricPanel.busy`) and a
+  drawn bottom's waistband. While the room opens she is drawn behind a cover in the stage's colour
+  (`[data-role="sarahlab-opening-cover"]`, its `data-waits` what it waits for), the loading card over it, until those
+  are in and, if any came late, compiled and drawn twice -- or 12 s after her first compile, so a file that never
+  lands does not keep the room shut. A probe and a bake wait as they did (the status line's `data-model`).
+  MEASURED 2026-11-16 on the build machine as a phone (software renderer): her body and outfit in at 18 s, the cover
+  off at 31 to 36 s with nothing waited for (the time is the first compile, which the card covered before as well);
+  pictured as the cover went and 4 s later: the same dressed figure, hair and shoes on, only her breath between them.
+  After LOAD AGAIN on MAX PERFORMANCE with HER SKIN full by hand: the canvas 430 x 739 where it was 860 x 1478, no
+  antialiasing, `data-skin="full"`. No error on the page.
+- After anything changes them: `tests/graphicsSettings.test.ts`, `tests/settingsPanel.test.ts`,
+  `tests/studioLayout.test.ts`, `tests/skinChoice.test.ts`; then the built site opened as a phone: the ⚙ by a real
+  touch, a mode, a row by hand, LOAD AGAIN.
+- NOT DONE: a computer that draws slowly falling back by itself; the hairstyles' light twins on MAX PERFORMANCE.
+- **Asking him to push is a normal message, never a popup** (Joshua, 2026-11-16: "don't do a popup asking to push or
+  not and just a normal message with the question so I can see the images").
 
 ## Kept on the device (the room as an app)
 

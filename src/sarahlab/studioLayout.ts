@@ -29,8 +29,15 @@ export const STUDIO_SECTIONS = Object.freeze([
   { id: 'pose', label: 'Pose', title: 'Pose & motion', icon: '<circle cx="13" cy="4" r="2"/><path d="M6 10l6-3 5 4 4-1M12 7l-2 8-5 6M10 15l6 6"/>' },
   { id: 'library', label: 'Library', title: 'Characters', icon: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 3.5V10h8V3.5M7 20.5V14h10v6.5"/>' },
 ] as const);
-export type StudioSection = (typeof STUDIO_SECTIONS)[number]['id'];
-export const isStudioSection = (v: unknown): v is StudioSection => STUDIO_SECTIONS.some((s) => s.id === v);
+/**
+ * Sections with no button on the rail: opened from somewhere else. SETTINGS is opened by the ⚙ at the stage's top right
+ * (Joshua, 2026-11-16: "Move the Settings ⚙️ at the top right and have it replace the UI theme"): the rail, held
+ * upright, has no room for an eighth.
+ */
+export const STUDIO_OFF_RAIL = Object.freeze([{ id: 'settings', label: 'Settings', title: 'Settings' }] as const);
+export type StudioSection = (typeof STUDIO_SECTIONS)[number]['id'] | (typeof STUDIO_OFF_RAIL)[number]['id'];
+const ALL_SECTIONS: readonly { readonly id: StudioSection; readonly title: string }[] = [...STUDIO_SECTIONS, ...STUDIO_OFF_RAIL];
+export const isStudioSection = (v: unknown): v is StudioSection => ALL_SECTIONS.some((s) => s.id === v);
 
 /** The `data-action` of a section's rail button. */
 export const studioSectionAction = (section: StudioSection) => `sarahlab:section:${section}`;
@@ -165,7 +172,7 @@ export function studioLayout(root: HTMLElement, opts: StudioLayoutOptions): Stud
   head.append(titles, foldButton);
   const body = el('div', 'sl-body');
   const sections = new Map<StudioSection, HTMLElement>();
-  for (const s of STUDIO_SECTIONS) {
+  for (const s of ALL_SECTIONS) {
     const box = el('div', 'sl-section');
     box.dataset.section = s.id;
     sections.set(s.id, box); body.appendChild(box);
@@ -176,7 +183,7 @@ export function studioLayout(root: HTMLElement, opts: StudioLayoutOptions): Stud
   const rail = el('nav', 'sl-rail');
   rail.dataset.role = STUDIO_ROLE.rail;
   rail.setAttribute('aria-label', 'Sections');
-  const railButtons = new Map<StudioSection, HTMLButtonElement>();
+  const railButtons = new Map<string, HTMLButtonElement>();
   for (const s of STUDIO_SECTIONS) {
     const b = el('button');
     b.type = 'button';
@@ -209,7 +216,7 @@ export function studioLayout(root: HTMLElement, opts: StudioLayoutOptions): Stud
   root.append(style, stage, rail, inspector);
 
   let portrait = false, folded = false, open: StudioSection = opts.first ?? 'body', theme: StudioTheme = opts.theme ?? DEFAULT_THEME;
-  const meta = (id: StudioSection) => STUDIO_SECTIONS.find((s) => s.id === id)!;
+  const meta = (id: StudioSection) => ALL_SECTIONS.find((s) => s.id === id)!;
   const paint = () => {
     root.dataset.orient = portrait ? 'portrait' : 'landscape';
     root.dataset.theme = theme;

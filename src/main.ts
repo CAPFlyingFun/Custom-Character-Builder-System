@@ -17,7 +17,8 @@ import { localStorageKeyValueStore } from './persistence/localStorageStore';
 import { assetUrl, publicTable } from './assets/assets';
 import { aheadFiles, deviceLine, deviceNote, startOnDevice } from './pwa/onDevice';
 import { BUILD_INFO } from './ui/buildInfo';
-import { wearsLightSkin } from './sarahlab/skinChoice';
+import type { SkinDevice } from './sarahlab/skinChoice';
+import { graphicsInForce, readGraphics, storeGraphics, type GraphicsSettings } from './sarahlab/graphicsSettings';
 
 const MAX_STEP = 1 / 20;
 
@@ -25,7 +26,6 @@ async function start(): Promise<void> {
   const host = document.getElementById('app');
   const ui = document.getElementById('ui');
   if (!host || !ui) throw new Error('the page has no #app or #ui');
-  const renderer = new Renderer(host);
   const storage = createStorageRoot(localStorageKeyValueStore());
   const skin = new URLSearchParams(location.search).get('skin') === 'ktx2' ? 'ktx2' : null;
   // THE ROOM KEPT ON THIS DEVICE (Joshua, 2026-11-13: "load everything at one time and hold it locally especially if I
@@ -34,13 +34,20 @@ async function start(): Promise<void> {
   // (and nothing for a probe or a bake, which open the room by address to measure it: a download in the background is
   // one more thing moving while they do)
   const asked = new URLSearchParams(location.search);
-  // HER LIGHT SKIN FOR A PHONE, A TABLET AND A SMALL SCREEN (skinChoice.ts; `?body=light` / `?body=full` says which)
+  // HOW THE ROOM IS DRAWN HERE (graphicsSettings.ts; the room's SETTINGS): her light skin for a phone, a tablet and a
+  // small screen unless it is set (skinChoice.ts; `?body=light` / `?body=full` says which), the screen's sharpness and
+  // the edges' smoothing. Read once: the graphics are made with them.
   const media = (q: string): boolean => { try { return typeof matchMedia === 'function' && matchMedia(q).matches; } catch { return false; } };
-  const lightBody = wearsLightSkin({
+  const skinDevice: SkinDevice = {
     asked: asked.get('body'), measuring: asked.has('probe') || asked.has('bake'),
     coarse: media('(pointer: coarse)'), fine: media('(any-pointer: fine)'),
     width: typeof screen !== 'undefined' ? screen.width : 0, height: typeof screen !== 'undefined' ? screen.height : 0, ratio: globalThis.devicePixelRatio ?? 1,
-  });
+  };
+  const local = (): Storage | null => { try { return globalThis.localStorage ?? null; } catch { return null; } };
+  let graphicsKept: GraphicsSettings = readGraphics(local());
+  const drawn = graphicsInForce(graphicsKept, skinDevice);
+  const lightBody = drawn.lightSkin;
+  const renderer = new Renderer(host, { antialias: drawn.smoothing, maxPixelRatio: drawn.sharpness });
   const device = startOnDevice({
     build: `${BUILD_INFO.version}+${BUILD_INFO.commit}`,
     enabled: import.meta.env.PROD && !asked.has('probe') && !asked.has('bake'),
@@ -52,6 +59,11 @@ async function start(): Promise<void> {
     onBack: () => { device.reloadAsked(); location.reload(); },
     skin,
     lightBody,
+    graphics: {
+      settings: () => graphicsKept, inForce: () => drawn, wouldBe: (g) => graphicsInForce(g, skinDevice),
+      change: (g) => { graphicsKept = g; storeGraphics(local(), g); },
+      apply: () => { device.reloadAsked(); location.reload(); },
+    },
     device: { line: () => deviceLine(device.state()), note: () => deviceNote(device.state()), watch: (changed) => device.watch(changed) },
     // on a device's first visit her files wait a moment for the worker, so they are kept as they land
     beforeLoad: device.ready,

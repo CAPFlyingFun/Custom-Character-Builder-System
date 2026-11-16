@@ -11,9 +11,11 @@ import { characterPanel, type CharacterPanel } from './characterPanel';
 import { outfitPanel, type OutfitPanel, type OutfitSource } from './outfitPanel';
 import { NO_RULES, isLocked, randomize, ruleFor, withGroupLock, withRule, type RandomRules, type RandomSpec } from '../actor/bodyRandom';
 import { studioLayout, studioSectionAction, type StudioLayout } from './studioLayout';
-import { THEME_STAGE, otherTheme, readTheme, storeTheme, type StudioTheme } from './studioTheme';
+import { THEME_STAGE, readTheme, storeTheme, type StudioTheme } from './studioTheme';
 import { frameBox, shoot, shootDataUrl, savePicture } from './snapshot';
 import { History } from './strapData';
+import { GRAPHICS_DEFAULT, type GraphicsInForce, type GraphicsSettings } from './graphicsSettings';
+import { SETTINGS_ACTION, settingsPanel, type SettingsPanel } from './settingsPanel';
 import { loadingCard, LOADING_COVERED_VAR, type LoadingCard, type LoadingPlace } from './loadingCard';
 import { LoadMeter } from '../assets/loadMeter';
 import { ClothShirt } from './clothShirt';
@@ -434,6 +436,11 @@ const VIEW_ANGLES = Object.freeze([
 /** How long her body must hold still before a change becomes an UNDO step (ms). */
 const BODY_SETTLE_MS = 450;
 /** This device's storage, or null where it cannot be had (a private window). */
+/** (the room hosted with no graphics settings: drawn as it always was) */
+const DRAWN_UNSET: GraphicsInForce = Object.freeze({ lightSkin: false, sharpness: 2, smoothing: true });
+export const OPENING_COVER_ROLE = 'sarahlab-opening-cover';
+/** GAME TUNING: the longest she is kept behind the cover after her body and her outfit's files are ready. */
+const OPENING_HOLD_MS = 12000;
 function localStore(): Storage | null { try { return globalThis.localStorage ?? null; } catch { return null; } }
 /** Where the room remembers which skin she wears (SKIN; an uploaded picture is not kept). */
 const SKIN_KEY = 'traddomium.sarahlab.skin';
@@ -467,6 +474,12 @@ export interface SarahLabHooks {
    * triangles, so the room is the same room. An override from the address; the status line says so.
    */
   readonly lightBody?: boolean;
+  /**
+   * The page's graphics settings (`graphicsSettings.ts`, the room's SETTINGS): as kept on this device, as this page was
+   * started with, and as it would be started with; `change` keeps them, `apply` loads the room again. Without it the
+   * SETTINGS section has no PERFORMANCE controls to offer and says what is drawn.
+   */
+  readonly graphics?: { settings(): GraphicsSettings; inForce(): GraphicsInForce; wouldBe(settings: GraphicsSettings): GraphicsInForce; change(next: GraphicsSettings): void; apply(): void };
   /**
    * The character book (`characterSaves.ts`): where saved characters and the outfit library are kept. The app gives the
    * device's storage; without it the panel keeps them for the session only.
@@ -617,6 +630,19 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const meter = new LoadMeter();
   let card: LoadingCard | null = null;
   let cardPlace: LoadingPlace = 'centre';
+  let settings: SettingsPanel | null = null;
+  /**
+   * SHE IS NOT SHOWN UNTIL SHE IS DRESSED (Joshua, 2026-11-16: "make sure it doesn't show until the clothes load. Right
+   * now it shows when the body loads but clothes are half loaded"). Her body and her outfit's own files were always in
+   * before she was shown; what came in after, in front of him, was her skin's picture (EVEN is fetched), her hair, her
+   * painted clothes' fabrics and designed fields, and a drawn bottom's waistband (her slip about her hips, worked out
+   * over some frames). So while the room opens she is drawn BEHIND A COVER in the stage's own colour, the loading card
+   * over it, until all of those say they are in (`dressedWaits`) and what they brought is compiled and drawn twice -- or
+   * `OPENING_HOLD_MS` after she was first ready, whichever comes first: a file that never lands does not keep the room
+   * shut. A probe and a bake wait as they always did (by the status line's `data-model`, and their own waits).
+   */
+  let cover: HTMLElement | null = null;
+  let holdOpen = false, holdUntil = 0, holdWaited = false, holdCompiled = false;
   let batch = 0, readyBatch = -1, readyIn = 0;
   let retry: () => void = () => {};
   const partMeshes = new Map<RecoveredPart, THREE.SkinnedMesh[]>();
@@ -2094,6 +2120,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   }
   /** The Library's line of what is kept on this device, and the notice over the stage (there only when it says something). */
   function refreshDevice(): void {
+    settings?.refresh();
     const line = fields[SARAH_LAB_FIELD.device], notice = fields[SARAH_LAB_FIELD.notice];
     if (line) { const text = hooks.device?.line() ?? ''; if (line.textContent !== text) line.textContent = text; line.style.display = text ? '' : 'none'; }
     if (notice) {
@@ -2106,9 +2133,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     refreshDevice();
     if (fields.status) {
       const shown = loaded && model?.visible === true;
-      fields.status.textContent = statusLine(shown, failed, garments, hasBelly, modelIndex, !!characters?.name().trim()) + (lightBodyOn ? ` · LIGHT SKIN (${lightBodyOn.toLocaleString('en-US')} triangles)` : '') + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
+      fields.status.textContent = statusLine(shown, failed, garments, hasBelly, modelIndex, !!characters?.name().trim()) + (hooks.skin === 'ktx2' ? ' · KTX2 skin' : '') + (wantedOutfit !== null ? ' · loading outfit…' : '');
       // (which model stands there, once she does: what a probe waits for -- the line's words are for people, and change)
       if (shown && !failed) fields.status.dataset.model = SARAH_LAB_MODELS[modelIndex].id; else delete fields.status.dataset.model;
+      // (and which of her skins: SETTINGS says it in words)
+      if (shown && !failed) fields.status.dataset.skin = lightBodyOn ? 'light' : 'full'; else delete fields.status.dataset.skin;
     }
     refreshSkin();
     const bumpField = fields[SARAH_LAB_FIELD.bump], fingerField = fields[SARAH_LAB_FIELD.fingers];
@@ -2261,7 +2290,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const yaw = ((orbit.yaw % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     for (const a of VIEW_ANGLES) { const b = buttons[`view-${a.id}`]; if (b) b.setAttribute('aria-pressed', String(!turning && Math.abs(Math.atan2(Math.sin(yaw - a.yaw), Math.cos(yaw - a.yaw))) < 0.03)); }
     if (buttons.turn) buttons.turn.setAttribute('aria-pressed', String(turning));
-    if (buttons.theme) buttons.theme.textContent = theme === 'light' ? '☾ DARK' : '☀ LIGHT';
     // (a character not yet given a name goes by her model's: the room names no one itself)
     if (nameLine) nameLine.textContent = characters?.name().trim() || modelName(SARAH_LAB_MODELS[modelIndex].id);
     // the outfit's new tee on or off with the outfit
@@ -2738,6 +2766,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     meter.start(label);
     cardPlace = place;
     batch++;
+  }
+
+  /** What she still waits for before she is dressed ('' for nothing): her skin's picture, her hair, her painted clothes' fabrics and fields, a drawn bottom's waistband. */
+  function dressedWaits(): string {
+    if (!loaded || failed || !model?.visible || wantedOutfit !== null) return 'outfit';
+    if (skinState === 'loading') return 'skin';
+    if (hairLoading) return 'hair';
+    if (fabric?.busy()) return 'fabric';
+    const low = fabric?.lowState();
+    return low?.worn && low.slip?.pending ? 'waistband' : '';
   }
 
   /** The room is usable once the GPU has her: compile what is new, then two frames drawn, then the card goes. */
@@ -3593,17 +3631,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // the section's own title says CHARACTERS: the drawer's is not needed there
     characters.element.querySelector('summary')?.style.setProperty('display', 'none');
     right.appendChild(characters.element);
-    // what of the room is kept on this device (Joshua, 2026-11-13: "load everything at one time and hold it locally"):
-    // the Library's last line, kept told by the page (pwa/onDevice.ts)
-    if (hooks.device) {
-      const kept = document.createElement('div');
-      kept.dataset.tab = 'library';
-      kept.dataset.field = SARAH_LAB_FIELD.device;
-      kept.style.cssText = 'font:600 11px/1.5 system-ui,sans-serif;letter-spacing:.02em;color:var(--sl-muted,#9aa0a8);padding:10px 2px 2px;margin-top:6px;border-top:1px solid var(--sl-line,#ffffff1f)';
-      fields[SARAH_LAB_FIELD.device] = kept;
-      right.appendChild(kept);
-      hooks.device.watch(() => { if (!disposed) refreshDevice(); });
-    }
+    // (what of the room is kept on this device is SETTINGS' to say since 2026-11-16: `settingsPanel.ts`, below)
+    if (hooks.device) hooks.device.watch(() => { if (!disposed) refreshDevice(); });
     // BREAST & NAVEL DETAIL through her clothes: the outfit editor's own setting, shown here too (filled in once the
     // editor exists, below), so the BODY tab and BODY PAINT can never disagree (Joshua, 2026-10-22)
     const bodyDetail = document.createElement('details');
@@ -3888,11 +3917,27 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         builder?.setActive(studio?.open === 'build' && !studio.folded);
         // her skin's brush listens only in FACE, and her clothes come back on as it closes
         if (studio?.open !== 'face' || studio.folded) { endSkinStroke(); if (skinBare) { skinBare = false; fabric?.setBare(false); applyLook(); } }
+        buttons.settings?.setAttribute('aria-pressed', String(studio?.open === 'settings' && !studio.folded));
         const size = ctx.renderer.size(); frame(size.width, size.height, false); refresh();
       },
     });
     right.remove();
     studio.section('outfit').prepend(outfits.element);
+    // SETTINGS (settingsPanel.ts; Joshua, 2026-11-16): how the room is drawn on this device, the theme, what is kept here
+    settings = settingsPanel(document, {
+      settings: () => hooks.graphics?.settings() ?? GRAPHICS_DEFAULT,
+      inForce: () => hooks.graphics?.inForce() ?? DRAWN_UNSET,
+      wouldBe: (g) => hooks.graphics?.wouldBe(g) ?? DRAWN_UNSET,
+      change: (g) => hooks.graphics?.change(g),
+      apply: () => hooks.graphics?.apply(),
+      theme: () => theme, setTheme: (t) => applyTheme(t), themeAction: SARAH_LAB_ACTION.theme,
+      deviceLine: () => hooks.device?.line() ?? '', deviceField: SARAH_LAB_FIELD.device,
+      notice: () => `${hooks.device?.note() ?? ''}${graphicsNote(graphics)}`.replace(/ · $/, ''),
+      skinLine: () => { const b = loaded ? bodyOf() : null, n = b?.mesh.geometry.index ? b.mesh.geometry.index.count / 3 : 0; return n ? `her ${lightBodyOn ? 'light' : 'full'} skin (${n.toLocaleString('en-US')} triangles)` : ''; },
+      version: `${BUILD_INFO.version} · ${BUILD_INFO.commit}`,
+    });
+    if (!hooks.graphics) settings.element.dataset.noGraphics = '';
+    studio.section('settings').appendChild(settings.element);
 
     // the stage's top row: BACK, her name and the room's status line, then UNDO / REDO for her body and the theme
     const pill = () => { const p = document.createElement('div'); p.className = 'sl-pill'; return p; };
@@ -3927,10 +3972,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     buttons.undoBody = pillButton('↶', SARAH_LAB_ACTION.undoBody, () => travelBody(-1), 'Undo body change');
     buttons.redoBody = pillButton('↷', SARAH_LAB_ACTION.redoBody, () => travelBody(1), 'Redo body change');
     history.append(buttons.undoBody, buttons.redoBody);
-    const themePill = pill();
-    buttons.theme = pillButton('', SARAH_LAB_ACTION.theme, () => applyTheme(otherTheme(theme)), 'Light or dark');
-    themePill.appendChild(buttons.theme);
-    studio.stage.top.append(backPill, info, history, themePill);
+    // SETTINGS, where LIGHT / DARK was (which is in it now): pressed again it folds away, as a rail button does
+    const settingsPill = pill();
+    buttons.settings = pillButton('⚙', SETTINGS_ACTION.open, () => { if (!studio) return; if (studio.open === 'settings' && !studio.folded) studio.fold(true); else studio.show('settings'); }, 'Settings');
+    buttons.settings.style.fontSize = '17px';
+    settingsPill.appendChild(buttons.settings);
+    studio.stage.top.append(backPill, info, history, settingsPill);
     // the bottom row: the camera's angles, the start view and TURN
     const views = pill();
     for (const a of VIEW_ANGLES) {
@@ -3948,6 +3995,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     studio.stage.corner.appendChild(photoPill);
     card = loadingCard(document, () => retry());
     studio.stage.element.appendChild(card.element);
+    // the room's cover while she is dressed (`holdOpen`): under the stage's own controls, the rail and the inspector
+    cover = document.createElement('div');
+    cover.dataset.role = OPENING_COVER_ROLE;
+    cover.style.cssText = 'position:absolute;inset:0;pointer-events:none;display:none';
+    root.insertBefore(cover, studio.stage.element);
     ctx.uiLayer.appendChild(root);
     hud = root;
     applyTheme(theme);
@@ -3960,6 +4012,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     studio?.setTheme(next);
     const look = THEME_STAGE[next];
     (three.background as THREE.Color).setHex(look.background);
+    if (cover) cover.style.background = `#${look.background.toString(16).padStart(6, '0')}`;
+    settings?.refresh();
     (floor.material as THREE.MeshStandardMaterial).color.setHex(look.floor);
     (ring.material as THREE.MeshBasicMaterial).color.setHex(look.rim);
     strip.setColours(look.floor, look.rim);
@@ -8162,6 +8216,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // the moment her body's bytes are in, so its download runs while her body is being built rather than after it
     const planned = hooks.nativeOutfitPreview !== true && entry.id === 'v2-body' ? recoveredPartsFor(wornGarments(outfit, [...GARMENTS, ...RECOVERED_SHIRTS])) : [];
     begin(OPENING_LABEL, 'centre');
+    holdOpen = true; holdUntil = 0; holdWaited = false; holdCompiled = false; if (cover) cover.style.display = '';
     meter.expect(path, assets.assetBytes(path));
     for (const p of planned) meter.expect(recoveredPartPath(p), assets.assetBytes(recoveredPartPath(p)));
     refresh();
@@ -10849,7 +10904,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     },
 
     update(frame: FrameInfo) {
-      if (readyIn > 0 && --readyIn === 0 && readyBatch === batch) { meter.ready(); hooks.onReady?.(); }
+      if (readyIn > 0 && --readyIn === 0 && readyBatch === batch) {
+        const now = performance.now();
+        if (holdOpen && !holdUntil) holdUntil = now + OPENING_HOLD_MS;
+        // dressed yet? look again next frame; once she is, what came in meanwhile is compiled, and drawn twice
+        const waits = holdOpen ? dressedWaits() : '';
+        // (for a script: what the cover is waiting for)
+        if (cover && cover.dataset.waits !== waits) cover.dataset.waits = waits;
+        if (waits && now < holdUntil) { readyIn = 1; holdWaited = true; }
+        // (nothing came in after the first compile: there is nothing new to compile)
+        else if (holdOpen && holdWaited && !holdCompiled) { holdCompiled = true; settle(); }
+        else { holdOpen = false; if (cover) cover.style.display = 'none'; meter.ready(); hooks.onReady?.(); settings?.refresh(); }
+      }
       for (let k = frameWaiters.length - 1; k >= 0; k--) if (--frameWaiters[k].left <= 0) frameWaiters.splice(k, 1)[0].done();
       if (card) {
         const covered = `${Math.round(studio?.stage.bottom.getBoundingClientRect().height ?? 0) + 10}px`;
