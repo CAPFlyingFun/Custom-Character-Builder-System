@@ -916,20 +916,21 @@ describe('his line under her belly (an under-belly waistband\'s front, once its 
     expect(planeShare(spec.hinge)).toBe(1);
     expect(planeShare(null)).toBe(0);
     const at = (out: number, ahead: number, y: number): V3 => [frame.mid + out * U, y, spineDepth(frame, y) + frame.facing * (frame.seam + ahead * U)];
-    // ITS FRONT HALF RISES BETWEEN HER BELLY AND HER HIPS once it has swung: 2 cm at the most, some 11 cm out, none at
-    // her middle, none 18.5 cm out and more, none 5 cm behind her side's seam, and none unswung
+    // ITS FRONT RISES TO THE CREASE UNDER HER BELLY once it has swung: `planeRise` across her middle and out to 8 cm, eased
+    // to none 20 cm out, none 11 cm behind her side's seam, and none unswung
     const leg1 = (out: number, ahead: number, sw: number) => planeAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY), 1) - (stayAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY)) - roomAt(frame, sw));
-    expect(leg1(0.115, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
-    expect(leg1(0.0, 0.0, swing)).toBeCloseTo(0, 9);
-    expect(leg1(0.19, 0.0, swing)).toBeCloseTo(0, 9);
-    expect(leg1(0.115, -0.05, swing)).toBeCloseTo(0, 9);
-    expect(leg1(0.115, 0.0, 0.05)).toBeCloseTo(0, 9);
+    expect(leg1(0.0, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
+    expect(leg1(0.08, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
+    expect(leg1(0.14, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise / 2, 6);
+    expect(leg1(0.2, 0.0, swing)).toBeCloseTo(0, 9);
+    expect(leg1(0.05, -0.11, swing)).toBeCloseTo(0, 9);
+    expect(leg1(0.05, 0.0, 0.05)).toBeCloseTo(0, 9);
     // BEHIND THE FOLD it is the swung surface itself, whatever skin: a place on it is on the edge, and places along it
     // from her back to the fold lie on one straight line seen from her side (their heights fall by the same for each
     // step forward)
     const onIt = (out: number, ahead: number) => { let lo = frame.hipY - 0.4 * U, hi = frame.hipY + 0.4 * U; for (let k = 0; k < 60; k++) { const m = (lo + hi) / 2; if (stayAt(frame, spec.waist!, spec.hinge!, swing, at(out, ahead, m)) > 0) lo = m; else hi = m; } return (lo + hi) / 2; };
-    const ys = [-0.1, -0.06, -0.02, 0.02].map((a) => onIt(0.0, a));
-    for (const [i, a] of [-0.1, -0.06, -0.02, 0.02].entries()) expect(Math.abs(planeAt(frame, spec.waist!, spec.hinge!, swing, at(0, a, ys[i]), 1))).toBeLessThan(0.05 * MM);
+    const ys = [-0.1, -0.06, -0.02, 0.02].map((a) => onIt(0.21, a));
+    for (const [i, a] of [-0.1, -0.06, -0.02, 0.02].entries()) expect(Math.abs(planeAt(frame, spec.waist!, spec.hinge!, swing, at(0.21, a, ys[i]), 1))).toBeLessThan(0.05 * MM);
     // IN FRONT OF THE FOLD IT RUNS LEVEL, at the fold's own height: her leg's skin 3 and 8 cm in front of the fold is
     // as far inside it as her skin at the fold, at the same height
     const fold = LOW_CUT.foldDepth, yF = onIt(0, fold);
@@ -937,9 +938,9 @@ describe('his line under her belly (an under-belly waistband\'s front, once its 
     // her trunk's skin in front of the fold is bare, by how far in front of it
     expect(planeAt(frame, spec.waist!, spec.hinge!, swing, at(0, fold + 0.03, yF - 0.02 * U), 0) / U).toBeCloseTo(-0.03, 6);
     // and \`lowAt\` hands it on, the edge and the band alike
-    const place: V3 = [frame.mid, frame.hipY, 0], sh = at(0.05, 0.0, onIt(0.05, 0) - 0.01 * U), e = lowAt(spec, frame, place, 0.3, -1, 0, sh, swing, LOW_CUT.far);
+    const place: V3 = [frame.mid, frame.hipY, 0], sh = at(0.21, 0.0, onIt(0.21, 0) - 0.01 * U), e = lowAt(spec, frame, place, 0.3, -1, 0, sh, swing, LOW_CUT.far);
     expect(e.waist).toBeCloseTo(planeAt(frame, spec.waist!, spec.hinge!, swing, sh, 1), 9);
-    expect(e.banded).toBe(e.waist);
+    expect(e.banded).toBeCloseTo(e.waist, 12);
     expect(e.waist).toBeGreaterThan(0);
     expect(e.waist).toBeLessThan(spec.bands.waist);
   });
