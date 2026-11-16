@@ -921,9 +921,9 @@ describe('his line under her belly (an under-belly waistband\'s front, once its 
     // her side's seam, and none unswung
     const leg1 = (out: number, ahead: number, sw: number) => planeAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY), 1) - (stayAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY)) - roomAt(frame, sw));
     expect(leg1(0.0, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
-    expect(leg1(0.08, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
-    expect(leg1(0.11, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * (1 + LOW_CUT.planeRiseSide) / 2, 6);
-    expect(leg1(0.14, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide, 6);
+    expect(leg1(LOW_CUT.planeRiseOut[2], 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
+    expect(leg1((LOW_CUT.planeRiseOut[2] + LOW_CUT.planeRiseOut[3]) / 2, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * (1 + LOW_CUT.planeRiseSide) / 2, 6);
+    expect(leg1(LOW_CUT.planeRiseOut[3], 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide, 6);
     expect(leg1(0.2, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide, 6);
     expect(leg1(0.05, -0.17, swing)).toBeCloseTo(0, 9);
     expect(leg1(0.05, 0.0, 0.05)).toBeCloseTo(0, 9);
