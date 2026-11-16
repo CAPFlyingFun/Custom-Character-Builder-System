@@ -46,6 +46,15 @@ import type { GarmentCuts } from './cuts';
 
 /** The neckline band held: fully within PIN_IN of the opening, easing to nothing at PIN_OUT (metres along the cloth). */
 const PIN_IN = 0.012, PIN_OUT = 0.03;
+/**
+ * How firmly that band is held to her, of a full pin. FULL, as it always was. TRIED 2026-11-16 at 0.3 for the crease
+ * his tee makes from her armpit to her shoulder with her arms at 90 degrees (Joshua: "in real life, the shirt can
+ * naturally rise up to compensate"): MEASURED on a fresh page with his dials (GRIP 73), it stays on her standing, arms
+ * up, down again, seated and walking -- and the crease and the ridge under her bust are as they are held in full (533
+ * hinges over 50 degrees with her arms up; 595 held in full). The smoother picture he passed had GRIP at 20 as well.
+ * Not held at all, a wide-necked snug tee slides off her shoulders. A probe may still set it (`neckHold`).
+ */
+export const NECK_HOLD = 1;
 /** A hem's or cuff's edge particle weighs this much. */
 const EDGE_MASS = 3;
 /** After a (re)start: this long at no less than this damping, so the cloth settles instead of whipping. */
@@ -584,8 +593,8 @@ export class GarmentCloth {
 
   /** Each slot's hold now, for a probe or a test (slot i is particle i while all of it is worn). */
   get pin(): Float32Array { return this.pinNow; }
-  /** (a probe's, for now) How firmly the neckline's band is held, 1 as drafted to 0 not at all: laid out again at the next frame. */
-  private pinScale = 1;
+  /** How firmly the neckline's band is held (`NECK_HOLD`; a probe may set it, 1 as it was drafted to 0 not at all): laid out again at the next frame. */
+  private pinScale = NECK_HOLD;
   set neckHold(k: number) { const v = Math.min(1, Math.max(0, k)); if (v === this.pinScale) return; this.pinScale = v; this.laidOut = false; }
   get neckHold(): number { return this.pinScale; }
   /** Her shape the garment was tailored from, as the cut reads it now (`tailored`), for a probe or a test. */
