@@ -512,7 +512,12 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (`leggingsUnder`: a hoop, `spec.hinge`) is drawn by `bottomCut.ts` `planeAt` at every size of belly (`planeShare`): the
   hoop's own swung surface told ON HER SHAPED SKIN and nothing of her rest skin's, so nothing of how far her skin is
   drawn out under her belly. Its band is the same distance over its own slope (`fabricLowNearTo`), 1.5 cm
-  (`UNDER_BELLY_BANDS`; he asked for half the 3 cm, "or better yet, make it adjustable": the editor's EDGING WIDTH, below).
+  (`UNDER_BELLY_BANDS`; he asked for half the 3 cm, "or better yet, make it adjustable").
+- **EDGING WIDTH (CM)** is a slider of every drawn bottom's waistband (`paintTemplates.ts` the `band` dial, `BAND_DIAL`:
+  0.5 to 12 cm; it moves `lowBand.waist`, and a saved look keeps it). A HOOP's is held to 1.5 cm (`hoopMax`): MEASURED
+  in the room at 0, 100, 150 and 200%, to 1.5 its band is whole; at 2 a tooth at her front's middle at 0% and specks
+  under her belly at 150%; from 2.5 its inner edge breaks up in the fold. So for the under-belly leggings the slider
+  only narrows it, until that is found. `tests/bandDial.test.ts`.
   The older machinery there (the line on her rest skin, her crease, the moon, `FOLD_LINE`, the band's stations) is still
   worked out and is not drawn for a hoop: to be taken out once he is done with the shape.
 - **The fold under her belly** (`LOW_CUT.foldDepth` 4.6 cm in front of her axis at her middle, `foldCurve` less further

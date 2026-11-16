@@ -577,11 +577,21 @@ export function pieceKind(templateId: string): PieceKind | null {
   return t.params.feet ? 'legwear' : 'onePiece';
 }
 
+/** GAME TUNING: how narrow and how deep a waistband's band may be set (centimetres), and its depth where a template says none (bottomCut's `LOW_BANDS.waist`). */
+export const BAND_DIAL = Object.freeze({ min: 0.5, max: 12, unset: 3,
+  /** A HOOP's (an under-belly waistband's: `lowBowl`) is held to this: the depth he passed, so its slider only narrows
+   * it. MEASURED in the room 2026-11-16 on the light skin at 0, 100, 150 and 200%: to 1.5 cm its band is whole; at 2 a
+   * tooth in it at her front's middle at 0% and a few specks under her belly at 150%; at 2.5 and more its inner edge
+   * breaks up in the fold under her belly. Its cause is not looked for yet. */
+  hoopMax: 1.5 });
 /** The sliders a template offers, and the parameter each moves. */
-export interface CoverageDial { readonly id: 'rise' | 'riseBack' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'sleeve'; readonly name: string; readonly min: number; readonly max: number }
+export interface CoverageDial { readonly id: 'rise' | 'riseBack' | 'band' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'sleeve'; readonly name: string; readonly min: number; readonly max: number }
 export const COVERAGE_DIALS: readonly CoverageDial[] = Object.freeze([
   { id: 'rise', name: 'WAISTBAND (FRONT)', min: -0.2, max: 0.7 },
   { id: 'riseBack', name: 'HIPS & BACK RISE', min: 0, max: 0.6 },
+  // (a drawn bottom's waistband's band, in CENTIMETRES on her: Joshua, 2026-11-15, of the under-belly edging -- "make it
+  // half as thick… or better yet, make it adjustable once it's working properly")
+  { id: 'band', name: 'EDGING WIDTH (CM)', min: BAND_DIAL.min, max: BAND_DIAL.max },
   { id: 'legStart', name: 'LEG TOP', min: 0, max: 0.95 },
   { id: 'legEnd', name: 'LEG LENGTH', min: 0, max: 1 },
   { id: 'legCut', name: 'LEG CUT HEIGHT', min: -0.2, max: 0.35 },
@@ -595,6 +605,8 @@ export const COVERAGE_DIALS: readonly CoverageDial[] = Object.freeze([
 export function dialsFor(p: CoverageParams): CoverageDial['id'][] {
   const out: CoverageDial['id'][] = [];
   if (p.riseFront !== null && p.riseFront > -5 && p.riseFront < 1) out.push('rise', 'riseBack');
+  // (its band's depth where its edges are drawn: `bottomCut.isDrawnBottom`)
+  if (p.riseFront !== null && p.riseFront > -5 && p.riseFront < 1 && p.hemFront === null && p.neckFront === null && !p.legCut && !p.outline) out.push('band');
   if (p.riseFront !== null && p.legStart > 0) out.push('legStart');
   if (p.legCut) out.push('legCut'); else if (p.riseFront !== null) out.push('legEnd');
   // (a shirt's length is a dial only while a painted shirt has any length to choose from: PAINTED_SHIRT_LONGEST)
@@ -611,6 +623,7 @@ export function dialValue(p: CoverageParams, dial: CoverageDial['id']): number {
   switch (dial) {
     case 'rise': return p.riseFront ?? 0;
     case 'riseBack': return p.riseBack ?? 0;
+    case 'band': return (p.lowBand?.waist ?? BAND_DIAL.unset / 100) * 100;
     case 'legStart': return p.legStart;
     case 'legEnd': return p.legEnd;
     case 'legCut': return p.legCut?.side ?? 0;
@@ -625,6 +638,7 @@ export function withDial(p: CoverageParams, dial: CoverageDial['id'], value: num
     // the front waistband moves on its own (above or below the bump); the hips and back move together
     case 'rise': return { ...p, riseFront: value };
     case 'riseBack': return { ...p, riseBack: value, riseSide: sideOf(p) + value - (p.riseBack ?? value) };
+    case 'band': return { ...p, lowBand: { ...(p.lowBand ?? {}), waist: Math.min(p.lowBowl ? BAND_DIAL.hoopMax : BAND_DIAL.max, Math.max(BAND_DIAL.min, value)) / 100 } };
     case 'legStart': return { ...p, legStart: Math.min(value, p.legEnd) };
     case 'legEnd': return { ...p, legEnd: Math.max(value, p.legStart) };
     case 'legCut': return p.legCut ? { ...p, legCut: { ...p.legCut, side: value } } : p;
