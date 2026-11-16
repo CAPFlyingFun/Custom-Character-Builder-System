@@ -133,7 +133,7 @@ export const LOW_CUT = Object.freeze({
   stayReach: 0.03, staySwing: 1.35, stayRoom: 0.015, stayEase: 0.105, stayGroin: 0.09, stayFold: 0, stayWide: 0.2, stayTurn: 0.03, stayRound: 0.01, stayNear: 0.005, stayUnder: 0.02, stayOver: 0.1,
   bandUnder: 0.14, bandOver: 0.4, bandLow: -0.01, bandHigh: 0.045, bandLowAt: -0.06, bandHighAt: 0.17, bandMost: 0.06, bandBridge: 0.34, bandStride: 6,
   moonSoft: 0.012, moonFill: 0.005, moonBlend: 0.03, moonOn: 0.01, moonBack: 0.03, moonMiddle: 0.02, moonStray: 0.01,
-  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.031, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, foldStretchMin: 0.9, foldStretchMax: 6,
+  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.031, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, planeFlat: 0.085, planeDip: 0.03, foldStretchMin: 0.9, foldStretchMax: 6,
 });
 /** How many heights a hoop's front moon is told by, from her middle out to its tips (`frontMoon`; four to a `vec4` of the shader's). */
 export const MOON_STEPS = 16;
@@ -725,6 +725,23 @@ export function planeAt(frame: LowFrame, waist: V4, hinge: readonly [number, num
   return Math.min(stay, deep + (LOW_CUT.far - deep) * loose);
 }
 /**
+ * A HOOP'S FRONT COMES DOWN WITH HER BELLY (Joshua, 2026-11-15, an orange line drawn level across her hips over the
+ * plane's V at 0%: "it can be slightly flat, but would like a slight downward curve"). A plane tilted for a belly cuts
+ * a V through her when she has none. So the height of the plane's front is told by how far forward the middle of her
+ * front stands AS SHE IS SHAPED (`middle`: xyz a point, `frame.middle`'s in their order): at `LOW_CUT.planeFlat` in
+ * front of her axis and less (her 0%: 8.5 cm, MEASURED on the room's points) it is `LOW_CUT.planeDip` under her
+ * side's height -- nearly level, a slight curve down -- and from where it stands on her body file (her 100%: 19.7 cm)
+ * it is the waistband's own front; straight between (12.4 cm at 50%, 16.1 at 73%). Her units. GAME TUNING to his line.
+ */
+export function planeFront(frame: LowFrame, spec: Pick<LowSpec, 'waist'>, middle: ArrayLike<number>): number {
+  const w = spec.waist!, U = frame.unitsPerMetre;
+  let now = -Infinity, full = -Infinity;
+  for (let i = 0; i + 2 < middle.length; i += 3) now = Math.max(now, aheadOf(frame, middle[i + 1], middle[i + 2]));
+  for (let i = 0; i + 1 < frame.fore.length; i += 2) full = Math.max(full, frame.fore[i + 1]);
+  const none = LOW_CUT.planeFlat * U, belly = full > none ? clamp01((now - none) / (full - none)) : 1, flat = Math.max(w[1] - LOW_CUT.planeDip * U, w[0]);
+  return flat + (w[0] - flat) * belly;
+}
+/**
  * How much of a hoop is its plane (`planeAt`): all of it, at every size of belly, swung or not (unswung it is the
  * waistband's own line told on her as she stands: the same edging at 0% as at 200%). A waistband with no hoop: none.
  */
@@ -1181,7 +1198,7 @@ export const legOf = (frame: LowFrame, x: number): LowLeg => (x >= frame.mid ? f
  * the line alone), `fold`: where the cloth's front runs between her thighs (`foldOf`), and `inner`: its hoop's
  * band's inner edge as it is laid (`bandInner`; none: the line's band).
  */
-export function lowAt(spec: LowSpec, frame: LowFrame, place: V3, along: number, limb: number, across = 0, shaped: V3 | null = null, swing = 0, fold: number = LOW_CUT.far, inner: BandInner | null = null, moon: FrontMoon | null = null): { readonly waist: number; readonly end: number; readonly top: number; readonly inside: number; readonly banded: number } {
+export function lowAt(spec: LowSpec, frame: LowFrame, place: V3, along: number, limb: number, across = 0, shaped: V3 | null = null, swing = 0, fold: number = LOW_CUT.far, inner: BandInner | null = null, moon: FrontMoon | null = null, front: number | null = null): { readonly waist: number; readonly end: number; readonly top: number; readonly inside: number; readonly banded: number } {
   const far = LOW_CUT.far, leg = legShareOf(limb) > 0.5, line = spec.waist ? waistAt(spec.waist, frame, place[0], place[1], place[2], across) : far;
   // (a hoop that has swung bares what stands over it, of her trunk's skin and her leg's alike, down to her crease)
   const held = spec.waist && spec.hinge && shaped && swing > 0 ? foldHeld(frame, hoopAt(stayAt(frame, spec.waist, spec.hinge, swing, shaped), underAt(frame, place, shaped, legShareOf(limb), fold), frame.stay.round), shaped, legShareOf(limb), fold) : far;
@@ -1204,7 +1221,7 @@ export function lowAt(spec: LowSpec, frame: LowFrame, place: V3, along: number, 
     }
   }
   // (and a hoop, swung or not, is ONE PLANE ON HER AS SHE STANDS: `planeAt`)
-  if (shaped && spec.waist && spec.hinge) { const w = planeShare(spec.hinge); if (w > 0) { const plane = planeAt(frame, spec.waist, spec.hinge, swing, shaped, legShareOf(limb)); waist += (plane - waist) * w; banded += (plane - banded) * w; } }
+  if (shaped && spec.waist && spec.hinge) { const w = planeShare(spec.hinge); if (w > 0) { const plane = planeAt(frame, front === null ? spec.waist : [front, spec.waist[1], spec.waist[2], spec.waist[3]], spec.hinge, swing, shaped, legShareOf(limb)); waist += (plane - waist) * w; banded += (plane - banded) * w; } }
   const end = spec.end === null ? far : spec.end - along, top = spec.start === null ? far : along - spec.start;
   // her leg's skin: every edge; the rest of her: under a waistband, and nothing of a stocking; her arm's skin, which
   // hangs beside her hips under any waistband: never

@@ -412,7 +412,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           float fpw = 0.0, fpd = 0.0;
           if (fabricLowLeg${i}.z > 0.5 && fabricLowFront${i}.z > 0.0) {
             fpw = fabricLowFront${i}.z;
-            float fpl = fabricLowPlane(fabricLowWaist${i}, fabricLowSwing${i}, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x);
+            float fpl = fabricLowPlane(vec4(fabricLowFront${i}.w, fabricLowWaist${i}.yzw), fabricLowSwing${i}, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x);
             fws = mix(fws, fpl, fpw);
             fpd = fabricLowNearTo(fpl, 1.0);
             fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
@@ -722,13 +722,13 @@ export function setFabricLowLegs(material: THREE.Material, legL: readonly [V4, V
  * Nothing for a layer whose waistband is no hoop (`FabricLayer.low.hinge`), which stays unswung; with no swing a
  * hoop's waistband is its line's alone.
  */
-export function setFabricLowSwing(material: THREE.Material, index: number, swing: number, room: number, front: readonly [number, number, number?] = [0, 1, 0]): void {
+export function setFabricLowSwing(material: THREE.Material, index: number, swing: number, room: number, front: readonly [number, number, number?, number?] = [0, 1, 0, 0]): void {
   const p = patched.get(material);
   if (!p?.low || index >= p.layers) return;
   const u = p.uniforms[`fabricLowSwing${index}`].value as THREE.Vector4;
   if (swing > 0) { u.y = Math.cos(swing); u.z = Math.sin(swing); u.w = room; } else { u.y = 1; u.z = 0; u.w = 0; }
   // (how much higher his line under her belly is told as it has swung: `bottomCut.foldLift`)
-  (p.uniforms[`fabricLowFront${index}`].value as THREE.Vector4).set(front[0], front[1], front[2] ?? 0, 0);
+  (p.uniforms[`fabricLowFront${index}`].value as THREE.Vector4).set(front[0], front[1], front[2] ?? 0, front[3] ?? 0);
 }
 /** Where the cloth's front runs between her thighs under a hoop that has swung (`bottomCut.foldOf`; her units in front of her axis), laid as she is shaped. */
 /** How many of her units a unit of her rest skin is, down from his line over its band (`bottomCut.foldStretch`; null: 1). */

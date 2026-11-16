@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  BAND_STEPS, CREASE_STEPS, FOLD_HIP, FOLD_LINE, LOW_BANDS, LOW_CUT, aheadOf, foldAt, foldEase, foldLift, foldNear, foldOf, foldShares, foldStretch, foldStretchAt, isDrawnBottom, legAlong, legBlend, legMeasure, legOf, legPlanes, legShareOf, limbSkin, lowAt, lowFrame, lowGlsl, lowSpec, planeAt, planeShare, roundAt, spineDepth, stayAt, swingOf,  waistAt, waistBanded,  waistLine,
+  BAND_STEPS, CREASE_STEPS, FOLD_HIP, FOLD_LINE, LOW_BANDS, LOW_CUT, aheadOf, foldAt, foldEase, foldLift, foldNear, foldOf, foldShares, foldStretch, foldStretchAt, isDrawnBottom, legAlong, legBlend, legMeasure, legOf, legPlanes, legShareOf, limbSkin, lowAt, lowFrame, lowGlsl, lowSpec, planeAt, planeFront, planeShare, roundAt, spineDepth, stayAt, swingOf,  waistAt, waistBanded,  waistLine,
   type BandPoint, type LowFrame, type LowSpec, type V3,
 } from '../src/sarahlab/bottomCut';
 import { LOW_SLIP_ATTRIBUTE, fabricLowWorn, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowSwing } from '../src/sarahlab/fabricMaterial';
@@ -659,7 +659,7 @@ describe('a bottom\'s cut in the shader', () => {
       expect(s.fragmentShader).toContain(`float fgo = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw) + fabricLowBand${i}.x, fao = max(fwidth(fgo) * 0.75, 1e-7);`);
       expect(s.fragmentShader).toContain(`float fg = fabricLowBand${i}.x - mix(fnd, fpd, fpw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * mix(smoothstep(-fao, fao, fgo), 1.0, fpw);`);
       // ONCE IT HAS SWUNG, ALL OF IT IS ONE PLANE ON HER AS SHE STANDS (\`planeAt\`): its edge and its band the one distance
-      expect(s.fragmentShader).toContain(`float fpl = fabricLowPlane(fabricLowWaist${i}, fabricLowSwing${i}, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x);`);
+      expect(s.fragmentShader).toContain(`float fpl = fabricLowPlane(vec4(fabricLowFront${i}.w, fabricLowWaist${i}.yzw), fabricLowSwing${i}, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x);`);
       expect(s.fragmentShader).toContain(`fpw = fabricLowFront${i}.z;`);
     }
     expect(s.fragmentShader).toContain('float fs = fabricCutSeam.y * fabricLowSteep(fg);');
@@ -899,6 +899,16 @@ describe('his line under her belly (an under-belly waistband\'s front, once its 
 
   it('once it has swung it is one plane on her as she stands: a line from her side, level in front of the fold, and its band the same distance', () => {
     const spec = lowSpec(template('leggingsUnder').params, frame), swing = 0.403, U = frame.unitsPerMetre;
+    // ITS FRONT COMES DOWN WITH HER BELLY: with none (the middle of her front 8.5 cm ahead of her axis and less) it is a
+    // centimetre and a half under her side's height; as she is on her body file, the waistband's own front; between, between
+    const mid = (ahead: number) => { const y = frame.hipY + 0.2 * U; return [frame.mid, y, spineDepth(frame, y) + frame.facing * (frame.seam + ahead)]; };
+    let full = -Infinity; for (let i = 1; i < frame.fore.length; i += 2) full = Math.max(full, frame.fore[i]);
+    expect(planeFront(frame, spec, mid(0.05 * U))).toBeCloseTo(spec.waist![1] - LOW_CUT.planeDip * U, 9);
+    expect(planeFront(frame, spec, mid(LOW_CUT.planeFlat * U))).toBeCloseTo(spec.waist![1] - LOW_CUT.planeDip * U, 9);
+    expect(planeFront(frame, spec, mid(full))).toBeCloseTo(spec.waist![0], 9);
+    expect(planeFront(frame, spec, mid(full + 0.1 * U))).toBeCloseTo(spec.waist![0], 9);
+    const half = planeFront(frame, spec, mid((LOW_CUT.planeFlat * U + full) / 2));
+    expect(half).toBeCloseTo((spec.waist![1] - LOW_CUT.planeDip * U + spec.waist![0]) / 2, 6);
     // (a hoop is its plane at every size; a waistband with no hoop never)
     expect(planeShare(spec.hinge)).toBe(1);
     expect(planeShare(null)).toBe(0);
