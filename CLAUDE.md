@@ -1142,8 +1142,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (`[data-role="sarahlab-opening-cover"]`, its `data-waits` what it waits for), the loading card over it, until those
   are in and, if any came late, compiled and drawn twice -- or 12 s after her first compile, so a file that never
   lands does not keep the room shut. A probe and a bake wait as they did (the status line's `data-model`).
-  MEASURED 2026-11-16 on the build machine as a phone (software renderer): her body and outfit in at 18 s, the cover
-  off at 31 to 36 s with nothing waited for (the time is the first compile, which the card covered before as well);
+  MEASURED 2026-11-16 on the build machine as a phone (software renderer): her body and outfit in at 18 s, her first
+  compile done at 29 s (1x) and 36 s (2x) with nothing waited for by then (that time is the compile, which the card
+  covered before as well; the cover's own going was read on the build before it stopped compiling a second time
+  for nothing: 31 and 45 s);
   pictured as the cover went and 4 s later: the same dressed figure, hair and shoes on, only her breath between them.
   After LOAD AGAIN on MAX PERFORMANCE with HER SKIN full by hand: the canvas 430 x 739 where it was 860 x 1478, no
   antialiasing, `data-skin="full"`. No error on the page.
