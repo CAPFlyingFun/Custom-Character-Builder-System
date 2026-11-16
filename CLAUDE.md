@@ -472,7 +472,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   - THE LOOSER TEN of his sheet (07 running shorts, 08 denim shorts, 09 jeans, 10 wide-leg trousers, 11 cargo pants,
     12 joggers, 13 flared yoga pants, 14 and 15 the skirts, 16 the skort): they hang off her and want fabric of their
     own over the paint. He is shown the first before the rest.
-  - AN UNDER-BELLY BAND IS NARROW BESIDE WHERE ITS LINE CLIMBS HER HIPS, half its depth at 0% (above). Its cause is
+  - (SUPERSEDED 2026-11-16 by the hoop's plane, "The under-belly waistband (a hoop)" below: its band is one depth.)
+  - BEFORE: AN UNDER-BELLY BAND WAS NARROW BESIDE WHERE ITS LINE CLIMBS HER HIPS, half its depth at 0% (above). Its cause is
     known: a place's distance is told by the line's slope AT THAT PLACE ROUND HER, which is the distance to a straight
     line, and at 0% the whole climb, from her front to her side, is 3 cm of her skin across her (11 on her body file)
     -- past her side the line "there" runs level 10 cm above. TRIED offline (`bottomCut.waistAt`'s comment): the
@@ -502,6 +503,48 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (`paintLowState`: not `pending`, nothing smoothed again while nothing changes) -- and, at a phone's 2x with her legs
   whole in the picture and her front square on, her hips' outlines and the point of an under-belly front from below
   READ PIXEL BY PIXEL for single lighter ones (both faults above were a pixel or two wide).
+
+## The under-belly waistband (a hoop)
+
+- **One plane on her as she stands** (Joshua, 2026-11-15, of the edging still uneven after a day on her rest skin: "Try
+  doing body line but set the front just below the belly with the high at just above the hips at that approximate 35°…
+  in a straight line all around… then we can work on tweaking the sides to be more rounded"). An under-belly waistband
+  (`leggingsUnder`: a hoop, `spec.hinge`) is drawn by `bottomCut.ts` `planeAt` at every size of belly (`planeShare`): the
+  hoop's own swung surface told ON HER SHAPED SKIN and nothing of her rest skin's, so nothing of how far her skin is
+  drawn out under her belly. Its band is the same distance over its own slope (`fabricLowNearTo`), 1.5 cm
+  (`UNDER_BELLY_BANDS`; he asked for half the 3 cm, "or better yet, make it adjustable": the editor's EDGING WIDTH, below).
+  The older machinery there (the line on her rest skin, her crease, the moon, `FOLD_LINE`, the band's stations) is still
+  worked out and is not drawn for a hoop: to be taken out once he is done with the shape.
+- **The fold under her belly** (`LOW_CUT.foldDepth` 4.6 cm in front of her axis at her middle, `foldCurve` less further
+  out): in front of it the surface runs level and her TRUNK's skin is bare (her belly's underside), out to 13 cm from her
+  middle and eased off by 16 (`foldDeepIn`, `foldOut`; ended sooner, cloth climbed her belly's flank -- MEASURED).
+- **Its front comes down with her belly** (`planeFront`; his orange line level across her hips at 0%: "it can be slightly
+  flat, but would like a slight downward curve"): 3 cm under her side's height while the middle of her front stands 8.5 cm
+  ahead of her axis and less (0%), the waistband's own front from her body file's 100%, straight between.
+- **Its front rises to the crease her belly hangs from once it has swung** (his yellow line over v0.9.30 at 200%: "how
+  much higher to go up, basically, 1cm above the opening"; `planeRise` 4.5 cm). MEASURED on the room's points at 200%: the
+  swung surface's front is level with the BOTTOM of her belly (9.9 cm under her hip joints) and the skin from her
+  opening forward to that crease runs nearly level 6.4 to 7.5 cm under them -- lifted just onto it (2 and 3 cm tried) the
+  two lay along one another, a smeared band and a bare patch. So it is lifted well clear and the edge in front is the
+  fold's. Eased to `planeRiseSide` (0.55) of itself from 7 to 16 cm out and HELD round her hip, run out toward her back
+  by `planeRiseAhead` at her middle and the longer `planeRiseAheadSide` at her side.
+- **From her side it is one smooth curve from the top of her hip to under her belly** (his orange arc, and in words: "a
+  smooth curve downward from top of hip cheeks to the pelvis… at about 45° view, the look should be downward to level…
+  front/back view straight line with a max of 30° between up and down slopes"; a drawing of it made for him was
+  passed, "You got it right").
+- **A WAISTBAND'S LINE CLIMBS THE SAME EITHER SIDE OF HER SIDE** (`waistLine`, the shader's `fabricLowLine`; a fault
+  found for his "black edging with pokes in it and not like one smooth line"). The line is two runs that meet at her
+  side; a front BOWL (`UNDER_BELLY_BOWL` 0.7, his "not so V shaped but like a U") read the run from her side
+  (1 + bowl) times as steep as the run from her back ends: a corner in the edge at her side and a spike in its band,
+  where her leg's skin meets her trunk's (MEASURED in a sketch at five times the size, at every setting of the lift).
+  The run's first slope is told 1 / (1 + bowl) of the sweep's. Not the lift, not the fold's guard, not her leg's skin.
+- MEASURED in the room (the light skin, 1x): 0, 100, 120, 150 and 200% from her front and the side view he marked, 200%
+  square from her side and from behind-below: one line, its band one depth.
+- A SKETCH WITHOUT A BROWSER reads the room's own points (her shaped skin read out at each size): keep one beside the
+  work -- the room's pictures cost minutes, a sketch three seconds -- AND JUDGE BY THE ROOM: a sketch draws the band by
+  the raw number, the room by the number over its slope.
+- After anything changes the hoop: `tests/bottomCut.test.ts`; then the room at 0, 100, 150 and 200% from her front, the
+  side view he marked and behind-below.
 
 ## A modelled garment and the shapes laid on her afterwards
 
@@ -989,6 +1032,61 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - After anything changes the birth, her canal, her legs' poses or its poses: `tests/birthBegins.test.ts`,
   `tests/legsOpen.test.ts`, `tests/babyFeet.test.ts`, `tests/babyAlong.test.ts`, `tests/herOwnSkeleton.test.ts`,
   `tests/birthSequence.test.ts`; then the birth read in the room (the `birth` and `legSpread` probes).
+
+## Her belly in RECLINE and SQUAT
+
+- **Her belly is her body's, not her thighs'** (Joshua, 2026-11-16, RECLINE and SQUAT at 200%, on the full skin and the
+  light one: "the lower belly shape looks flattened and it appears the womb skin pokes out just a little bit. The
+  underbelly also looks flat squatting"; "maybe because of the leg positions it ends up accidentally pulling the
+  underside of the belly, altering the shape"). It does. MEASURED in the room at 200% in RECLINE: the skin low on the
+  front of her belly is carried 0.09 by a THIGH, and at her middle by her left thigh on one point and her right on the
+  next -- 35 mm apart once her thighs are drawn up 104 degrees. `hipTurn.ts` `BELLY_HOLD`, `bellyHold()`: skin that
+  stands far from a hip joint AS SHE IS SHAPED (none within 10 cm, all from 22) and that a thigh carries less than a
+  fifth of is carried by her body's bones alone and takes none of the hip's turn -- by her belly's size, none to 100%
+  (everything measured there is as it was), all from 150%. Laid with the hip turn's field (`HIP_TURN_FIELD`) in RECLINE
+  and SQUAT (`bellyHeldHere`; the `bellyHold` probe switches it, and SQUAT alone).
+  - Its body carry is evened from the skin round it (`evenBody`): her file keeps four bones a point, and where a thigh
+    has a share one of her body's bones has lost its own.
+  - By where it stands, not by her belly follow weight: that tore a line along her flank where the paint falls away.
+- **Her soft belly's moves reach her flanks** (`softBody.ts` `softShare`, `BELLY_SOFT_HOLD` 4). Leaning back her belly
+  is told shallower (his rule 1: 16% at 200% in RECLINE), each point by how far it stands out TIMES its belly follow
+  weight -- painted for her bounce, 1 on her front and falling away over her flanks. At 200% most of her belly is
+  flank: her front came back whole, a flat face with a ledge round it. A point takes 1 - (1 - weight)^4 of the soft
+  moves; her womb's sac the same. Standing at 100 and 200% pictured after: round, as it was.
+- **Her navel is laid on her without the hips' field, which is put back over it** (`layNavel`). The piece
+  (`navelPiece.ts`) lays the skin inside its ring on one smooth surface fitted to the ring IN HER REST SHAPE; the hips'
+  field is not smooth there (each point's own way back from where a thigh's share would take it), so the piece smoothed
+  it away inside its ring and left it outside: a raised patch with a ragged edge round her navel, 6 to 14 mm. HOW IT
+  WAS FOUND, after soft belly, the poses' smoothing, her seat, her knees, the crease repair, her baby, the field's
+  normals and its body carry were each ruled out by a picture: her points as her bones alone carry them (the
+  `bodyPoints('posed')` probe), the hold on against off -- SMOOTHER held (0.36 mm from its neighbours' mean across the
+  394 edges where a thigh's share begins, 0.91 not held). No step in her skinning: so it was laid after her fields.
+  MEASURE HER POINTS BEFORE A SIXTH PICTURE.
+- MEASURED in the room, both poses at 200 and 150% on the light skin and 200% on the full one: round, no line down her
+  belly's sides, no patch. LEFT, AND NAMED: faint ripples low on her belly's front in SQUAT at 200%.
+- After anything changes the hold, her soft belly's share or her navel's lay: `tests/bellyHold.test.ts`,
+  `tests/softBelly.test.ts`, `tests/softBody.test.ts`; then RECLINE and SQUAT at 100, 150 and 200% from her
+  three-quarter and her front, close on her navel, and standing at 200%.
+
+## Her light skin
+
+- **A second list of triangles over her own points** (Joshua, 2026-11-16: "set up this lower version for web when it
+  detects a mobile device vs computer… PC would use the higher quality and if it starts to lag, would automatically fade
+  into the lower one especially if multiple characters on screen"; "once it's setup always do the lower count first, if
+  I approve, than you can apply to the larger one"). `public/models/sarah-v2-body-light.bin` (Uint32 triples), made by
+  `node scripts/lightBody.mjs` (meshoptimizer, fitted to her rest shape and her `belly` and `belly200` morphs, her
+  texture's seams kept): the same vertices, morphs, weights and attributes, fewer triangles between them. Laid at load
+  (`SarahLabScene.ts` `lightBodyOn`, `LIGHT_BODY_TRIANGLES`); the status line says LIGHT SKIN (N triangles). Not fetched
+  ahead by a device that does not wear it (`NOT_AHEAD`).
+- **Left whole** (his, the same morning: "keep the (opening, belly/bellybutton, breasts/nipples, and head) at full
+  quality, everywhere else can be less"; then "we forgot to add the hands in"): her head and neck, the front of her
+  trunk from under her opening to over her bust, her opening's area, her hands. Her legs, hips and feet are the denser
+  part of the rest (thinned as her arms and back are they stood in facets in SQUAT). 127,704 triangles of her 208,592:
+  her hands alone are some 33,000 -- the first saving to take if he allows them less.
+- A re-meshed body (Meshy, 6,737 points) was looked at and not used: another shape and pose, its points in other
+  places, her face lost.
+- WORK ON THE LIGHT SKIN FIRST (`?probe=cloth&body=light`, 1x): what he approves there is applied to the full one.
+- After the list is made again: the room on it -- her bust at 0%, SQUAT and RECLINE at 200%, a hand.
 
 ## Kept on the device (the room as an app)
 
