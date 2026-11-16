@@ -246,7 +246,7 @@ if (jiggle.x > 0.0) {
   }
   kickMove = clamp(jiggle.x * 0.9, 0.0, 1.0) * (uKickUnits * kickMove);
   // her belly's soft shape: each point moved by how far it stands out of her, its edges held (softAt)
-  kickMove += clamp(jiggle.x * ${(1 / UNITS_PER_METRE).toFixed(8)}, 0.0, 1.0) * (uKickUnits * (uBellySoft.xyz * max(kickP.z - uBellySoft.w, 0.0)));
+  kickMove += ${softShareGlsl(`clamp(jiggle.x * ${(1 / UNITS_PER_METRE).toFixed(8)}, 0.0, 1.0)`)} * (uKickUnits * (uBellySoft.xyz * max(kickP.z - uBellySoft.w, 0.0)));
 }
 // her breath (breathSkin.ts): her chest and belly out as she breathes in -- every point of her trunk and what she wears on it
 kickMove += uKickUnits * breathMove((uKickRest * vec4(transformed, 1.0)).xyz);
@@ -559,11 +559,26 @@ export function stepSoftBelly(s: SoftBelly, dt: number, want: { side: number; sa
 }
 
 /**
+ * HOW MUCH OF HER BELLY'S SOFT MOVES A POINT TAKES, for its belly follow weight (0 to 1): all of them well before the
+ * weight is 1 -- 1 - (1 - w)^`BELLY_SOFT_HOLD`. The follow weight was painted for her bounce on her body file's belly:
+ * 1 on its front, falling away over her flanks. Taken as it is, a move that is the same share of how far each point
+ * stands out -- her belly 16% shallower in RECLINE -- drew her front back whole and her flanks hardly: at her biggest
+ * belly a flat face with a ledge round it (Joshua, 2026-11-16, RECLINE at 200%, on the full skin and the light one:
+ * "the lower belly shape looks flattened"; MEASURED in the room: round again with the soft moves off). How far a
+ * point stands out already takes the move to nothing at her belly's base; the weight has only to keep it off what
+ * is not her belly. GAME TUNING.
+ */
+export const BELLY_SOFT_HOLD = 4;
+export function softShare(weight: number): number { return 1 - Math.pow(1 - clamp(weight, 0, 1), BELLY_SOFT_HOLD); }
+/** The same in the shader, for an expression that is the weight (0 to 1). */
+export const softShareGlsl = (w: string): string => `(1.0 - pow(1.0 - ${w}, ${BELLY_SOFT_HOLD.toFixed(1)}))`;
+
+/**
  * Her belly's soft move at a point (rest metres) for its belly follow weight (geometry units per metre, as the jiggle
  * attribute holds it), rest metres, into `out` -- what the shader adds.
  */
 export function softAt(u: JiggleUniforms, bellyWeight: number, p: { x: number; y: number; z: number }, out: THREE.Vector3): THREE.Vector3 {
-  const share = clamp(bellyWeight / UNITS_PER_METRE, 0, 1), s = u.bellySoft.value, h = Math.max(p.z - s.w, 0) * share;
+  const share = softShare(clamp(bellyWeight / UNITS_PER_METRE, 0, 1)), s = u.bellySoft.value, h = Math.max(p.z - s.w, 0) * share;
   return out.set(s.x * h, s.y * h, s.z * h);
 }
 
@@ -588,7 +603,7 @@ export function patchWombSoft(material: THREE.Material, uniforms: JiggleUniforms
       .replace('#include <common>', `#include <common>\nattribute vec4 ${SOFT_REF_ATTRIBUTE};\nuniform vec3 uJiggleBelly;\nuniform mat3 uKickUnits;\nuniform mat4 uKickRest;\nuniform vec4 uBellySoft;\nuniform vec4 uPubicAt;\nuniform vec4 uPubicDir;`)
       .replace('#include <morphtarget_vertex>', `#include <morphtarget_vertex>
 if (${SOFT_REF_ATTRIBUTE}.w > 0.0) {
-  float softShare = clamp(${SOFT_REF_ATTRIBUTE}.w * ${(1 / UNITS_PER_METRE).toFixed(8)}, 0.0, 1.0);
+  float softShare = ${softShareGlsl(`clamp(${SOFT_REF_ATTRIBUTE}.w * ${(1 / UNITS_PER_METRE).toFixed(8)}, 0.0, 1.0)`)};
   transformed += ${SOFT_REF_ATTRIBUTE}.w * uJiggleBelly + softShare * (uKickUnits * (uBellySoft.xyz * max(${SOFT_REF_ATTRIBUTE}.z - uBellySoft.w, 0.0)));
 }
 // (her canal's mouth pressed with her opening, as her skin round it is)
