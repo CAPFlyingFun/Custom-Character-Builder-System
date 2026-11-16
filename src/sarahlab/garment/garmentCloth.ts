@@ -584,6 +584,10 @@ export class GarmentCloth {
 
   /** Each slot's hold now, for a probe or a test (slot i is particle i while all of it is worn). */
   get pin(): Float32Array { return this.pinNow; }
+  /** (a probe's, for now) How firmly the neckline's band is held, 1 as drafted to 0 not at all: laid out again at the next frame. */
+  private pinScale = 1;
+  set neckHold(k: number) { const v = Math.min(1, Math.max(0, k)); if (v === this.pinScale) return; this.pinScale = v; this.laidOut = false; }
+  get neckHold(): number { return this.pinScale; }
   /** Her shape the garment was tailored from, as the cut reads it now (`tailored`), for a probe or a test. */
   get tailoredBase(): Float32Array | null { return this.tailored(); }
 
@@ -653,10 +657,10 @@ export class GarmentCloth {
     this.hugged.fill(0);
     for (let i = 0; i < m; i++) {
       const p = order[i];
-      let pin = this.settled ? this.pinDrafted[p] : 0;
+      let pin = this.settled ? this.pinDrafted[p] * this.pinScale : 0;
       const neckCut = nearNeck[p] < Infinity;
       // a cut neckline is held as the drafted one is, once settled, and to her skin under it
-      if (this.settled && neckCut) { const h = held(nearNeck[p]); if (h > 0) { pin = Math.max(pin, h); hug[p] = Math.min(offset[p], close); hugged = true; this.hugged[p] = 1; } }
+      if (this.settled && neckCut) { const h = held(nearNeck[p]); if (h > 0) { pin = Math.max(pin, h * this.pinScale); hug[p] = Math.min(offset[p], close); hugged = true; this.hugged[p] = 1; } }
       this.pinNow[i] = pin;
       // its edges weigh as a hem does -- the neckline's are held instead
       const nearNeckline = this.onNeck[p] === 1 || (neckCut && nearNeck[p] < PIN_OUT);

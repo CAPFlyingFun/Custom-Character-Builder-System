@@ -9932,6 +9932,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // bind it where it lies and hold its neckline there (after it is on her)
         garmentSettle: () => { garmentRoom?.cloth.settle(); return !!garmentRoom; },
         // weightless, it only draws itself to its pattern over her (how it is eased on before it is pinned and let hang)
+        // how firmly its neckline is held to her (1 as drafted, 0 free): a probe's comparison
+        garmentNeckHold: (k?: number) => { if (!garmentRoom) return null; if (k !== undefined) garmentRoom.cloth.neckHold = k; return garmentRoom.cloth.neckHold; },
         garmentWeightless: (on: boolean) => { if (garmentRoom) garmentRoom.cloth.weightless = on; return !!garmentRoom; },
         // its strain now (length / pattern length x FIT): everywhere, and over the underarm
         garmentStrain: () => garmentRoom ? { all: garmentRoom.cloth.strain(), underarm: garmentRoom.cloth.strain((p) => garmentRoom!.underarm[p] === 1) } : null,
