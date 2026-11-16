@@ -1404,14 +1404,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let hipTurn: HipTurn | null = null, hipTurnOn = true;
   const hipTurnHere = (): boolean => pose === 'recline' && hipTurnOn && !!hipTurn;
   /**
-   * How much of her belly is held to her body here (hipTurn.ts `BELLY_HOLD`): in RECLINE, by her belly's size. A probe may
-   * switch it off. NOT IN SQUAT YET: there it rounds her belly's underside as it does in RECLINE, and leaves a raised
-   * patch with a ragged edge round her navel -- the skin no thigh has a share of, a step of 6 to 14 mm from the skin
-   * beside it that a thigh carries a hundredth of (MEASURED in the room 2026-11-16 at 200%; not there with the hold
-   * off, and its cause not found: not her soft belly, the birth poses' smoothing, her seat's field, her knees' turn or
-   * the crease repair, each switched off in turn). `bellyHoldSquat` is the probe's switch for it.
+   * How much of her belly is held to her body here (hipTurn.ts `BELLY_HOLD`): in a birth pose, by her belly's size. A
+   * probe may switch it off, or off in SQUAT alone (its second switch).
    */
-  let bellyHoldOn = true, bellyHoldSquat = false;
+  let bellyHoldOn = true, bellyHoldSquat = true;
   const bellyHeldHere = (): number => (bellyHoldOn && !!hipTurn && (pose === 'recline' || (bellyHoldSquat && pose === 'squat')) ? bellyHold(bump) : 0);
   let birthContact: BirthContact | null = null, birthContactOn = false; // (off: 2026-11-02, its knee pass crumpled the knee -- the springs stay on)
   let birthKnees: BirthNormals | null = null, birthKneesOn = true, kneeRestore: number = KNEE_SMOOTH.restore;
@@ -2656,8 +2652,20 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function layNavel(b: number): void {
     if (!navel) return;
     const lw = lookWeights(navel.mesh, b);
+    // HER NAVEL IS LAID ON HER WITHOUT HER HIPS' FIELD, WHICH IS PUT BACK OVER IT. The piece lays the skin inside its ring
+    // on one smooth surface fitted to the ring, in her REST shape. The hips' field (hipTurn.ts: her hips' turn, her
+    // belly's hold) is not smooth there -- it is each point's own way back from where a thigh's share would take it,
+    // and steps with her file's weights -- so the piece smoothed it away inside its ring and left it outside: a raised
+    // patch with a ragged edge round her navel as soon as the field reached that far (MEASURED in the room 2026-11-16,
+    // SQUAT at 200% with her belly held: 6 to 14 mm in the picture, none in her points as her bones alone carry them).
+    const sf = shaped.find((x) => x.mesh === navel!.mesh)?.fields, hf = sf?.fields.get(HIP_TURN_FIELD), hw = hf ? sf?.laid?.get(HIP_TURN_FIELD) ?? 0 : 0;
+    const pa = navel.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, P = pa.array as Float32Array;
+    const carry = (sign: number) => { if (!hf || !hw) return; const ix = hf.index, d = hf.pos; for (let j = 0; j < ix.length; j++) { const o = ix[j] * 3; P[o] += sign * hw * d[j * 3]; P[o + 1] += sign * hw * d[j * 3 + 1]; P[o + 2] += sign * hw * d[j * 3 + 2]; } };
+    carry(-1);
     if (navelSoft) { const x: [number, number] = [navelXAt(0), navelXAt(1)]; navelLaid = { x, raw: [navelRawXAt(0), navelRawXAt(1)] }; navelSoft.lay(lw, x[0], x[1]); }
     else navel.piece.apply(navel.mesh, lw, navelX(b));
+    carry(1);
+    if (hf && hw) pa.needsUpdate = true;
   }
 
   function lookWeights(mesh: THREE.SkinnedMesh, b: number): Record<string, number> {
