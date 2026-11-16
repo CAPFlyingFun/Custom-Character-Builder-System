@@ -517,7 +517,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   0.5 to 12 cm; it moves `lowBand.waist`, and a saved look keeps it). A HOOP's is held to 1.5 cm (`hoopMax`): MEASURED
   in the room at 0, 100, 150 and 200%, to 1.5 its band is whole; at 2 a tooth at her front's middle at 0% and specks
   under her belly at 150%; from 2.5 its inner edge breaks up in the fold. So for the under-belly leggings the slider
-  only narrows it, until that is found. `tests/bandDial.test.ts`.
+  only narrows it. `tests/bandDial.test.ts`. PICTURED on other waistbands (the low rise at 2, 4.5 and 8 cm, the bike
+  shorts at 1 and 6): whole at each.
+  WHY A HOOP'S WIDER BAND BREAKS (Joshua, of the pictures at 3 and 6 cm: "why does the black line look like it is cut
+  off on the last 2 images? I would fix before pushing"): its band is "how far inside the edge" told as the surface's
+  number over its own slope -- right beside the edge, and less and less a distance further in, where her skin turns
+  (the slope is one number a triangle: a ragged inner edge); and under her belly her LEG's skin is measured from the
+  lifted surface, which stands clear of the crease, so it has no band at all within 1.5 cm and patches of one within
+  3. TRIED 2026-11-16 and taken out: her leg's skin there told how far it is from the fold's own edge -- the band ran
+  on across her thighs' tops at 3 cm, with holes in it at 150% and a ragged inner edge at 100%. A wider band on a
+  hoop wants a distance worked out on her skin itself, not a number over its slope: its own piece of work.
   The older machinery there (the line on her rest skin, her crease, the moon, `FOLD_LINE`, the band's stations) is still
   worked out and is not drawn for a hoop: to be taken out once he is done with the shape.
 - **The fold under her belly** (`LOW_CUT.foldDepth` 4.6 cm in front of her axis at her middle, `foldCurve` less further
