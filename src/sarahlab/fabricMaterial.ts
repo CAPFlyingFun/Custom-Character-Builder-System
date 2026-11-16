@@ -368,7 +368,8 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             else fc *= 1.0 - fabricLowBand${i}.w * fi;`;
     const lowWaistBand = (i: number) => `
           if (fabricLowBand${i}.x > 0.0 && fabricLowInnerOn${i} > 0.5) {
-            float fg = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg);
+            float fgo = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw) + fabricLowBand${i}.x, fao = max(fwidth(fgo) * 0.75, 1e-7);
+            float fg = fabricLowBand${i}.x - mix(fnd, ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);
             ${bandTint(i)}
             float fs = fabricCutSeam.y * fabricLowSteep(fg);
             fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fs, fs + fa, abs(fg)));
@@ -378,20 +379,25 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             ${bandTint(i)}
             fc *= 1.0 - fabricCutSeam.x * max(fup * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fa, abs(fwd - fabricLowBand${i}.x))), fin * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fg, abs(fh))));
           }`;
+    // (in `lowLine`, `fnd`: HOW FAR FROM THE CLOTH'S EDGE ALONG HER SKIN AS SHE IS SHAPED -- each of the edge's parts' own
+    // distance over how fast it changes along her, `fabricLowNear`, put together as the edge is: a hoop's band)
     const lowLine = (i: number) => `
         if (fabricLowOn${i} > 0.5) {
           float fwd = ${LOW_CUT.far.toFixed(1)}, fcw = 1.0;
           if (fabricLowLeg${i}.z > 0.5) { fwd = fabricLowInside(fabricLowWaist${i}, fabricLowPlace, fabricLowR, fabricLowAcross); fcw = fabricEdge(clamp(0.5 + fwd / (2.0 * fabricLowAxis.w), 0.0, 1.0)); }
-          float fws = fwd, fhd = ${LOW_CUT.far.toFixed(1)};
+          float fws = fwd, fhd = ${LOW_CUT.far.toFixed(1)}, fnw = fabricLowNear(fwd), fnd = fnw;
           if (fabricLowLeg${i}.z > 0.5 && fabricLowSwing${i}.z > 0.0) {
             fhd = fabricLowFold(fabricLowHoop(fabricLowStayAt(fabricLowWaist${i}, fabricLowSwing${i}, vFabricLow.xyz), fabricLowUnder(fabricLowPlace, vFabricLow.xyz, fabricLegShare)), vFabricLow.xyz, fabricLegShare);
             fws = fabricLowHeld(fwd, fhd);
+            fnd = fabricLowHeld(fnw, fabricLowNear(fhd));
             fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
           }
           float fmw = 0.0;
           if (fabricLowLeg${i}.z > 0.5 && fabricLowMoonW${i}.z > 0.5) {
             fmw = fabricLowMoonShare(fabricLowMoonW${i}, vFabricLow.xyz);
-            fws += (min(fws + fabricLowMoonW${i}.y, fabricLowMoonAt(${i}, 0, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.x) - vFabricLow.y) - fws) * fmw;
+            float fmt = fabricLowMoonAt(${i}, 0, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.x) - vFabricLow.y;
+            fws += (min(fws + fabricLowMoonW${i}.y, fmt) - fws) * fmw;
+            fnd += (min(fnd + fabricLowMoonW${i}.y, fabricLowNear(fmt)) - fnd) * fmw;
             fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
           }
           float ffw = 0.0, ffd = 0.0;
@@ -400,6 +406,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             ffw = ffl.y * ffl.x;
             ffd = ffl.z * fabricLowFoldStretch(fabricLowPlace);
             fws += (min(mix(fws, min(fwd, ffl.z), ffl.x), ffl.w) - fws) * ffl.y;
+            fnd += (min(mix(fnd, min(fnw, fabricLowNear(ffl.z)), ffl.x), fabricLowNear(ffl.w)) - fnd) * ffl.y;
             fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
           }
           float fle = fabricLowLeg${i}.x - vFabricLow.w, fls = vFabricLow.w - fabricLowLeg${i}.y;

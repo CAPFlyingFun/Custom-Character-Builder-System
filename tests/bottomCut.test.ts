@@ -623,6 +623,8 @@ describe('a bottom\'s cut in the shader', () => {
     expect(s.fragmentShader).toContain('ffw = ffl.y * ffl.x;');
     expect(s.fragmentShader).toContain('ffd = ffl.z * fabricLowFoldStretch(fabricLowPlace);');
     expect(s.fragmentShader).toContain('fws += (min(mix(fws, min(fwd, ffl.z), ffl.x), ffl.w) - fws) * ffl.y;');
+    expect(s.fragmentShader).toContain('fnd = fabricLowHeld(fnw, fabricLowNear(fhd));');
+    expect(s.fragmentShader).toContain('fnd += (min(mix(fnd, min(fnw, fabricLowNear(ffl.z)), ffl.x), fabricLowNear(ffl.w)) - fnd) * ffl.y;');
     expect(s.fragmentShader).toContain('uniform float fabricLowFoldT[16];');
     expect(s.fragmentShader).toContain('uniform float fabricLowFoldS[16];');
     // (his line is laid after the moon, so where it is laid it is all of the edge)
@@ -645,7 +647,13 @@ describe('a bottom\'s cut in the shader', () => {
     expect(s.fragmentShader).toContain('float fabricLowAmong = fabricLowTurnAt(fabricLowPlace);');
     for (const i of [0, 1, 2]) {
       expect(s.fragmentShader).toContain(`if (fabricLowBand${i}.x > 0.0 && fabricLowInnerOn${i} > 0.5) {`);
-      expect(s.fragmentShader).toContain(`float fg = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg);`);
+      // ITS BAND IS AS DEEP ALL ROUND HER (Joshua, 2026-11-15: "the edging still looks different sizes and not
+      // consistent all around"): how far a pixel is from the cloth's edge along her skin as she is shaped (`fnd`: each
+      // part of the edge's own distance over its own slope, `fabricLowNear`), his line's own band in front of her
+      // (`ffd`) -- and only inside the table's region widened by the band's depth (`fgo`), which keeps it out of the
+      // creases of her thighs, where a slope says nothing
+      expect(s.fragmentShader).toContain(`float fgo = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw) + fabricLowBand${i}.x, fao = max(fwidth(fgo) * 0.75, 1e-7);`);
+      expect(s.fragmentShader).toContain(`float fg = fabricLowBand${i}.x - mix(fnd, ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);`);
     }
     expect(s.fragmentShader).toContain('float fs = fabricCutSeam.y * fabricLowSteep(fg);');
     expect(s.fragmentShader).toContain('fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fs, fs + fa, abs(fg)));');
@@ -796,6 +804,9 @@ describe('a bottom\'s cut in the shader', () => {
     // (how fast a number told on her rest skin changes along her skin as she is shaped: off the pixel's own slopes)
     expect(glsl).toContain('vec3 px = dFdx(vFabricLow.xyz), py = dFdy(vFabricLow.xyz);');
     expect(glsl).toContain('return sqrt(max(h * gx * gx - 2.0 * f * gx * gy + e * gy * gy, 0.0) / max(e * h - f * f, 1e-30));');
+    // (a distance over its own slope, the slope held between a fifth and 1.8 -- in a crease of her skin it is anything --
+    // and nothing of a number that is no distance: far, or changing faster than any skin does)
+    expect(glsl).toContain(`return g > ${(LOW_CUT.far / 100).toFixed(1)} || st > ${LOW_CUT.nearMost.toFixed(1)} ? ${LOW_CUT.far.toFixed(1)} : g / clamp(st, ${LOW_CUT.nearLeast.toFixed(2)}, ${LOW_CUT.nearCap.toFixed(2)});`);
     // `foldShares`, `foldAt` and `foldStretchAt`: his line's height at a centimetre's knots, its climb at each knot
     // between the two either side, eased from knot to knot, the distance square to it, and the guard
     expect(glsl).toContain(`int a = max(k - 1, 0), b = min(k + 1, ${FOLD_LINE.length - 1});`);
