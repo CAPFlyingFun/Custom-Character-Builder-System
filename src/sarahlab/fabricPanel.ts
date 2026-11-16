@@ -38,8 +38,8 @@ import {
   fabricFamily, matchSet as matchedSet, opacityOf, setMatches, swatchRect, tileUnits, trimPick, type FabricChoice, type FabricFamilyId, type FabricLayout,
   type FabricPick, type FabricSet, type OutfitConfig, type PaintTool,
 } from './fabricLibrary';
-import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricLowWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricLayer, setFabricLow, setFabricLowLegs, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer, type FabricLow } from './fabricMaterial';
-import { LOW_CUT, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
+import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricLowWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowMoon, setFabricLowSwing, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer, type FabricLow } from './fabricMaterial';
+import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
 import { makePulledSlip, pulledSlipDriver, type PulledDriver } from './pulledSlip';
 import { MOTION_SHAPES } from './levelLine';
 import { ARMSCYE, TOP_CUT, cutPicture, isCutTop, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
@@ -878,8 +878,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const body = hooks.body(), map = regionMap();
     if (!body || !map?.joints) return null;
     if (lowOf?.mesh !== body) {
-      const J = map.joints;
-      lowOf = { mesh: body, frame: lowFrame({ unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { pelvis: J.pelvis, spine: J.spine, chest: J.chest, neck: J.neck, hipL: J.hipL, kneeL: J.kneeL, ankleL: J.ankleL, hipR: J.hipR, kneeR: J.kneeR, ankleR: J.ankleR } }) };
+      const J = map.joints, index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? (body.geometry as THREE.BufferGeometry).index?.array;
+      // (her rest skin and her triangles with it: the middle of her front and of her back and her crease are measured
+      // off them, for an under-belly waistband's hoop)
+      lowOf = { mesh: body, frame: lowFrame({ unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { pelvis: J.pelvis, spine: J.spine, chest: J.chest, neck: J.neck, hipL: J.hipL, kneeL: J.kneeL, ankleL: J.ankleL, hipR: J.hipR, kneeR: J.kneeR, ankleR: J.ankleR }, ...(map.rest && index ? { skin: { rest: map.rest, limb: limbSkin(map), index } } : {}) }) };
       lowSlip = null;
     }
     if (lowOf.frame) layLimbSkin(body, map);
@@ -893,12 +895,13 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const frame = lowFrameNow();
     return frame ? lowSpec(params, frame) : null;
   }
-  /** A drawn bottom's layer beside its fabric: its waistband, its legs' ends, its bands and its EDGING. */
-  const lowLayerOf = (spec: LowSpec, c: FabricChoice): NonNullable<FabricLayer['low']> => ({ waist: spec.waist, end: spec.end, start: spec.start, band: [spec.bands.waist, spec.bands.leg, spec.bands.top], shade: BAND_SHADE, edging: edgingOf(c) });
+  /** A drawn bottom's layer beside its fabric: its waistband (and its hoop's hinge, an under-belly one's), its legs' ends, its bands and its EDGING. */
+  const lowLayerOf = (spec: LowSpec, c: FabricChoice): NonNullable<FabricLayer['low']> => ({ waist: spec.waist, end: spec.end, start: spec.start, band: [spec.bands.waist, spec.bands.leg, spec.bands.top], shade: BAND_SHADE, hinge: spec.hinge ? spec.hinge[0] : null, edging: edgingOf(c) });
   /** Her measures as her skin's material reads them for a drawn bottom (`fabricMaterial.FabricLow`), her legs' cuts as they are at rest. */
   function fabricLowOf(frame: LowFrame): FabricLow {
     const U = frame.unitsPerMetre, S = frame.spine, leg = (l: LowLeg) => { const p = legPlanes(l); return [p.thigh, p.shin, legBlend(l, U)] as const; };
-    return { axis: [frame.mid, frame.facing, frame.seam, LOW_CUT.range * U], spineA: [S[0][0], S[0][1], S[1][0], S[1][1]], spineB: [S[2][0], S[2][1], S[3][0], S[3][1]], floor: frame.floor, legL: leg(frame.legs[0]), legR: leg(frame.legs[1]), seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U] };
+    const T = frame.stay;
+    return { axis: [frame.mid, frame.facing, frame.seam, LOW_CUT.range * U], spineA: [S[0][0], S[0][1], S[1][0], S[1][1]], spineB: [S[2][0], S[2][1], S[3][0], S[3][1]], floor: frame.floor, stay: [T.wide, 0, 0, T.round], crease: frame.crease, moon: [LOW_CUT.moonBlend * U, LOW_CUT.moonBack * U, LOW_CUT.moonOn * U, 0], front: [LOW_CUT.foldIn * U, LOW_CUT.foldOut * U, LOW_CUT.foldFrom * U, LOW_CUT.foldTo * U], fold: [0.01 * U, frame.hipY, LOW_CUT.foldDepth * U, LOW_CUT.foldCurve / U], foldLine: FOLD_LINE.map((y) => y * U), legL: leg(frame.legs[0]), legR: leg(frame.legs[1]), seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U] };
   }
   /** A template's drawn cut on her (`paintTemplates.templateCut`), kept by what it is cut to; null for any other template. */
   function cutOf(params: CoverageParams | null | undefined): WornCut | null {
@@ -1510,6 +1513,119 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const cuts = frame.legs.map((leg) => { const p = legPlanes(leg, { hip: posed(leg, 'hip'), knee: posed(leg, 'knee'), ankle: posed(leg, 'ankle') }); return [p.thigh, p.shin] as const; });
     setFabricLowLegs(material, cuts[0], cuts[1]);
   }
+  /**
+   * HOW FAR EACH LAYER'S HOOP HAS SWUNG (once a frame while a drawn bottom is worn; `bottomCut.swingOf`): the middle of
+   * her front as her skin's shader has it before her bones pose her -- her points as her shape fields leave them, her
+   * morphs by their weights and her belly's push -- and each under-belly waistband's swing off it, laid on its layer
+   * with its surface's room (`fabricMaterial.setFabricLowSwing`); and, while one has swung, where the cloth's front
+   * runs between her thighs, off her groin as it is shaped (`bottomCut.foldOf`, `setFabricLowFold`). Some hundreds of
+   * points: it is told every frame, so a belly's slider dragged carries the waistband with it.
+   */
+  const lowSpecs: (LowSpec | null)[] = Array.from({ length: PAINT_LAYER_COUNT }, () => null), lowSwings: number[] = Array.from({ length: PAINT_LAYER_COUNT }, () => 0);
+  let middleNow = new Float32Array(0), groinNow = new Float32Array(0), lowFold: number = LOW_CUT.far;
+  function layLowSwing(): void {
+    const body = hooks.body(), frame = body && lowOf?.mesh === body ? lowOf.frame : null;
+    if (!body || !frame) return;
+    const material = skinMaterialOf(body);
+    if (!fabricLowWorn(material)) return;
+    let told = false, swung = false;
+    for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
+      const spec = lowSpecs[i];
+      let swing = 0;
+      if (spec?.hinge && frame.middle.length) {
+        if (!told) { middleNow = shapedNow(body, frame.middle, middleNow); told = true; }
+        swing = swingOf(frame, spec, middleNow);
+      }
+      lowSwings[i] = swing;
+      swung ||= swing > 0;
+      setFabricLowSwing(material, i, swing, roomAt(frame, swing), [foldLift(frame, swing), 0]);
+    }
+    if (swung) { groinNow = shapedNow(body, frame.groin, groinNow); lowFold = foldOf(frame, groinNow); setFabricLowFold(material, lowFold); }
+  }
+  /** Some of her vertices as she is shaped now, before her bones pose her (xyz each; into `out` when it is the size, or a new array). */
+  function shapedNow(body: THREE.Mesh, vertices: Uint32Array, out: Float32Array): Float32Array {
+    const g = body.geometry as THREE.BufferGeometry, pos = g.getAttribute('position') as THREE.BufferAttribute, push = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined;
+    const morphs = g.morphTargetsRelative ? g.morphAttributes.position ?? [] : [], weights = (body as THREE.SkinnedMesh).morphTargetInfluences ?? [];
+    const to = out.length === vertices.length * 3 ? out : new Float32Array(vertices.length * 3);
+    for (let i = 0; i < vertices.length; i++) {
+      const v = vertices[i];
+      let x = pos.getX(v), y = pos.getY(v), z = pos.getZ(v);
+      for (let k = 0; k < morphs.length; k++) { const w = weights[k] ?? 0, a = morphs[k]; if (w && a) { x += w * a.getX(v); y += w * a.getY(v); z += w * a.getZ(v); } }
+      if (push && push.count === pos.count) { x += push.getX(v); y += push.getY(v); z += push.getZ(v); }
+      to[i * 3] = x; to[i * 3 + 1] = y; to[i * 3 + 2] = z;
+    }
+    return to;
+  }
+  /**
+   * EACH HOOP'S BAND, laid as she is shaped (once a frame while a drawn bottom is worn; `bottomCut.bandInner`): the
+   * band's inner edge found on her skin -- down each of her stations' cuts from the cloth's own edge to where that edge
+   * is the band's depth away -- and laid on its layer as heights on her rest skin (`fabricMaterial.setFabricLowInner`),
+   * so an under-belly waistband's band is as wide on her at every size of belly. Her stations are cut once a body, the
+   * first time a hoop is worn (`bandStations`). A table is told again only when what it is told from has changed: her
+   * shape (her points, her morphs' weights, her belly's push), her skin's slip about her hips as it lands, the hoop's
+   * swing, the cloth's front between her thighs, or the layer's own cut -- some hundreds of her points while a
+   * slider is dragged (the search for each station's edge begins where it was found the frame before), nothing while
+   * she stands or walks as she is.
+   */
+  let lowBand: { readonly mesh: THREE.Mesh; readonly stations: BandStations; readonly limb: Float32Array; readonly near: Uint32Array } | null = null;
+  const lowInner: (Float32Array | null)[] = Array.from({ length: PAINT_LAYER_COUNT }, () => null), lowInnerKept = Array.from({ length: PAINT_LAYER_COUNT }, () => new Int32Array(0));
+  const lowInnerSeen: ({ spec: LowSpec; pos: number; push: number; slip: number; weights: number; swing: number; fold: number } | null)[] = Array.from({ length: PAINT_LAYER_COUNT }, () => null);
+  let lowBandMs = 0, lowBandTold = 0, lowStretch: Float32Array | null = null;
+  const lowMoons: ([FrontMoon, FrontMoon] | null)[] = Array.from({ length: PAINT_LAYER_COUNT }, () => null);
+  function layLowBand(): void {
+    const body = hooks.body(), frame = body && lowOf?.mesh === body ? lowOf.frame : null;
+    if (!body || !frame) return;
+    const material = skinMaterialOf(body);
+    if (!fabricLowWorn(material)) return;
+    const banded = (i: number) => { const spec = lowSpecs[i]; return spec?.waist && spec.hinge && spec.bands.waist > 0 ? spec : null; };
+    let any = false;
+    for (let i = 0; i < PAINT_LAYER_COUNT; i++) { if (banded(i)) any = true; else if (lowInnerSeen[i]) { lowInnerSeen[i] = null; lowInner[i] = null; lowMoons[i] = null; setFabricLowInner(material, i, null); setFabricLowMoon(material, i, null, null); } }
+    if (!any) return;
+    const map = regionMap(), g = body.geometry as THREE.BufferGeometry;
+    const restAttr = g.getAttribute('fabricRest') as THREE.BufferAttribute | undefined, rest = restAttr && restAttr.array instanceof Float32Array ? restAttr.array : map?.rest;
+    if (!map || !rest) return;
+    if (lowBand?.mesh !== body) {
+      const index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array;
+      if (!index) return;
+      const limb = limbSkin(map);
+      lowBand = { mesh: body, stations: bandStations(frame, { rest, limb, index }), limb, near: foldNear(frame, rest) };
+      lowInnerSeen.fill(null);
+    }
+    const { stations, limb, near } = lowBand;
+    const pos = g.getAttribute('position') as THREE.BufferAttribute, push = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined, pushed = push && push.count === pos.count ? push : null;
+    // (her skin's slip rides in the SHOW REGIONS overlay's attribute: while the overlay is on the shader looks a waistband up at her rest place itself, and so does this)
+    const slipAttr = g.getAttribute(LOW_SLIP_ATTRIBUTE) as THREE.BufferAttribute | undefined, slip = slipAttr && slipAttr.itemSize === 4 && lowSlip?.mesh === body && lowSlip.laid && !(painting && showingRegions) ? (slipAttr.array as Float32Array) : null;
+    const morphs = g.morphTargetsRelative ? g.morphAttributes.position ?? [] : [], weights = (body as THREE.SkinnedMesh).morphTargetInfluences ?? [];
+    let weighed = 0;
+    const active: [number, THREE.BufferAttribute | THREE.InterleavedBufferAttribute][] = [];
+    for (let k = 0; k < morphs.length; k++) { const w = weights[k] ?? 0; if (w && morphs[k]) { active.push([w, morphs[k]]); weighed += w * (k + 1) + w * w; } }
+    const seen = { pos: pos.version, push: pushed ? pushed.version : -1, slip: slip ? slipAttr!.version : -1, weights: weighed, fold: lowFold };
+    const point: BandPoint = (v, out) => {
+      let x = pos.getX(v), y = pos.getY(v), z = pos.getZ(v);
+      for (let k = 0; k < active.length; k++) { const w = active[k][0], a = active[k][1]; x += w * a.getX(v); y += w * a.getY(v); z += w * a.getZ(v); }
+      if (pushed) { x += pushed.getX(v); y += pushed.getY(v); z += pushed.getZ(v); }
+      out[0] = x; out[1] = y; out[2] = z;
+      out[3] = rest[v * 3] + (slip ? slip[v * 4] : 0); out[4] = rest[v * 3 + 1] + (slip ? slip[v * 4 + 1] : 0); out[5] = rest[v * 3 + 2] + (slip ? slip[v * 4 + 2] : 0);
+      out[6] = limb[v]; out[7] = slip ? slip[v * 4 + 3] : 0;
+    };
+    for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
+      const spec = banded(i);
+      if (!spec) continue;
+      const was = lowInnerSeen[i], swing = lowSwings[i];
+      if (was && was.spec === spec && was.pos === seen.pos && was.push === seen.push && was.slip === seen.slip && was.weights === seen.weights && was.fold === seen.fold && was.swing === swing) continue;
+      lowInnerSeen[i] = { spec, ...seen, swing };
+      if (lowInnerKept[i].length !== stations.count) lowInnerKept[i] = new Int32Array(stations.count).fill(-1);
+      // (its front moon off the cut's own edge, then its band's table and inner edge in front with the moon laid on)
+      const t0 = performance.now(), bare = stationEdges(frame, spec, stations, point, swing, lowFold), moon = frontMoon(frame, bare.E, swing), front: number[] = [];
+      const table = bandInner(frame, spec, stations, point, swing, lowFold, lowInnerKept[i], moon, front), inner = moon && table ? innerMoon(frame, front, moon.width) : null;
+      const stretch = swing > 0 ? foldStretch(frame, near, point, swing, spec.bands.waist) : null;
+      lowBandMs = performance.now() - t0; lowBandTold++;
+      lowInner[i] = table; lowMoons[i] = moon && inner ? [moon, inner] : null; lowStretch = stretch;
+      setFabricLowInner(material, i, table ? { line: stations, table, front: inner } : null);
+      setFabricLowFoldStretch(material, stretch);
+      setFabricLowMoon(material, i, moon, inner);
+    }
+  }
   const cached = (pick: FabricPick | null, which: 'plain' | 'trim') => (pick ? swatches.get(swatchKey(pick, which)) ?? null : null);
   function layerFor(mesh: THREE.Mesh, c: FabricChoice, pick: FabricPick | null, which: 'plain' | 'trim') {
     const texture = cached(pick, which);
@@ -1555,6 +1671,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         const t = templates[i], mine = l && worn && t && cutOf(t.params)?.key === worn.key ? cutLayerOf(worn, c) : null;
         // a DRAWN bottom (`bottomCut.ts`): each layer whose template is one is drawn from its own waistband and legs
         const lowSpecOf = l && t && !mine ? lowOfParams(t.params) : null;
+        lowSpecs[i] = lowSpecOf;
         setFabricLayer(body, material, i, l ? { ...l, field: fieldFor(i, body), cut: mine, low: lowSpecOf ? lowLayerOf(lowSpecOf, c) : null } : null, { layers: PAINT_LAYER_COUNT, masked: true, rest: hooks.rest(body) });
       }
       wornCut = worn;
@@ -1563,7 +1680,9 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       const lowFrameWorn = fabricLowWorn(material) && lowOf?.mesh === body ? lowOf.frame : null;
       if (lowFrameWorn) setFabricLow(material, fabricLowOf(lowFrameWorn));
       layLowLegs();
+      layLowSwing();
       layLowSlip();
+      layLowBand();
       laySlip();
       dressBridge(body, p);
       dressDrape(body, p);
@@ -1813,7 +1932,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     setMatched: () => setMatch,
     clearAll,
     navelFlatten,
-    frame() { bridge?.update(); drape?.update(); layHang(); layUnder(); laySlip(); layCutArms(); layLowSlip(); layLowLegs(); },
+    frame() { bridge?.update(); drape?.update(); layHang(); layUnder(); laySlip(); layCutArms(); layLowSlip(); layLowLegs(); layLowSwing(); layLowBand(); },
     slipState() {
       const body = hooks.body();
       if (!slip || slip.mesh !== body) return null;
@@ -1829,9 +1948,9 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       let longest = 0, narrowest = 0, widest = 0;
       if (k?.laid && attr) for (const v of k.vertices) { longest = Math.max(longest, Math.hypot(attr.getX(v), attr.getY(v), attr.getZ(v))); narrowest = Math.min(narrowest, attr.getW(v)); widest = Math.max(widest, attr.getW(v)); }
       return {
-        frame: { unitsPerMetre: frame.unitsPerMetre, mid: frame.mid, hipY: frame.hipY, trunk: frame.trunk, facing: frame.facing, legs: frame.legs.map((l) => ({ name: l.name, thigh: l.thigh, shin: l.shin })) },
+        frame: { unitsPerMetre: frame.unitsPerMetre, mid: frame.mid, hipY: frame.hipY, trunk: frame.trunk, facing: frame.facing, legs: frame.legs.map((l) => ({ name: l.name, thigh: l.thigh, shin: l.shin })), middle: frame.middle.length, groin: frame.groin.length, crease: frame.crease ? Array.from(frame.crease) : null, fold: lowFold, band: lowBand?.mesh === body ? { stations: lowBand.stations.count, cuts: lowBand.stations.a.map((a) => a.length), lean: lowBand.stations.lean, ms: lowBandMs, told: lowBandTold } : null },
         worn: fabricLowWorn(skinMaterialOf(body)),
-        layers: templates.map((t, i) => { const spec = t && paint?.has(i) && layerShown(i) && paintChoices[i].fabric ? lowOfParams(t.params) : null; return spec ? { template: t!.id, waist: spec.waist, end: spec.end, start: spec.start, bands: [spec.bands.waist, spec.bands.leg, spec.bands.top], edged: !!edgingOf(paintChoices[i]) } : null; }),
+        layers: templates.map((t, i) => { const spec = t && paint?.has(i) && layerShown(i) && paintChoices[i].fabric ? lowOfParams(t.params) : null; return spec ? { template: t!.id, waist: spec.waist, end: spec.end, start: spec.start, bands: [spec.bands.waist, spec.bands.leg, spec.bands.top], edged: !!edgingOf(paintChoices[i]), hinge: spec.hinge, reach: spec.reach, swing: lowSwings[i], inner: lowInner[i] ? Array.from(lowInner[i]!) : null, stretch: lowStretch ? Array.from(lowStretch, (k) => +k.toFixed(3)) : null, moon: lowMoons[i] ? { width: lowMoons[i]![0].width, fill: lowMoons[i]![0].fill, edge: Array.from(lowMoons[i]![0].table), inner: Array.from(lowMoons[i]![1].table) } : null } : null; }),
         slip: k ? { points: k.points, vertices: k.vertices.length, laid: k.laid, pending: k.driver.pending, solved: k.driver.stats.solved, pulled: k.driver.stats.pulled, morphs: k.driver.stats.morphs.slice(), longest, across: [narrowest, widest] } : null,
       };
     },
@@ -1905,7 +2024,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       fields.clear();
       for (const t of cutTextures.values()) t.dispose();
       cutTextures.clear(); cuts.clear(); wornCut = null;
-      slip = null; cutSlip = null; lowSlip = null; lowOf = null; limbLaid = null;
+      slip = null; cutSlip = null; lowSlip = null; lowOf = null; lowBand = null; limbLaid = null;
     },
   };
 }

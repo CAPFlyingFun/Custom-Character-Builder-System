@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import type { ShapeFields } from '../view/bodyShapeView';
 import { DETAIL_LOOK, DETAIL_PACK, topDetailGlsl } from './topDetails';
-import { LOW_CUT, lowGlsl } from './bottomCut';
+import { BAND_STEPS, CREASE_STEPS, LOW_CUT, MOON_STEPS, lowGlsl, type BandInner, type FrontMoon } from './bottomCut';
 
 export interface FabricLayer {
   /** The swatch, tiled (MirroredRepeatWrapping). Null switches the layer off. */
@@ -72,10 +72,12 @@ export interface FabricLayer {
    * leg carried by her leg's bones (her units along her leg from her hip joint; null: none -- `setFabricLowLegs`),
    * which cut her leg's skin alone. `band`: a band along each edge this wide inside it (its waistband, its legs' ends,
    * its legs' tops), `shade` darker in the layer's own fabric or in its `edging` colour, with a seam -- as a top's.
+   * `hinge`: an under-belly waistband is a hoop (`bottomCut.stayAt`) -- how far in front of her axis its hinge is
+   * (under 0: behind it; null: no hoop); how far it has swung is laid as she is shaped (`setFabricLowSwing`).
    * `setFabricLow` lays her own measures for it on the material. A material is given this code the first time one of
    * its layers is a drawn bottom (it is compiled again once); until then its program is exactly as it was.
    */
-  readonly low?: { readonly waist: readonly [number, number, number, number] | null; readonly end: number | null; readonly start: number | null; readonly band: readonly [number, number, number]; readonly shade: number; readonly edging?: { readonly colour: readonly [number, number, number]; readonly knit: number } | null } | null;
+  readonly low?: { readonly waist: readonly [number, number, number, number] | null; readonly end: number | null; readonly start: number | null; readonly band: readonly [number, number, number]; readonly shade: number; readonly hinge?: number | null; readonly edging?: { readonly colour: readonly [number, number, number]; readonly knit: number } | null } | null;
 }
 
 type V4 = readonly [number, number, number, number];
@@ -91,6 +93,19 @@ export interface FabricLow {
   readonly axis: V4; readonly spineA: V4; readonly spineB: V4;
   /** the height a waistband's BAND reaches no lower than (`bottomCut.LowFrame.floor`) */
   readonly floor: number;
+  /**
+   * what an under-belly waistband's hoop is laid by (`bottomCut.LowFrame.stay`, `stayAt`): how far to each side of
+   * her middle her crease is told, nothing (where the cloth's front runs between her thighs is laid as she is
+   * shaped: `setFabricLowFold`), nothing, and how round the hoop's corners are; and her crease's heights
+   * on her rest skin (`bottomCut.LowFrame.crease`, `CREASE_STEPS` of them; null: none told, and no waistband a hoop)
+   */
+  readonly stay: V4; readonly crease: ArrayLike<number> | null;
+  /** how far inside a front moon's tips it eases out, how far behind her axis it is laid on none of her and from how far on all of her (`bottomCut.moonShare`; her units) */
+  readonly moon?: V4;
+  /** where a swung hoop's front runs along his line (`bottomCut.foldShare`: `LOW_CUT.foldIn`, `foldOut`, `foldFrom`, `foldTo`; her units) */
+  readonly front?: V4;
+  /** his line (`bottomCut.FOLD_LINE`): a centimetre and her hip joints' height (her units), and its heights at each centimetre out (her units) */
+  readonly fold?: V4; readonly foldLine?: ArrayLike<number>;
   readonly legL: readonly [V4, V4, V4]; readonly legR: readonly [V4, V4, V4];
   readonly seam: readonly [number, number];
 }
@@ -248,9 +263,12 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         // (a sheet in a top's fabric that reads the top's cut -- her cleavage bridge -- has a slip of its own, laid from
         // her skin's at its ends: its rim is looked up as her skin's is, at its rest place and its slip)
         : cut ? ['attribute vec3 fabricSlip;', 'varying vec3 vFabricSlip;'] : []),
-      // a drawn bottom's legs (bottomCut.ts): how far along her leg this point is, measured where her leg's bones are
-      // now -- by her thigh's bone and by her shin's, blended round her knee by where the point lies at rest
-      ...(masked && entry.low ? ['uniform vec4 fabricLowLegL[3];', 'uniform vec4 fabricLowLegR[3];', 'uniform vec4 fabricLowAxis;', 'varying float vFabricLeg;'] : []),
+      // a drawn bottom (bottomCut.ts), four numbers in one varying. The fourth: how far along her leg this point is,
+      // measured where her leg's bones are now -- by her thigh's bone and by her shin's, blended round her knee by
+      // where the point lies at rest. The first three: where the point stands AS SHE IS SHAPED, before her bones pose
+      // her (her shapes, her morphs and her soft moves) -- an under-belly waistband's hoop is told there, the surface
+      // it has swung to against her as she is (`bottomCut.stayAt`)
+      ...(masked && entry.low ? ['uniform vec4 fabricLowLegL[3];', 'uniform vec4 fabricLowLegR[3];', 'uniform vec4 fabricLowAxis;', 'varying vec4 vFabricLow;'] : []),
       shader.vertexShader,
     ].join('\n');
     const mask = masked ? `\nvFabricMask = fabricPaint;\nvFabricTint = fabricRegionTint;\nvFabricAux = ${AUX_ATTRIBUTE};\nvFabricLimb = ${AUX_ATTRIBUTE}.z;\nvFabricSlip = fabricSlip;` : '';
@@ -270,12 +288,12 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     if (masked) shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>${soften}`);
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\nvFabricPos = fabricRest;\nvFabricNrm = fabricRestNormal;${mask}${cut && !masked ? '\nvFabricSlip = fabricSlip;' : ''}${masked ? '\ntransformed -= fabricDetail.xyz * fabricSoften;\nvFabricDetailKeep = clamp(fabricDetail.w * (1.0 - fabricHideNipple / max(fabricCovered, 1e-3)) + fabricDetailN.w * (1.0 - fabricHideNavel / max(fabricCovered, 1e-3)), 0.0, 1.0);' : ''}`);
     // (after her bones: `transformed` is her posed place, in her mesh's own space)
-    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <skinning_vertex>', `#include <skinning_vertex>\nvFabricAlong = dot(fabricRest.x >= fabricCutLimb.x ? fabricCutArmL : fabricCutArmR, vec4(transformed, 1.0));${entry.low ? `
+    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <skinning_vertex>', `${entry.low ? 'vFabricLow.xyz = transformed;\n' : ''}#include <skinning_vertex>\nvFabricAlong = dot(fabricRest.x >= fabricCutLimb.x ? fabricCutArmL : fabricCutArmR, vec4(transformed, 1.0));${entry.low ? `
 {
   bool fabricLegLeft = fabricRest.x >= fabricLowAxis.x;
   vec4 fabricPosed = vec4(transformed, 1.0);
   float fabricByThigh = dot(fabricLegLeft ? fabricLowLegL[0] : fabricLowLegR[0], fabricPosed), fabricByShin = dot(fabricLegLeft ? fabricLowLegL[1] : fabricLowLegR[1], fabricPosed);
-  vFabricLeg = mix(fabricByThigh, fabricByShin, smoothstep(-1.0, 1.0, dot(fabricLegLeft ? fabricLowLegL[2] : fabricLowLegR[2], vec4(fabricRest, 1.0))));
+  vFabricLow.w = mix(fabricByThigh, fabricByShin, smoothstep(-1.0, 1.0, dot(fabricLegLeft ? fabricLowLegL[2] : fabricLowLegR[2], vec4(fabricRest, 1.0))));
 }` : ''}`);
     // a top's cut for layer i: its line, and its bands -- a touch darker (or in the layer's edging colour), a seam
     // along their inner side. `fd`, how far inside the line this pixel is; `fm`, the same on the paint's scale.
@@ -309,7 +327,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           }` : '';
     // a BOTTOM's cut for layer i (bottomCut.ts `lowAt`, formula for formula): its waistband's line at this pixel's own
     // place (`fabricLowPlace`: its rest place and her skin's slip there), its legs' ends and tops by how far along her
-    // leg the pixel is (`vFabricLeg`). EACH EDGE IS ANTIALIASED BY ITS OWN SLOPE, as a top's: her leg's edges cut her
+    // leg the pixel is (`vFabricLow.w`). EACH EDGE IS ANTIALIASED BY ITS OWN SLOPE, as a top's: her leg's edges cut her
     // leg's skin alone (`fabricLegShare`), and the rest of her under a waistband is the garment whatever her legs do
     // (a stocking, which has no waistband, is on her leg's skin alone) -- but her ARM's skin, which hangs beside her
     // hips under any waistband and is never a bottom's (`fabricNotArm`). A band along each edge, as wide as its number
@@ -319,6 +337,14 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     // round her" swings from pixel to pixel -- its slope is no pixel's width.
     // Which of her skin a pixel is, is read inside the triangle the pixel is drawn for (`vFabricLimb`: the vertex
     // shader's note says why).
+    // AN UNDER-BELLY WAISTBAND'S HOOP (`bottomCut.stayAt`, `waistHeld`; the layer's `fabricLowSwing`: its hinge, the
+    // cosine and the sine of its swing, its surface's room): once it has swung its waistband's distance is the nearer
+    // of its line's and its hoop's (`fws`) -- the hoop's (`fhd`), how far the pixel stands under the swung surface AS
+    // SHE IS SHAPED (`vFabricLow.xyz`) or under her crease on her skin (`bottomCut.underAt`: and, of her trunk's skin,
+    // behind the cloth's front between her thighs), whichever is further inside -- and its cover is that distance's,
+    // on her trunk's skin and her leg's alike. A waistband that is no hoop, and a hoop that has not swung (a sine of 0:
+    // up to the size she was cut for), has `fws` its `fwd` itself: not a number of its cover differs. (A hoop's BAND is
+    // its own table's at every size: `lowWaistBand`.)
     const lowBand = (d: string, b: string, weight: string, i: number) => `
           if (${b} > 0.0) {
             float fa = max(fwidth(${d}) * 0.75, 1e-7), fi = (1.0 - smoothstep(${b} - fa, ${b} + fa, ${d})) * ${weight};
@@ -330,19 +356,53 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     // THE FLOOR -- a level line above her cleft, antialiased by its own slope as each edge is. Under the floor nothing of
     // it is drawn, whatever the distance inside its line says there (between her legs it says anything). Its seam runs
     // along its inner edge over the floor, and along the floor where that cuts it.
+    // A HOOP'S BAND IS TOLD BY ITS OWN TABLE (`bottomCut.bandInner`; Joshua, 2026-11-15: "the edging at 0% starts fading
+    // as the belly gets bigger, needs to stay consistent no matter the belly%"): once the layer's is laid
+    // (`fabricLowInnerOn`, `setFabricLowInner`) its band is the cloth OVER ITS INNER EDGE -- a height on her rest skin at
+    // each turn round her (`fabricLowInnerAt`, at this pixel's `fabricLowAmong`), found on her skin as she is shaped so
+    // that it lies the band's depth from the cloth's own edge at every size of belly. One edge, antialiased by its own
+    // slope; no floor (the table is told where the line's distance says anything). Its seam is as wide ALONG HER SKIN
+    // as any band's: its half-width in heights on her rest skin is that width times how fast the height changes along
+    // her as she is shaped (`fabricLowSteep`: under her belly a millimetre of height is a centimetre of her).
+    const bandTint = (i: number) => `if (fabricCutEdge${i}.w >= 0.0) fc = mix(fc, fabricCutEdge${i}.rgb * (fabricCutEdge${i}.w > 0.0 ? clamp(dot(fc, vec3(0.2126, 0.7152, 0.0722)) * fabricCutEdge${i}.w, 0.45, 1.75) : 1.0), fi);
+            else fc *= 1.0 - fabricLowBand${i}.w * fi;`;
     const lowWaistBand = (i: number) => `
-          if (fabricLowBand${i}.x > 0.0) {
+          if (fabricLowBand${i}.x > 0.0 && fabricLowInnerOn${i} > 0.5) {
+            float fg = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg);
+            ${bandTint(i)}
+            float fs = fabricCutSeam.y * fabricLowSteep(fg);
+            fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fs, fs + fa, abs(fg)));
+          } else if (fabricLowBand${i}.x > 0.0) {
             float fa = max(fwidth(fwd) * 0.75, 1e-7), fh = fabricLowPlace.y - fabricLowFloor, fg = max(fwidth(fh) * 0.75, 1e-7);
             float fin = 1.0 - smoothstep(fabricLowBand${i}.x - fa, fabricLowBand${i}.x + fa, fwd), fup = smoothstep(-fg, fg, fh), fi = fin * fup;
-            if (fabricCutEdge${i}.w >= 0.0) fc = mix(fc, fabricCutEdge${i}.rgb * (fabricCutEdge${i}.w > 0.0 ? clamp(dot(fc, vec3(0.2126, 0.7152, 0.0722)) * fabricCutEdge${i}.w, 0.45, 1.75) : 1.0), fi);
-            else fc *= 1.0 - fabricLowBand${i}.w * fi;
+            ${bandTint(i)}
             fc *= 1.0 - fabricCutSeam.x * max(fup * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fa, abs(fwd - fabricLowBand${i}.x))), fin * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fg, abs(fh))));
           }`;
     const lowLine = (i: number) => `
         if (fabricLowOn${i} > 0.5) {
           float fwd = ${LOW_CUT.far.toFixed(1)}, fcw = 1.0;
           if (fabricLowLeg${i}.z > 0.5) { fwd = fabricLowInside(fabricLowWaist${i}, fabricLowPlace, fabricLowR, fabricLowAcross); fcw = fabricEdge(clamp(0.5 + fwd / (2.0 * fabricLowAxis.w), 0.0, 1.0)); }
-          float fle = fabricLowLeg${i}.x - vFabricLeg, fls = vFabricLeg - fabricLowLeg${i}.y;
+          float fws = fwd, fhd = ${LOW_CUT.far.toFixed(1)};
+          if (fabricLowLeg${i}.z > 0.5 && fabricLowSwing${i}.z > 0.0) {
+            fhd = fabricLowFold(fabricLowHoop(fabricLowStayAt(fabricLowWaist${i}, fabricLowSwing${i}, vFabricLow.xyz), fabricLowUnder(fabricLowPlace, vFabricLow.xyz, fabricLegShare)), vFabricLow.xyz, fabricLegShare);
+            fws = fabricLowHeld(fwd, fhd);
+            fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
+          }
+          float fmw = 0.0;
+          if (fabricLowLeg${i}.z > 0.5 && fabricLowMoonW${i}.z > 0.5) {
+            fmw = fabricLowMoonShare(fabricLowMoonW${i}, vFabricLow.xyz);
+            fws += (min(fws + fabricLowMoonW${i}.y, fabricLowMoonAt(${i}, 0, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.x) - vFabricLow.y) - fws) * fmw;
+            fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
+          }
+          float ffw = 0.0, ffd = 0.0;
+          if (fabricLowLeg${i}.z > 0.5 && fabricLowSwing${i}.z > 0.0) {
+            vec4 ffl = fabricLowFoldLine(fabricLowPlace, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x);
+            ffw = ffl.y * ffl.x;
+            ffd = ffl.z * fabricLowFoldStretch(fabricLowPlace);
+            fws += (min(mix(fws, min(fwd, ffl.z), ffl.x), ffl.w) - fws) * ffl.y;
+            fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
+          }
+          float fle = fabricLowLeg${i}.x - vFabricLow.w, fls = vFabricLow.w - fabricLowLeg${i}.y;
           fe${i} = fcw * mix(fabricLowLeg${i}.z, fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0)), fabricLegShare) * fabricNotArm;${lowWaistBand(i)}${lowBand('fle', `fabricLowBand${i}.y`, 'fabricLegShare', i)}${lowBand('fls', `fabricLowBand${i}.z`, 'fabricLegShare', i)}
         }`;
     const cutLine = (i: number, neckOnly: boolean) => `
@@ -448,8 +508,8 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           return vec4(place.x - fabricCutLimb.x, place.y, 1.0, max(length(fwidth(place)), 1e-7) * 0.75);
         }`] : []),
       // a drawn bottom: her measures, each layer's own cut, and the functions (bottomCut.ts `lowGlsl`)
-      ...(masked && entry.low ? ['varying float vFabricLeg;', 'uniform vec4 fabricLowAxis;', 'uniform vec4 fabricLowSpineA;', 'uniform vec4 fabricLowSpineB;', 'uniform float fabricLowFloor;',
-        ...idx.flatMap((i) => [`uniform float fabricLowOn${i};`, `uniform vec4 fabricLowWaist${i};`, `uniform vec4 fabricLowLeg${i};`, `uniform vec4 fabricLowBand${i};`]), lowGlsl()] : []),
+      ...(masked && entry.low ? ['varying vec4 vFabricLow;', 'uniform vec4 fabricLowAxis;', 'uniform vec4 fabricLowSpineA;', 'uniform vec4 fabricLowSpineB;', 'uniform float fabricLowFloor;', 'uniform vec4 fabricLowStay;', `uniform float fabricLowCrease[${CREASE_STEPS}];`, 'uniform vec4 fabricLowTurn;', `uniform vec4 fabricLowInner[${(BAND_STEPS / 4) * layers}];`, 'uniform vec4 fabricLowMoonK;', 'uniform vec4 fabricLowFrontK;', 'uniform vec4 fabricLowFoldK;', 'uniform float fabricLowFoldT[16];', 'uniform float fabricLowFoldS[16];', `uniform vec4 fabricLowMoon[${((2 * MOON_STEPS) / 4) * layers}];`,
+        ...idx.flatMap((i) => [`uniform float fabricLowOn${i};`, `uniform vec4 fabricLowWaist${i};`, `uniform vec4 fabricLowLeg${i};`, `uniform vec4 fabricLowBand${i};`, `uniform vec4 fabricLowSwing${i};`, `uniform float fabricLowInnerOn${i};`, `uniform vec4 fabricLowMoonW${i};`, `uniform vec4 fabricLowFront${i};`]), lowGlsl()] : []),
       ...idx.flatMap((i) => [`uniform float fabricOn${i};`, `uniform sampler2D fabricMap${i};`, `uniform float fabricTile${i};`, `uniform float fabricOpacity${i};`, `uniform float fabricRough${i};`]),
       shader.fragmentShader,
     ].join('\n').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, fabricRoughness, fabricMatte);')
@@ -469,6 +529,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       float fabricDetFacing = normalize(vFabricNrm).z * fabricCutLimb.w;` : ''}` : ''}${masked && entry.low ? `
       vec3 fabricLowPlace = vFabricPos + vFabricTint.xyz * (1.0 - fabricShowRegions);
       vec3 fabricLowR = fabricLowRound(fabricLowPlace);
+      float fabricLowAmong = fabricLowTurnAt(fabricLowPlace);
       float fabricLowAcross = vFabricTint.w * (1.0 - fabricShowRegions);
       float fabricLegShare = smoothstep(0.4, 0.6, -vFabricLimb), fabricNotArm = 1.0 - smoothstep(0.4, 0.6, vFabricLimb);` : ''}
       ${idx.map(sample).join('\n')}
@@ -526,8 +587,13 @@ export function setFabricLayer(mesh: THREE.Mesh, material: THREE.Material, index
     if (w) withLow(material);
     if (patched.get(material)?.low) {
       uniforms[`fabricLowOn${index}`].value = w ? 1 : 0;
+      if (!w) { uniforms[`fabricLowInnerOn${index}`].value = 0; (uniforms[`fabricLowMoonW${index}`].value as THREE.Vector4).set(0, 0, 0, 0); }
       if (w) {
-        (uniforms[`fabricLowWaist${index}`].value as THREE.Vector4).fromArray(w.waist ?? [0, 0, 0, 1]);
+        (uniforms[`fabricLowWaist${index}`].value as THREE.Vector4).fromArray(w.waist ?? [0, 0, 0, 0]);
+        // (a hoop's hinge; how far it has swung is laid as she is shaped, `setFabricLowSwing`: a waistband that is
+        // no hoop has not swung)
+        const swung = uniforms[`fabricLowSwing${index}`].value as THREE.Vector4, hinge = w.waist ? w.hinge ?? null : null;
+        if (hinge === null) { swung.set(0, 1, 0, 0); uniforms[`fabricLowInnerOn${index}`].value = 0; (uniforms[`fabricLowMoonW${index}`].value as THREE.Vector4).set(0, 0, 0, 0); } else swung.x = hinge;
         (uniforms[`fabricLowLeg${index}`].value as THREE.Vector4).set(w.end ?? LOW_CUT.far, w.start ?? -LOW_CUT.far, w.waist ? 1 : 0, 0);
         (uniforms[`fabricLowBand${index}`].value as THREE.Vector4).set(w.band[0], w.band[1], w.band[2], w.shade);
         const e = w.edging ?? null;
@@ -580,13 +646,19 @@ function withLow(material: THREE.Material): void {
   const v4 = () => new THREE.Vector4();
   Object.assign(p.uniforms, {
     fabricLowAxis: { value: new THREE.Vector4(0, 1, 0, 1) }, fabricLowSpineA: { value: v4() }, fabricLowSpineB: { value: v4() }, fabricLowFloor: { value: -LOW_CUT.far },
+    fabricLowStay: { value: new THREE.Vector4(1, LOW_CUT.far, 0, 1) }, fabricLowCrease: { value: new Float32Array(CREASE_STEPS).fill(-LOW_CUT.far) },
+    fabricLowTurn: { value: v4() }, fabricLowInner: { value: new Float32Array(BAND_STEPS * p.layers) }, fabricLowMoonK: { value: v4() }, fabricLowFrontK: { value: v4() }, fabricLowFoldK: { value: v4() }, fabricLowFoldT: { value: new Float32Array(16) }, fabricLowFoldS: { value: new Float32Array(16).fill(1) }, fabricLowMoon: { value: new Float32Array(2 * MOON_STEPS * p.layers) },
     fabricLowLegL: { value: [v4(), v4(), v4()] }, fabricLowLegR: { value: [v4(), v4(), v4()] },
   });
   for (let i = 0; i < p.layers; i++) {
     p.uniforms[`fabricLowOn${i}`] = { value: 0 };
-    p.uniforms[`fabricLowWaist${i}`] = { value: v4() };
+    p.uniforms[`fabricLowWaist${i}`] = { value: new THREE.Vector4(0, 0, 0, LOW_CUT.far) };
+    p.uniforms[`fabricLowSwing${i}`] = { value: new THREE.Vector4(0, 1, 0, 0) };
     p.uniforms[`fabricLowLeg${i}`] = { value: new THREE.Vector4(LOW_CUT.far, -LOW_CUT.far, 0, 0) };
     p.uniforms[`fabricLowBand${i}`] = { value: v4() };
+    p.uniforms[`fabricLowInnerOn${i}`] = { value: 0 };
+    p.uniforms[`fabricLowMoonW${i}`] = { value: v4() };
+    p.uniforms[`fabricLowFront${i}`] = { value: v4() };
   }
   const key = material.customProgramCacheKey;
   material.customProgramCacheKey = function () { return key.call(this); };
@@ -605,6 +677,13 @@ export function setFabricLow(material: THREE.Material, low: FabricLow | null): v
   (u.fabricLowSpineA.value as THREE.Vector4).fromArray(low.spineA);
   (u.fabricLowSpineB.value as THREE.Vector4).fromArray(low.spineB);
   u.fabricLowFloor.value = low.floor;
+  // (the second of them is laid as she is shaped, `setFabricLowFold`, and is not this frame's to say)
+  { const stay = u.fabricLowStay.value as THREE.Vector4, fold = stay.y; stay.fromArray(low.stay); stay.y = fold; }
+  if (low.crease) (u.fabricLowCrease.value as Float32Array).set(low.crease); else (u.fabricLowCrease.value as Float32Array).fill(-LOW_CUT.far);
+  (u.fabricLowMoonK.value as THREE.Vector4).fromArray(low.moon ?? [0, 0, 0, 0]);
+  (u.fabricLowFrontK.value as THREE.Vector4).fromArray(low.front ?? [0, 0, 0, 0]);
+  (u.fabricLowFoldK.value as THREE.Vector4).fromArray(low.fold ?? [1, 0, 0, 0]);
+  if (low.foldLine) (u.fabricLowFoldT.value as Float32Array).set(low.foldLine);
   // (which of her two bones' measures her skin takes is told at rest: it is laid here and not again)
   (u.fabricLowLegL.value as THREE.Vector4[])[2].fromArray(low.legL[2]);
   (u.fabricLowLegR.value as THREE.Vector4[])[2].fromArray(low.legR[2]);
@@ -621,6 +700,62 @@ export function setFabricLowLegs(material: THREE.Material, legL: readonly [V4, V
   if (!p?.low) return;
   const L = p.uniforms.fabricLowLegL.value as THREE.Vector4[], R = p.uniforms.fabricLowLegR.value as THREE.Vector4[];
   L[0].fromArray(legL[0]); L[1].fromArray(legL[1]); R[0].fromArray(legR[0]); R[1].fromArray(legR[1]);
+}
+/**
+ * HOW FAR A LAYER'S HOOP HAS SWUNG, laid as she is shaped (`bottomCut.swingOf`; radians) with its surface's room
+ * (`bottomCut.roomAt`; her units): the layer's waistband is then drawn from the swung surface (`bottomCut.stayAt`).
+ * Nothing for a layer whose waistband is no hoop (`FabricLayer.low.hinge`), which stays unswung; with no swing a
+ * hoop's waistband is its line's alone.
+ */
+export function setFabricLowSwing(material: THREE.Material, index: number, swing: number, room: number, front: readonly [number, number] = [0, 0]): void {
+  const p = patched.get(material);
+  if (!p?.low || index >= p.layers) return;
+  const u = p.uniforms[`fabricLowSwing${index}`].value as THREE.Vector4;
+  if (swing > 0) { u.y = Math.cos(swing); u.z = Math.sin(swing); u.w = room; } else { u.y = 1; u.z = 0; u.w = 0; }
+  // (how much higher his line under her belly is told as it has swung: `bottomCut.foldLift`)
+  (p.uniforms[`fabricLowFront${index}`].value as THREE.Vector4).set(front[0], front[1], 0, 0);
+}
+/** Where the cloth's front runs between her thighs under a hoop that has swung (`bottomCut.foldOf`; her units in front of her axis), laid as she is shaped. */
+/** How many of her units a unit of her rest skin is, down from his line over its band (`bottomCut.foldStretch`; null: 1). */
+export function setFabricLowFoldStretch(material: THREE.Material, stretch: ArrayLike<number> | null): void {
+  const p = patched.get(material);
+  if (!p?.low) return;
+  const to = p.uniforms.fabricLowFoldS.value as Float32Array;
+  if (stretch) to.set(stretch); else to.fill(1);
+}
+export function setFabricLowFold(material: THREE.Material, fold: number): void {
+  const p = patched.get(material);
+  if (p?.low) (p.uniforms.fabricLowStay.value as THREE.Vector4).y = fold;
+}
+/**
+ * A LAYER'S HOOP'S BAND, laid as she is shaped (`bottomCut.bandInner`): the line its stations turn about (one for
+ * every layer: her own) and its inner edge's heights on her rest skin at the stations' turns -- the layer's band is
+ * then the cloth over that edge (`bottomCut.innerAt`). Null: none laid, and its band is its line's
+ * (`bottomCut.waistBanded`), as a waistband's that is no hoop.
+ */
+export function setFabricLowInner(material: THREE.Material, index: number, inner: BandInner | null): void {
+  const p = patched.get(material);
+  if (!p?.low || index >= p.layers) return;
+  const ok = !!inner && inner.line.count === BAND_STEPS && inner.table.length >= BAND_STEPS;
+  p.uniforms[`fabricLowInnerOn${index}`].value = ok ? 1 : 0;
+  if (!ok || !inner) return;
+  (p.uniforms.fabricLowTurn.value as THREE.Vector4).set(inner.line.lean[0], inner.line.lean[1], inner.line.lean[2], 0);
+  const all = p.uniforms.fabricLowInner.value as Float32Array;
+  for (let k = 0; k < BAND_STEPS; k++) all[index * BAND_STEPS + k] = inner.table[k];
+}
+/**
+ * A LAYER'S HOOP'S FRONT MOON, laid as she is shaped (`bottomCut.frontMoon`) with its band's inner edge in front
+ * (`bottomCut.innerMoon`): in front of her, between her hips, the cloth's top edge and its band's inner edge are these
+ * two curves seen from her front. Null (or no inner edge): none laid, and the layer is its cut's and its table's alone.
+ */
+export function setFabricLowMoon(material: THREE.Material, index: number, moon: FrontMoon | null, inner: FrontMoon | null): void {
+  const p = patched.get(material);
+  if (!p?.low || index >= p.layers) return;
+  const w = p.uniforms[`fabricLowMoonW${index}`].value as THREE.Vector4;
+  if (!moon || !inner || moon.table.length !== MOON_STEPS || inner.table.length !== MOON_STEPS) { w.set(0, 0, 0, 0); return; }
+  w.set(moon.width, moon.fill, 1, inner.width);
+  const all = p.uniforms.fabricLowMoon.value as Float32Array;
+  all.set(moon.table, index * 2 * MOON_STEPS); all.set(inner.table, index * 2 * MOON_STEPS + MOON_STEPS);
 }
 /** Whether any paint layer of a material is drawn from a bottom's cut now. */
 export function fabricLowWorn(material: THREE.Material): boolean {

@@ -18,7 +18,7 @@ import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
 import { NECK_STYLES, TOP_OUTLINES, cutCoverage, isCutTop, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
-import type { LowBands } from './bottomCut';
+import { waistLine, type LowBands } from './bottomCut';
 import { TOP_DETAIL_STYLES, topDetailSpec, type TopDetailName, type TopDetailSpec } from './topDetails';
 
 export interface CoverageParams {
@@ -30,9 +30,10 @@ export interface CoverageParams {
   readonly riseSide: number | null;
   readonly riseBack: number | null;
   /**
-   * How far round her the front height holds before the band starts rising to the side height, on `around` (1 the
-   * middle of her front, 0.5 her side). 1: it starts rising at once. An under-belly band holds low across the width of
-   * the bump, then rises over the hips, so it does not climb the bump's flanks.
+   * NOT READ since 2026-11-15, and kept so that a look saved before reads as it was written. It was how far round her
+   * the front height held before the band began rising to the side height (0.8 under her bump: an under-belly band
+   * held low across the width of the bump, then climbed over her hips). A waistband is one sweep through its three
+   * heights now (`bottomCut.waistLine`: Joshua, of the under-belly leggings from her side, "Change to side profile…").
    */
   readonly riseFrontWidth: number;
   /** Lower body: where the legs begin (0 from the hips; higher for stockings and socks) and end (1 at the ankle). */
@@ -140,7 +141,7 @@ export interface CoverageTemplate {
   readonly construction?: 'swimsuit' | 'sportsBra';
 }
 
-const lower = (rise: { readonly front: number; readonly side: number; readonly back: number; readonly frontWidth?: number }, legEnd: number, extra: Partial<CoverageParams> = {}): CoverageParams => ({ ...NONE, riseFront: rise.front, riseSide: rise.side, riseBack: rise.back, riseFrontWidth: rise.frontWidth ?? 1, legEnd, ...extra });
+const lower = (rise: { readonly front: number; readonly side: number; readonly back: number }, legEnd: number, extra: Partial<CoverageParams> = {}): CoverageParams => ({ ...NONE, riseFront: rise.front, riseSide: rise.side, riseBack: rise.back, legEnd, ...extra });
 const upper = (hemFront: number, hemBack: number, neckFront: number, sleeve: number, extra: Partial<CoverageParams> = {}): CoverageParams => ({ ...NONE, hemFront, hemBack, neckFront, neckBack: 0.97, sleeve, ...extra });
 
 /**
@@ -151,13 +152,23 @@ const upper = (hemFront: number, hemBack: number, neckFront: number, sleeve: num
  * fullest point of her seat is at about 0.06, the small of her back at about 0.41, and her hips are widest at about
  * -0.08. So a waistband at the back sits ABOVE the seat, over the sacrum toward the small of the back, never across
  * the buttocks; at the sides it rides over the tops of her hips; and only at the front does an under-belly band dip,
- * in a U under the bump.
+ * in a U under the bump. (An under-belly band's SIDES came down on 2026-11-15, to his sheet's line: below.)
  */
 export const RISES = Object.freeze({
   /** maternity leggings with a panel over the bump */
   overBelly: Object.freeze({ front: 0.48, side: 0.4, back: 0.4 }),
-  /** under the bump at the front, over the hips and up the back */
-  underBelly: Object.freeze({ front: -0.02, side: 0.26, back: 0.33, frontWidth: 0.8 }),
+  /**
+   * HIS SHEET'S UNDER-BELLY LINE (04; Joshua, 2026-11-15, of ours pictured from her side beside it: "Change to side
+   * profile… wait to push"): under her bump at her front, and from there ONE LINE up to the small of her back -- from
+   * her side straight, from her front a shallow U under her bump whose ends are on her hip bones. Its front and its
+   * back are where they were (a centimetre under her hip joints; 17.4 cm over them, level with her navel on her at
+   * 100% as his figure's is); its SIDES are half-way between, 8.2 cm over her hip joints, so the three are in a row
+   * and the line lies in one tilted plane (`bottomCut.waistLine`). They were at 0.26, 13.7 cm up, over the tops of
+   * her hips, with the front held low across her bump's width: from her side a wall up her flank. GAME TUNING to his
+   * sheet (sketched on her rest shape beside it with its back at 0.33, 0.38 and 0.42: at 0.33 its back's top is level
+   * with her navel, as his is). A look saved before keeps the heights it was saved with, on the new line.
+   */
+  underBelly: Object.freeze({ front: -0.02, side: 0.155, back: 0.33 }),
   /**
    * HIS SHEET OF BOTTOMS' HIGH RISE (Joshua, 2026-11-15, "16 WOMEN'S BOTTOMS": 01 the high-rise leggings, 05 the capri,
    * 06 the bike shorts): level at her waist, a hand over her navel and just under where his figures' crop tee ends.
@@ -442,7 +453,7 @@ const NO_RISE = Object.freeze({ front: -9, side: -9, back: -9 });
  */
 const HIGH_RISE_WAIST = 0.105;
 const SHORTS_BANDS = Object.freeze({ leg: 0.015 }), BIKE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST, leg: 0.02 });
-const HIGH_RISE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST }), LOW_RISE_BANDS = Object.freeze({ waist: 0.045 });
+const HIGH_RISE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST }), LOW_RISE_BANDS = Object.freeze({ waist: 0.045 }), UNDER_BELLY_BANDS = Object.freeze({ waist: 0.015 });
 const STOCKING_BANDS = Object.freeze({ top: 0.045 }), KNEE_SOCK_BANDS = Object.freeze({ top: 0.02 }), CREW_SOCK_BANDS = Object.freeze({ top: 0.04 });
 const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 /**
@@ -459,18 +470,28 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['leggingsHigh', 'High-rise leggings', 'Leggings', lower(RISES.high, 1.0, { lowBand: HIGH_RISE_BANDS })],
   ['leggingsLow', 'Low-rise leggings', 'Leggings', lower(RISES.low, 1.0, { lowBand: LOW_RISE_BANDS })],
   ['leggingsFull', 'Over-belly leggings', 'Leggings', lower(RISES.overBelly, 1.0)],
-  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0)],
+  // (its edging half as deep as a waistband's: Joshua, 2026-11-15, of it pictured in black from under her belly: "How
+  // wide is the edging? Make it half as thick... Looks too wide, or better yet, make it adjustable once it's working
+  // properly" -- 3 cm it was, 1.5 it is; GAME TUNING)
+  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0, { lowBand: UNDER_BELLY_BANDS })],
   // (his 05: a high rise, its legs' ends on her calves' fullest. It was the over-belly rise to 0.78 of her leg until
   // 2026-11-15; MEASURED off his sheet, 0.70 of the way from his figure's crotch to her ankle, which is 0.72 of her
   // leg's line. A look saved before keeps the numbers it was saved with)
   ['leggingsCapri', 'Capri leggings', 'Leggings', lower(RISES.high, 0.72, { lowBand: HIGH_RISE_BANDS })],
-  ['leggingsKnee', 'Knee-length leggings', 'Leggings', lower(RISES.overBelly, 0.5)],
-  ['shortsAthletic', 'Short shorts', 'Shorts', lower(RISES.underBelly, 0.12, { lowBand: SHORTS_BANDS })],
-  ['shortsMid', 'Mid-thigh shorts', 'Shorts', lower(RISES.underBelly, 0.26, { lowBand: SHORTS_BANDS })],
+  // THE OTHER FOUR, LEVEL AT HER WAIST AS HIS SHEET'S ARE (Joshua, 2026-11-15, asked with a picture of the mid-thigh
+  // shorts on the base model beside his bike shorts -- "Level, like your sheet"): his high rise. Until then the knee
+  // leggings and the knee shorts had the over-belly rise and the short and the mid-thigh shorts the under-belly's, a
+  // front cut for a bump: on her at 0% a V down to her pubic bone. The leggings wear the leggings' hand-deep band;
+  // the shorts a plain waistband (`bottomCut.LOW_BANDS`), which is what tells the mid-thigh shorts from his bike
+  // shorts now that both are level (the bike shorts end 2.3 cm higher and wear the deep band his sheet draws). The
+  // WAISTBAND slider still lowers a front for a bump. A look saved before keeps the heights it was saved with.
+  ['leggingsKnee', 'Knee-length leggings', 'Leggings', lower(RISES.high, 0.5, { lowBand: HIGH_RISE_BANDS })],
+  ['shortsAthletic', 'Short shorts', 'Shorts', lower(RISES.high, 0.12, { lowBand: SHORTS_BANDS })],
+  ['shortsMid', 'Mid-thigh shorts', 'Shorts', lower(RISES.high, 0.26, { lowBand: SHORTS_BANDS })],
   // (his 06: a high rise, its legs' ends a third of the way from her crotch to her knee -- 0.23 of her leg's line. It
   // was the under-belly rise to 0.36 until 2026-11-15)
   ['shortsBike', 'Bike shorts', 'Shorts', lower(RISES.high, 0.23, { lowBand: BIKE_BANDS })],
-  ['shortsKnee', 'Knee-length shorts', 'Shorts', lower(RISES.overBelly, 0.44, { lowBand: SHORTS_BANDS })],
+  ['shortsKnee', 'Knee-length shorts', 'Shorts', lower(RISES.high, 0.44, { lowBand: SHORTS_BANDS })],
   // (his 06: a scoop between wide straps, armholes cut in, a scoop behind a little higher; drawn, `TOP_OUTLINES.tank`.
   // Its old numbers stay: a look saved before names them, and what draws it now is its kind)
   ['tank', 'Tank top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, OUTLINE_NECK.tank, -1, { strapIn: 1.0, strap: 0.55, neckBack: 0.9, armhole: LINES.armhole, length: DEFAULT_SHIRT_LENGTH, top: 'tank' })],
@@ -672,10 +693,14 @@ export function aroundLine(front: number, side: number, back: number, frontReach
     ? side + (front - side) * ease(Math.min(1, (around - 0.5) / (fr - 0.5)))
     : back + (side - back) * ease(Math.min(1, around / br));
 }
-/** A waistband round her: under an under-belly band, a U under the bump that rises over the hips and runs level across the back. */
+/**
+ * A waistband round her (on the trunk): one sweep through its height at her front's middle, at her sides and at her
+ * back's middle -- the line the shader draws a drawn bottom's waistband on (`bottomCut.waistLine`, which says why it
+ * is not `aroundLine`'s any more), so her paint per vertex and what is drawn agree.
+ */
 export function waistline(p: CoverageParams, around: number): number {
   const front = p.riseFront ?? 0;
-  return aroundLine(front, sideOf(p), p.riseBack ?? front, p.riseFrontWidth ?? 1, 0.5, around);
+  return waistLine([front, sideOf(p), p.riseBack ?? front], around).height;
 }
 /**
  * How far INSIDE a rounded corner a point is, in trunk heights: the corner is the quarter-plane u > 0, v > 0 with its
@@ -785,7 +810,7 @@ export function templateDetail(p: Pick<CoverageParams, 'detail'>, cut: TopCut): 
 export function wornParams(id: string, saved: CoverageParams): CoverageParams {
   const t = COVERAGE_TEMPLATES.find((x) => x.id === id);
   if (!t) return saved;
-  const own = t.params, deep = own.lowBand?.waist !== undefined && saved.lowBand === undefined && (saved.riseFront !== own.riseFront || saved.riseSide !== own.riseSide || saved.riseBack !== own.riseBack);
+  const own = t.params, deep = own.lowBand?.waist !== undefined && own.lowBand.waist > 0.03 && saved.lowBand === undefined && (saved.riseFront !== own.riseFront || saved.riseSide !== own.riseSide || saved.riseBack !== own.riseBack);
   if (!deep) return { ...own, ...saved };
   const { waist: _itsOwnRises, ...bands } = own.lowBand!;
   return { ...own, ...saved, lowBand: bands };

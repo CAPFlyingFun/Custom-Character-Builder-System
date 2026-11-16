@@ -11,7 +11,7 @@
 import { beside, draw, savePng, stacked } from './raster.mjs';
 import { loadBody, skinMesh, within } from './body.mjs';
 import { COVERAGE_TEMPLATES } from '../../src/sarahlab/paintTemplates';
-import { isDrawnBottom, legBlend, legMeasure, legOf, legPlanes, legShareOf, lowAt, lowFrame, lowSpec, type LowFrame, type LowSpec } from '../../src/sarahlab/bottomCut';
+import { LOW_CUT, bandInner, bandStations, isDrawnBottom, legBlend, legMeasure, legOf, legPlanes, legShareOf, lowAt, lowFrame, lowSpec, type BandInner, type LowFrame, type LowSpec } from '../../src/sarahlab/bottomCut';
 
 const option = (name: string, fallback: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
 type Body = Awaited<ReturnType<typeof loadBody>>;
@@ -19,13 +19,20 @@ type Body = Awaited<ReturnType<typeof loadBody>>;
 /** Her skin with a bottom on it, as a mesh for `raster.draw`: `cloth` its colour, each band a little darker with a line at its inner edge. */
 export function wornMesh(body: Body, frame: LowFrame, spec: LowSpec, cloth: readonly [number, number, number] = [0.27, 0.28, 0.31], index = within(body, { yTo: 1.3 })) {
   const cuts = frame.legs.map((leg) => ({ planes: legPlanes(leg), blend: legBlend(leg, frame.unitsPerMetre) }));
+  // (a hoop's band is told by its own table, as in the room: here off her rest shape, where no hoop has swung)
+  let inner: BandInner | null = null;
+  if (spec.waist && spec.hinge && spec.bands.waist > 0) {
+    const line = bandStations(frame, { rest: body.rest, limb: body.limb, index: body.index });
+    const table = bandInner(frame, spec, line, (v, out) => { for (let k = 0; k < 3; k++) out[k] = out[3 + k] = body.rest[v * 3 + k]; out[6] = body.limb[v]; out[7] = 0; }, 0, LOW_CUT.far);
+    if (table) inner = { line, table };
+  }
   return skinMesh(body, {
     index,
     paint: (f) => {
       const limb = f.at(body.limb) as number;
       if (limb > 0.5) return null;
       const c = cuts[legOf(frame, f.x) === frame.legs[0] ? 0 : 1], along = legMeasure(c.planes, c.blend, [f.x, f.y, f.z]);
-      const e = lowAt(spec, frame, [f.x, f.y, f.z], along, limb);
+      const e = lowAt(spec, frame, [f.x, f.y, f.z], along, limb, 0, null, 0, LOW_CUT.far, inner);
       if (!(e.inside > 0)) return null;
       const B = spec.bands, leg = legShareOf(limb) > 0.5;
       const edges: [number, number][] = [[e.banded, B.waist], ...(leg ? [[e.end, B.leg], [e.top, B.top]] as [number, number][] : [])];
@@ -43,7 +50,7 @@ export function bottomViews(body: Body, frame: LowFrame, spec: LowSpec, size = 3
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const body = await loadBody(), frame = lowFrame({ unitsPerMetre: 1, joints: body.lowJoints });
+  const body = await loadBody(), frame = lowFrame({ unitsPerMetre: 1, joints: body.lowJoints, skin: { rest: body.rest, limb: body.limb, index: body.index } });
   const all = process.argv.includes('--all'), out = option('out', all ? '/tmp/bottoms.png' : '/tmp/bottom.png');
   const ids = all ? COVERAGE_TEMPLATES.filter((t) => isDrawnBottom(t.params)).map((t) => t.id) : [option('template', 'leggingsFull')];
   const rows = ids.map((id) => {

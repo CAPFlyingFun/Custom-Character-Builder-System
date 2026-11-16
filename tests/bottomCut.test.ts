@@ -11,10 +11,10 @@ import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  LOW_BANDS, LOW_CUT, isDrawnBottom, legAlong, legBlend, legMeasure, legOf, legPlanes, legShareOf, limbSkin, lowAt, lowFrame, lowGlsl, lowSpec, roundAt, spineDepth, waistAt, waistBanded, waistLine,
-  type LowFrame, type LowSpec, type V3,
+  BAND_STEPS, CREASE_STEPS, FOLD_LINE, LOW_BANDS, LOW_CUT, aheadOf, foldAt, foldLift, foldNear, foldOf, foldShares, foldStretch, foldStretchAt, isDrawnBottom, legAlong, legBlend, legMeasure, legOf, legPlanes, legShareOf, limbSkin, lowAt, lowFrame, lowGlsl, lowSpec, roundAt, spineDepth, swingOf,  waistAt, waistBanded,  waistLine,
+  type BandInner, type BandPoint, type LowFrame, type LowSpec, type V3,
 } from '../src/sarahlab/bottomCut';
-import { LOW_SLIP_ATTRIBUTE, fabricLowWorn, setFabricLayer, setFabricLow, setFabricLowLegs } from '../src/sarahlab/fabricMaterial';
+import { LOW_SLIP_ATTRIBUTE, fabricLowWorn, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowSwing } from '../src/sarahlab/fabricMaterial';
 import { makePulledSlip } from '../src/sarahlab/pulledSlip';
 import { COVERAGE_TEMPLATES, RISES, coverage, pieceKind, waistline, withDial, wornParams } from '../src/sarahlab/paintTemplates';
 import { loadHerBody, type HerBody } from './herBodyMap';
@@ -26,8 +26,8 @@ const DRAWN = ['leggingsHigh', 'leggingsLow', 'leggingsFull', 'leggingsUnder', '
 beforeAll(async () => {
   her = await loadHerBody();
   const J = her.map.joints!;
-  frame = lowFrame({ unitsPerMetre: her.unitsPerMetre, facing: her.map.facing, joints: J });
   limb = limbSkin(her.map);
+  frame = lowFrame({ unitsPerMetre: her.unitsPerMetre, facing: her.map.facing, joints: J, skin: { rest: her.rest, limb, index: her.index } });
   MM = her.unitsPerMetre / 1000;
   // each point's measure along its own leg, at rest
   const cuts = frame.legs.map((leg) => ({ planes: legPlanes(leg), blend: legBlend(leg, frame.unitsPerMetre) }));
@@ -73,9 +73,12 @@ describe('which templates are drawn bottoms', () => {
     expect(RISES.low.side).toBeGreaterThan(RISES.low.front);
     expect(RISES.low.back).toBeGreaterThan(RISES.low.side);
     for (const id of ['leggingsHigh', 'leggingsLow']) { expect(P(id).legEnd, id).toBe(1); expect(P(id).feet, id).toBe(false); }
-    // 03 and 04 are the two there were, as they were
+    // 03 is the one there was, as it was; 04's front and back are where they were, and its SIDES half-way between
+    // (they were at 0.26, over the tops of her hips): his sheet's under-belly line, from her side one line from under
+    // her bump up to the small of her back -- three heights in a row
     expect([P('leggingsFull').riseFront, P('leggingsFull').riseSide, P('leggingsFull').riseBack, P('leggingsFull').legEnd]).toEqual([0.48, 0.4, 0.4, 1]);
-    expect([P('leggingsUnder').riseFront, P('leggingsUnder').riseSide, P('leggingsUnder').riseBack, P('leggingsUnder').riseFrontWidth]).toEqual([-0.02, 0.26, 0.33, 0.8]);
+    expect([P('leggingsUnder').riseFront, P('leggingsUnder').riseSide, P('leggingsUnder').riseBack]).toEqual([-0.02, 0.155, 0.33]);
+    expect(P('leggingsUnder').riseSide! * 2).toBeCloseTo(P('leggingsUnder').riseFront! + P('leggingsUnder').riseBack!, 12);
     // 05 and 06: the capri and the bike shorts on his high rise, at his lengths
     expect([P('leggingsCapri').riseFront, P('leggingsCapri').legEnd]).toEqual([RISES.high.front, 0.72]);
     expect([P('shortsBike').riseFront, P('shortsBike').legEnd]).toEqual([RISES.high.front, 0.23]);
@@ -89,6 +92,22 @@ describe('which templates are drawn bottoms', () => {
     expect(lowSpec(P('leggingsLow'), frame).bands.waist / MM).toBeCloseTo(45, 6);
     // in the editor's order his sheet's: the high rise first
     expect(COVERAGE_TEMPLATES.filter((t) => t.group === 'Leggings').map((t) => t.id)).toEqual(['leggingsHigh', 'leggingsLow', 'leggingsFull', 'leggingsUnder', 'leggingsCapri', 'leggingsKnee']);
+  });
+
+  it('the other shorts and the knee leggings are level at her waist, as his sheet\'s are (they had the maternity rises)', () => {
+    // (Joshua, 2026-11-15, asked with a picture of the mid-thigh shorts on the base model beside his bike shorts:
+    // "Level, like your sheet")
+    const P = (id: string) => template(id).params;
+    for (const id of ['leggingsKnee', 'shortsAthletic', 'shortsMid', 'shortsKnee']) expect([P(id).riseFront, P(id).riseSide, P(id).riseBack], id).toEqual([RISES.high.front, RISES.high.side, RISES.high.back]);
+    // their lengths are as they were
+    expect([P('leggingsKnee').legEnd, P('shortsAthletic').legEnd, P('shortsMid').legEnd, P('shortsKnee').legEnd]).toEqual([0.5, 0.12, 0.26, 0.44]);
+    // the leggings wear the leggings' hand-deep band; the shorts a plain waistband -- which is what tells the
+    // mid-thigh shorts from his bike shorts, now both are level
+    expect(lowSpec(P('leggingsKnee'), frame).bands.waist / MM).toBeCloseTo(105, 6);
+    for (const id of ['shortsAthletic', 'shortsMid', 'shortsKnee']) expect(lowSpec(P(id), frame).bands.waist / MM, id).toBeCloseTo(LOW_BANDS.waist * 1000, 6);
+    expect(lowSpec(P('shortsBike'), frame).bands.waist / MM).toBeCloseTo(105, 6);
+    // only the under-belly leggings are cut under a bump now -- and only theirs is a hoop (`lowSpec`'s hinge)
+    expect(DRAWN.filter((id) => lowSpec(P(id), frame).hinge !== null)).toEqual(['leggingsUnder']);
   });
 });
 
@@ -124,31 +143,37 @@ describe('her measures for a bottom', () => {
 
   it('how far inside a waistband a place is, is measured square to its line: the same where it climbs her hips as where it runs level', () => {
     const spec = lowSpec(template('leggingsUnder').params, frame), w = spec.waist!;
-    // two places 2 cm under the line by height: one at her front's middle, where the line runs level, and one at
-    // her front's quarter, where it climbs to her side
+    // two places 2 cm under the line by height: one at her front's middle, and one at her front's quarter
     const z = frame.spine[0][1] * frame.facing + frame.seam, at = (x: number, dz: number): V3 => { const r = roundAt(frame, x, 0, (z + dz) * frame.facing); return [x, waistLine(w, r.around).height - 20 * MM, (z + dz) * frame.facing]; };
     const level = at(frame.mid, 0.2), climb = at(frame.mid + 0.1, 0.05), lowest = Math.min(w[0], w[1], w[2]);
-    expect(Math.abs(waistLine(w, roundAt(frame, ...level).around).slope)).toBe(0);
-    expect(Math.abs(waistLine(w, roundAt(frame, ...climb).around).slope)).toBeGreaterThan(0.1);
+    // AN UNDER-BELLY LINE'S THREE HEIGHTS ARE IN A ROW: it climbs as much for each step of `around` all the way round
+    // her (a waistband lying in one tilted plane). At the middle of her front a step to her side changes `around` by
+    // nothing -- her two sides are alike -- so the line runs level there, and the distance is the height
+    expect(waistLine(w, 1).slope).toBeCloseTo(w[0] - w[2], 9);
+    expect(waistLine(w, roundAt(frame, ...climb).around).slope).toBeCloseTo(w[0] - w[2], 9);
+    expect(Math.abs(w[0] - w[2])).toBeGreaterThan(0.1);
+    expect(roundAt(frame, ...level).out).toBe(0);
     expect(waistAt(w, frame, ...level) / MM).toBeCloseTo(20, 6);
-    // (20 mm under the line by height is nearer the line than that across its climb; the place is over the lowest of
-    // the line, where the straight line's distance is all there is to go by)
+    // (at her front's quarter 20 mm under the line by height is nearer the line than that, across its climb; the place
+    // is over the lowest of the line, where the straight line's distance is all there is to go by)
     expect(climb[1]).toBeGreaterThan(lowest);
     expect(waistAt(w, frame, ...climb) / MM).toBeLessThan(19.5);
     expect(waistAt(w, frame, ...climb) / MM).toBeGreaterThan(5);
-    // AT THE FOOT OF THE CLIMB, 20 mm under a line that has climbed 8 mm, a place is 12 mm under the LOWEST of the
-    // line: no point of the line is nearer than that, though a straight line through the point over it would be (11.3
-    // mm; 6.5 where her skin is half as long across her) -- it is inside by those 12 mm, whatever her skin's length
-    const foot = at(frame.mid + 0.1, 0.06);
-    expect((lowest - foot[1]) / MM).toBeGreaterThan(11);
-    expect((lowest - foot[1]) / MM).toBeLessThan(13);
+    // A MILLIMETRE FROM HER AXIS, 20 mm under the lowest of the line: `around` runs through all its values within that
+    // millimetre, the line's climb for each unit round her goes to no end and a straight line's distance to next to
+    // nothing -- but no point of the line is nearer than those 20 mm, and it is inside by them, whatever her skin's
+    // length across her
+    const foot: V3 = [frame.mid + 0.0007 * frame.unitsPerMetre, lowest - 20 * MM, (z + 0.0007 * frame.unitsPerMetre) * frame.facing];
+    expect(roundAt(frame, ...foot).radius / MM).toBeLessThan(1.1);
+    { const r = roundAt(frame, ...foot), l = waistLine(w, r.around), c = (l.slope * 0.5 * r.out) / (r.radius * r.radius); expect((l.height - foot[1]) / Math.sqrt(1 + c * c) / MM).toBeLessThan(1); }
     expect(waistAt(w, frame, ...foot)).toBe(lowest - foot[1]);
     expect(waistAt(w, frame, ...foot, -0.5)).toBe(lowest - foot[1]);
-    expect(waistAt(w, frame, ...foot, 1)).toBeGreaterThan(lowest - foot[1]);
+    expect(waistAt(w, frame, ...foot, 1)).toBe(lowest - foot[1]);
     // WHERE HER SKIN IS SHORTER ACROSS HER THAN AT REST (her belly's at 0%: half as long) the line climbs as much over
     // half the way round: it is steeper on her, and the same height under it is nearer to it. Where the line runs
     // level, her skin's length across her changes nothing
     const rest = waistAt(w, frame, ...climb), half = waistAt(w, frame, ...climb, -0.5), twice = waistAt(w, frame, ...climb, 1);
+    // (MEASURED: 15.5 mm at rest, 10.5 where her skin is half as long across her, 18.5 where it is twice as long)
     expect(half).toBeLessThan(rest * 0.8);
     expect(twice).toBeGreaterThan(rest * 1.15);
     expect(waistAt(w, frame, ...level, -0.5)).toBe(waistAt(w, frame, ...level));
@@ -161,6 +186,36 @@ describe('her measures for a bottom', () => {
     const spec2 = lowSpec(template('leggingsUnder').params, frame);
     expect(lowAt(spec2, frame, climb, 0, 0, -0.5).waist).toBe(half);
     expect(lowAt(spec2, frame, climb, 0, 0).waist).toBe(rest);
+  });
+
+  it('a waistband\'s line is one sweep through its three heights: straight when they are in a row, and never turning back between two of them', () => {
+    // exactly its heights at her front's middle, at her sides and at her back's middle, whatever they are
+    for (const w of [[0.1, 0.5, 0.9], [0.9, 0.4, 0.4], [0.2, 0.2, 0.7], [0.3, 0.8, 0.5], [0.6, 0.6, 0.6]]) {
+      expect(waistLine(w, 1).height).toBeCloseTo(w[0], 12);
+      expect(waistLine(w, 0.5).height).toBeCloseTo(w[1], 12);
+      expect(waistLine(w, 0).height).toBeCloseTo(w[2], 12);
+    }
+    // three in a row: a straight line in `around` -- a waistband in one tilted plane (from her side one straight line,
+    // from her front a shallow U)
+    for (let a = 0; a <= 1.0001; a += 0.05) { const l = waistLine([0.1, 0.5, 0.9], a); expect(l.height).toBeCloseTo(0.9 - 0.8 * a, 12); expect(l.slope).toBeCloseTo(-0.8, 12); }
+    // three that are not: between two of them it never turns back (its height stays between theirs), its slope is what
+    // its height does, and it turns no corner at her side
+    for (const w of [[0.9, 0.4, 0.4], [0.2, 0.2, 0.7], [0.1, 0.3, 0.9], [0.9, 0.7, 0.1], [0.3, 0.8, 0.5], [-0.02, 0.26, 0.33]]) {
+      for (let a = 0; a <= 1.0001; a += 0.01) {
+        const l = waistLine(w, a), lo = a >= 0.5 ? Math.min(w[0], w[1]) : Math.min(w[1], w[2]), hi = a >= 0.5 ? Math.max(w[0], w[1]) : Math.max(w[1], w[2]);
+        expect(l.height, `${w} ${a}`).toBeGreaterThanOrEqual(lo - 1e-12);
+        expect(l.height, `${w} ${a}`).toBeLessThanOrEqual(hi + 1e-12);
+        if (a > 0.001 && a < 0.999) expect(l.slope, `${w} ${a}`).toBeCloseTo((waistLine(w, a + 1e-6).height - waistLine(w, a - 1e-6).height) / 2e-6, 4);
+      }
+      expect(waistLine(w, 0.5 - 1e-9).slope).toBeCloseTo(waistLine(w, 0.5 + 1e-9).slope, 6);
+    }
+    // a side as high as the back: level all the way round her back, whatever its front's slider does
+    for (const front of [0.9, 0.1, -0.2]) for (let a = 0; a <= 0.5; a += 0.05) { const l = waistLine([front, 0.4, 0.4], a); expect(l.height).toBeCloseTo(0.4, 12); expect(l.slope).toBeCloseTo(0, 12); }
+    // a side that is higher than both, or lower: level where it crosses her side (it turns there)
+    expect(waistLine([0.3, 0.8, 0.5], 0.5).slope).toBe(0);
+    // and a look saved with an under-belly line's old heights (its sides over the tops of her hips) is a line that
+    // rises all the way from her front to her back
+    for (let a = 0.01; a < 1; a += 0.01) expect(waistLine([-0.02, 0.26, 0.33], a).slope).toBeLessThan(0);
   });
 });
 
@@ -319,7 +374,7 @@ describe('each drawn bottom on her own rest skin', () => {
     // the floor: 2.6 cm under her hip joints (the top of her cleft is 3.45 cm under them)
     expect((frame.hipY - frame.floor) / MM).toBeCloseTo(LOW_CUT.bandFloor * 1000, 6);
     const U = frame.unitsPerMetre, z = (frame.spine[0][1] + 0.1) * frame.facing, under = lowSpec(template('leggingsUnder').params, frame), depth = under.bands.waist;
-    expect(depth / MM).toBeCloseTo(30, 6);
+    expect(depth / MM).toBeCloseTo(15, 6);
     const frontAt = (cm: number): V3 => [frame.mid, frame.hipY + (cm / 100) * U, z], banded = (spec: LowSpec, at: V3) => lowAt(spec, frame, at, 0, 0).banded;
     // an under-belly waistband's front lies a centimetre under her hip joints. Two centimetres under them a place is
     // 1 cm inside its line and 0.6 over the floor: the band's; three centimetres under, it is 2 cm inside the line -- a
@@ -407,8 +462,8 @@ describe('each drawn bottom on her own rest skin', () => {
     let seen = 0;
     for (let k = 0; k < 48; k++) {
       const th = (k / 48) * Math.PI * 2, at = (y: number): [number, number, number] => [frame.mid + Math.sin(th) * 1e-6 * U, y, spineDepth(frame, y) + frame.seam * frame.facing + Math.cos(th) * 1e-6 * U * frame.facing];
-      const slope = waistLine(under, roundAt(frame, ...at(y0)).around).slope;
-      if (Math.abs(slope) > 0.05 * U) { seen++; expect(Math.abs(straight(...at(y0))) / MM, String(k)).toBeLessThan(0.1); expect(Math.abs(straight(...at(y1))) / MM, String(k)).toBeLessThan(0.1); }
+      // (but straight ahead of her axis and straight behind it, where a step to her side changes `around` by nothing)
+      if (Math.abs(Math.sin(th)) > 0.1) { seen++; expect(Math.abs(straight(...at(y0))) / MM, String(k)).toBeLessThan(0.1); expect(Math.abs(straight(...at(y1))) / MM, String(k)).toBeLessThan(0.1); }
       expect(waistAt(under, frame, ...at(y0)), String(k)).toBeGreaterThanOrEqual(0.05 * U - 1e-9);
       expect(waistAt(under, frame, ...at(y1)), String(k)).toBeLessThanOrEqual(-0.05 * U + 1e-9);
     }
@@ -512,7 +567,7 @@ function compiled(low: LowSpec | null) {
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
   const m = new THREE.MeshStandardMaterial(), mesh = new THREE.Mesh(g, m);
   const layer = { texture: new THREE.Texture(), tile: 1, opacity: 1 };
-  setFabricLayer(mesh, m, 1, low ? { ...layer, low: { waist: low.waist, end: low.end, start: low.start, band: [low.bands.waist, low.bands.leg, low.bands.top], shade: 0.1, edging: null } } : layer, { layers: 3, masked: true, rest: null });
+  setFabricLayer(mesh, m, 1, low ? { ...layer, low: { waist: low.waist, end: low.end, start: low.start, band: [low.bands.waist, low.bands.leg, low.bands.top], shade: 0.1, hinge: low.hinge ? low.hinge[0] : null, edging: null } } : layer, { layers: 3, masked: true, rest: null });
   const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <skinning_vertex>', fragmentShader: '#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n#include <map_fragment>' };
   m.onBeforeCompile(s as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
   return { ...s, material: m, mesh, key: m.customProgramCacheKey(), hash: createHash('sha256').update(`${s.vertexShader}\n---\n${s.fragmentShader}`).digest('hex') };
@@ -525,7 +580,7 @@ describe('a bottom\'s cut in the shader', () => {
     expect(plain.hash).toBe('e5eb05f2d3311a1f9eee17b7552652aaf011ce6d556dc1746c3b11e275c311a1');
     expect(plain.key).not.toContain('-low');
     expect(plain.fragmentShader).not.toContain('fabricLow');
-    expect(plain.vertexShader).not.toContain('vFabricLeg');
+    expect(plain.vertexShader).not.toContain('vFabricLow');
     expect(fabricLowWorn(plain.material)).toBe(false);
     // her measures laid on a material that has no bottom's code change nothing
     setFabricLow(plain.material, null);
@@ -537,10 +592,14 @@ describe('a bottom\'s cut in the shader', () => {
     expect(s.key).toContain('-low');
     expect(fabricLowWorn(s.material)).toBe(true);
     expect(s.fragmentShader).toContain(lowGlsl());
-    for (const i of [0, 1, 2]) for (const u of [`uniform float fabricLowOn${i};`, `uniform vec4 fabricLowWaist${i};`, `uniform vec4 fabricLowLeg${i};`, `uniform vec4 fabricLowBand${i};`]) expect(s.fragmentShader).toContain(u);
-    // her leg's measure: by her thigh's bone and her shin's where they are now, blended by where the point lies at rest
+    for (const i of [0, 1, 2]) for (const u of [`uniform float fabricLowOn${i};`, `uniform vec4 fabricLowWaist${i};`, `uniform vec4 fabricLowLeg${i};`, `uniform vec4 fabricLowBand${i};`, `uniform vec4 fabricLowSwing${i};`, `uniform float fabricLowInnerOn${i};`]) expect(s.fragmentShader).toContain(u);
+    for (const u of ['uniform vec4 fabricLowStay;', `uniform float fabricLowCrease[${CREASE_STEPS}];`, 'uniform vec4 fabricLowTurn;', `uniform vec4 fabricLowInner[${(BAND_STEPS / 4) * 3}];`]) expect(s.fragmentShader).toContain(u);
+    // her leg's measure: by her thigh's bone and her shin's where they are now, blended by where the point lies at
+    // rest -- the fourth number of a varying whose first three are where the point stands AS SHE IS SHAPED, before her
+    // bones pose her (a hoop's surface is told there)
     expect(s.vertexShader).toContain('float fabricByThigh = dot(fabricLegLeft ? fabricLowLegL[0] : fabricLowLegR[0], fabricPosed), fabricByShin = dot(fabricLegLeft ? fabricLowLegL[1] : fabricLowLegR[1], fabricPosed);');
-    expect(s.vertexShader).toContain('vFabricLeg = mix(fabricByThigh, fabricByShin, smoothstep(-1.0, 1.0, dot(fabricLegLeft ? fabricLowLegL[2] : fabricLowLegR[2], vec4(fabricRest, 1.0))));');
+    expect(s.vertexShader).toContain('vFabricLow.w = mix(fabricByThigh, fabricByShin, smoothstep(-1.0, 1.0, dot(fabricLegLeft ? fabricLowLegL[2] : fabricLowLegR[2], vec4(fabricRest, 1.0))));');
+    expect(s.vertexShader).toContain('vFabricLow.xyz = transformed;\n#include <skinning_vertex>');
     // the waistband is looked up at the pixel's rest place and her skin's slip -- which rides in the SHOW REGIONS
     // overlay's attribute, and is left out while the overlay is on
     expect(LOW_SLIP_ATTRIBUTE).toBe('fabricRegionTint');
@@ -548,16 +607,47 @@ describe('a bottom\'s cut in the shader', () => {
     // (its fourth number: how much longer her skin is across her there than at rest)
     expect(s.fragmentShader).toContain('float fabricLowAcross = vFabricTint.w * (1.0 - fabricShowRegions);');
     for (const i of [0, 1, 2]) expect(s.fragmentShader).toContain(`fwd = fabricLowInside(fabricLowWaist${i}, fabricLowPlace, fabricLowR, fabricLowAcross); fcw = fabricEdge(clamp(0.5 + fwd / (2.0 * fabricLowAxis.w), 0.0, 1.0));`);
+    // AN UNDER-BELLY WAISTBAND'S HOOP: once it has swung (its sine over nothing) its distance is the nearer of its
+    // line's and its hoop's -- how far the pixel stands under the swung surface as she is shaped, or under her crease --
+    // and its cover is that distance's. A waistband that has not swung is its line's alone
+    for (const i of [0, 1, 2]) {
+      expect(s.fragmentShader).toContain(`if (fabricLowLeg${i}.z > 0.5 && fabricLowSwing${i}.z > 0.0) {`);
+      expect(s.fragmentShader).toContain(`fhd = fabricLowFold(fabricLowHoop(fabricLowStayAt(fabricLowWaist${i}, fabricLowSwing${i}, vFabricLow.xyz), fabricLowUnder(fabricLowPlace, vFabricLow.xyz, fabricLegShare)), vFabricLow.xyz, fabricLegShare);`);
+      // IN FRONT OF HER, HIS LINE UNDER HER BELLY (`foldAt`; after its front moon): eased into the hoop's edge out
+      // towards her hips, her trunk's skin no further forward than the fold wherever it is laid, and its band his
+      // line's, as deep on her as she is drawn out there (`foldStretch`)
+      expect(s.fragmentShader).toContain(`vec4 ffl = fabricLowFoldLine(fabricLowPlace, vFabricLow.xyz, fabricLegShare, fabricLowFront${i}.x);`);
+    }
+    expect(s.fragmentShader).toContain('fws = fabricLowHeld(fwd, fhd);');
+    expect(s.fragmentShader).toContain('ffw = ffl.y * ffl.x;');
+    expect(s.fragmentShader).toContain('ffd = ffl.z * fabricLowFoldStretch(fabricLowPlace);');
+    expect(s.fragmentShader).toContain('fws += (min(mix(fws, min(fwd, ffl.z), ffl.x), ffl.w) - fws) * ffl.y;');
+    expect(s.fragmentShader).toContain('uniform float fabricLowFoldT[16];');
+    expect(s.fragmentShader).toContain('uniform float fabricLowFoldS[16];');
+    // (his line is laid after the moon, so where it is laid it is all of the edge)
+    expect(s.fragmentShader.indexOf('vec4 ffl = fabricLowFoldLine')).toBeGreaterThan(s.fragmentShader.indexOf('fmw = fabricLowMoonShare'));
+    expect(s.fragmentShader).toContain('fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));');
     // A WAISTBAND'S BAND: inside its line by less than its depth AND over the floor, a level line above her cleft --
     // two edges, each antialiased by its own slope; under the floor nothing of it is drawn, whatever the distance
     // inside its line says there (`waistBanded`: the same places)
     expect(s.fragmentShader).toContain('uniform float fabricLowFloor;');
     for (const i of [0, 1, 2]) {
+      expect(s.fragmentShader).toContain(`} else if (fabricLowBand${i}.x > 0.0) {`);
       expect(s.fragmentShader).toContain(`float fa = max(fwidth(fwd) * 0.75, 1e-7), fh = fabricLowPlace.y - fabricLowFloor, fg = max(fwidth(fh) * 0.75, 1e-7);`);
       expect(s.fragmentShader).toContain(`float fin = 1.0 - smoothstep(fabricLowBand${i}.x - fa, fabricLowBand${i}.x + fa, fwd), fup = smoothstep(-fg, fg, fh), fi = fin * fup;`);
       // its seam: along its inner edge over the floor, and along the floor where that cuts it
       expect(s.fragmentShader).toContain(`fc *= 1.0 - fabricCutSeam.x * max(fup * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fa, abs(fwd - fabricLowBand${i}.x))), fin * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fg, abs(fh))));`);
     }
+    // A HOOP'S BAND IS ITS OWN TABLE'S, once one is laid: the cloth over its inner edge -- a height on her rest skin at
+    // each turn round her -- one edge antialiased by its own slope, with no floor; its seam as wide ALONG HER SKIN AS
+    // SHE IS SHAPED as any band's (its half-width in heights, by how fast the height changes along her there)
+    expect(s.fragmentShader).toContain('float fabricLowAmong = fabricLowTurnAt(fabricLowPlace);');
+    for (const i of [0, 1, 2]) {
+      expect(s.fragmentShader).toContain(`if (fabricLowBand${i}.x > 0.0 && fabricLowInnerOn${i} > 0.5) {`);
+      expect(s.fragmentShader).toContain(`float fg = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg);`);
+    }
+    expect(s.fragmentShader).toContain('float fs = fabricCutSeam.y * fabricLowSteep(fg);');
+    expect(s.fragmentShader).toContain('fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fs, fs + fa, abs(fg)));');
     // her leg's skin, the rest of her, and her arm's skin (which hangs beside her hips and is never a bottom's) -- by a
     // flag READ INSIDE THE TRIANGLE A PIXEL IS DRAWN FOR (`centroid`): at the pixel's middle, outside a triangle that
     // covers only part of the pixel, the flag runs on past its corners' -- from her leg's -1 past the rest of her's 0
@@ -570,7 +660,10 @@ describe('a bottom\'s cut in the shader', () => {
     for (const l of s.fragmentShader.split('\n').filter((x) => /fabricLow|fabricLegShare|fabricNotArm/.test(x))) expect(l, l).not.toContain('vFabricAux.z');
     // (each edge's distance held to its own range before its slope is taken: far inside a garment, and between her
     // legs where a place's stand round her swings from pixel to pixel, its slope is no pixel's width)
-    for (const i of [0, 1, 2]) expect(s.fragmentShader).toContain(`fe${i} = fcw * mix(fabricLowLeg${i}.z, fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0)), fabricLegShare) * fabricNotArm;`);
+    for (const i of [0, 1, 2]) {
+      expect(s.fragmentShader).toContain(`float fle = fabricLowLeg${i}.x - vFabricLow.w, fls = vFabricLow.w - fabricLowLeg${i}.y;`);
+      expect(s.fragmentShader).toContain(`fe${i} = fcw * mix(fabricLowLeg${i}.z, fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0)), fabricLegShare) * fabricNotArm;`);
+    }
     // the layer it was put on has its numbers; the others are off
     const u = s.uniforms, far = LOW_CUT.far;
     expect(u.fabricLowOn1.value).toBe(1);
@@ -579,37 +672,237 @@ describe('a bottom\'s cut in the shader', () => {
     expect((u.fabricLowLeg1.value as THREE.Vector4).toArray()).toEqual([spec.end, -far, 1, 0]);
     expect((u.fabricLowBand1.value as THREE.Vector4).x).toBeCloseTo(spec.bands.waist, 9);
     expect((u.fabricLowBand1.value as THREE.Vector4).w).toBeCloseTo(0.1, 9);
+    // (bike shorts are level at her waist: no hoop -- unswung, and no table)
+    expect(spec.hinge).toBeNull();
+    expect((u.fabricLowSwing1.value as THREE.Vector4).toArray()).toEqual([0, 1, 0, 0]);
+    expect(u.fabricLowInnerOn1.value).toBe(0);
     // a stocking: no waistband, no end, a top
     const st = lowSpec(template('stockings').params, frame);
     setFabricLayer(s.mesh, s.material, 2, { texture: new THREE.Texture(), tile: 1, opacity: 0.5, low: { waist: null, end: null, start: st.start, band: [0, 0, st.bands.top], shade: 0.1 } }, { layers: 3, masked: true, rest: null });
     expect((u.fabricLowLeg2.value as THREE.Vector4).toArray()).toEqual([far, st.start, 0, 0]);
     // her measures, and her legs' cuts as her bones carry them
     const leg = (l: LowFrame['legs'][number]) => { const p = legPlanes(l); return [p.thigh, p.shin, legBlend(l, frame.unitsPerMetre)] as const; };
-    setFabricLow(s.material, { axis: [frame.mid, frame.facing, frame.seam, LOW_CUT.range * frame.unitsPerMetre], spineA: [frame.spine[0][0], frame.spine[0][1], frame.spine[1][0], frame.spine[1][1]], spineB: [frame.spine[2][0], frame.spine[2][1], frame.spine[3][0], frame.spine[3][1]], floor: frame.floor, legL: leg(frame.legs[0]), legR: leg(frame.legs[1]), seam: [0.2, 0.0005] });
+    const lowOf = () => ({ axis: [frame.mid, frame.facing, frame.seam, LOW_CUT.range * frame.unitsPerMetre] as [number, number, number, number], spineA: [frame.spine[0][0], frame.spine[0][1], frame.spine[1][0], frame.spine[1][1]] as [number, number, number, number], spineB: [frame.spine[2][0], frame.spine[2][1], frame.spine[3][0], frame.spine[3][1]] as [number, number, number, number], floor: frame.floor, stay: [frame.stay.wide, 0, 0, frame.stay.round] as [number, number, number, number], crease: frame.crease, legL: leg(frame.legs[0]), legR: leg(frame.legs[1]), seam: [0.2, 0.0005] as [number, number] });
+    setFabricLow(s.material, lowOf());
     expect((u.fabricLowAxis.value as THREE.Vector4).x).toBeCloseTo(frame.mid, 6);
     expect(u.fabricLowFloor.value).toBe(frame.floor);
     expect((u.fabricLowLegL.value as THREE.Vector4[])[2].toArray().every((x) => Number.isFinite(x))).toBe(true);
     setFabricLowLegs(s.material, [[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]]);
     expect((u.fabricLowLegL.value as THREE.Vector4[])[0].toArray()).toEqual([1, 2, 3, 4]);
     expect((u.fabricLowLegR.value as THREE.Vector4[])[1].toArray()).toEqual([13, 14, 15, 16]);
+    // her crease's heights, and how wide it is told and how round a hoop's corners are
+    expect(Array.from(u.fabricLowCrease.value as Float32Array)).toEqual(Array.from(frame.crease!));
+    expect((u.fabricLowStay.value as THREE.Vector4).x).toBeCloseTo(frame.stay.wide, 6);
+    expect((u.fabricLowStay.value as THREE.Vector4).w).toBeCloseTo(frame.stay.round, 6);
     // taken off: no layer is a bottom
     setFabricLow(s.material, null);
     expect(fabricLowWorn(s.material)).toBe(false);
   });
 
+  it('a hoop\'s layer has its hinge; its swing, the cloth\'s front and its band\'s table are laid as she is shaped', () => {
+    const spec = lowSpec(template('leggingsUnder').params, frame), s = compiled(spec), u = s.uniforms;
+    expect(spec.hinge).not.toBeNull();
+    const swung = u.fabricLowSwing1.value as THREE.Vector4;
+    // its hinge, unswung: a cosine of one, a sine of nothing, no room
+    expect(swung.x).toBeCloseTo(spec.hinge![0], 6);
+    expect([swung.y, swung.z, swung.w]).toEqual([1, 0, 0]);
+    setFabricLowSwing(s.material, 1, 0.4, 0.002);
+    expect(swung.x).toBeCloseTo(spec.hinge![0], 6);
+    expect(swung.y).toBeCloseTo(Math.cos(0.4), 6);
+    expect(swung.z).toBeCloseTo(Math.sin(0.4), 6);
+    expect(swung.w).toBeCloseTo(0.002, 9);
+    setFabricLowSwing(s.material, 1, 0, 0.01);
+    expect([swung.y, swung.z, swung.w]).toEqual([1, 0, 0]);
+    // the cloth's front between her thighs rides in her measures' second number, and laying her measures again keeps it
+    setFabricLowFold(s.material, 0.031);
+    expect((u.fabricLowStay.value as THREE.Vector4).y).toBeCloseTo(0.031, 9);
+    const leg = (l: LowFrame['legs'][number]) => { const p = legPlanes(l); return [p.thigh, p.shin, legBlend(l, frame.unitsPerMetre)] as const; };
+    setFabricLow(s.material, { axis: [frame.mid, frame.facing, frame.seam, LOW_CUT.range * frame.unitsPerMetre], spineA: [frame.spine[0][0], frame.spine[0][1], frame.spine[1][0], frame.spine[1][1]], spineB: [frame.spine[2][0], frame.spine[2][1], frame.spine[3][0], frame.spine[3][1]], floor: frame.floor, stay: [frame.stay.wide, 0, 0, frame.stay.round], crease: frame.crease, legL: leg(frame.legs[0]), legR: leg(frame.legs[1]), seam: [0.2, 0.0005] });
+    expect((u.fabricLowStay.value as THREE.Vector4).y).toBeCloseTo(0.031, 9);
+    // HIS LINE'S BAND'S STRETCH (`foldStretch`): one at each of his line's knots, and none is one
+    expect(Array.from(u.fabricLowFoldS.value as Float32Array)).toEqual(Array(16).fill(1));
+    const stretch = Float32Array.from({ length: FOLD_LINE.length }, (_, k) => 1 + k / 8);
+    setFabricLowFoldStretch(s.material, stretch);
+    expect(Array.from(u.fabricLowFoldS.value as Float32Array)).toEqual(Array.from(stretch));
+    setFabricLowFoldStretch(s.material, null);
+    expect(Array.from(u.fabricLowFoldS.value as Float32Array)).toEqual(Array(16).fill(1));
+    // ITS BAND'S TABLE: the line its stations turn about, and the layer's own heights -- four to a vector, after the
+    // layers before it
+    expect(u.fabricLowInnerOn1.value).toBe(0);
+    const table = Float32Array.from({ length: BAND_STEPS }, (_, k) => 1 + k / 100), line = { count: BAND_STEPS, mid: frame.mid, facing: frame.facing, lean: [0.25, -0.5, 0.125] as const };
+    setFabricLowInner(s.material, 1, { line, table });
+    expect(u.fabricLowInnerOn1.value).toBe(1);
+    expect((u.fabricLowTurn.value as THREE.Vector4).toArray()).toEqual([0.25, -0.5, 0.125, 0]);
+    const all = u.fabricLowInner.value as Float32Array;
+    expect(all.length).toBe(BAND_STEPS * 3);
+    expect(Array.from(all.subarray(BAND_STEPS, 2 * BAND_STEPS))).toEqual(Array.from(table));
+    expect(Array.from(all.subarray(0, BAND_STEPS)).every((x) => x === 0)).toBe(true);
+    // a table of another length is not laid; none takes it off; and a layer that is no hoop's has none
+    setFabricLowInner(s.material, 1, { line: { ...line, count: 8 }, table: table.subarray(0, 8) });
+    expect(u.fabricLowInnerOn1.value).toBe(0);
+    setFabricLowInner(s.material, 1, { line, table });
+    setFabricLowInner(s.material, 1, null);
+    expect(u.fabricLowInnerOn1.value).toBe(0);
+    setFabricLowInner(s.material, 1, { line, table });
+    const bike = lowSpec(template('shortsBike').params, frame);
+    setFabricLayer(s.mesh, s.material, 1, { texture: new THREE.Texture(), tile: 1, opacity: 1, low: { waist: bike.waist, end: bike.end, start: bike.start, band: [bike.bands.waist, bike.bands.leg, bike.bands.top], shade: 0.1, hinge: null } }, { layers: 3, masked: true, rest: null });
+    expect(u.fabricLowInnerOn1.value).toBe(0);
+    expect((u.fabricLowSwing1.value as THREE.Vector4).toArray()).toEqual([0, 1, 0, 0]);
+  });
+
   it('the shader\'s functions are the ones here, formula for formula', () => {
     const glsl = lowGlsl();
-    // `spineDepth`, `roundAt`, `waistLine` and `waistAt`
+    // `spineDepth` and `roundAt`
     expect(glsl).toContain('float dz = (p.z - fabricLowSpine(p.y)) * fabricLowAxis.y - fabricLowAxis.z, dx = p.x - fabricLowAxis.x, r = length(vec2(dx, dz));');
     expect(glsl).toContain('return vec3(r > 1e-9 ? 0.5 + 0.5 * dz / r : 0.5, abs(dx), max(r, 1e-9));');
-    expect(glsl).toContain('float fr = clamp(w.w, 0.55, 1.0);');
-    expect(glsl).toContain('return vec2(w.y + (w.x - w.y) * t * t * (3.0 - 2.0 * t), (w.x - w.y) * 6.0 * t * (1.0 - t) / (fr - 0.5));');
-    expect(glsl).toContain('return vec2(w.z + (w.y - w.z) * t * t * (3.0 - 2.0 * t), (w.y - w.z) * 6.0 * t * (1.0 - t) / 0.5);');
+    // `waistLine`: the sweep through its three heights -- the two runs' climbs, their harmonic mean at her side, the
+    // three-point rule at an end (held to no turn), and the cubic between
+    expect(glsl).toContain('float d1 = 2.0 * (w.y - w.z), d2 = 2.0 * (w.x - w.y), mid = d1 * d2 > 0.0 ? 2.0 * d1 * d2 / (d1 + d2) : 0.0;');
+    expect(glsl).toContain('float m = 0.5 * (3.0 * run - other);');
+    expect(glsl).toContain('return m * run <= 0.0 ? 0.0 : (run * other < 0.0 && abs(m) > 3.0 * abs(run) ? 3.0 * run : m);');
+    expect(glsl).toContain('float p0 = ahead ? w.y : w.z, p1 = ahead ? w.x : w.y, m0 = 0.5 * (ahead ? mid : fabricLowEnd(d1, d2)), m1 = 0.5 * (ahead ? fabricLowEnd(d2, d1) : mid);');
+    expect(glsl).toContain('return vec2((2.0 * t3 - 3.0 * t2 + 1.0) * p0 + (t3 - 2.0 * t2 + t) * m0 + (3.0 * t2 - 2.0 * t3) * p1 + (t3 - t2) * m1,');
+    expect(glsl).toContain('2.0 * ((6.0 * t2 - 6.0 * t) * (p0 - p1) + (3.0 * t2 - 4.0 * t + 1.0) * m0 + (3.0 * t2 - 2.0 * t) * m1));');
     // (`waistAt`)
     expect(glsl).toContain('float fabricLowInside(vec4 w, vec3 p, vec3 r, float across) {');
     expect(glsl).toContain('float climb = l.y * 0.5 * r.y / (r.z * r.z * max(0.25, 1.0 + across));');
     expect(glsl).toContain('float d = (l.x - p.y) / sqrt(1.0 + climb * climb);');
     // (...and never nearer the line than the place is under the lowest of it, or over the highest)
     expect(glsl).toContain('return min(max(d, min(w.x, min(w.y, w.z)) - p.y), max(w.x, max(w.y, w.z)) - p.y);');
+    // `stayAt`: the place swung back up about the hinge (at the height of the waistband's back), and the line's own
+    // arithmetic there, with the surface's room
+    expect(glsl).toContain('float X = (q.z - fabricLowSpine(q.y)) * fabricLowAxis.y - fabricLowAxis.z - g.x, Y = q.y - w.z;');
+    expect(glsl).toContain('float a = g.x + X * g.y - Y * g.z, y = w.z + X * g.z + Y * g.y, o = abs(q.x - fabricLowAxis.x), r = max(length(vec2(o, a)), 1e-9);');
+    expect(glsl).toContain('return fabricLowInside(w, vec3(0.0, y, 0.0), vec3(0.5 + 0.5 * a / r, o, r), 0.0) + g.w;');
+    // `creaseAt`, `underAt`, `hoopAt`, `waistHeld`
+    expect(glsl).toContain(`float t = min(abs(x - fabricLowAxis.x) / fabricLowStay.x, 1.0) * ${(CREASE_STEPS - 1).toFixed(1)}, k = min(floor(t), ${(CREASE_STEPS - 2).toFixed(1)});`);
+    expect(glsl).toContain('return mix(fabricLowCrease[i], fabricLowCrease[i + 1], t - k);');
+    expect(glsl).toContain('float behind = fabricLowStay.y - ((q.z - fabricLowSpine(q.y)) * fabricLowAxis.y - fabricLowAxis.z);');
+    expect(glsl).toContain('float a = fabricLowCreaseAt(p.x) - p.y, b = mix(behind, 10000.0, leg), k = fabricLowStay.w, h = max(k - abs(a - b), 0.0) / k;');
+    expect(glsl).toContain('return max(stay, under) + h * h * k * 0.25;');
+    expect(glsl).toContain('return min(inside, held) - h * h * k * 0.25;');
+    // `bandTurn` and `innerAt`: where a place stands among the stations (a station's own number at its turn), a
+    // layer's knots mirrored at her front's middle and at her back's, and Catmull and Rom's curve through four
+    expect(glsl).toContain('float d = fabricLowTurn.x + fabricLowTurn.y * p.y;');
+    expect(glsl).toContain('d = fabricLowAxis.y > 0.0 ? min(d, fabricLowTurn.z) : max(d, fabricLowTurn.z);');
+    expect(glsl).toContain(`return atan(abs(p.x - fabricLowAxis.x), (p.z - d) * fabricLowAxis.y) * ${(BAND_STEPS / Math.PI).toFixed(6)} - 0.5;`);
+    expect(glsl).toContain(`int i = k < 0 ? -k - 1 : (k >= ${BAND_STEPS} ? ${2 * BAND_STEPS - 1} - k : k);`);
+    expect(glsl).toContain(`return fabricLowInner[layer * ${BAND_STEPS / 4} + i / 4][i - (i / 4) * 4];`);
+    expect(glsl).toContain('return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)));');
+    // (how fast a number told on her rest skin changes along her skin as she is shaped: off the pixel's own slopes)
+    expect(glsl).toContain('vec3 px = dFdx(vFabricLow.xyz), py = dFdy(vFabricLow.xyz);');
+    expect(glsl).toContain('return sqrt(max(h * gx * gx - 2.0 * f * gx * gy + e * gy * gy, 0.0) / max(e * h - f * f, 1e-30));');
+    // `foldShares`, `foldAt` and `foldStretchAt`: his line's height at a centimetre's knots, its climb at each knot
+    // between the two either side, eased from knot to knot, the distance square to it, and the guard
+    expect(glsl).toContain(`int a = max(k - 1, 0), b = min(k + 1, ${FOLD_LINE.length - 1});`);
+    expect(glsl).toContain('return (fabricLowFoldT[b] - fabricLowFoldT[a]) / (float(b - a) * fabricLowFoldK.x);');
+    expect(glsl).toContain('float wo = 1.0 - smoothstep(fabricLowFrontK.x, fabricLowFrontK.y, o), wa = smoothstep(fabricLowFrontK.z, fabricLowFrontK.w, a);');
+    expect(glsl).toContain('float rise = mix(fabricLowFoldRise(i), fabricLowFoldRise(i + 1), f - k);');
+    expect(glsl).toContain('float line = (fabricLowFoldK.y + mix(fabricLowFoldT[i], fabricLowFoldT[i + 1], f - k) + lift - p.y) * inversesqrt(1.0 + rise * rise);');
+    expect(glsl).toContain('float deep = fabricLowFoldK.z - fabricLowFoldK.w * o * o + lift - a;');
+    expect(glsl).toContain(`return vec4(wo, wa, line, mix(deep, ${LOW_CUT.far.toFixed(1)}, max(leg, smoothstep(fabricLowFrontK.y * ${(LOW_CUT.foldDeepIn / LOW_CUT.foldOut).toFixed(6)}, fabricLowFrontK.y, o))));`);
+    expect(glsl).toContain('return mix(fabricLowFoldS[i], fabricLowFoldS[i + 1], f - k);');
+  });
+});
+
+describe('his line under her belly (an under-belly waistband\'s front, once its hoop has swung)', () => {
+  const U = () => frame.unitsPerMetre;
+  /** Her points with her body file's `belly200` morph laid on (her 200%), and the under-belly waistband swung as the room's is. */
+  const at200 = () => {
+    const P = her.rest, n = P.length / 3, m = her.mesh.geometry.morphAttributes.position![her.mesh.morphTargetDictionary!.belly200], shaped = Float32Array.from(P);
+    for (let v = 0; v < n; v++) { shaped[v * 3] += m.getX(v); shaped[v * 3 + 1] += m.getY(v); shaped[v * 3 + 2] += m.getZ(v); }
+    const spec = lowSpec(template('leggingsUnder').params, frame), pick = (vs: ArrayLike<number>) => { const o = new Float32Array(vs.length * 3); Array.from(vs).forEach((v, i) => { o[i * 3] = shaped[v * 3]; o[i * 3 + 1] = shaped[v * 3 + 1]; o[i * 3 + 2] = shaped[v * 3 + 2]; }); return o; };
+    // (her file's own 200% swings the hoop 10 degrees, where his line is still lifted a little; the room's 200% swings
+    // it 23.1 -- MEASURED -- and that is the swing these are told at)
+    expect(swingOf(frame, spec, pick(frame.middle))).toBeGreaterThan(0.1);
+    return { shaped, spec, swing: 0.403, fold: foldOf(frame, pick(frame.groin)) };
+  };
+
+  it('is his drawing: rising from her middle to her side\'s own height, and the distance under it is square to it with no step', () => {
+    expect(FOLD_LINE.length).toBe(16);
+    for (let k = 1; k < FOLD_LINE.length; k++) expect(FOLD_LINE[k]).toBeGreaterThanOrEqual(FOLD_LINE[k - 1]);
+    // (its end, 15 cm out, is her under-belly waistband's own height at her side: within 3 mm)
+    const spec = lowSpec(template('leggingsUnder').params, frame);
+    expect(Math.abs(frame.hipY + FOLD_LINE[15] * U() - spec.waist![1])).toBeLessThan(3 * MM);
+    // square to it where it runs level, and less than straight down where it climbs (to its climb's own share)
+    const place = (out: number, under: number): V3 => [frame.mid + out * U(), frame.hipY + under * U(), 0];
+    const deepAhead: V3 = [frame.mid, frame.hipY, -1e3];
+    expect(foldAt(frame, place(0, FOLD_LINE[0] - 0.03), deepAhead, 0, 0).line / U()).toBeCloseTo(0.03, 4);
+    const climbing = foldAt(frame, place(0.135, FOLD_LINE[13] + 0.5 * (FOLD_LINE[14] - FOLD_LINE[13]) - 0.03), deepAhead, 0, 0).line / U();
+    expect(climbing).toBeLessThan(0.025);
+    expect(climbing).toBeGreaterThan(0.015);
+    // A BAND'S DEPTH UNDER IT HAS NO STEP FROM ONE KNOT TO THE NEXT: 3 cm under it, a tenth of a millimetre out at a
+    // time across all of it, never more than a twentieth of a millimetre between two (its climb stepped knot to knot,
+    // 0.6 mm at the knot 12 cm out -- the teeth a centimetre apart along the band's inner edge in the room)
+    let worst = 0, last = NaN;
+    for (let out = 0; out <= 0.15; out += 0.0001) {
+      const f = Math.min(out / 0.01, 14.999), k = Math.floor(f), y = FOLD_LINE[k] + (FOLD_LINE[k + 1] - FOLD_LINE[k]) * (f - k) - 0.03;
+      const d = foldAt(frame, place(out, y), deepAhead, 0, 0).line / U();
+      if (Number.isFinite(last)) worst = Math.max(worst, Math.abs(d - last));
+      last = d;
+    }
+    expect(worst).toBeLessThan(0.00005);
+  });
+
+  it('bares her trunk\'s skin in front of the fold, never her leg\'s, and none of it round her hips', () => {
+    const behind = (ahead: number, out: number): V3 => { const y = frame.hipY - 0.05 * U(); return [frame.mid + out * U(), y, spineDepth(frame, y) + frame.facing * (frame.seam + ahead * U())]; };
+    const place: V3 = [frame.mid, frame.hipY - 0.2 * U(), 0];
+    // at her middle the guard is the fold itself: `foldDepth` in front of her axis
+    expect(aheadOf(frame, behind(0.01, 0)[1], behind(0.01, 0)[2]) / U()).toBeCloseTo(0.01, 6);
+    expect(foldAt(frame, place, behind(LOW_CUT.foldDepth - 0.002, 0), 0, 0).deep).toBeGreaterThan(0);
+    expect(foldAt(frame, place, behind(LOW_CUT.foldDepth + 0.002, 0), 0, 0).deep).toBeLessThan(0);
+    // her leg's skin, and her trunk's past `foldOut`, never
+    expect(foldAt(frame, place, behind(0.1, 0), 1, 0).deep).toBe(LOW_CUT.far);
+    expect(foldAt(frame, place, behind(0.1, LOW_CUT.foldOut + 0.01), 0, 0).deep).toBe(LOW_CUT.far);
+    // laid in front of her from `foldTo`, and none of it from `foldFrom` back; all of his line within `foldIn` of her
+    // middle, eased into the hoop's by `foldOut`
+    expect(foldShares(frame, behind(LOW_CUT.foldTo, 0))).toEqual([1, 1]);
+    expect(foldShares(frame, behind(LOW_CUT.foldFrom - 0.001, 0))[1]).toBe(0);
+    expect(foldShares(frame, behind(0, LOW_CUT.foldIn - 0.001))[0]).toBe(1);
+    expect(foldShares(frame, behind(0, LOW_CUT.foldOut + 0.001))[0]).toBe(0);
+    // (and while the hoop has hardly swung it is lifted out of the way)
+    expect(foldLift(frame, 0) / U()).toBeCloseTo(LOW_CUT.foldReach, 9);
+    expect(foldLift(frame, LOW_CUT.foldSwing)).toBe(0);
+  });
+
+  it('at her 200% belly: none of her trunk\'s skin in front of the fold is covered, and her skin well under his line is', () => {
+    const { shaped, spec, swing, fold } = at200(), P = her.rest, n = P.length / 3;
+    expect(swing).toBeGreaterThan(LOW_CUT.foldSwing);
+    let bared = 0, kept = 0, wrong = 0;
+    for (let v = 0; v < n; v++) {
+      if (limb[v] > 0.5) continue;
+      const sh: V3 = [shaped[v * 3], shaped[v * 3 + 1], shaped[v * 3 + 2]], out = Math.abs(sh[0] - frame.mid) / U(), ahead = aheadOf(frame, sh[1], sh[2]) / U();
+      if (out > LOW_CUT.foldIn || ahead < LOW_CUT.foldTo || Math.abs(sh[1] - frame.hipY) > 0.2 * U()) continue;
+      const place: V3 = [P[v * 3], P[v * 3 + 1], P[v * 3 + 2]], e = lowAt(spec, frame, place, along[v], limb[v], 0, sh, swing, fold), f = foldAt(frame, place, sh, legShareOf(limb[v]), 0);
+      // her trunk's skin in front of the fold
+      if (limb[v] > -0.5 && ahead > LOW_CUT.foldDepth - LOW_CUT.foldCurve * out * out + 0.001) { bared++; if (e.waist > 0) wrong++; }
+      // her skin a centimetre and more under his line, behind the fold, and under the waistband's own line
+      else if (f.line > 0.01 * U() && f.deep > 0.001 * U() && waistAt(spec.waist!, frame, place[0], place[1], place[2]) > 0.01 * U()) { kept++; if (!(e.waist > 0)) wrong++; }
+    }
+    expect(bared).toBeGreaterThan(500);
+    expect(kept).toBeGreaterThan(300);
+    expect(wrong).toBe(0);
+  });
+
+  it('its band is as deep on her as any band: her skin under his line as she is drawn out, centimetre by centimetre out', () => {
+    const { shaped, spec, swing } = at200(), P = her.rest, near = foldNear(frame, P);
+    expect(near.length).toBeGreaterThan(1000);
+    const point: BandPoint = (v, out) => { out[0] = shaped[v * 3]; out[1] = shaped[v * 3 + 1]; out[2] = shaped[v * 3 + 2]; out[3] = P[v * 3]; out[4] = P[v * 3 + 1]; out[5] = P[v * 3 + 2]; out[6] = limb[v]; out[7] = 0; };
+    const k = foldStretch(frame, near, point, swing, spec.bands.waist)!;
+    expect(k.length).toBe(FOLD_LINE.length);
+    for (const x of k) { expect(x).toBeGreaterThanOrEqual(LOW_CUT.foldStretchMin); expect(x).toBeLessThanOrEqual(LOW_CUT.foldStretchMax); }
+    // at her middle her skin under his line is drawn out (MEASURED on the room's points at 200%: 2.4 to 2.6 within 4 cm of her middle)
+    expect(k[0]).toBeGreaterThan(1.3);
+    // read at a place's own distance out, eased between the knots; with no table, one
+    const at = (out: number) => foldStretchAt(frame, k, [frame.mid + out * U(), 0, 0]);
+    expect(at(0.025)).toBeCloseTo((k[2] + k[3]) / 2, 6);
+    expect(at(0.3)).toBe(k[15]);
+    expect(foldStretchAt(frame, null, [frame.mid, 0, 0])).toBe(1);
+    // and an under-belly band in front is that many units of her rest skin fewer: where it is laid, its band is the
+    // distance under his line times the stretch
+    const sh: V3 = [frame.mid, frame.hipY - 0.05 * U(), spineDepth(frame, frame.hipY - 0.05 * U()) + frame.facing * frame.seam], y = frame.hipY + (FOLD_LINE[0] - 0.01) * U();
+    const inner: BandInner = { line: { count: BAND_STEPS, mid: frame.mid, facing: frame.facing, lean: [0, 0, 0] }, table: new Float32Array(BAND_STEPS).fill(frame.hipY), front: null, stretch: k };
+    const e = lowAt(spec, frame, [frame.mid, y, 0], 0.3, 0, 0, sh, swing, LOW_CUT.far, inner);
+    expect(e.banded / U()).toBeCloseTo(0.01 * k[0], 4);
   });
 });
