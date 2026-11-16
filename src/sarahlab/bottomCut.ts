@@ -133,7 +133,7 @@ export const LOW_CUT = Object.freeze({
   stayReach: 0.03, staySwing: 1.35, stayRoom: 0.015, stayEase: 0.105, stayGroin: 0.09, stayFold: 0, stayWide: 0.2, stayTurn: 0.03, stayRound: 0.01, stayNear: 0.005, stayUnder: 0.02, stayOver: 0.1,
   bandUnder: 0.14, bandOver: 0.4, bandLow: -0.01, bandHigh: 0.045, bandLowAt: -0.06, bandHighAt: 0.17, bandMost: 0.06, bandBridge: 0.34, bandStride: 6,
   moonSoft: 0.012, moonFill: 0.005, moonBlend: 0.03, moonOn: 0.01, moonBack: 0.03, moonMiddle: 0.02, moonStray: 0.01,
-  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.046, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, planeFlat: 0.085, planeDip: 0.03, planeRise: 0.045, planeRiseSide: 0.55, planeRiseSwing: [0.1, 0.3] as readonly [number, number], planeRiseOut: [-0.02, -0.01, 0.07, 0.16] as readonly [number, number, number, number], planeRiseAhead: [-0.17, -0.03] as readonly [number, number], foldStretchMin: 0.9, foldStretchMax: 6,
+  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.046, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, planeFlat: 0.085, planeDip: 0.03, planeRise: 0.045, planeRiseSide: 0.55, planeRiseSwing: [0.1, 0.3] as readonly [number, number], planeRiseOut: [-0.02, -0.01, 0.07, 0.16] as readonly [number, number, number, number], planeRiseAhead: [-0.11, -0.05] as readonly [number, number], planeRiseAheadSide: [-0.2, 0.06] as readonly [number, number], foldStretchMin: 0.9, foldStretchMax: 6,
 });
 /** How many heights a hoop's front moon is told by, from her middle out to its tips (`frontMoon`; four to a `vec4` of the shader's). */
 export const MOON_STEPS = 16;
@@ -386,7 +386,11 @@ export function lowSpec(p: Pick<CoverageParams, 'riseFront' | 'riseSide' | 'rise
  * and on her at 0% -- her hips' skin a third as long across her as on her body file -- a plane's cut is a V with
  * straight arms. A bowl holds the line low out from her front's middle and climbs it nearer her side: along the run
  * from her side to her front's middle the sweep is read at 1 - (1 - t)^(1 + bowl) for t, level where it crosses the
- * middle of her front. Her side and her back are as they were.
+ * middle of her front. Her side and her back are as they were -- AND THE LINE'S CLIMB IS THE SAME EITHER SIDE OF HER
+ * SIDE: read at that t the run from her side starts (1 + bowl) times as steep as the run from her back ends, a corner
+ * in the edge at her side with a spike in its band (MEASURED 2026-11-16 in a sketch on the room's points at 200%, the
+ * under-belly hoop from her side, where her leg's skin meets her trunk's; Joshua: "the black edging with pokes in it
+ * and not like one smooth line"). So the run's first slope is told 1 / (1 + bowl) of the sweep's there.
  */
 export function waistLine(waist: readonly number[], around: number): { readonly height: number; readonly slope: number } {
   const front = waist[0], side = waist[1], back = waist[2];
@@ -395,7 +399,7 @@ export function waistLine(waist: readonly number[], around: number): { readonly 
   const mid = d1 * d2 > 0 ? (2 * d1 * d2) / (d1 + d2) : 0;
   const ahead = around >= 0.5, s = clamp01(ahead ? (around - 0.5) * 2 : around * 2), bowl = ahead ? waist[3] ?? 0 : 0;
   const t = bowl > 0 ? 1 - Math.pow(1 - s, 1 + bowl) : s, eased = bowl > 0 ? (1 + bowl) * Math.pow(1 - s, bowl) : 1;
-  const p0 = ahead ? side : back, p1 = ahead ? front : side, m0 = 0.5 * (ahead ? mid : sweepEnd(d1, d2)), m1 = 0.5 * (ahead ? sweepEnd(d2, d1) : mid);
+  const p0 = ahead ? side : back, p1 = ahead ? front : side, m0 = 0.5 * (ahead ? mid / (1 + bowl) : sweepEnd(d1, d2)), m1 = 0.5 * (ahead ? sweepEnd(d2, d1) : mid);
   const t2 = t * t, t3 = t2 * t;
   return {
     height: (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * m0 + (3 * t2 - 2 * t3) * p1 + (t3 - t2) * m1,
@@ -736,7 +740,9 @@ export function planeAt(frame: LowFrame, waist: V4, hinge: readonly [number, num
   // from her side: "the side, it looks slightly boxy, make it a smooth curve. Front and back is good"): eased to none
   // by her hip's side the edge was two straight runs with a corner between; held, it is one curve from her hip down
   // to the fold, and `planeRiseAhead` alone ends it toward her back.
-  const rise = LOW_CUT.planeRise * U * smoothstep(LOW_CUT.planeRiseSwing[0], LOW_CUT.planeRiseSwing[1], swing) * smoothstep(LOW_CUT.planeRiseOut[0] * U, LOW_CUT.planeRiseOut[1] * U, out) * (1 - (1 - LOW_CUT.planeRiseSide) * smoothstep(LOW_CUT.planeRiseOut[2] * U, LOW_CUT.planeRiseOut[3] * U, out)) * smoothstep(LOW_CUT.planeRiseAhead[0] * U, LOW_CUT.planeRiseAhead[1] * U, ahead);
+  const side = smoothstep(LOW_CUT.planeRiseOut[2] * U, LOW_CUT.planeRiseOut[3] * U, out);
+  const reach = smoothstep(LOW_CUT.planeRiseAhead[0] * U, LOW_CUT.planeRiseAhead[1] * U, ahead), reachSide = smoothstep(LOW_CUT.planeRiseAheadSide[0] * U, LOW_CUT.planeRiseAheadSide[1] * U, ahead);
+  const rise = LOW_CUT.planeRise * U * smoothstep(LOW_CUT.planeRiseSwing[0], LOW_CUT.planeRiseSwing[1], swing) * smoothstep(LOW_CUT.planeRiseOut[0] * U, LOW_CUT.planeRiseOut[1] * U, out) * (1 - (1 - LOW_CUT.planeRiseSide) * side) * (reach + (reachSide - reach) * side);
   return Math.min(stay + rise, deep + (LOW_CUT.far - deep) * loose);
 }
 /**
@@ -1307,7 +1313,7 @@ vec2 fabricLowLine(vec4 w, float u) {
   bool ahead = u >= 0.5;
   float s = clamp(ahead ? (u - 0.5) * 2.0 : u * 2.0, 0.0, 1.0), bowl = ahead ? w.w : 0.0;
   float t = bowl > 0.0 ? 1.0 - pow(1.0 - s, 1.0 + bowl) : s, eased = bowl > 0.0 ? (1.0 + bowl) * pow(max(1.0 - s, 0.0), bowl) : 1.0, t2 = t * t, t3 = t2 * t;
-  float p0 = ahead ? w.y : w.z, p1 = ahead ? w.x : w.y, m0 = 0.5 * (ahead ? mid : fabricLowEnd(d1, d2)), m1 = 0.5 * (ahead ? fabricLowEnd(d2, d1) : mid);
+  float p0 = ahead ? w.y : w.z, p1 = ahead ? w.x : w.y, m0 = 0.5 * (ahead ? mid / (1.0 + bowl) : fabricLowEnd(d1, d2)), m1 = 0.5 * (ahead ? fabricLowEnd(d2, d1) : mid);
   return vec2((2.0 * t3 - 3.0 * t2 + 1.0) * p0 + (t3 - 2.0 * t2 + t) * m0 + (3.0 * t2 - 2.0 * t3) * p1 + (t3 - t2) * m1,
     2.0 * eased * ((6.0 * t2 - 6.0 * t) * (p0 - p1) + (3.0 * t2 - 4.0 * t + 1.0) * m0 + (3.0 * t2 - 2.0 * t) * m1));
 }
@@ -1327,7 +1333,9 @@ float fabricLowPlane(vec4 w, vec4 g, vec3 q, float leg, float lift) {
   float fold = fabricLowFoldK.z - fabricLowFoldK.w * o * o + lift, deep = fold - a, round = smoothstep(fabricLowFrontK.y * ${(LOW_CUT.foldDeepIn / LOW_CUT.foldOut).toFixed(6)}, fabricLowFrontK.y, o);
   float stay = fabricLowStayAt(w, g, vec3(q.x, q.y, q.z - max(a - fold, 0.0) * (1.0 - round) * fabricLowAxis.y)) - g.w;
   float u = fabricLowFoldK.x * 100.0;
-  float rise = ${LOW_CUT.planeRise.toFixed(4)} * u * smoothstep(${LOW_CUT.planeRiseSwing[0].toFixed(3)}, ${LOW_CUT.planeRiseSwing[1].toFixed(3)}, asin(clamp(g.z, 0.0, 1.0))) * smoothstep(${LOW_CUT.planeRiseOut[0].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[1].toFixed(3)} * u, o) * (1.0 - ${(1 - LOW_CUT.planeRiseSide).toFixed(3)} * smoothstep(${LOW_CUT.planeRiseOut[2].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[3].toFixed(3)} * u, o)) * smoothstep(${LOW_CUT.planeRiseAhead[0].toFixed(3)} * u, ${LOW_CUT.planeRiseAhead[1].toFixed(3)} * u, a);
+  float side = smoothstep(${LOW_CUT.planeRiseOut[2].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[3].toFixed(3)} * u, o);
+  float reach = mix(smoothstep(${LOW_CUT.planeRiseAhead[0].toFixed(3)} * u, ${LOW_CUT.planeRiseAhead[1].toFixed(3)} * u, a), smoothstep(${LOW_CUT.planeRiseAheadSide[0].toFixed(3)} * u, ${LOW_CUT.planeRiseAheadSide[1].toFixed(3)} * u, a), side);
+  float rise = ${LOW_CUT.planeRise.toFixed(4)} * u * smoothstep(${LOW_CUT.planeRiseSwing[0].toFixed(3)}, ${LOW_CUT.planeRiseSwing[1].toFixed(3)}, asin(clamp(g.z, 0.0, 1.0))) * smoothstep(${LOW_CUT.planeRiseOut[0].toFixed(3)} * u, ${LOW_CUT.planeRiseOut[1].toFixed(3)} * u, o) * (1.0 - ${(1 - LOW_CUT.planeRiseSide).toFixed(3)} * side) * reach;
   return min(stay + rise, mix(deep, ${LOW_CUT.far.toFixed(1)}, max(leg, round)));
 }
 float fabricLowCreaseAt(float x) {

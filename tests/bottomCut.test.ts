@@ -776,7 +776,7 @@ describe('a bottom\'s cut in the shader', () => {
     expect(glsl).toContain('float d1 = 2.0 * (w.y - w.z), d2 = 2.0 * (w.x - w.y), mid = d1 * d2 > 0.0 ? 2.0 * d1 * d2 / (d1 + d2) : 0.0;');
     expect(glsl).toContain('float m = 0.5 * (3.0 * run - other);');
     expect(glsl).toContain('return m * run <= 0.0 ? 0.0 : (run * other < 0.0 && abs(m) > 3.0 * abs(run) ? 3.0 * run : m);');
-    expect(glsl).toContain('float p0 = ahead ? w.y : w.z, p1 = ahead ? w.x : w.y, m0 = 0.5 * (ahead ? mid : fabricLowEnd(d1, d2)), m1 = 0.5 * (ahead ? fabricLowEnd(d2, d1) : mid);');
+    expect(glsl).toContain('float p0 = ahead ? w.y : w.z, p1 = ahead ? w.x : w.y, m0 = 0.5 * (ahead ? mid / (1.0 + bowl) : fabricLowEnd(d1, d2)), m1 = 0.5 * (ahead ? fabricLowEnd(d2, d1) : mid);');
     expect(glsl).toContain('return vec2((2.0 * t3 - 3.0 * t2 + 1.0) * p0 + (t3 - 2.0 * t2 + t) * m0 + (3.0 * t2 - 2.0 * t3) * p1 + (t3 - t2) * m1,');
     expect(glsl).toContain('2.0 * eased * ((6.0 * t2 - 6.0 * t) * (p0 - p1) + (3.0 * t2 - 4.0 * t + 1.0) * m0 + (3.0 * t2 - 2.0 * t) * m1));');
     // (its front's bowl: the run from her side to her front's middle read at 1 - (1 - s)^(1 + bowl))
@@ -922,10 +922,15 @@ describe('his line under her belly (an under-belly waistband\'s front, once its 
     const leg1 = (out: number, ahead: number, sw: number) => planeAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY), 1) - (stayAt(frame, spec.waist!, spec.hinge!, sw, at(out, ahead, frame.hipY)) - roomAt(frame, sw));
     expect(leg1(0.0, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
     expect(leg1(LOW_CUT.planeRiseOut[2], 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise, 6);
-    expect(leg1((LOW_CUT.planeRiseOut[2] + LOW_CUT.planeRiseOut[3]) / 2, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * (1 + LOW_CUT.planeRiseSide) / 2, 6);
-    expect(leg1(LOW_CUT.planeRiseOut[3], 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide, 6);
-    expect(leg1(0.2, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide, 6);
-    expect(leg1(0.05, -0.17, swing)).toBeCloseTo(0, 9);
+    const ss = (a: number, b: number, x: number) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
+    const sideAt0 = ss(LOW_CUT.planeRiseAheadSide[0], LOW_CUT.planeRiseAheadSide[1], 0);
+    expect(leg1((LOW_CUT.planeRiseOut[2] + LOW_CUT.planeRiseOut[3]) / 2, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * ((1 + LOW_CUT.planeRiseSide) / 2) * ((1 + sideAt0) / 2), 6);
+    expect(leg1(LOW_CUT.planeRiseOut[3], 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide * sideAt0, 6);
+    expect(leg1(0.2, 0.0, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide * sideAt0, 6);
+    expect(leg1(0.0, -0.11, swing)).toBeCloseTo(0, 9);
+    // (round her hip it runs out further back, and more gently: from 6 cm ahead of her side's seam to 20 behind)
+    expect(leg1(0.2, -0.07, swing) / U).toBeCloseTo(LOW_CUT.planeRise * LOW_CUT.planeRiseSide / 2, 6);
+    expect(leg1(0.2, -0.2, swing)).toBeCloseTo(0, 9);
     expect(leg1(0.05, 0.0, 0.05)).toBeCloseTo(0, 9);
     // BEHIND THE FOLD it is the swung surface itself, whatever skin: a place on it is on the edge, and places along it
     // from her back to the fold lie on one straight line seen from her side (their heights fall by the same for each
