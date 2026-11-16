@@ -369,7 +369,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     const lowWaistBand = (i: number) => `
           if (fabricLowBand${i}.x > 0.0 && fabricLowInnerOn${i} > 0.5) {
             float fgo = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw) + fabricLowBand${i}.x, fao = max(fwidth(fgo) * 0.75, 1e-7);
-            float fg = fabricLowBand${i}.x - mix(fnd, ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);
+            float fg = fabricLowBand${i}.x - fnd, fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);
             ${bandTint(i)}
             float fs = fabricCutSeam.y * fabricLowSteep(fg);
             fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fs, fs + fa, abs(fg)));
@@ -406,7 +406,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             ffw = ffl.y * ffl.x;
             ffd = ffl.z * fabricLowFoldStretch(fabricLowPlace);
             fws += (min(mix(fws, min(fwd, ffl.z), ffl.x), ffl.w) - fws) * ffl.y;
-            fnd += (min(mix(fnd, min(fnw, fabricLowNear(ffl.z)), ffl.x), fabricLowNear(ffl.w)) - fnd) * ffl.y;
+            fnd += (min(mix(fnd, min(fnw, fabricLowNearTo(ffl.z, ${LOW_CUT.nearFoldCap.toFixed(1)})), ffl.x), fabricLowNear(ffl.w)) - fnd) * ffl.y;
             fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
           }
           float fle = fabricLowLeg${i}.x - vFabricLow.w, fls = vFabricLow.w - fabricLowLeg${i}.y;
