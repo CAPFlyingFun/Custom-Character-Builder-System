@@ -133,7 +133,7 @@ export const LOW_CUT = Object.freeze({
   stayReach: 0.03, staySwing: 1.35, stayRoom: 0.015, stayEase: 0.105, stayGroin: 0.09, stayFold: 0, stayWide: 0.2, stayTurn: 0.03, stayRound: 0.01, stayNear: 0.005, stayUnder: 0.02, stayOver: 0.1,
   bandUnder: 0.14, bandOver: 0.4, bandLow: -0.01, bandHigh: 0.045, bandLowAt: -0.06, bandHighAt: 0.17, bandMost: 0.06, bandBridge: 0.34, bandStride: 6,
   moonSoft: 0.012, moonFill: 0.005, moonBlend: 0.03, moonOn: 0.01, moonBack: 0.03, moonMiddle: 0.02, moonStray: 0.01,
-  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.031, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, foldStretchMin: 0.5, foldStretchMax: 6,
+  foldIn: 0.13, foldOut: 0.16, foldFrom: -0.04, foldTo: -0.02, foldReach: 0.2, foldSwing: 0.19, foldDepth: 0.031, foldCurve: 0.85, foldDeepIn: 0.13, foldEase: 3.88, foldEaseLeast: 0.25, nearLeast: 0.2, nearMost: 12, nearCap: 1.8, nearFoldCap: 4, foldStretchMin: 0.9, foldStretchMax: 6,
 });
 /** How many heights a hoop's front moon is told by, from her middle out to its tips (`frontMoon`; four to a `vec4` of the shader's). */
 export const MOON_STEPS = 16;
@@ -681,9 +681,12 @@ export function foldStretch(frame: LowFrame, near: ArrayLike<number>, point: Ban
   const raw = ratios.map((r) => { if (!r.length) return NaN; r.sort((a, b) => a - b); return r[r.length >> 1]; });
   if (raw.every((r) => !Number.isFinite(r))) return null;
   for (let pass = 0; pass < K; pass++) for (let b = 0; b < K; b++) if (!Number.isFinite(raw[b])) { const l = raw[b - 1], r = raw[b + 1]; raw[b] = Number.isFinite(l) && Number.isFinite(r) ? (l + r) / 2 : Number.isFinite(l) ? l : r; }
-  const out = new Float32Array(K);
-  for (let b = 0; b < K; b++) { const l = raw[Math.max(b - 1, 0)], r = raw[Math.min(b + 1, K - 1)]; out[b] = Math.min(Math.max((l + 2 * raw[b] + r) / 4, LOW_CUT.foldStretchMin), LOW_CUT.foldStretchMax); }
-  return out;
+  // (held to its bounds, then eased three times over with the two either side: one centimetre's number beside the
+  // next's stepped the band's depth -- 1.85 to 0.67 between 5 and 7 cm out at 200%, a lobe in the edging, MEASURED in
+  // the room 2026-11-15)
+  let now = Float32Array.from(raw, (r) => Math.min(Math.max(r, LOW_CUT.foldStretchMin), LOW_CUT.foldStretchMax));
+  for (let pass = 0; pass < 3; pass++) { const next = new Float32Array(K); for (let b = 0; b < K; b++) next[b] = (now[Math.max(b - 1, 0)] + 2 * now[b] + now[Math.min(b + 1, K - 1)]) / 4; now = next; }
+  return now;
 }
 /** Her points this far under the cloth's edge in front stand at it (`foldStretch`; metres). */
 const FOLD_EDGE = 0.003;

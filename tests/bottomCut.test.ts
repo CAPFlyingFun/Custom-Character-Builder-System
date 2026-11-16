@@ -653,7 +653,7 @@ describe('a bottom\'s cut in the shader', () => {
       // (`ffd`) -- and only inside the table's region widened by the band's depth (`fgo`), which keeps it out of the
       // creases of her thighs, where a slope says nothing
       expect(s.fragmentShader).toContain(`float fgo = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw) + fabricLowBand${i}.x, fao = max(fwidth(fgo) * 0.75, 1e-7);`);
-      expect(s.fragmentShader).toContain(`float fg = fabricLowBand${i}.x - fnd, fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);`);
+      expect(s.fragmentShader).toContain(`float fg = fabricLowBand${i}.x - mix(fnd, ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);`);
     }
     expect(s.fragmentShader).toContain('float fs = fabricCutSeam.y * fabricLowSteep(fg);');
     expect(s.fragmentShader).toContain('fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fs, fs + fa, abs(fg)));');

@@ -369,7 +369,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     const lowWaistBand = (i: number) => `
           if (fabricLowBand${i}.x > 0.0 && fabricLowInnerOn${i} > 0.5) {
             float fgo = mix(mix(fabricLowPlace.y - fabricLowInnerAt(${i}, fabricLowAmong), vFabricLow.y - fabricLowMoonAt(${i}, 1, vFabricLow.x - fabricLowAxis.x, fabricLowMoonW${i}.w), fmw), fabricLowBand${i}.x - ffd, ffw) + fabricLowBand${i}.x, fao = max(fwidth(fgo) * 0.75, 1e-7);
-            float fg = fabricLowBand${i}.x - fnd, fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);
+            float fg = fabricLowBand${i}.x - mix(fnd, ffd, ffw), fa = max(fwidth(fg) * 0.75, 1e-7), fi = smoothstep(-fa, fa, fg) * smoothstep(-fao, fao, fgo);
             ${bandTint(i)}
             float fs = fabricCutSeam.y * fabricLowSteep(fg);
             fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fs, fs + fa, abs(fg)));
