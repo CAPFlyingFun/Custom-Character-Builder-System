@@ -37,6 +37,10 @@ import { ensureRest, ensureSkinFabric, fabricFieldState, setFabricFieldLevels } 
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
 import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
 import { REST_SCALE, RoomGarment } from './garment/roomGarment';
+import { ClothSkirt } from './clothSkirt';
+import { clampSkirt, type SkirtSettings } from './skirt/skirtDraft';
+import { bodyInputOf } from './garment/bodyInput';
+import { pickHex } from './fabricLibrary';
 import { BEND_COMPLIANCE } from './garment/garmentCloth';
 import { NavelSurface } from './garment/navelSurface';
 import { NavelPatch } from './garment/navelPatch';
@@ -1943,6 +1947,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Stage 2b's procedural tee, put on her by a probe (`?probe=cloth` garment()) for review; never by the room itself. */
   let garmentRoom: RoomGarment | null = null, garmentPoseKey = '', garmentShapeKey = '', garmentRefit = false, garmentRefitAge = Infinity;
   /**
+   * A SKIRT AS CLOTH (`clothSkirt.ts`, `skirt/skirtDraft.ts`; Joshua, 2026-11-16: paint and cloth together, its top over
+   * her belly or under it, its length to the floor, how close it lies): the one an outfit wears (`BuiltInOutfit.skirt`),
+   * or a probe's. `skirtKey` is the settings it was drafted for.
+   */
+  let skirtRoom: ClothSkirt | null = null, skirtKey = '', skirtPoseKey = '', skirtProbe: SkirtSettings | null = null, skirtColour = '';
+  /**
    * The procedural tee an OUTFIT put on her (`OUTFITS[i].procedural`), its construction; null when none did. Once a
    * probe has put a garment on her (`?probe=cloth` garment()), the probe owns it and the outfit leaves it alone.
    */
@@ -2304,6 +2314,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (nameLine) nameLine.textContent = characters?.name().trim() || modelName(SARAH_LAB_MODELS[modelIndex].id);
     // the outfit's new tee on or off with the outfit
     syncGarment();
+    syncSkirt();
   }
 
   /** The bump's weight, every frame: its resting tilt and where the spring has it. */
@@ -2986,6 +2997,26 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     if (!want && garmentAuto) { takeOffGarment(); garmentAuto = null; applyLook(); }
     if (!want) wantCloth();
+  }
+  /**
+   * THE OUTFIT'S SKIRT: drafted from her design at 0% belly and hung on her when an outfit that has one is put on (or a
+   * probe asks for one), taken off with it. In its paint's own colour (the short under it is its fitted part).
+   */
+  function syncSkirt(): void {
+    const own = OUTFITS[outfit], want = skirtProbe ?? (recovered && own?.skirt ? clampSkirt(own.skirt) : null);
+    const body = clothBody();
+    if (!want || !loaded || !body || !model) { if (skirtRoom) { skirtRoom.dispose(); skirtRoom = null; skirtKey = ''; } return; }
+    const first = own?.paint?.[0]?.fabric, colour = first ? pickHex({ family: first.family, colour: first.colour, ...(first.tint ? { tint: first.tint } : {}) } as Parameters<typeof pickHex>[0]) : '#6a6f7c';
+    const key = `${want.top}|${want.length.toFixed(3)}|${want.flare.toFixed(3)}`;
+    if (skirtRoom && key === skirtKey) { if (colour !== skirtColour) { (skirtRoom.mesh.material as THREE.MeshStandardMaterial).color.set(colour); skirtColour = colour; } return; }
+    skirtRoom?.dispose(); skirtRoom = null;
+    model.updateMatrixWorld(true);
+    let input!: ReturnType<typeof bodyInputOf>;
+    designRest(() => { input = bodyInputOf(body, { belly: 1 }); });
+    const material = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
+    skirtRoom = new ClothSkirt({ body, input, settings: want, material, unitsPerMetre: M, scale: FACE_REST_SCALE, offset: FACE_REST_OFFSET });
+    skirtKey = key; skirtColour = colour; skirtPoseKey = pose;
+    three.add(skirtRoom.mesh);
   }
   /** The procedural tee off her, and the light tee's cloth copy drawn again if it is on. */
   function takeOffGarment(): void {
@@ -4059,6 +4090,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       await frames(12);
       // (a cloth tee is tailored, eased on and let hang before it is pictured: `syncGarment`, DRESS)
       if (OUTFITS[i].procedural) { for (let tries = 0; tries < 4000 && (garmentTailoring || !garmentRoom || garmentRoom.tailorKey !== garmentCommitted || garmentDressT < DRESS.done + 1.5); tries++) await frames(1); }
+      // (a skirt is let hang before it is pictured)
+      if (OUTFITS[i].skirt) await frames(50);
       await lowSlipSettled();
       out.push({ name: OUTFITS[i].name, path: outfitThumbPath(OUTFITS[i].name), picture: thumbnail() });
     }
@@ -8880,6 +8913,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       }
       // the procedural tee a probe put on her (Stage 2b review): the room's tees stand aside while it is worn, it is laid
       // on her afresh when she changes pose (as the cloth tee is), and it collides with the stool when she sits
+      // her skirt: laid on her afresh when she is put in another pose, stepped with her, put aside with her clothes
+      if (skirtRoom) {
+        skirtRoom.mesh.visible = !!model?.visible && (skinBare ? 'none' : garmentView) === 'all' && !bottomsOff();
+        if (model?.visible) {
+          if (pose !== skirtPoseKey) { skirtPoseKey = pose; if (!sitMoving) skirtRoom.restart(); }
+          model.updateMatrixWorld(true);
+          const pieces = dt > 1 / 40 ? 2 : 1;
+          const seat = sitAmount > 0 && stool.visible ? { x: stool.position.x, z: stool.position.z, radius: 0.21 * M, top: stool.scale.y } : null;
+          for (let k = 0; k < pieces; k++) skirtRoom.frame(dt / pieces, seat);
+        }
+      }
       if (garmentRoom && model?.visible) {
         if (cloth) cloth.mesh.visible = false;
         const lite = partMeshes.get('spandex-lite')?.[0];
@@ -10689,6 +10733,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           }
           return out;
         },
+        // a skirt as cloth (clothSkirt.ts): put one on by its three numbers (null: the outfit's own again), and read it
+        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats() } : null; },
+        skirtRestart: () => { skirtRoom?.restart(); return !!skirtRoom; },
+        skirtParts: (capsules?: boolean, skin?: boolean) => { if (!skirtRoom) return null; if (capsules !== undefined) skirtRoom.probe.capsules = capsules; if (skin !== undefined) skirtRoom.probe.skin = skin; return { ...skirtRoom.probe }; },
+        skirtWire: (on: boolean) => { if (!skirtRoom) return false; (skirtRoom.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },
         garmentWire: (on: boolean) => { if (!garmentRoom) return false; (garmentRoom.cloth.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },
         // her particles now (world), and which piece each is of, for a probe drawing its own pictures
         garmentParticles: () => garmentRoom ? { positions: Array.from(garmentRoom.cloth.positions.subarray(0, garmentRoom.tailored.sewn.count * 3)), piece: Array.from(garmentRoom.tailored.sewn.particlePiece) } : null,
@@ -10973,6 +11022,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       builder = null;
       dropCloth();
       garmentRoom?.dispose(); garmentRoom = null;
+      skirtRoom?.dispose(); skirtRoom = null;
       garmentPanel?.dispose(); garmentPanel = null;
       hud?.remove();
       hud = null;

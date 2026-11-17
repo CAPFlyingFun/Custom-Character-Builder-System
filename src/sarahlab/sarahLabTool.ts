@@ -15,6 +15,7 @@ import type { RandomSpec } from '../actor/bodyRandom';
 import type { DevTool } from '../devtools/DevTool';
 import type { FabricFamilyId } from './fabricLibrary';
 import type { GarmentSettings } from './garment/settings';
+import type { SkirtSettings } from './skirt/skirtDraft';
 
 export const SARAH_LAB_SCENE_ID = 'lab:sarah';
 export const SARAH_LAB_TOOL_ID = 'lab.sarah';
@@ -692,6 +693,21 @@ export const CLOTH_TOPS: readonly (readonly [name: string, tint: string | null, 
 /** A modelled garment's fabric in a built-in outfit, as the editor's FABRIC would set it. */
 export type OutfitFabric = PaintedLayer['fabric'];
 /**
+ * THE SKIRTS' PILOT (Joshua, 2026-11-16: "a combination of paint and cloth for like skirts, etc… that are loose and
+ * flowing"; "have the top of the skirt above or below the belly, with adjustable length all the way down to the ground
+ * and you can select how tight/close it is to the body"). Each is a short painted in its colour -- its fitted part, and
+ * its waistband: the high rise's over her belly, a low one under it -- and one sheet of cloth hung from just under that
+ * band (`skirt/skirtDraft.ts`): [its name, its colour, its top, length and flare]. GAME TUNING, to be his.
+ */
+/** GAME TUNING: an over-belly skirt's painted waistband's top, on her trunk: just under her bust (0.56), where the tee over it ends. */
+export const SKIRT_OVER_BAND = 0.55;
+export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Object.freeze([
+  ['cloth A-line skirt (over belly)', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55 }],
+  ['cloth mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75 }],
+  ['cloth maxi skirt (over belly)', '#2f5d50', { top: 'over', length: 1, flare: 0.4 }],
+  ['cloth pencil skirt (under belly)', '#3a3a40', { top: 'under', length: 0.4, flare: 0 }],
+] as const);
+/**
  * A built-in outfit. `procedural`: its tee is the PROCEDURAL GARMENT (`garment/roomGarment.ts`) in that construction,
  * simulated as cloth and wearing the light tee's own material (so `garments` names the light tee, whose file carries
  * the material and its FABRIC, and `fabrics` dyes it), in place of the light tee and its cloth copy. `trims`: a
@@ -700,7 +716,9 @@ export type OutfitFabric = PaintedLayer['fabric'];
  */
 export interface BuiltInOutfit { readonly name: string; readonly garments: readonly Garment[]; readonly paint?: readonly PaintedLayer[]; readonly fabrics?: Partial<Record<Garment, OutfitFabric>>; readonly trims?: Partial<Record<Garment, OutfitFabric>>; readonly procedural?: 'raglan' | 'setIn';
   /** A procedural tee's own settings where they are not the approved tee's (`garment/settings.ts`): its neckline, its sleeves, its length. */
-  readonly cut?: Partial<GarmentSettings> }
+  readonly cut?: Partial<GarmentSettings>;
+  /** A SKIRT AS CLOTH over its paint (`skirt/skirtDraft.ts`): its top, its length, its flare. Its colour is its first paint layer's. */
+  readonly skirt?: SkirtSettings }
 export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'tee + leggings', garments: ['shirtAthletic', 'leggings'] },
   { name: 'top + low leggings', garments: ['shirtAthletic', 'leggingsLow'] },
@@ -776,6 +794,14 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ...CLOTH_TOPS.map(([name, tint, cut, construction]): BuiltInOutfit => ({
     name, garments: ['shirtSpandexLite'], paint: [{ template: 'leggingsFull', fabric: { family: 'athletic', colour: 1 } }],
     fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0, ...(tint ? { tint } : {}) } }, procedural: construction ?? 'raglan', cut,
+  })),
+  // THE SKIRTS' PILOT (`SKIRTS`): paint and cloth together. Put after everything there was: no outfit has moved.
+  ...SKIRTS.map(([name, tint, skirt]): BuiltInOutfit => ({
+    name, garments: [], skirt,
+    paint: [
+      { template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.01 } },
+      { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: skirt.top === 'under' ? SHEET_BOTTOMS_TEE_HEM : SKIRT_OVER_BAND } },
+    ],
   })),
 ];
 /**

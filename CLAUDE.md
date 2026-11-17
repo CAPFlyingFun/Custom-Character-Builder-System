@@ -335,6 +335,45 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - NEXT, NOT BEGUN (he is to say when): skirts as paint and cloth together -- `docs/reference/README.md` has what he
   asked of them.
 
+## The skirts (paint and cloth together): the pilot
+
+- **A skirt is a short painted on her and one sheet of cloth hung from just under its waistband** (Joshua, 2026-11-16:
+  "a combination of paint and cloth for like skirts, etc… that are loose and flowing"; "have the top of the skirt above
+  or below the belly, with adjustable length all the way down to the ground and you can select how tight/close it is
+  to the body"; "the top is either one or the other, but both can reach the floor length"). `skirt/skirtDraft.ts`
+  (pure) drafts it round her rest shape at 0% belly from his three numbers -- TOP (`over` / `under`: the ring's
+  heights -- OVER between her bust and the top of her belly, his: "right between the breasts and top belly… yours appears
+  mid belly which would fall off in real life"; UNDER a little under a low rise's painted band, `SKIRT_TOPS`), LENGTH (0 a mini, 1 the
+  floor, a level hem) and FLARE (0 a tube that falls from the widest of her, 1 a full skirt): a ring just off her and
+  under it a surface that never comes back in toward her (her dress form, which spans her legs) and opens by FLARE's
+  angle. `clothSkirt.ts` wears it: bound to her skin (`garment/bind.ts`), her skin its floor (`clothSkin.ts`), moved by
+  the room's cloth (`clothSim.ts`). Four outfits wear one (`sarahLabTool.ts` `SKIRTS`, `BuiltInOutfit.skirt`), put
+  after everything there was: an A-line and a maxi over her belly, a mini and a pencil under it, each over
+  `shortsAthletic` in its colour and the grey crop tee. The probe's `skirt({ top, length, flare })` puts any on.
+- WHAT WAS LEARNED MAKING IT STAND (all MEASURED 2026-11-16, in the room and off it):
+  - A COLUMN HANGS FROM ITS OWN RING POINT AS HER SKIN HAS IT. Laid whole by her pelvis, the row under the ring began
+    centimetres from the ring (her spine carries her waist too); the strain limit closed that in one substep and the
+    whip threw a floor-length hem up round her waist in a quarter of a second.
+  - HOW STIFF AND HOW LONG: a cone of 72 columns hung from its ring with nothing under it comes to rest at 30 rows with
+    `bendCompliance` 2e-4 and never does at 4e-5, nor at 54 rows 2 cm apart short of 1e-2. So no skirt has more than
+    `SKIRT_CUT.mostRows` (30): a long one's rows are further apart.
+  - HER SKIN UNDER A POINT THAT HANGS OFF HER FACES THE POINT (`ClothSkirt.floors`): the sim's floor is a half-space by
+    the nearest triangle's own facing, right for cloth lying on her and wrong a hand off her, where the nearest of
+    her is an edge of her.
+  - HER LEGS ARE CAPSULES ABOUT THEIR OWN SIZE (`SKIRT_BODY`), since her skin's walk is local; and what she sits on is one.
+  - NO POINT FASTER THAN `SKIRT_FASTEST` (1.6 m/s), gravity one and a half times, damped 6 a second (his: "Try setting
+    gravity about 1.5x, and maybe keep it more stiff to help with a lot of the flapping around"): a stride threw the hem
+    over her hips.
+- MEASURED in the room (the light skin, 1x, no error on the page): the four standing from her three-quarter and her
+  back at 0%; the A-line walking and seated; the A-line, the mini and the maxi at 100%. About 5 ms of her skin and 4 ms
+  of cloth a frame on the build machine (2,160 to 2,304 points).
+- NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
+  keep them); its colour is one flat colour, not the fabric's weave; seated, it passes through the stool's edge and
+  shows a hole at her side; her hands pass through it; it does not collide with itself; at a big belly an over-belly
+  ring is stretched round her and the cloth bunches in front; RECLINE and SQUAT not looked at; the looser trousers and
+  the jackets wait on it.
+- After anything changes it: `tests/skirtDraft.test.ts`; then the room: the four standing, the A-line walking and seated.
+
 ## A painted bottom, drawn
 
 - **A bottom's edges are DRAWN, as a top's are** (Joshua, 2026-11-15: "Looks good!!! Let's work on all the bottoms…"; of
