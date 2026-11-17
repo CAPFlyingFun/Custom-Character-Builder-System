@@ -723,12 +723,15 @@ export function skirtPaint(skirt: Pick<SkirtSettings, 'top'>, tint: string): Pai
 export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Object.freeze([
   // (ALL FOUR SIT LOW since 2026-11-17 -- Joshua: "Leave it sit low, most don't actually ride high… For now, only do
   //  under the belly since that's how most skirts sit, lol, we can come back to the look over later": the A-line and
-  //  the maxi were over her belly, in the crease under her bust. The A-line's LENGTH is 0.17 where it was 0.42: from
-  //  the lower top that is the same hem, at her knee -- GAME TUNING. An over-belly skirt is still the probe's to put on)
-  ['cloth A-line skirt (under belly)', '#3d5a80', { top: 'under', length: 0.17, flare: 0.55, tucked: false }],
-  ['cloth mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }],
+  //  the maxi were over her belly, in the crease under her bust. An over-belly skirt is still the probe's to put on)
+  // LENGTH IS ON HIS DRAWING'S SCALE since the same day (`skirtDraft.SKIRT_CUT.shortest`: 0 where her legs part, a half
+  // a hand under her knee, 1 the floor). The A-line, the pencil and the maxi end where they did (0.17, 0.4 and 1 on the
+  // scale there was: within 3 mm); THE MINI IS A MINI NOW, at her mid-thigh, 17 cm over her knee -- on the old scale it
+  // could be no shorter than 8 cm over it. GAME TUNING, his to set: the sliders are to come.
+  ['cloth A-line skirt (under belly)', '#3d5a80', { top: 'under', length: 0.36, flare: 0.55, tucked: false }],
+  ['cloth mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.15, flare: 0.75, tucked: false }],
   ['cloth maxi skirt (under belly)', '#2f5d50', { top: 'under', length: 1, flare: 0.4, tucked: false }],
-  ['cloth pencil skirt (under belly)', '#3a3a40', { top: 'under', length: 0.4, flare: 0, tucked: false }],
+  ['cloth pencil skirt (under belly)', '#3a3a40', { top: 'under', length: 0.54, flare: 0, tucked: false }],
 ] as const);
 /**
  * A CLOTH TEE WITH A CLOTH SKIRT (Joshua, 2026-11-16: "have you tried both cloth shirt over a cloth skirt yet?"; "an
@@ -739,9 +742,9 @@ export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Obj
 export const TEE_SKIRTS: readonly (readonly [string, string, SkirtSettings, Partial<GarmentSettings>])[] = Object.freeze([
   // (low as well since 2026-11-17, and under her belly the tee is always over the skirt: these two were the tee tucked
   //  into a high A-line, and over a high one)
-  ['cloth tee over A-line skirt (under belly)', '#3d5a80', { top: 'under', length: 0.17, flare: 0.55, tucked: false }, { neckDepth: 0.04 }],
+  ['cloth tee over A-line skirt (under belly)', '#3d5a80', { top: 'under', length: 0.36, flare: 0.55, tucked: false }, { neckDepth: 0.04 }],
   ['cloth tee over maxi skirt (under belly)', '#2f5d50', { top: 'under', length: 1, flare: 0.4, tucked: false }, { neckDepth: 0.04 }],
-  ['cloth tee over mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }, { neckDepth: 0.04 }],
+  ['cloth tee over mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.15, flare: 0.75, tucked: false }, { neckDepth: 0.04 }],
 ] as const);
 /**
  * A built-in outfit. `procedural`: its tee is the PROCEDURAL GARMENT (`garment/roomGarment.ts`) in that construction,

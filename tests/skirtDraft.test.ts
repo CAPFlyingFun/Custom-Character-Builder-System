@@ -3,7 +3,7 @@
  * reaches, and the outfits that wear one.
  */
 import { describe, expect, it } from 'vitest';
-import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
+import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, hemOf, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, SKIRTS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND, SKIRT_UNDER_LEGS } from '../src/sarahlab/sarahLabTool';
 import { RISES } from '../src/sarahlab/paintTemplates';
 
@@ -51,6 +51,23 @@ describe('a skirt, drafted', () => {
       else expect(o.paint?.[0].dials?.rise, o.name).toBe(SKIRT_OVER_BAND);
     }
     expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['under']));
+  });
+
+  // (Joshua, 2026-11-17, three lines across a figure's legs: "0%", "50%", "100%")
+  it('counts its length on her legs, as he drew it: 0 where her legs part, 1 the floor, straight between', () => {
+    const joints = { hip: [[0.08, 0.9, 0], [-0.08, 0.9, 0]], knee: [[0.08, 0.5, 0], [-0.08, 0.5, 0]] } as never;
+    expect(hemOf(joints, 0)).toBeCloseTo(0.9 - SKIRT_CUT.shortest * 0.4, 9);
+    expect(hemOf(joints, 1)).toBeCloseTo(SKIRT_CUT.floorClear, 9);
+    expect(hemOf(joints, 0.5)).toBeCloseTo((hemOf(joints, 0) + hemOf(joints, 1)) / 2, 9);
+    expect(hemOf(joints, -3)).toBe(hemOf(joints, 0)); expect(hemOf(joints, 7)).toBe(hemOf(joints, 1));
+    // (where her legs part is a fifth of the way to her knees and a little more: MEASURED on her, 0.22)
+    expect(SKIRT_CUT.shortest).toBeGreaterThan(0.15); expect(SKIRT_CUT.shortest).toBeLessThan(0.3);
+    // the outfits on that scale: a mini over her mid-thigh's height, an A-line by her knee, a pencil under it, a maxi to the floor
+    const of = (word: string) => SKIRTS.find(([name]) => name.includes(word))![2].length, knee = (0.9 - 0.5) / (0.9 - SKIRT_CUT.floorClear);
+    expect(hemOf(joints, of('mini'))).toBeGreaterThan(0.5 + 0.12); expect(of('mini')).toBeGreaterThan(0.08);
+    expect(Math.abs(hemOf(joints, of('A-line')) - 0.5)).toBeLessThan(0.06);
+    expect(hemOf(joints, of('pencil'))).toBeLessThan(0.5 - 0.05); expect(of('pencil')).toBeLessThan(knee + 0.2);
+    expect(of('maxi')).toBe(1);
   });
 
   it('is held by four anchors: all four hold the whole ring, each its quarter, none of them nothing', () => {

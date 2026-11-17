@@ -14,8 +14,9 @@
  * - TOP: 'over' her belly or 'under' it -- the ring's heights at her front, her sides and her back, as shares of her
  *   trunk (0 her hip joints, 1 the base of her neck), a little under the painted waistband's own (`SKIRT_TOPS`); and
  *   UNDER HER BELLY THE RING IS THE UNDER-BELLY LEGGINGS' OWN LINE as it lies on her (`underLine`, `SKIRT_LINE`);
- * - LENGTH: 0 a mini, 1 to the floor, from either top (the hem is level: one height all round, counted from
- *   `SKIRT_TOPS`' heights whatever her belly does to the ring);
+ * - LENGTH: 0 where her legs part, a half a hand under her knee, 1 to the floor -- his drawing's three lines, from
+ *   either top (`SKIRT_CUT.shortest`, `hemOf`; the hem is level: one height all round, counted on her legs whatever
+ *   her belly does to the ring);
  * - FLARE: 0 a tube that lies on her hips and falls straight from the widest of her, 1 a full skirt.
  *
  * Its rest shape IS its cut: a ring that stands just off her, and under it a surface that never comes back in toward
@@ -80,9 +81,9 @@ export const clampSkirt = (s: Partial<SkirtSettings>): SkirtSettings => ({
  * crease under each breast is 0.61 to 0.64 of her trunk (the least of her front's reach, 8 and 11 cm out from her
  * middle), so the band's top is 0.63 (`sarahLabTool.SKIRT_OVER_BAND`; at 0.61 it was pictured a centimetre under the
  * crease) and the ring a centimetre under it. UNDER is 1 to
- * 2 cm under the low rise's (0.125, 0.175, 0.2): where an under-belly skirt's ring was until 2026-11-17, and what its
- * HEM is still counted from -- its ring is the under-belly leggings' own line now (`SKIRT_LINE`), and these three only
- * where the room has no such line to hand it. The painted band shows above the cloth as the skirt's own waistband.
+ * 2 cm under the low rise's (0.125, 0.175, 0.2): where an under-belly skirt's ring was until 2026-11-17 -- its ring is
+ * the under-belly leggings' own line now (`SKIRT_LINE`), and these three only where the room has no such line to hand
+ * it. The painted band shows above the cloth as the skirt's own waistband.
  */
 export const SKIRT_TOPS: Readonly<Record<SkirtTop, { readonly front: number; readonly side: number; readonly back: number }>> = Object.freeze({
   over: Object.freeze({ front: 0.61, side: 0.595, back: 0.585 }),
@@ -98,9 +99,20 @@ export const SKIRT_CUT = Object.freeze({
    *  1.5 mm off her, is held in to 2 mm more under the band, is drawn 3 mm out of that, and the two keep 3 mm apart:
    *  `clothLayers.ts`) */
   ease: 0.006, easeTucked: 0.01,
-  /** a mini's hem is this far under the lowest of the ring (metres); a floor-length one's this far over the floor
-   *  as cut (worn, it hangs about a twentieth longer) */
-  miniDrop: 0.3, floorClear: 0.06,
+  /**
+   * LENGTH'S TWO ENDS ARE HIS DRAWING (Joshua, 2026-11-17, three lines across a figure's legs, "0%", "50%", "100%": "I
+   * can draw and set the 0% to 100% lengths"): at 0 its hem is where her legs part, at 1 the floor, and half-way a
+   * hand under her knee. `shortest`: at 0, this share of the way from her hip joints down to her knees; `floorClear`:
+   * at 1, this far over the floor as cut, metres (worn, it hangs about a twentieth longer). MEASURED off his
+   * drawing: his 0% line 545 px down a figure whose legs part at 548 (give or take 8) and whose feet stand at 992; his
+   * 50% line at 746, 46% of the way from his 0% to his 100% and 46 px under its knees. MEASURED on her, the room's
+   * points at 0%: the gap between her thighs opens 8.0 cm under her hip joints, 0.22 of the 36.5 cm to her knees; a
+   * straight scale from there to the floor puts 50% at 43.3 cm, 8.8 under her knee joints. Until then 0 was 30 cm
+   * under the ring, 11 cm over her knee: longer than a mini. GAME TUNING to his lines.
+   * `leastDrop`: its hem is never nearer the lowest of its ring than this (metres): a ring gone down under a big
+   * belly would meet a short hem.
+   */
+  shortest: 0.22, floorClear: 0.06, leastDrop: 0.08,
   /** FLARE at 1 opens by this angle from straight down (degrees) */
   fullAngle: 38,
   /** rows held to her from the top: all of the first, less of each after (the waistband's grip) */
@@ -242,6 +254,11 @@ export function ringShare(top: SkirtTop, a: number): number {
   return (1 - s) * (t.back + (t.front - t.back) * f) + s * t.side;
 }
 
+/** A skirt's hem at LENGTH `length`, metres from the floor: 0 where her legs part, 1 the floor (`SKIRT_CUT.shortest`, `floorClear`: his drawing). */
+export function hemOf(joints: BodyInput['joints'], length: number): number {
+  const hipY = (joints.hip[0][1] + joints.hip[1][1]) / 2, kneeY = (joints.knee[0][1] + joints.knee[1][1]) / 2, top = hipY - SKIRT_CUT.shortest * (hipY - kneeY);
+  return top + (SKIRT_CUT.floorClear - top) * Math.min(1, Math.max(0, length));
+}
 /**
  * `inside`: for a skirt UNDER her belly, how far inside the under-belly waistband each point of her skin is as she is
  * shaped (`SKIRT_LINE`; one a point of `body.positions`). Without it, or where that line is not found round her, the
@@ -254,9 +271,9 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings, inside: Arr
   const cols = C.columns, ringY = new Float32Array(cols);
   let lowest = Infinity, highest = -Infinity;
   for (let c = 0; c < cols; c++) { const y = hipY + ringShare(s.top, (c / cols) * Math.PI * 2) * trunk; ringY[c] = y; if (y < lowest) lowest = y; if (y > highest) highest = y; }
-  // (its hem is counted from the heights a skirt has always had: a ring that follows her belly down does not take the
-  // hem down with it)
-  const hemY = (lowest - C.miniDrop) + (C.floorClear - (lowest - C.miniDrop)) * s.length;
+  // (its hem is counted on her legs, whatever its top does: a ring that follows her belly down does not take the hem
+  // down with it -- but for a hem it would meet, `leastDrop`)
+  let hemY = hemOf(J, s.length);
   // UNDER HER BELLY, ON THE UNDER-BELLY WAISTBAND'S OWN LINE (`SKIRT_LINE`): the ring's heights and how far out it is,
   // off her skin itself; and under it only her skin under that line
   let under: { readonly form: BodyInput; readonly r: Float64Array; readonly cz: number } | null = null, lineFound = 0;
@@ -275,6 +292,7 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings, inside: Arr
       }
     }
   }
+  hemY = Math.min(hemY, lowest - C.leastDrop);
   const rows = Math.min(C.mostRows, Math.max(4, Math.ceil((highest - hemY) / C.rowStep) + 1));
   const form = dressForm(under?.form ?? body, Math.max(0.01, hemY - 0.02), highest + 0.02, C.formStep);
   // the axis: her middle, half-way between her front and her back at the ring

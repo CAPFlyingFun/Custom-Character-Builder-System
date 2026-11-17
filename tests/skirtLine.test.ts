@@ -13,7 +13,7 @@ import { FACE_REST_OFFSET, FACE_REST_SCALE } from '../src/sarahlab/faceRig';
 import { bodyInputOf } from '../src/sarahlab/garment/bodyInput';
 import { dressForm } from '../src/sarahlab/garment/measure';
 import type { BodyInput } from '../src/sarahlab/garment/types';
-import { SKIRT_CUT, SKIRT_LINE, SKIRT_TOPS, draftSkirt, reachOf, ringOn, underLine } from '../src/sarahlab/skirt/skirtDraft';
+import { SKIRT_CUT, SKIRT_LINE, SKIRT_TOPS, draftSkirt, hemOf, reachOf, ringOn, underLine } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND, SKIRT_UNDER_LEGS, skirtPaint } from '../src/sarahlab/sarahLabTool';
 import { loadHerBody, type HerBody } from './herBodyMap';
 
@@ -207,6 +207,17 @@ describe('on her own skin, at her body file\'s 0%, 100% and 200% bellies', () =>
       }
       expect(read, size).toBeGreaterThan(400);
       expect(insideHer, size).toBe(0);
+    }
+    // HIS DRAWING'S LENGTHS ON HER: 0% where her legs part (8 cm under her hip joints), 50% a hand under her knee
+    {
+      const { input, inside, hipY } = at('none'), kneeY = (input.joints.knee[0][1] + input.joints.knee[1][1]) / 2;
+      expect((hipY - hemOf(input.joints, 0)) * 100).toBeGreaterThan(7); expect((hipY - hemOf(input.joints, 0)) * 100).toBeLessThan(9);
+      expect((kneeY - hemOf(input.joints, 0.5)) * 100).toBeGreaterThan(7); expect((kneeY - hemOf(input.joints, 0.5)) * 100).toBeLessThan(11);
+      expect(draftSkirt(input, { ...settings, length: 0 }, inside).hemY).toBeCloseTo(hemOf(input.joints, 0), 9);
+      // ...and a hem is never nearer the lowest of its ring than `leastDrop`: the shortest skirt under her biggest belly
+      const big = at('twice'), d = draftSkirt(big.input, { ...settings, length: 0 }, big.inside), lowest = Math.min(...d.ringY);
+      expect(d.hemY).toBeLessThanOrEqual(lowest - SKIRT_CUT.leastDrop + 1e-6);
+      expect(d.hemY).toBeLessThanOrEqual(hemOf(big.input.joints, 0) + 1e-9);
     }
     // UNDER HER BELLY AT EVERY SIZE: its front comes down as her belly grows -- over her hip joints with none, under
     // them at her body file's 100%, lower again at its 200% -- where three heights on her trunk left it on her bump

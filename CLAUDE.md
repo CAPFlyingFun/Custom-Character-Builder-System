@@ -345,8 +345,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   heights -- OVER in the crease at the base of her breasts, his, 2026-11-17: "the high skirt point is too low, it should
   basically sit at the base of the breasts at that crease" (MEASURED on her body file: the crease is 0.61 to 0.64 of her
   trunk; the painted band's top is 0.63, `SKIRT_OVER_BAND`, the ring 0.61 in front, and the crop tee ends 0.03 under the
-  band's top, under it -- ended at it, a sliver of her skin showed); UNDER on the under-belly leggings' own line: below), LENGTH (0 a mini, 1 the
-  floor, a level hem counted from `SKIRT_TOPS`' heights) and FLARE (0 a tube that falls from the widest of her, 1 a full skirt): a ring just off her and
+  band's top, under it -- ended at it, a sliver of her skin showed); UNDER on the under-belly leggings' own line: below), LENGTH (0 where her
+  legs part, 1 the floor, a level hem: his drawing, below) and FLARE (0 a tube that falls from the widest of her, 1 a full skirt): a ring just off her and
   under it a surface that never comes back in toward her (her dress form, which spans her legs) and opens by FLARE's
   angle. `clothSkirt.ts` wears it: bound to her skin (`garment/bind.ts`), her skin its floor (`clothSkin.ts`), moved by
   the room's cloth (`clothSim.ts`). Four outfits wear one (`sarahLabTool.ts` `SKIRTS`, `BuiltInOutfit.skirt`), put
@@ -472,7 +472,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     room at 200%: on her drawn list 15 of the 72 directions were uncrossed, all in front of her (the ring's front was
     eased between its neighbours, 2 cm high). So a skirt is drafted on, bound to and walks over ALL of her skin's
     triangles (`SarahLabScene.ts` `skinTrianglesOf`, the list her fabric is laid by; `ClothSkirtOptions.skin`,
-    `ClothSkin`'s `triangles`), as her cloth bikini bottom is.
+    `ClothSkin`'s `triangles`), as her cloth bikini bottom is. (Bound to her drawn list alone, and to all of her
+    skin, the A-line at 200% pictured the same standing and walking.)
   - MEASURED in the room (light skin, 1x; the probe's `skirt()`: `ring`, `lineFound`), centimetres over her hip joints
     at her front, her side and her back: 0%: 4.3, 10.4, 16.4; 50%: 2.0, 9.2, 16.4; 100%: -1.9, 9.8, 16.4; 150%: -6.0,
     8.6, 16.6; 200%: -7.5, 6.8, 16.7 -- the line found in all 72 directions at each. Off the room, on her points read
@@ -489,6 +490,31 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     between rows, each asking made two outlines again. A cut was 1.3 to 2.6 s in the room beside a render and is 0.33
     to 0.61 s (0.9 to 2.6 s off it, now 0.06 to 0.24); the shapes cut differ by under 0.6 mm but for the rows (1)
     moves out, up to 7 mm over a big belly under an over-belly ring.
+- **LENGTH IS HIS DRAWING, AND HE HAS DRAWN A SECOND NUMBER** (Joshua, 2026-11-17, a figure from its front with a green
+  line "Top" under its belly, three yellow lines across its legs -- "0%", "50%", "100%" -- and two red lines down its
+  side, "0%" and "100%": "Here is the drawing with two variables. 1) Length 2) How tightly it curves with the body from
+  legs to legs. Maybe for tighter ones, it's actually a simple bridge like between the breasts that span the front and
+  back gap between the legs… not cloth and if you do a looser one, it fades somehow to cloth sim"). His marked-up
+  figure is not kept in the repo.
+  - LENGTH, DONE (`skirtDraft.ts` `SKIRT_CUT.shortest`, `floorClear`, `hemOf`): 0 where her legs part, 1 the floor,
+    straight between -- half-way is a hand under her knee, as his 50% line is. MEASURED off his drawing: his 0% line
+    545 px down a figure whose legs part at 548 (give or take 8) and whose feet stand at 992; his 50% line at 746, 46%
+    of the way from his 0% to his 100% and 46 px under its knees. MEASURED on her (the room's points at 0%): the gap
+    between her thighs opens 8.0 cm under her hip joints, 0.22 of the 36.5 cm to her knees; 50% is 43.3 cm from the
+    floor, 8.8 under her knee joints. Counted on her legs whatever its top (it was 30 cm under the ring at 0: 11 cm
+    over her knee, longer than a mini), and never nearer the lowest of its ring than 8 cm (`leastDrop`: a ring gone
+    down under a big belly would meet a short hem). THE OUTFITS ON IT: the A-line 0.36, the pencil 0.54 and the maxi
+    1 end where they did (within 3 mm); THE MINI IS 0.15, at her mid-thigh, 17 cm over her knee -- it was 8. GAME
+    TUNING, his to set. MEASURED in the room (light skin, 1x, her belly at 0%; `skirt()`'s `hem`): 80.6, 69.4, 53.8,
+    43.3 and 6.0 cm from the floor at 0, 0.15, 0.36, 0.5 and 1, each pictured from her front and her side; the mini
+    from four sides, seated, walking with the clock held, at 100 and 200%, and under the cloth tee at 0, 100 and
+    200%. Its two cards baked again.
+  - HIS SECOND NUMBER, NOT BEGUN: how closely it holds to her from leg to leg. His "0%" line follows her leg's outline
+    from her hip to her ankle; his "100%" falls straight from her hip. The straight one is FLARE 0 today (a tube from
+    the widest of her, as cloth). The close one is NOT CLOTH, his: paint on her legs and a bridge across the gap
+    between them, front and back, as her cleavage bridge spans her breasts (`cleavageBridge.ts`); between the two it
+    "fades somehow" to the cloth. ASKED OF HIM: whether fullness past straight (FLARE: the A-line, the skater, the
+    circle) stays a number of its own beside it.
 - **A WALK IS NOT A JUMP** (a fault found in those pictures, fixed and told; `clothSkirt.ts` `JUMP_SPEED`). A low skirt's
   ring is on her hips; in a long frame (a tenth of a second on the build machine) a stride carried it over 6 cm, which
   was read as a pose put on, and the skirt was laid afresh in mid-stride: crumpled round her thighs. MEASURED: 2
@@ -513,8 +539,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.
 - NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
-  keep them -- he is to draw where LENGTH's 0% and 100% are: today 0% ends 11 cm over her knee, longer than a mini,
-  and 100% 6 cm off the floor); its colour is one flat colour, not the fabric's weave; seated, it passes through the
+  keep them); a skirt under about 2% of LENGTH shows its painted short's legs under its hem (they end 9.3 cm under her
+  hip joints, 0% is 8.0); its colour is one flat colour, not the fabric's weave; seated, it passes through the
   stool's edge and shows a hole at her side (pictured again at 0 and 100% on the new line: as it was); her hands pass
   through it; it does not collide with itself; walking at 200% it gathers between her thighs; under a tee's hem its
   edge is in small steps, a row of its triangles at a time; a look saved in a low skirt on v0.9.41 or v0.9.42 keeps

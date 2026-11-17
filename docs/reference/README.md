@@ -29,3 +29,10 @@ room since v0.9.27 (2026-11-15; `CLAUDE.md`, "A painted top, drawn", "The rest o
   below belly as a mini skirt at the same length... both can reach the floor length"); and how close it lies to her
   can be chosen. Paint and cloth together: the fitted part painted, the loose part cloth. A skirt is the pilot; a
   jacket is worn over a painted top to begin with, and waits until the bottoms are done.
+  AND SINCE (2026-11-17), with the pilot built: every skirt on the menu sits LOW, under her belly, its top on the
+  under-belly leggings' own line ("just above her pelvis, below her belly following that same curved lines"); the look
+  over her belly is to be one piece, the shirt made long like a dress with its flare under her belly. His drawing of
+  that day (a marked-up figure, not kept here) sets two numbers: LENGTH -- 0% where her legs part, 50% a hand under
+  her knee, 100% the floor -- and HOW CLOSELY IT HOLDS TO HER FROM LEG TO LEG -- 0% along her leg's outline, 100%
+  straight down from her hip; the close one "a simple bridge like between the breasts that span the front and back gap
+  between the legs… not cloth", fading to the cloth as it loosens. `CLAUDE.md`, "The skirts", has what is built.
