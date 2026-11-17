@@ -699,8 +699,10 @@ export type OutfitFabric = PaintedLayer['fabric'];
  * its waistband: the high rise's over her belly, a low one under it -- and one sheet of cloth hung from just under that
  * band (`skirt/skirtDraft.ts`): [its name, its colour, its top, length and flare]. GAME TUNING, to be his.
  */
-/** GAME TUNING: an over-belly skirt's painted waistband's top, on her trunk: just under her bust (0.56), where the tee over it ends. */
-export const SKIRT_OVER_BAND = 0.55;
+/** GAME TUNING: an over-belly skirt's painted waistband's top, on her trunk: in the crease at the base of her breasts
+ *  (his, 2026-11-17; MEASURED 0.61 to 0.64 on her body file), and the tee over it ends a little under that, under the band (ended AT it, a sliver of her skin showed between
+ *  the two -- MEASURED in the room). Behind, the dial's most (0.6). */
+export const SKIRT_OVER_BAND = 0.63;
 export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Object.freeze([
   ['cloth A-line skirt (over belly)', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55, tucked: true }],
   ['cloth mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }],
@@ -810,14 +812,14 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ...SKIRTS.map(([name, tint, skirt]): BuiltInOutfit => ({
     name, garments: [], skirt,
     paint: [
-      { template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.01 } },
-      { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: skirt.top === 'under' ? SHEET_BOTTOMS_TEE_HEM : SKIRT_OVER_BAND } },
+      { template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.03 } },
+      { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: skirt.top === 'under' ? SHEET_BOTTOMS_TEE_HEM : SKIRT_OVER_BAND - 0.03 } },
     ],
   })),
   // ...AND WITH THE CLOTH TEE (`TEE_SKIRTS`): the new tee over or under the skirt, the skirt's painted short under both.
   ...TEE_SKIRTS.map(([name, tint, skirt, cut]): BuiltInOutfit => ({
     name, garments: ['shirtSpandexLite'], skirt, procedural: 'raglan', cut,
-    paint: [{ template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.01 } }],
+    paint: [{ template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.03 } }],
     fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } },
   })),
 ];

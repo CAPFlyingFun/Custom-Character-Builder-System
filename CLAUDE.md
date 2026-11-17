@@ -342,8 +342,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   or below the belly, with adjustable length all the way down to the ground and you can select how tight/close it is
   to the body"; "the top is either one or the other, but both can reach the floor length"). `skirt/skirtDraft.ts`
   (pure) drafts it round her rest shape as she is built (below: cut for her as she is) from his three numbers -- TOP (`over` / `under`: the ring's
-  heights -- OVER between her bust and the top of her belly, his: "right between the breasts and top belly… yours appears
-  mid belly which would fall off in real life"; UNDER a little under a low rise's painted band, `SKIRT_TOPS`), LENGTH (0 a mini, 1 the
+  heights -- OVER in the crease at the base of her breasts, his, 2026-11-17: "the high skirt point is too low, it should
+  basically sit at the base of the breasts at that crease" (MEASURED on her body file: the crease is 0.61 to 0.64 of her
+  trunk; the painted band's top is 0.63, `SKIRT_OVER_BAND`, the ring 0.61 in front, and the crop tee ends 0.03 under the
+  band's top, under it -- ended at it, a sliver of her skin showed); UNDER a little under a low rise's painted band, `SKIRT_TOPS`), LENGTH (0 a mini, 1 the
   floor, a level hem) and FLARE (0 a tube that falls from the widest of her, 1 a full skirt): a ring just off her and
   under it a surface that never comes back in toward her (her dress form, which spans her legs) and opens by FLARE's
   angle. `clothSkirt.ts` wears it: bound to her skin (`garment/bind.ts`), her skin its floor (`clothSkin.ts`), moved by
@@ -387,6 +389,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   and the maxi at 100 and 200%, standing from three sides and walking: each hangs over her bump to its hem. A re-cut
   is 1.3 to 2.6 s on the build machine beside a render (her dress form and the binding): a pause as a slider is let
   go -- NOT MEASURED on a phone.
+- AT THE CREASE, WITH THE CLOTH TEE: NOT RIGHT YET (MEASURED in the room 2026-11-17, 0 and 100%). The painted crop tee
+  with a high skirt is clean from four sides. The CLOTH tee hangs from her bust in front of the crease: tucked, its hem
+  shows ragged over the skirt's top (through it in bands at 100% when cut longer); over the skirt, it rides in ridges
+  and spikes. A waistband there has to hold the tee in to her; the outfits' cards are of the skirt 5 cm lower still.
 - NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
   keep them); its colour is one flat colour, not the fabric's weave; seated, it passes through the stool's edge and
   shows a hole at her side; her hands pass through it; it does not collide with itself; at a big belly an over-belly

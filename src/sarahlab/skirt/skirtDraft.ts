@@ -52,11 +52,15 @@ export const clampSkirt = (s: Partial<SkirtSettings>): SkirtSettings => ({
  * GAME TUNING: the ring's heights on her trunk. OVER is between her bust and the top of her belly (Joshua, 2026-11-16, of
  * the first ones, hung 3 cm under the high rise's waistband: "I want the top of the skirts for the high ones right
  * between the breasts and top belly… yours appears mid belly which would fall off in real life"): her underbust is 0.56
- * (`paintTemplates` LINES), and its painted band is taken up to 0.55 (`sarahLabTool.SKIRT_OVER_BAND`). UNDER is 1 to
+ * (`paintTemplates` LINES), and its painted band was taken up to 0.55. THEN, 2026-11-17, of that: "the high skirt point
+ * is too low, it should basically sit at the base of the breasts at that crease" -- MEASURED on her body file, the
+ * crease under each breast is 0.61 to 0.64 of her trunk (the least of her front's reach, 8 and 11 cm out from her
+ * middle), so the band's top is 0.63 (`sarahLabTool.SKIRT_OVER_BAND`; at 0.61 it was pictured a centimetre under the
+ * crease) and the ring a centimetre under it. UNDER is 1 to
  * 2 cm under the low rise's (0.125, 0.175, 0.2). The painted band shows above the cloth as the skirt's own waistband.
  */
 export const SKIRT_TOPS: Readonly<Record<SkirtTop, { readonly front: number; readonly side: number; readonly back: number }>> = Object.freeze({
-  over: Object.freeze({ front: 0.515, side: 0.505, back: 0.505 }),
+  over: Object.freeze({ front: 0.61, side: 0.595, back: 0.585 }),
   under: Object.freeze({ front: 0.095, side: 0.145, back: 0.17 }),
 });
 
