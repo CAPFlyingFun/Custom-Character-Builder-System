@@ -763,6 +763,30 @@ export function planeFront(frame: LowFrame, spec: Pick<LowSpec, 'waist'>, middle
   return flat + (w[0] - flat) * belly;
 }
 /**
+ * HOW FAR INSIDE A HOOP'S WAISTBAND EACH POINT OF HER SKIN IS, AS SHE IS SHAPED (METRES, + inside the garment; one a
+ * point) -- the waistband as the room draws it (`planeAt`: its hoop swung, `swingOf`, and its front told, `planeFront`,
+ * by where the middle of her front stands in `shaped` itself) -- for what hangs from that line and is not paint: a
+ * cloth skirt's ring (`skirt/skirtDraft.ts` `SKIRT_LINE`; Joshua, 2026-11-17: "how the skirt should sit is like how we
+ * did the lower rider leggings, just above her pelvis, below her belly following that same curved lines"). `shaped`:
+ * her points before her bones pose her, xyz each, her units; `limb`: `limbSkin`. Her arm's skin is never inside; what
+ * stands a quarter of a metre under her hip joints is, and what stands 40 cm over them is not, without being asked
+ * (a hoop's line is between the two at every size of belly: 10 cm under them at the most, 18 over). Null for a
+ * waistband that is no hoop.
+ */
+export function hoopInside(frame: LowFrame, spec: Pick<LowSpec, 'waist' | 'hinge' | 'reach'>, limb: ArrayLike<number>, shaped: ArrayLike<number>): Float32Array | null {
+  const n = Math.floor(shaped.length / 3);
+  if (!spec.waist || !spec.hinge || !frame.middle.length || limb.length !== n) return null;
+  const middle = new Float32Array(frame.middle.length * 3);
+  for (let i = 0; i < frame.middle.length; i++) { const v = frame.middle[i]; middle[i * 3] = shaped[v * 3]; middle[i * 3 + 1] = shaped[v * 3 + 1]; middle[i * 3 + 2] = shaped[v * 3 + 2]; }
+  const swing = swingOf(frame, spec, middle), waist: V4 = [planeFront(frame, spec, middle), spec.waist[1], spec.waist[2], spec.waist[3]];
+  const U = frame.unitsPerMetre, out = new Float32Array(n), under = frame.hipY - 0.25 * U, over = frame.hipY + 0.4 * U;
+  for (let v = 0; v < n; v++) {
+    const y = shaped[v * 3 + 1];
+    out[v] = limb[v] > 0.5 || y > over ? -1 : y < under ? 1 : planeAt(frame, waist, spec.hinge, swing, [shaped[v * 3], y, shaped[v * 3 + 2]], legShareOf(limb[v])) / U;
+  }
+  return out;
+}
+/**
  * How much of a hoop is its plane (`planeAt`): all of it, at every size of belly, swung or not (unswung it is the
  * waistband's own line told on her as she stands: the same edging at 0% as at 200%). A waistband with no hoop: none.
  */

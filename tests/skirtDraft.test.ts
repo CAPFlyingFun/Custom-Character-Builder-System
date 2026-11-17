@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
-import { OUTFITS, SKIRTS, SKIRT_OVER_BAND } from '../src/sarahlab/sarahLabTool';
+import { OUTFITS, SKIRTS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND, SKIRT_UNDER_LEGS } from '../src/sarahlab/sarahLabTool';
 import { RISES } from '../src/sarahlab/paintTemplates';
 
 describe('a skirt, drafted', () => {
@@ -43,9 +43,11 @@ describe('a skirt, drafted', () => {
     const worn = OUTFITS.filter((o) => o.skirt && !o.procedural);
     expect(worn.map((o) => o.name)).toEqual(SKIRTS.map(([name]) => name));
     for (const o of worn) {
-      expect(o.paint?.[0].template, o.name).toBe('shortsAthletic');
+      // (under her belly its painted part is the under-belly leggings cut short, whose line its ring is laid on:
+      // `tests/skirtLine.test.ts`; over it, the short shorts with their waistband in the crease under her bust)
+      expect(o.paint?.[0].template, o.name).toBe(o.skirt!.top === 'under' ? SKIRT_UNDER_BAND : 'shortsAthletic');
       expect(o.skirt).toEqual(clampSkirt(o.skirt!));
-      if (o.skirt!.top === 'under') expect(o.paint?.[0].dials?.rise, o.name).toBeLessThan(0.2);
+      if (o.skirt!.top === 'under') expect(o.paint?.[0].dials, o.name).toEqual({ legEnd: SKIRT_UNDER_LEGS });
       else expect(o.paint?.[0].dials?.rise, o.name).toBe(SKIRT_OVER_BAND);
     }
     expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['under']));

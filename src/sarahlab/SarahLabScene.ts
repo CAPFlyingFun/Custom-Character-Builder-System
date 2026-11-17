@@ -362,7 +362,7 @@ import { LIGHT_BODY_TRIANGLES,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn, outfitNamed, modelName, modelsOnMenu,
-  BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE,
+  BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE, SKIRT_UNDER_BAND,
 } from './sarahLabTool';
 import { blendJointTurns, sitEase, stepSit } from './poseBlend';
 import { createSkinShell, type SkinShell } from './skinShellMesh';
@@ -1959,7 +1959,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * re-cuts it once, when it is let go). GAME TUNING.
    */
   const SKIRT_RECUT_AFTER = 0.6;
-  let skirtShapeKey = '', skirtRecut = false, skirtRecutAge = 0, skirtCutMs = 0;
+  let skirtShapeKey = '', skirtRecut = false, skirtRecutAge = 0, skirtCutMs = 0, skirtOnLine = false;
   let skirtNavel: { body: THREE.SkinnedMesh; pose: SkinPose; spots: DetailSpots } | null = null;
   const skirtBand = new ClothUnder(); let teeCinched = 0;
   const skirtCover = new ClothUnder(); let teeHidden = new Uint8Array(0), teeUnderSkirt = 0;
@@ -3032,8 +3032,20 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const worn: Record<string, number> = {}, inf = body.morphTargetInfluences ?? [];
     for (const [name, at] of Object.entries(body.morphTargetDictionary ?? {})) if (inf[at] && !MOTION_SHAPES.has(name)) worn[name] = inf[at];
     const input = bodyInputOf(body, worn);
+    // UNDER HER BELLY ITS TOP IS THE UNDER-BELLY LEGGINGS' OWN LINE (Joshua, 2026-11-17: "how the skirt should sit is like
+    // how we did the lower rider leggings, just above her pelvis, below her belly following that same curved lines"):
+    // that waistband as it lies on her at this size, told at each of these points (`fabricPanel.hoopOn`, her mesh's
+    // own units; `skirtDraft.SKIRT_LINE`)
+    let line: Float32Array | null = null;
+    if (want.top === 'under' && fabric) {
+      const P = input.positions, places = new Float32Array(P.length);
+      for (let i = 0; i < P.length; i += 3) { places[i] = (P[i] - FACE_REST_OFFSET[0]) / FACE_REST_SCALE; places[i + 1] = (P[i + 1] - FACE_REST_OFFSET[1]) / FACE_REST_SCALE; places[i + 2] = (P[i + 2] - FACE_REST_OFFSET[2]) / FACE_REST_SCALE; }
+      line = fabric.hoopOn(SKIRT_UNDER_BAND, places);
+    }
     const material = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
-    skirtRoom = new ClothSkirt({ body, input, settings: want, material, unitsPerMetre: M, scale: FACE_REST_SCALE, offset: FACE_REST_OFFSET });
+    const every = skinTrianglesOf(body), skin = every && every !== body.geometry.index?.array ? (every instanceof Uint32Array ? every : Uint32Array.from(every)) : null;
+    skirtRoom = new ClothSkirt({ body, input, settings: want, line, skin, material, unitsPerMetre: M, scale: FACE_REST_SCALE, offset: FACE_REST_OFFSET });
+    skirtOnLine = !!line;
     skirtKey = key; skirtColour = colour; skirtPoseKey = pose; skirtShapeKey = shapeKeyNow(); skirtRecut = false;
     skirtCutMs = performance.now() - t0;
     three.add(skirtRoom.mesh);
@@ -3046,6 +3058,25 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (cloth && clothOn) cloth.mesh.visible = true;
   }
   /** Her body the tees are laid on (the mesh that carries the cloth's cover). */
+  /**
+   * ALL OF HER SKIN'S TRIANGLES, EACH ONCE: her opening's area is drawn by its own patch, its triangles hers all the same
+   * (her own list has them again when the patch is not shown). What her fabric is laid by (`fabricPanel`'s
+   * `skinTriangles`), and what a skirt's line is found on: her own drawn list has a hole there, and at a big belly the
+   * under-belly waistband's line runs across it, a centimetre over her opening.
+   */
+  function skinTrianglesOf(mesh: THREE.Mesh): ArrayLike<number> | null {
+    const all = (mesh.userData.allIndices as ArrayLike<number> | undefined) ?? mesh.geometry.index?.array, area = vulva?.bake.area;
+    if (!all) return null;
+    if (!area?.length) return all;
+    const n = mesh.geometry.getAttribute('position').count, inArea = new Uint8Array(n), key = (a: number, b2: number, c: number) => [a, b2, c].sort((x, y) => x - y).join(',');
+    const seen = new Set<string>();
+    for (let t = 0; t + 2 < area.length; t += 3) { seen.add(key(area[t], area[t + 1], area[t + 2])); inArea[area[t]] = 1; inArea[area[t + 1]] = 1; inArea[area[t + 2]] = 1; }
+    const tris: number[] = [];
+    for (let t = 0; t + 2 < all.length; t += 3) { const a = all[t], b2 = all[t + 1], c = all[t + 2]; if (inArea[a] && inArea[b2] && inArea[c] && seen.has(key(a, b2, c))) continue; tris.push(a, b2, c); }
+    const out = new Uint32Array(tris.length + area.length);
+    out.set(tris); out.set(area, tris.length);
+    return out;
+  }
   const clothBody = () => skinned.find((m) => !!m.geometry.getAttribute('_cloth_cover')) ?? null;
   /**
    * Put the procedural tee on her, or take it off (null): tailored to her as she is now, in the light tee's own material
@@ -3779,19 +3810,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       poseFields: () => POSE_SHAPE_FIELDS,
       // all of her skin's triangles, each once: her opening's area is drawn by its own patch, its triangles hers all the
       // same (her own list has them again when the patch is not shown)
-      skinTriangles: (mesh) => {
-        const all = (mesh.userData.allIndices as ArrayLike<number> | undefined) ?? mesh.geometry.index?.array, area = vulva?.bake.area;
-        if (!all) return null;
-        if (!area?.length) return all;
-        const n = mesh.geometry.getAttribute('position').count, inArea = new Uint8Array(n), key = (a: number, b2: number, c: number) => [a, b2, c].sort((x, y) => x - y).join(',');
-        const seen = new Set<string>();
-        for (let t = 0; t + 2 < area.length; t += 3) { seen.add(key(area[t], area[t + 1], area[t + 2])); inArea[area[t]] = 1; inArea[area[t + 1]] = 1; inArea[area[t + 2]] = 1; }
-        const tris: number[] = [];
-        for (let t = 0; t + 2 < all.length; t += 3) { const a = all[t], b2 = all[t + 1], c = all[t + 2]; if (inArea[a] && inArea[b2] && inArea[c] && seen.has(key(a, b2, c))) continue; tris.push(a, b2, c); }
-        const out = new Uint32Array(tris.length + area.length);
-        out.set(tris); out.set(area, tris.length);
-        return out;
-      },
+      skinTriangles: (mesh) => skinTrianglesOf(mesh),
       // the middle of her vulva: a vertex of her own skin at its split's middle (her rebuilt area reads its paint there)
       vulvaHint: () => { if (!vulva) return undefined; const b2 = vulva.bake; let best = -1, bd = Infinity; for (let p2 = 0; p2 < b2.count; p2++) if (b2.ring[p2] === 0) { const d2 = Math.abs(b2.flat[p2 * 2 + 1] - b2.split.mid); if (d2 < bd) { bd = d2; best = p2; } } return best >= 0 ? b2.src[best * 3] : undefined; },
       navelHint: () => {
@@ -10801,7 +10820,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return out;
         },
         // a skirt as cloth (clothSkirt.ts): put one on by its three numbers (null: the outfit's own again), and read it
-        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats(), cutMs: Math.round(skirtCutMs), skirtFloorsRaised: skirtRoom.floorsRaised, teeCinched, teeUnderSkirt, skirtUnderTee, skirtHeldIn } : null; },
+        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats(), cutMs: Math.round(skirtCutMs), skirtFloorsRaised: skirtRoom.floorsRaised, teeCinched, teeUnderSkirt, skirtUnderTee, skirtHeldIn, onLine: skirtOnLine, lineFound: +skirtRoom.draft.lineFound.toFixed(3), ring: (() => { const d = skirtRoom.draft, c = d.columns, cm = (k: number) => +(d.ringY[k] * 100).toFixed(1); return [cm(0), cm(c >> 2), cm(c >> 1)]; })(), hem: +(skirtRoom.draft.hemY * 100).toFixed(1) } : null; },
         skirtRestart: () => { skirtRoom?.restart(); return !!skirtRoom; },
         skirtParts: (capsules?: boolean, skin?: boolean) => { if (!skirtRoom) return null; if (capsules !== undefined) skirtRoom.probe.capsules = capsules; if (skin !== undefined) skirtRoom.probe.skin = skin; return { ...skirtRoom.probe }; },
         skirtWire: (on: boolean) => { if (!skirtRoom) return false; (skirtRoom.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },

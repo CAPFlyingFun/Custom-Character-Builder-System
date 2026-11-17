@@ -696,13 +696,30 @@ export type OutfitFabric = PaintedLayer['fabric'];
  * THE SKIRTS' PILOT (Joshua, 2026-11-16: "a combination of paint and cloth for like skirts, etc… that are loose and
  * flowing"; "have the top of the skirt above or below the belly, with adjustable length all the way down to the ground
  * and you can select how tight/close it is to the body"). Each is a short painted in its colour -- its fitted part, and
- * its waistband: the high rise's over her belly, a low one under it -- and one sheet of cloth hung from just under that
- * band (`skirt/skirtDraft.ts`): [its name, its colour, its top, length and flare]. GAME TUNING, to be his.
+ * its waistband: the high rise's over her belly, the under-belly leggings' own under it (`SKIRT_UNDER_BAND`) -- and one
+ * sheet of cloth hung from just under that band (`skirt/skirtDraft.ts`): [its name, its colour, its top, length and
+ * flare]. GAME TUNING, to be his.
  */
 /** GAME TUNING: an over-belly skirt's painted waistband's top, on her trunk: in the crease at the base of her breasts
  *  (his, 2026-11-17; MEASURED 0.61 to 0.64 on her body file), and the tee over it ends a little under that, under the band (ended AT it, a sliver of her skin showed between
  *  the two -- MEASURED in the room). Behind, the dial's most (0.6). */
 export const SKIRT_OVER_BAND = 0.63;
+/**
+ * AN UNDER-BELLY SKIRT'S PAINTED PART IS THE UNDER-BELLY LEGGINGS, CUT SHORT (Joshua, 2026-11-17, of the skirts moved
+ * under her belly on a short of their own, its waistband at three heights on her trunk: "how the skirt should sit is
+ * like how we did the lower rider leggings, just above her pelvis, below her belly following that same curved
+ * lines…"). That style's waistband -- his line, a hoop that swings down under her belly as it grows (`bottomCut.ts`
+ * `planeAt`), its band 1.5 cm -- with its legs ended where a short's are; and the cloth's ring is laid on that same
+ * line (`skirt/skirtDraft.ts` `SKIRT_LINE`, `fabricPanel.hoopOn`). `SKIRT_UNDER_LEGS`: LEG LENGTH, the short
+ * shorts' own. Until then it was the short shorts with WAISTBAND 0.125 and HIPS & BACK RISE 0.19: a waistband ON her
+ * belly, which rides her skin as it stretches -- up the front of her bump.
+ */
+export const SKIRT_UNDER_BAND = 'leggingsUnder', SKIRT_UNDER_LEGS = 0.12;
+/** A skirt's painted part: its short in its colour, by its top. */
+export function skirtPaint(skirt: Pick<SkirtSettings, 'top'>, tint: string): PaintedLayer {
+  const fabric = { family: 'athletic', colour: 0, tint } as const;
+  return skirt.top === 'under' ? { template: SKIRT_UNDER_BAND, fabric, dials: { legEnd: SKIRT_UNDER_LEGS } } : { template: 'shortsAthletic', fabric, dials: { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.03 } };
+}
 export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Object.freeze([
   // (ALL FOUR SIT LOW since 2026-11-17 -- Joshua: "Leave it sit low, most don't actually ride high… For now, only do
   //  under the belly since that's how most skirts sit, lol, we can come back to the look over later": the A-line and
@@ -818,14 +835,14 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ...SKIRTS.map(([name, tint, skirt]): BuiltInOutfit => ({
     name, garments: [], skirt,
     paint: [
-      { template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.03 } },
+      skirtPaint(skirt, tint),
       { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: skirt.top === 'under' ? SHEET_BOTTOMS_TEE_HEM : SKIRT_OVER_BAND - 0.03 } },
     ],
   })),
   // ...AND WITH THE CLOTH TEE (`TEE_SKIRTS`): the new tee over or under the skirt, the skirt's painted short under both.
   ...TEE_SKIRTS.map(([name, tint, skirt, cut]): BuiltInOutfit => ({
     name, garments: ['shirtSpandexLite'], skirt, procedural: 'raglan', cut,
-    paint: [{ template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.03 } }],
+    paint: [skirtPaint(skirt, tint)],
     fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } },
   })),
 ];

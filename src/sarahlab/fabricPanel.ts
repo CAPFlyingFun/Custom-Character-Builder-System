@@ -39,7 +39,7 @@ import {
   type FabricPick, type FabricSet, type OutfitConfig, type PaintTool,
 } from './fabricLibrary';
 import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricLowWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowMoon, setFabricLowSwing, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer, type FabricLow } from './fabricMaterial';
-import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, planeFront, planeShare, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
+import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, hoopInside, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, planeFront, planeShare, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
 import { makePulledSlip, pulledSlipDriver, type PulledDriver } from './pulledSlip';
 import { MOTION_SHAPES } from './levelLine';
 import { ARMSCYE, TOP_CUT, cutPicture, isCutTop, isOnePiece, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
@@ -292,6 +292,13 @@ export interface FabricPanel {
    */
   /** A fabric's pictures or a designed garment's field are still being fetched for what she wears: she is not dressed yet. */
   busy(): boolean;
+  /**
+   * How far inside a style's hoop of a waistband each point of her skin is, as she is shaped (`bottomCut.hoopInside`:
+   * metres, + inside the garment, one a point) -- for a cloth skirt's ring, which is laid on that line. `shaped`: her
+   * points before her bones pose her, xyz each, her mesh's own units. Null for a style whose waistband is no hoop,
+   * and before her body is measured.
+   */
+  hoopOn(template: string, shaped: ArrayLike<number>): Float32Array | null;
   lowState(): {
     readonly frame: { readonly unitsPerMetre: number; readonly mid: number; readonly hipY: number; readonly trunk: number; readonly facing: number; readonly legs: readonly { readonly name: string; readonly thigh: number; readonly shin: number }[] };
     readonly worn: boolean;
@@ -1950,6 +1957,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     },
     slipNow() { return slip && slip.mesh === hooks.body() ? slip.plain : null; },
     busy: () => loadsOut > 0,
+    hoopOn(template, shaped) {
+      const body = hooks.body(), frame = lowFrameNow(), map = regionMap(), t = COVERAGE_TEMPLATES.find((x) => x.id === template);
+      return body && frame && map && t && isDrawnBottom(t.params) ? hoopInside(frame, lowSpec(t.params, frame), limbSkin(map), shaped) : null;
+    },
     lowState() {
       const body = hooks.body(), frame = body && lowOf?.mesh === body ? lowOf.frame : null;
       if (!body || !frame) return null;

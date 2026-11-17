@@ -78,6 +78,16 @@ export interface ClothSkirtOptions {
   /** her rest shape as she is built now (`bodyInputOf` with the morphs she wears) */
   readonly input: BodyInput;
   readonly settings: SkirtSettings;
+  /** for a skirt under her belly: how far inside the under-belly waistband each of `input`'s points is (`skirtDraft.SKIRT_LINE`; metres) */
+  readonly line?: ArrayLike<number> | null;
+  /**
+   * ALL of her skin's triangles, where her own drawn list leaves some out (her opening's area is drawn by a patch of its
+   * own): what the skirt is DRAFTED on -- its line found, its dress form cut. At a big belly the under-belly
+   * waistband's line runs across that area, a centimetre over her opening, and on her drawn list alone it was not
+   * found in front of her at all (MEASURED in the room at 200%: 15 of the ring's 72 directions uncrossed). The cloth
+   * is still BOUND to `input`'s own triangles, which are the ones her skin's walk knows.
+   */
+  readonly skin?: Uint32Array | null;
   readonly material: THREE.Material;
   /** the room's units to her metre */
   readonly unitsPerMetre: number;
@@ -129,7 +139,7 @@ export class ClothSkirt {
     this.options = options;
     this.settings = options.settings;
     this.cloth = { ...SKIRT_CLOTH_SETTINGS, ...(options.cloth ?? {}) };
-    const d = this.draft = draftSkirt(options.input, options.settings), M = options.unitsPerMetre;
+    const d = this.draft = draftSkirt(options.skin ? { ...options.input, triangles: options.skin } : options.input, options.settings, options.line ?? null), M = options.unitsPerMetre;
     const region = new Uint8Array(d.count).fill(BIND_TRUNK);
     const binding = bindParticles(options.input, d.rest, region, { scale: options.scale, offset: options.offset, minOffset: SKIRT_BODY.clearance, maxOffset: 3 });
     this.skin = new ClothSkin(options.body, binding, { thickness: SKIRT_BODY.clearance * M, armBones: SARAH_V2_ARM_BONES, trunkOnly: new Uint8Array(d.count).fill(1) });
