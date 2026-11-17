@@ -54,6 +54,14 @@ const WARM_SECONDS = 0.5, WARM_DAMPING = 20;
 /** Metres: her ring's places moving further than this in one frame is a jump (a pose put on, a saved body), not motion. */
 const JUMP_M = 0.06;
 /**
+ * ...or, in a long frame, further than this speed would take them (metres a second). A FAULT FOUND 2026-11-17 in the
+ * pictures of the skirts moved under her belly: walking, a low skirt crumpled up round her thighs and was thrown about.
+ * Its ring is on her hips, which sway and step; a slow frame (a tenth of a second on the build machine, and on a
+ * phone under two cloths) carries them more than 6 cm, which was read as a jump and the skirt laid afresh -- MEASURED:
+ * 2 restarts in 4.5 s of walking in the A-line, 5 in the mini. A walk is about 1.3 m/s, a pose put on is instant.
+ */
+const JUMP_SPEED = 3;
+/**
  * Metres. HER SKIN UNDER A POINT THAT HANGS OFF HER. The cloth's floor is a half-space: the nearest of her skin and the
  * way its TRIANGLE faces (`clothSim.ts` step 6), which is right for cloth that lies on her. A skirt hangs a hand and more
  * off her, and the nearest of her to such a point is as often an edge of her -- her toes, her heel, the turn of her
@@ -195,7 +203,7 @@ export class ClothSkirt {
   }
 
   /** One frame: her skin under the cloth, her legs, the cloth, and the sheet drawn on it. Her world matrices must be current. */
-  frame(dt: number, stool: SkirtStool | null = null): void {
+  frame(dt: number, stool: SkirtStool | null = null, span: number = dt): void {
     if (!this.sim) this.restart();
     const sim = this.sim!, n = this.draft.count;
     sim.settings = this.cloth;
@@ -205,7 +213,7 @@ export class ClothSkirt {
     if (this.under) { this.layer.build(this.under.x, this.under.n, CLOTH_LAYERS.cell * this.options.unitsPerMetre); this.raised = raiseOver(this.layer, this.after, n, this.options.unitsPerMetre, { most: CLOTH_LAYERS.tuckedMost, held: this.draft.pin, lift: this.under.lift ?? 0 }); }
     this.legs(this.capsNow, stool);
     if (this.primed) {
-      const a = this.after.pinTarget, b = this.before.pinTarget, jump = JUMP_M * this.options.unitsPerMetre, pin = this.draft.pin;
+      const a = this.after.pinTarget, b = this.before.pinTarget, jump = Math.max(JUMP_M, JUMP_SPEED * span) * this.options.unitsPerMetre, pin = this.draft.pin;
       let most = 0;
       for (let p = 0; p < n; p++) { if (pin[p] < 1) continue; const i = p * 3, q = (a[i] - b[i]) ** 2 + (a[i + 1] - b[i + 1]) ** 2 + (a[i + 2] - b[i + 2]) ** 2; if (q > most) most = q; }
       if (most > jump * jump) { this.jumps++; this.restart(); skinMs += this.skin.update(sim.positions, this.after); this.floors(sim.positions, this.after); }

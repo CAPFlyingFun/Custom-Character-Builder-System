@@ -438,6 +438,27 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   0, 100 and 200% from every side. NOT RIGHT: at 100 and 200% the skirt's top edge is seen from her three-quarter
   and side, standing off her under the tee's hem (it hangs from the front of her bump); walking, the skirt gathers
   between her legs in some strides. The tee over the LOW mini goes the same way: not pictured since.
+- **EVERY SKIRT ON THE MENU SITS LOW, UNDER HER BELLY** (Joshua, 2026-11-17: "Leave it sit low, most don't actually ride
+  high, although there are some clothing styles that do… but the better way is keep the shirt, make it longer like a
+  dress and add the flair under the belly and created basically a two tone piece look from one piece doing a hybrid if
+  over the belly skirt over shirt. For now, only do under the belly since that's how most skirts sit, lol, we can come
+  back to the look over later"). The A-line and the maxi, and the two with the cloth tee that were high (tucked, and
+  over), are under her belly; a name one had still finds its outfit (`OUTFIT_FORMER_NAMES`). An over-belly skirt, the
+  tuck and the crease are as built, the probe's to put on. THE LOOK OVER HER BELLY, WHEN HE COMES BACK TO IT, IS ONE
+  PIECE: the shirt made long like a dress, its flare beginning under her belly, in two tones -- not a skirt over a shirt.
+  MEASURED in the room (light skin, 1x): the A-line and the maxi at 0 and 100%, standing: clean; with the tee at 0%:
+  clean; at 100 and 200% the skirt's top edge is seen under the tee's hem and, at 200%, gaps beside it.
+- **A WALK IS NOT A JUMP** (a fault found in those pictures, fixed and told; `clothSkirt.ts` `JUMP_SPEED`). A low skirt's
+  ring is on her hips; in a long frame (a tenth of a second on the build machine) a stride carried it over 6 cm, which
+  was read as a pose put on, and the skirt was laid afresh in mid-stride: crumpled round her thighs. MEASURED: 2
+  restarts in 4.5 s of walking in the A-line and 5 in the mini; now none in either or with the tee, a jump being
+  further than 6 cm AND than 3 m/s over the frame. It still swings wide as she walks at that frame rate: NOT JUDGED,
+  the build machine draws ten frames a second -- his phone is to say.
+- HIS TWO SHEETS OF SKIRTS (`docs/reference/skirts/`): 31 pictures, 24 styles. As outfits: 4 (A-line, mini, maxi,
+  pencil). By the numbers there are, not yet outfits: tube, skater, circle. Wanting something a skirt has not got:
+  pleats (pleated, accordion, box, knife); tiers and layers (ruffled, layered, tulle, gypsy); an uneven or wrapped hem
+  (asymmetrical, wrap, tulip, draped); shaped panels (godet, mermaid, paneled, bubble); a deep waistband in a second
+  colour (yoke-waist).
 - **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.

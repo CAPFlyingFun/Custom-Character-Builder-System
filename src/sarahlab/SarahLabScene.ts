@@ -8961,7 +8961,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           model.updateMatrixWorld(true);
           const pieces = dt > 1 / 40 ? 2 : 1;
           const seat = sitAmount > 0 && stool.visible ? { x: stool.position.x, z: stool.position.z, radius: 0.21 * M, top: stool.scale.y } : null;
-          for (let k = 0; k < pieces; k++) skirtRoom.frame(dt / pieces, seat);
+          for (let k = 0; k < pieces; k++) skirtRoom.frame(dt / pieces, seat, dt);
           // ...and what of the SKIRT is under that tee is not drawn (his: "can hide clothing"; never her skin)
           if (tee && !skirt.settings.tucked && skirt.positions) {
             const sx = skirt.positions, count = skirt.draft.count;
