@@ -1429,7 +1429,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // her calf pressed flat to her thigh in SQUAT, not through it (birthContact.ts)
   // her knees turned round, not averaged, in RECLINE (kneeTurn.ts; off in SQUAT -- Joshua, 2026-11-04, of her squatting
   // legs with it and without: "I like the second look... it looks natural", turned round her calf stood off her thigh)
-  let kneeTurn: KneeTurn | null = null, kneeTurnOn = true;
+  // OFF IN RECLINE AS WELL since 2026-11-16 (Joshua, of her calf behind and just under her knee: "needs to match the look
+  // of squat regardless of outfit… recline looks off and pitches too small, squat is better and more natural looking").
+  // MEASURED in the room at 0%, the light skin and the full one alike: turned, the top of her calf is drawn in thin with a
+  // hook behind her knee; not turned it is full, as in SQUAT, and the front of her knee is round at RECLINE's bend. The
+  // `kneeTurn` probe still switches it on.
+  let kneeTurn: KneeTurn | null = null, kneeTurnOn = false;
   const kneeTurnHere = (): boolean => isBirthPose(pose) && pose !== 'squat' && kneeTurnOn && !!kneeTurn;
   // her hips turned round, not averaged, in RECLINE (hipTurn.ts; SQUAT is as Joshua likes it)
   let hipTurn: HipTurn | null = null, hipTurnOn = true;

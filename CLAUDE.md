@@ -1128,6 +1128,13 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `bodyPoints('posed')` probe), the hold on against off -- SMOOTHER held (0.36 mm from its neighbours' mean across the
   394 edges where a thigh's share begins, 0.91 not held). No step in her skinning: so it was laid after her fields.
   MEASURE HER POINTS BEFORE A SIXTH PICTURE.
+- **Her knees are not turned round in RECLINE either** (Joshua, 2026-11-16, of her calf behind and just under her knee:
+  "needs to match the look of squat regardless of outfit… recline looks off and pitches too small, squat is better and
+  more natural looking"). `kneeTurn.ts`'s turn (on in RECLINE since 2026-11-02, off in SQUAT since 2026-11-04) is off
+  by default (`SarahLabScene.ts` `kneeTurnOn`; the `kneeTurn` probe switches it on). MEASURED in the room at 0%, the
+  light skin and the full one alike: turned (3,827 and 3,969 points, 33 mm at the most) the top of her calf was drawn
+  in thin with a hook behind her knee; not turned it is full, and the front of her knee is round at RECLINE's bend, at
+  0 and 150%. Her knees' smoothing (`BIRTH_KNEES_FIELD`) stays: without it the back of her knee is torn.
 - MEASURED in the room, both poses at 200 and 150% on the light skin and 200% on the full one: round, no line down her
   belly's sides, no patch. LEFT, AND NAMED: faint ripples low on her belly's front in SQUAT at 200%.
 - After anything changes the hold, her soft belly's share or her navel's lay: `tests/bellyHold.test.ts`,
