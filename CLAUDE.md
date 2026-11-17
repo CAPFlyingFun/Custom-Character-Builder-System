@@ -404,8 +404,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   in part among them (only the ring itself keeps its floor), and its ring is cut 10 mm off her. The tucked tee's
   LENGTH is 6 (at 14 its hem drew a line across her bump). MEASURED in the room (light skin, 1x): 0% from four sides
   and walking, 100 and 200% standing from her three-quarter and side: the tee bloused over the band, none of it
-  through the skirt. NOT RIGHT: WALKING at 100% the tee comes through under the band; the tee OVER a high skirt still
-  rides in ridges and spikes; the seven cards are of the skirt 5 cm lower.
+  through the skirt. Walking at 100% it still came through under the band, so:
+- **WHAT OF THE TEE IS UNDER THE SKIRT IS NOT DRAWN** (Joshua, 2026-11-17: "hide it under the skirt, but if the skirt
+  moves, it will automatically show… Definitely don't hide skin, but can hide clothing or do a simple collision that
+  hides touching vertices on collision"). `clothLayers.ts` `coveredBy`, `GarmentCloth.hidden`: each frame a point of
+  the tucked tee is marked while the skirt (under its top two rows, whose edge covers where the hiding ends) lies over
+  its floor on her, no nearer her than the point itself; the tee leaves out the triangles whose three points are all
+  marked. HER SKIN IS NEVER HIDDEN, and where the skirt lifts away the tee is drawn again. MEASURED in the room (light
+  skin, 1x): 0, 100 and 200% standing and walking -- none of the tee through the skirt at 0 and 100%; a fleck by the
+  band at 100% standing and one at 200% walking (a triangle one of whose points is not covered).
+  NOT RIGHT: the tee OVER a high skirt still rides in ridges and spikes; the seven cards are of the skirt 5 cm lower.
 - **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.

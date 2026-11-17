@@ -1018,7 +1018,7 @@ export class GarmentCloth {
     }
     this.position.needsUpdate = true; this.normal.needsUpdate = true;
     // her navel drawn finely onto the cloth over it (navelPatch.ts, navelSurface.ts)
-    this.navelPatch.draw(this.drawnAll, this.detail?.navelSurface ?? null);
+    this.navelPatch.draw(this.drawnNow(), this.detail?.navelSurface ?? null);
     const k = 1 / SMOOTHING, s = this.shown;
     s.skinMs += (skinMs - s.skinMs) * k; s.simMs += (stats.ms - s.simMs) * k; s.drawMs += (performance.now() - t1 - s.drawMs) * k;
     this.last = stats;
@@ -1270,6 +1270,28 @@ export class GarmentCloth {
    * skin contacts (its first `n` slots) before it is stepped, to raise its floors over the other. Null: none.
    */
   over: ((contacts: SkinContacts, n: number) => void) | null = null;
+
+  /**
+   * WHAT OF IT IS UNDER ANOTHER CLOTH AND NOT DRAWN (`clothLayers.ts` `coveredBy`): a mark a slot (1 covered), set each
+   * frame by the room from `belt`; null: all of it is drawn. Only its own triangles are left out, never her skin.
+   */
+  hidden: Uint8Array | null = null;
+  private hiddenKey = ''; private shownTris: Uint32Array | null = null; private shownOf: Uint32Array | null = null;
+  /** Its drawn triangles less those whose three points are all `hidden`; the same array until the set changes. */
+  private drawnNow(): Uint32Array {
+    const all = this.drawnAll, h = this.hidden;
+    if (!h) { this.hiddenKey = ''; this.shownTris = null; return all; }
+    const vp = this.sewn.vertexParticle, slot = this.slotOf, out: number[] = [];
+    let key = '';
+    for (let t = 0; t + 2 < all.length; t += 3) {
+      const a = slot[vp[all[t]]], b = slot[vp[all[t + 1]]], c = slot[vp[all[t + 2]]];
+      if (a >= 0 && b >= 0 && c >= 0 && h[a] && h[b] && h[c]) key += t + ',';
+      else out.push(all[t], all[t + 1], all[t + 2]);
+    }
+    if (this.shownTris && this.shownOf === all && key === this.hiddenKey) return this.shownTris;
+    this.hiddenKey = key; this.shownOf = all;
+    return (this.shownTris = Uint32Array.from(out));
+  }
 
   /**
    * ANOTHER CLOTH OVER THIS ONE THAT HOLDS IT IN (a skirt over a tucked tee: `clothLayers.ts` `cinchUnder`): called each

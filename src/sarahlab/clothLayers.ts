@@ -21,7 +21,9 @@ import type { SkinContacts } from './clothTypes';
 /** GAME TUNING (metres; his 3 mm between cloths): the gap, how far out of her an inner cloth is looked for, and how near the line. */
 export const CLOTH_LAYERS = Object.freeze({ tuckedMost: 0.012, gap: 0.003, reach: 0.14, beside: 0.022, under: 0.006, cell: 0.03,
   /** a tucked shirt under a skirt's top (`cinchUnder`): the skirt's rows that press it to her, how far off her floor it may stand there, and how far out a skirt's point is looked for */
-  cinchRows: 8, cinchSlack: 0.002, cinchReach: 0.05 });
+  cinchRows: 8, cinchSlack: 0.002, cinchReach: 0.05,
+  /** a cloth hidden under another (`coveredBy`): how far out the outer cloth is looked for, how much nearer her than the inner point it may be and still cover it, and the outer cloth's first rows left out (its top edge covers where the hiding ends) */
+  hideReach: 0.08, hideSlack: 0.002, hideSkipRows: 2 });
 
 const TABLE = 1 << 13;
 
@@ -134,4 +136,32 @@ export function cinchUnder(band: ClothUnder, contacts: SkinContacts, x: Float32A
     held++;
   }
   return held;
+}
+
+/**
+ * WHAT OF ONE CLOTH IS UNDER ANOTHER, AND SO NOT DRAWN (Joshua, 2026-11-17, of the tucked tee coming through the skirt
+ * as she walked: "hide it under the skirt, but if the skirt moves, it will automatically show… Definitely don't hide
+ * skin, but can hide clothing or do a simple collision that hides touching vertices"). The two cloths' points are in
+ * different places and a few millimetres apart: over a moving bump one will cut the other. So a point of the INNER
+ * cloth is marked covered while the outer cloth (`outer`, as built this frame) lies over its floor on her skin, no
+ * nearer her than the point itself less `hideSlack`, within `hideReach`; the cloth leaves out the triangles whose
+ * three points are all covered. Nothing of her skin is ever hidden, and the mark is read afresh every frame: where
+ * the outer cloth lifts away the inner one is drawn again. Returns how many are covered.
+ */
+export function coveredBy(outer: ClothUnder, contacts: SkinContacts, x: ArrayLike<number>, n: number, unitsPerMetre: number, out: Uint8Array): number {
+  out.fill(0, 0, n);
+  if (!outer.count) return 0;
+  const L = CLOTH_LAYERS, M = unitsPerMetre, reach = L.hideReach * M, beside = L.beside * M, under = L.under * M, slack = L.hideSlack * M;
+  const P = contacts.point, N = contacts.normal, lo = outer.low - reach, hi = outer.high + reach;
+  let covered = 0;
+  for (let i = 0, i3 = 0; i < n; i++, i3 += 3) {
+    const py = P[i3 + 1];
+    if (py < lo || py > hi) continue;
+    const nx = N[i3], ny = N[i3 + 1], nz = N[i3 + 2];
+    if (nx * nx + ny * ny + nz * nz < 0.5) continue;
+    const along = (x[i3] - P[i3]) * nx + (x[i3 + 1] - py) * ny + (x[i3 + 2] - P[i3 + 2]) * nz;
+    const h = outer.heightAt(P[i3], py, P[i3 + 2], nx, ny, nz, reach, beside, under);
+    if (h >= along - slack) { out[i] = 1; covered++; }
+  }
+  return covered;
 }

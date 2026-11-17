@@ -3,7 +3,7 @@
  * clear of it, and only where the inner cloth lies between it and her skin.
  */
 import { describe, expect, it } from 'vitest';
-import { CLOTH_LAYERS, ClothUnder, cinchUnder, raiseOver } from '../src/sarahlab/clothLayers';
+import { CLOTH_LAYERS, ClothUnder, cinchUnder, coveredBy, raiseOver } from '../src/sarahlab/clothLayers';
 import { createContacts } from '../src/sarahlab/clothTypes';
 import { clampSkirt } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, TEE_SKIRTS } from '../src/sarahlab/sarahLabTool';
@@ -91,5 +91,20 @@ describe('a tucked shirt held in by the skirt over it', () => {
     expect(x[2]).toBeCloseTo(0.15 + CLOTH_LAYERS.cinchSlack * M, 5); expect(v[2]).toBe(0);
     expect(x[5]).toBeCloseTo(0.2, 6); expect(v[5]).toBe(5);
     expect(x[8]).toBe(3); expect(v[8]).toBe(5);
+  });
+});
+
+describe('a cloth hidden under another', () => {
+  it('marks a point the outer cloth lies over, not one that stands outside it, and not one with no cloth over it', () => {
+    const outer = new ClothUnder(), b = sheet(0.8);
+    outer.build(b, b.length / 3, CLOTH_LAYERS.cell * M);
+    const c = floors([[0, 10], [2, 10], [0, 60]]);
+    // under the sheet; outside it (bloused over it); far above it
+    const x = Float32Array.from([0, 10, 0.3, 2, 10, 2.5, 0, 60, 0.3]), out = new Uint8Array(3);
+    expect(coveredBy(outer, c, x, 3, M, out)).toBe(1);
+    expect(Array.from(out)).toEqual([1, 0, 0]);
+    // the outer cloth gone: nothing is hidden
+    expect(coveredBy(new ClothUnder(), c, x, 3, M, out)).toBe(0);
+    expect(Array.from(out)).toEqual([0, 0, 0]);
   });
 });
