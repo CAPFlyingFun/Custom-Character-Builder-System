@@ -8,7 +8,8 @@
  * frame's contact is carried with her when she moves (`carried`, what the cloth's friction holds to); and 6,000
  * particles on a 20,000-triangle body are timed. Then SLOTS (`setOrder`): particles served in another order, or only
  * some of them, give slot for slot exactly what each particle gives in its own slot, and a particle keeps its carried
- * contact when its slot changes or it leaves and comes back; and a pin held by the room's own offset (`pinOffset`).
+ * contact when its slot changes or it leaves and comes back; other slots served AGAIN within one frame (`update`'s
+ * `again`: her pose read once); and a pin held by the room's own offset (`pinOffset`).
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
@@ -506,6 +507,31 @@ describe('ClothSkin: slots and particles (setOrder), and the pin\'s own offset (
     part.update(bySlot(cloth, sub, 3).subarray(0, 9), few);
     untouchedPast(few, 3);
     expect(few.point.subarray(0, 9).every(x => x !== SENTINEL)).toBe(true);
+  });
+
+  it('serves other slots AGAIN in the same frame: slot for slot what one update of them all gives, and her pose is not read a second time', () => {
+    // (a skirt drawn between her and its cloth: her skin under the cloth's points first, and under the sheet's own once the cloth has been stepped)
+    const { b, binding, rand } = particlesOn(17), n = binding.count, half = n >> 1;
+    const first = Uint32Array.from({ length: half }, (_, i) => i), rest = Uint32Array.from({ length: n - half }, (_, i) => half + i);
+    const ref = new ClothSkin(b.mesh, binding), two = new ClothSkin(b.mesh, binding);
+    const start = ref.initial(new Float32Array(n * 3)); two.initial(new Float32Array(n * 3));
+    const cloth = start.slice(), rc = createContacts(n), a = createContacts(half), c = createContacts(n - half);
+    b.upper.rotation.set(-0.25, 0, 0.1); b.root.updateMatrixWorld(true);
+    slideOver(b, cloth, 5, rand);
+    ref.update(cloth, rc);
+    two.setOrder(first); two.update(bySlot(cloth, first, 3), a);
+    two.setOrder(rest); two.update(bySlot(cloth, rest, 3), c, true);
+    expectSlots(a, rc, first); expectSlots(c, rc, rest);
+    // her pose is as that frame's first update read it: a bone turned since is not seen by `again`...
+    b.upper.rotation.set(0.5, 0, -0.4); b.root.updateMatrixWorld(true);
+    const same = createContacts(n - half), moved = createContacts(n - half);
+    two.update(bySlot(cloth, rest, 3), same, true);
+    expect(same.point).toEqual(c.point); expect(same.normal).toEqual(c.normal); expect(same.pinTarget).toEqual(c.pinTarget);
+    // ...and is by the next update that reads her
+    two.update(bySlot(cloth, rest, 3), moved);
+    let apart = 0;
+    for (let i = 0; i < moved.pinTarget.length; i++) apart = Math.max(apart, Math.abs(moved.pinTarget[i] - c.pinTarget[i]));
+    expect(apart).toBeGreaterThan(1);
   });
 
   it('carries a particle\'s last contact with it when its slot changes between updates, and when it leaves the slots and comes back', () => {

@@ -43,6 +43,7 @@ import {
   GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, sameGarment, type GarmentRecord, type GarmentSettings,
 } from './garment/settings';
 import { CLOTH_TUNE_DEFAULT, type ClothTune } from './sarahLabTool';
+import { readSkirtRecord, sameSkirt, type SkirtRecord } from './skirt/skirtDraft';
 
 export type SaveScope = 'all' | 'body' | 'clothes';
 
@@ -124,6 +125,14 @@ export interface SavedClothes {
    * absent for every other outfit, and in saves made before it, which load exactly as they did.
    */
   readonly garment?: GarmentRecord;
+  /**
+   * HER SKIRT'S NUMBERS (`skirt/skirtDraft.ts` `SkirtRecord`; Joshua, 2026-11-17: "is the length adjustable yet…?
+   * …will add customization like the painted bottoms"): its length, its fit, its flare and its anchors as its panel
+   * left them, never its mesh. Present only where they are not the outfit's own: absent for every outfit with no skirt,
+   * for a skirt nobody moved, and in saves made before, which load as that outfit's skirt. Part of how an outfit is
+   * MADE, as a painted bottom's sliders are (`sameMake`): a character who moves it wears an outfit of her own.
+   */
+  readonly skirt?: SkirtRecord;
   /**
    * HER SHOES (sneakers.ts; Joshua, 2026-11-07): 'sneakers' or 'none'. Absent in saves made before them and in the
    * room's own outfits: whatever she has on her feet stays on.
@@ -243,6 +252,8 @@ function sameMake(a: SavedClothes, b: SavedClothes): boolean {
   if (a.outfit !== b.outfit) return false;
   // built pieces are part of how an outfit is made: a character's own straps make it her own outfit
   if (json(a.built ? builtToJson(a.built) : null) !== json(b.built ? builtToJson(b.built) : null)) return false;
+  // ...and so are a skirt's numbers
+  if (!sameSkirtRecord(a.skirt, b.skirt)) return false;
   const n = Math.max(a.layers.length, b.layers.length);
   for (let i = 0; i < n; i++) {
     const x = a.layers[i] ?? null, y = b.layers[i] ?? null;
@@ -278,9 +289,13 @@ export function clothesFor(book: CharacterBook, current: SavedClothes, wornFrom:
 /** Two sets of clothes that put on the same: every layer, fabric, garment, length, detail and the new tee (for "changed?"). */
 export function sameClothes(a: SavedClothes, b: SavedClothes): boolean {
   // (her shoes last whoever said them, none said being none)
-  const norm = (c: SavedClothes) => json({ ...c, garment: undefined, shoes: undefined, detail: c.detail ?? AUTO_DETAIL, layers: c.layers.map((l) => l ?? null), feet: c.shoes ?? 'none' });
+  const norm = (c: SavedClothes) => json({ ...c, garment: undefined, skirt: undefined, shoes: undefined, detail: c.detail ?? AUTO_DETAIL, layers: c.layers.map((l) => l ?? null), feet: c.shoes ?? 'none' });
   // no record is the default tee, so a save from before it never reads as changed once the room puts the tee on
-  return norm(a) === norm(b) && sameGarmentRecord(a.garment ?? GARMENT_RECORD_DEFAULT, b.garment ?? GARMENT_RECORD_DEFAULT);
+  return norm(a) === norm(b) && sameGarmentRecord(a.garment ?? GARMENT_RECORD_DEFAULT, b.garment ?? GARMENT_RECORD_DEFAULT) && sameSkirtRecord(a.skirt, b.skirt);
+}
+/** Two skirt records that cut the same skirt; none on either side is the outfit's own, and only that is the same as none. */
+function sameSkirtRecord(a: SkirtRecord | undefined, b: SkirtRecord | undefined): boolean {
+  return a && b ? sameSkirt(a.settings, b.settings) : !a && !b;
 }
 
 /** What a character wears: her own outfit, or the library outfit her reference names with her changes on top (a copy). */
@@ -438,8 +453,14 @@ function readClothes(v: unknown): SavedClothes | null {
     ...(isRecord(v.detail) ? { detail: readDetail(v.detail) } : {}),
     ...built(v.built),
     ...readGarment(v.garment),
+    ...readSkirt(v.skirt),
     ...readShoes(v.shoes),
   };
+}
+/** A skirt's numbers from untrusted data: only this version's record, every number clamped (`readSkirtRecord`). */
+function readSkirt(v: unknown): { skirt?: SkirtRecord } {
+  const r = readSkirtRecord(v);
+  return r ? { skirt: r } : {};
 }
 /** Her shoes from untrusted data: one of the known, else none said. */
 function readShoes(v: unknown): { shoes?: Shoes } {

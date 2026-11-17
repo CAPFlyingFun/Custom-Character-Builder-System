@@ -299,6 +299,12 @@ export interface FabricPanel {
    * and before her body is measured.
    */
   hoopOn(template: string, shaped: ArrayLike<number>): Float32Array | null;
+  /**
+   * (the room's) One slider of every paint layer that wears `template`, set as the editor's own slider sets it: a cloth
+   * skirt's painted part's LEG LENGTH, which follows the skirt's numbers (`skirtDraft.paintedLegs`). Not a change by
+   * hand: what moved it is the skirt, which is kept as its own. False where no layer wears it, or it is there already.
+   */
+  setDial(template: string, dial: CoverageDial['id'], value: number): boolean;
   lowState(): {
     readonly frame: { readonly unitsPerMetre: number; readonly mid: number; readonly hipY: number; readonly trunk: number; readonly facing: number; readonly legs: readonly { readonly name: string; readonly thigh: number; readonly shin: number }[] };
     readonly worn: boolean;
@@ -1741,6 +1747,20 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     setFabricLayer(drape.mesh, drape.mesh.material as THREE.Material, 0, layerFor(body, c, c.fabric, 'plain'), { layers: 1, masked: false, rest: null });
     drape.feathered();
   }
+  function setDial(template: string, dial: CoverageDial['id'], value: number): boolean {
+    const p = bodyPaint(), map = regionMap();
+    if (!p || !map || !Number.isFinite(value)) return false;
+    let moved = false;
+    for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
+      const t = templates[i];
+      if (!t || t.id !== template || Math.abs(dialValue(t.params, dial) - value) < 5e-4) continue;
+      templates[i] = { id: t.id, params: withDial(t.params, dial, value) };
+      p.setLayer(i, coverage(map, templates[i]!.params, cutOf(templates[i]!.params)?.cut ?? null));
+      moved = true;
+    }
+    if (moved) { sync(); draw(); }
+    return moved;
+  }
   function setShirtLength(length: number): void {
     shirtLength = paintedShirtLength(length);
     const p = bodyPaint(), map = regionMap();
@@ -1957,6 +1977,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     },
     slipNow() { return slip && slip.mesh === hooks.body() ? slip.plain : null; },
     busy: () => loadsOut > 0,
+    setDial,
     hoopOn(template, shaped) {
       const body = hooks.body(), frame = lowFrameNow(), map = regionMap(), t = COVERAGE_TEMPLATES.find((x) => x.id === template);
       return body && frame && map && t && isDrawnBottom(t.params) ? hoopInside(frame, lowSpec(t.params, frame), limbSkin(map), shaped) : null;

@@ -159,6 +159,33 @@ describe('character saves', () => {
     expect(sameClothes(tee(0), shod)).toBe(false);
   });
 
+  it('keeps her skirt\'s numbers with her clothes where they are not the outfit\'s own: saved, read back, and part of how an outfit is made', () => {
+    // (Joshua, 2026-11-17: a skirt's length, fit and flare, moved in its panel; `skirt/skirtDraft.ts` `SkirtRecord`)
+    const plain: SavedClothes = { ...tee(0), outfit: 'cloth pencil skirt (under belly)' };
+    const record = { version: 1 as const, settings: { top: 'under' as const, tucked: false, length: 0.8, flare: 0.1, fit: 0.25 } };
+    const mine: SavedClothes = { ...plain, skirt: record };
+    const back = importBook(exportBook(saveOutfit(EMPTY_BOOK, 'Long and close', mine, 't1')))!;
+    expect(back.outfits[0].clothes.skirt).toEqual(record);
+    // (a save from before, and a skirt nobody moved, hold none: that outfit's own)
+    expect(importBook(exportBook(saveOutfit(EMPTY_BOOK, 'As it comes', plain, 't1')))!.outfits[0].clothes.skirt).toBeUndefined();
+    // what a file says is clamped, and a record of another version is left out, never misread
+    const read = (skirt: unknown) => importBook(JSON.stringify({ version: 1, outfits: [{ name: 'x', clothes: { ...plain, skirt } }] }))!.outfits[0].clothes.skirt;
+    expect(read({ version: 1, settings: { top: 'under', length: 9, flare: -2, fit: 2 } })).toEqual({ version: 1, settings: { top: 'under', tucked: false, length: 1, flare: 0 } });
+    expect(read({ version: 2, settings: record.settings })).toBeUndefined(); expect(read('long')).toBeUndefined();
+    // changed clothes: a skirt moved, and moved back
+    expect(sameClothes(plain, mine)).toBe(false); expect(sameClothes(mine, { ...plain, skirt: { version: 1, settings: { ...record.settings } } })).toBe(true);
+    expect(sameClothes(mine, { ...plain, skirt: { version: 1, settings: { ...record.settings, fit: 0.3 } } })).toBe(false);
+    // on a shared outfit, a skirt she moved makes the outfit her own (a slider is how an outfit is made); unmoved, she wears a reference
+    const book = saveOutfit(EMPTY_BOOK, 'Pencil', plain, 't1');
+    expect('basedOn' in clothesFor(book, plain, 'Pencil')).toBe(true);
+    const own = clothesFor(book, mine, 'Pencil');
+    expect('basedOn' in own).toBe(false); expect((own as SavedClothes).skirt).toEqual(record);
+    // ...and a character who wears a shared outfit whose skirt was moved wears that skirt
+    const shared = saveOutfit(EMPTY_BOOK, 'Long and close', mine, 't1'), ref = clothesFor(shared, mine, 'Long and close');
+    expect('basedOn' in ref).toBe(true);
+    expect(resolveClothes(shared, ref)!.skirt).toEqual(record);
+  });
+
   it('tells changed clothes from unchanged ones, and saving a copy as new never touches the original', () => {
     expect(sameClothes(tee(0), { ...tee(0), detail: AUTO_DETAIL })).toBe(true);
     expect(sameClothes(tee(0), tee(12))).toBe(false);

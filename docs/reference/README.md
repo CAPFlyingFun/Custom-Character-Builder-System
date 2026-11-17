@@ -35,4 +35,6 @@ room since v0.9.27 (2026-11-15; `CLAUDE.md`, "A painted top, drawn", "The rest o
   that day (a marked-up figure, not kept here) sets two numbers: LENGTH -- 0% where her legs part, 50% a hand under
   her knee, 100% the floor -- and HOW CLOSELY IT HOLDS TO HER FROM LEG TO LEG -- 0% along her leg's outline, 100%
   straight down from her hip; the close one "a simple bridge like between the breasts that span the front and back gap
-  between the legs… not cloth", fading to the cloth as it loosens. `CLAUDE.md`, "The skirts", has what is built.
+  between the legs… not cloth", fading to the cloth as it loosens. `CLAUDE.md`, "The skirts", has what is built:
+  both are sliders in the OUTFIT tab since the same day (LENGTH, FIT, and FLARE beside them), and FIT is drawn
+  between her and the cloth -- at 0% on her with the gap between her legs spanned, at 100% the cloth.

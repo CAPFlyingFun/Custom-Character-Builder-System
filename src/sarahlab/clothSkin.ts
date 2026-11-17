@@ -639,10 +639,14 @@ export class ClothSkin {
    * triangle and bary (never walked). What is the PARTICLE's -- its binding, bound triangle, last contact, the arm
    * rule -- is read and kept by f; what is the SLOT's -- `cloth`, every field of `out`, `extraStandOff` -- by i. Serves
    * min(`slots`, cloth.length / 3) slots and touches nothing in `out` past them. Returns the milliseconds spent.
+   *
+   * `again`: other slots served within the same frame (after `setOrder`: a skirt's sheet as it is drawn, once its
+   * cloth has been stepped -- `clothSkirt.ts`). Her pose is as the last `update` or `initial` read it: nothing of
+   * her is read again, and no vertex already posed this frame is posed twice.
    */
-  update(cloth: Float32Array, out: SkinContacts): number {
+  update(cloth: Float32Array, out: SkinContacts, again = false): number {
     const t0 = performance.now();
-    this.refresh();
+    if (!again) this.refresh();
     const n = Math.min(this.nSlots, Math.floor(cloth.length / 3));
     const { tris, weld, rowStart, rowTri, adj, last, maxWalk, thickness, order } = this, clearance = this.restClearance, offset = this.binding.offset, scale = this.scale;
     const extra = this.extraStandOff && this.extraStandOff.length >= n ? this.extraStandOff : null;

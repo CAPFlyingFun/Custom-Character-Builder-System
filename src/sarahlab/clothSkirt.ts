@@ -19,7 +19,7 @@ import { clothNormals } from './briefCloth';
 import { BIND_TRUNK, bindParticles } from './garment/bind';
 import { SARAH_V2_ARM_BONES, SARAH_V2_JOINTS } from './garment/bodyInput';
 import type { BodyInput } from './garment/types';
-import { draftSkirt, type SkirtDraft, type SkirtSettings } from './skirt/skirtDraft';
+import { SKIRT_CUT, SKIRT_FIT, draftSkirt, heldSpans, hemOf, type SkirtDraft, type SkirtSettings } from './skirt/skirtDraft';
 import { CLOTH_LAYERS, ClothUnder, raiseOver } from './clothLayers';
 
 /**
@@ -71,6 +71,60 @@ const JUMP_SPEED = 3;
  * is put out as before; behind it and further, that triangle is not its floor (her legs' capsules still are).
  */
 const FLOOR = Object.freeze({ inside: 0.012 });
+/**
+ * HER SKIN UNDER THE SHEET AS IT IS DRAWN BETWEEN HER AND THE CLOTH (`sheetOutOfSkin`). GAME TUNING: a drawn point is
+ * IN her when it is behind the nearest of her skin by no more than `deep` (metres: further, that skin is not its
+ * floor -- the other side of a leg, or the walk has lost it) and squarely behind it, the way to it within about 60
+ * degrees of straight in (`behind`: the least of that way's share along her skin's own facing; less squarely, the
+ * point hangs off an edge of her, `FLOOR`).
+ */
+export const SHEET_FLOOR = Object.freeze({ deep: 0.04, behind: 0.5 });
+/**
+ * POINTS OF A SHEET PUT OUT OF HER SKIN (`ClothSkirt.outOfHer`): `x` (three a point), points `from` up to `to`, each
+ * against the nearest of her skin found under it -- `point` and `normal` (her skin's own facing there, unit; none: no
+ * skin was found), three a point, point p's at `first + p` -- to `off` from her. Squarely behind that skin and no
+ * deeper than `deep` (`SHEET_FLOOR`), a point is in her: it is put out through her skin there. Before it, or off an
+ * edge of it, and nearer than `off`: out to `off` the way it lies. How many were moved, and the furthest.
+ */
+export function sheetOutOfSkin(x: Float32Array, from: number, to: number, point: ArrayLike<number>, normal: ArrayLike<number>, first: number, off: number, deep: number, behind: number = SHEET_FLOOR.behind): { put: number; most: number } {
+  let put = 0, most = 0;
+  for (let p = from, p3 = p * 3, q3 = (first + p) * 3; p < to; p++, p3 += 3, q3 += 3) {
+    const nx = normal[q3], ny = normal[q3 + 1], nz = normal[q3 + 2];
+    if (nx === 0 && ny === 0 && nz === 0) continue;
+    const dx = x[p3] - point[q3], dy = x[p3 + 1] - point[q3 + 1], dz = x[p3 + 2] - point[q3 + 2], along = dx * nx + dy * ny + dz * nz, far = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    let moved = 0;
+    if (along < -behind * far) {
+      if (far > deep) continue;
+      moved = off - along;
+      x[p3] += nx * moved; x[p3 + 1] += ny * moved; x[p3 + 2] += nz * moved;
+    } else {
+      if (far >= off || far < 1e-9) continue;
+      moved = off - far;
+      const k = moved / far;
+      x[p3] += dx * k; x[p3 + 1] += dy * k; x[p3 + 2] += dz * k;
+    }
+    put++; if (moved > most) most = moved;
+  }
+  return { put, most };
+}
+/** The name of its points' mark, 1 where a point is under a tee and not drawn (`ClothSkirt.hide`). */
+const HIDDEN_ATTRIBUTE = 'skirtHidden';
+/** GAME TUNING: a pixel of it further than this share of the way from a point that is drawn toward one that is not, is not drawn. */
+const HIDDEN_EDGE = 0.15;
+/** Its material told to leave out what is marked (`ClothSkirt.hide`), a pixel at a time; chained onto whatever it already does. */
+function hiddenEdge(material: THREE.Material): void {
+  const was = material.onBeforeCompile, key = material.customProgramCacheKey;
+  material.onBeforeCompile = function (shader, renderer) {
+    was.call(this, shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\nattribute float ${HIDDEN_ATTRIBUTE};\nvarying float vSkirtHidden;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n  vSkirtHidden = ${HIDDEN_ATTRIBUTE};`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vSkirtHidden;')
+      .replace('#include <clipping_planes_fragment>', `if (vSkirtHidden > ${HIDDEN_EDGE.toFixed(3)}) discard;\n#include <clipping_planes_fragment>`);
+  };
+  material.customProgramCacheKey = function () { return `${key.call(this)}|skirt-hidden-v1`; };
+}
 const SMOOTHING = 20;
 
 export interface ClothSkirtOptions {
@@ -101,7 +155,7 @@ export interface ClothSkirtOptions {
 /** What she sits on, world units: its middle, its radius and its top's height. */
 export interface SkirtStool { readonly x: number; readonly z: number; readonly radius: number; readonly top: number }
 
-export interface ClothSkirtStats { readonly worldPerMetre: number; readonly skinMs: number; readonly simMs: number; readonly particles: number; readonly contacts: number; readonly jumps: number; readonly rows: number; readonly columns: number }
+export interface ClothSkirtStats { readonly worldPerMetre: number; readonly skinMs: number; readonly simMs: number; readonly particles: number; readonly contacts: number; readonly jumps: number; readonly rows: number; readonly columns: number; /** rows held to her whole, and held points that are over a gap (`SKIRT_FIT`) */ readonly heldRows: number; readonly spanned: number; /** points of the sheet put out of her skin this frame, and the furthest one was moved, metres (`outOfHer`: between her and the cloth) */ readonly skinPut: number; readonly skinPutMost: number }
 
 export class ClothSkirt {
   readonly mesh: THREE.Mesh;
@@ -116,6 +170,7 @@ export class ClothSkirt {
   private readonly scratch: Float32Array;
   private readonly position: THREE.BufferAttribute;
   private readonly normal: THREE.BufferAttribute;
+  private readonly hidden: THREE.BufferAttribute;
   private capsNow: Capsules;
   private capsWas: Capsules;
   /**
@@ -125,13 +180,94 @@ export class ClothSkirt {
   under: { readonly x: Float32Array; readonly n: number; readonly lift?: number } | null = null;
   private readonly layer = new ClothUnder();
   private raised = 0;
-  /** (a probe's) her legs' capsules and her skin's floor, each switched off to tell which does what */
-  readonly probe = { capsules: true, skin: true };
+  /**
+   * UNDER FIT 1 IT IS DRAWN BETWEEN HER AND THE CLOTH (`skirtDraft.SKIRT_FIT`; Joshua, 2026-11-17: "How tightly it
+   * curves with the body from legs to legs. Maybe for tighter ones, it's actually a simple bridge like between the
+   * breasts that span the front and back gap between the legs… not cloth and if you do a looser one, it fades somehow
+   * to cloth sim"). The cloth is the cloth it always was. Each point also has ITS PLACE ON HER (`place`, each
+   * frame): where its on-her cut (`draft.hug`) is bound to her skin, carried by that skin, or, for a point over the
+   * gap between her legs (`spanA`, `spanB`: the points either side of the gap in its row, -1 for a point with skin of
+   * its own; `spanU` of the way from the one to the other), the straight span between them, kept out of a leg that
+   * stands in the span's way (a thigh swung forward: the span runs from its front to the other's). The sheet is drawn
+   * FIT of the way from that place to the cloth (`shown`).
+   *
+   * THOSE PLACES ARE POINTS OF THE CLOTH'S OWN, HELD OUTRIGHT: a second set after the cloth's (`fitted`: particle
+   * count + p is point p's place on her), with no cloth between them. So her skin is walked under each, and each is
+   * put out of her as a held point of cloth is (`clothSim.ts`, step 6): a span, and a run across a crease
+   * (`bridgeTo`), are straight and she is not -- the run from its ring to a thigh drawn back passes through the front
+   * of her hips.
+   */
+  private readonly spanA: Int32Array;
+  private readonly spanB: Int32Array;
+  private readonly spanU: Float32Array;
+  private spanned = 0;
+  private readonly fitted: boolean;
+  /**
+   * AT FIT 0 IT IS ON HER AND NOTHING ELSE: no cloth is made, her places are all the particles there are (`base` 0;
+   * under FIT 1 otherwise they follow the cloth's: `base` its count), and her skin is walked under those alone.
+   */
+  private readonly only: boolean;
+  private readonly base: number;
+  /**
+   * How near each of her legs' six capsules' lines a point over the gap may come (world units; six a point): as near
+   * as it was CUT, and never nearer than the capsule itself and `SKIRT_FIT.clear`. A span is straight from the front
+   * of one leg to the other's, and a leg swung forward stands in it; put out to where the cut had it, it lies round
+   * that leg as it was cut to. By the capsule's size alone -- tried first, MEASURED in the room at FIT 0, standing:
+   * her leg over her knee is thinner than its capsule, every span beside it was put a centimetre out, and the skirt
+   * stood in pleats from her knees to its hem.
+   */
+  private spanKeep: Float32Array | null = null;
+  /**
+   * BETWEEN HER AND THE CLOTH THE SHEET HAS HER SKIN FOR A FLOOR OF ITS OWN (`between`: FIT over 0, under 1). A point
+   * is drawn on the straight way from its place on her to its point of cloth, and at rest that way is straight out of
+   * her (`skirtDraft.SKIRT_FIT`). She does not stay at rest. Her places turn with her legs -- a calf lifted in a
+   * stride carries its places up and back with it -- and the cloth does not: it hangs, and slides round her. MEASURED
+   * 2026-11-17 in the room, the pencil at FIT 0.5, three moments of a stride, the sheet's own points against her skin
+   * as the skirt poses it (the probe's `skirtPoints`, `skirtSkin`): 17, 60 and 53 of its 2,160 points under her skin,
+   * 8.1, 17.7 and 12.5 mm at the deepest -- across the tops of her thighs and at her calves, her skin bare through the
+   * sheet at its hem. (Kept out of her legs' capsules as well, as a span is: 12, 48 and 44, to 15.7 mm -- the capsules
+   * are a little inside her; taken out again.)
+   *
+   * So the sheet's points AS DRAWN are a third set of her skin's (after the cloth's and her places': bound where they
+   * are cut to be drawn, `sheetOrder`), and once the cloth has been stepped and the sheet laid between, her skin is
+   * walked under them WHERE THEY NOW ARE (`ClothSkin.update`'s `again`: the same frame, her pose read once), and a
+   * point found in her is put out through her skin there (`outOfHer`, `sheetOutOfSkin`): the sheet lies ON her where
+   * the straight way would have gone through her. MEASURED after, the same three moments and standing: none under
+   * her skin, none within 2 mm of it but one; 314 to 397 points a frame put out, 10.7 to 18.1 mm at the most (280
+   * standing, 2 mm). Under where it was drawn the frame BEFORE -- tried first, one walk for all three sets -- a
+   * stride carries her leg centimetres a frame, the skin found was no longer the skin under it, and two to five
+   * points a frame were left 1 to 2 mm under her (a point in her read as hanging off an edge). WHAT IT COSTS: her
+   * skin's walk is about 7.5 ms a frame in a stride on the build machine where the cloth alone is about 5.
+   */
+  private readonly between: boolean;
+  private readonly sheet: SkinContacts | null;
+  private readonly simOrder: Uint32Array | null;
+  private readonly sheetOrder: Uint32Array | null;
+  /** points of the sheet put out of her skin this frame, and the deepest one was, world units (a probe's) */
+  private skinPut = 0;
+  private skinPutMost = 0;
+  /**
+   * ACROSS THE CREASE AT THE TOP OF HER THIGHS IT IS TAUT FROM ITS RING TO HER THIGHS (`bridge`). A place bound to her
+   * skin goes where that skin goes, and where her thigh meets her trunk her skin FOLDS: in a stride the top of her
+   * forward thigh comes up toward her belly. MEASURED 2026-11-17 in the room on the sheet's own points (the probe's
+   * `skirtPoints`), FIT 0, mid-stride, her front's middle column: its rows ran down her front to 83 cm, then stood
+   * 2 cm HIGHER and 1.5 cm further forward, and on down -- the part her thighs carry ridden up over the part her
+   * trunk carries, a ledge round a V of her front from hip to hip. Cloth does not fold into that crease; it is drawn
+   * taut over it. So in front of her, each column's places from under its ring down to `SKIRT_FIT.bridge` under where
+   * her legs part lie on the straight run from its ring's place to its place there (`bridgeTo`: that row, -1 for a
+   * column that has none; `bridgeAt`: how far along each place was cut), by `bridgeShare` (all of it across her
+   * front, none from her sides round her back). Her skin's floor keeps them off her belly (they are held points).
+   */
+  private bridgeTo: Int32Array | null = null;
+  private bridgeShare: Float32Array | null = null;
+  private bridgeAt: Float32Array | null = null;
+  /** (a probe's) her legs' capsules, her skin's floor, and the drawn sheet put out of her skin (`outOfHer`), each switched off to tell which does what */
+  readonly probe = { capsules: true, skin: true, floor: true };
   private restScaleWorld = 0;
   private primed = false;
   private warm = 0;
   private jumps = 0;
-  private readonly shown = { skinMs: 0, simMs: 0, contacts: 0 };
+  private readonly shown_ = { skinMs: 0, simMs: 0, contacts: 0 };
   private readonly m = new THREE.Matrix4();
   private readonly v = new THREE.Vector3();
   private readonly w = new THREE.Vector3();
@@ -142,11 +278,59 @@ export class ClothSkirt {
     this.cloth = { ...SKIRT_CLOTH_SETTINGS, ...(options.cloth ?? {}) };
     const input = options.skin ? { ...options.input, triangles: options.skin } : options.input;
     const d = this.draft = draftSkirt(input, options.settings, options.line ?? null), M = options.unitsPerMetre;
-    const region = new Uint8Array(d.count).fill(BIND_TRUNK);
-    const binding = bindParticles(input, d.rest, region, { scale: options.scale, offset: options.offset, minOffset: SKIRT_BODY.clearance, maxOffset: 3 });
-    this.skin = new ClothSkin(options.body, binding, { thickness: SKIRT_BODY.clearance * M, armBones: SARAH_V2_ARM_BONES, trunkOnly: new Uint8Array(d.count).fill(1), ...(options.skin ? { triangles: options.skin } : {}) });
-    this.before = createContacts(d.count); this.after = createContacts(d.count);
-    this.scratch = new Float32Array(d.count * 3);
+    const region = new Uint8Array(d.count).fill(BIND_TRUNK), bind = { scale: options.scale, offset: options.offset, minOffset: SKIRT_BODY.clearance, maxOffset: 3 };
+    const cloth = bindParticles(input, d.rest, region, bind);
+    // UNDER FIT 1 ITS ON-HER CUT IS BOUND TO HER SKIN AS WELL, as a second set of particles after the cloth's own (`fitted`)
+    const on = d.hug ? bindParticles(input, d.hug, region, bind) : null, n = d.count;
+    this.fitted = !!on; this.only = !!on && d.fit <= 0; this.base = this.only ? 0 : n;
+    // ...and, between her and the cloth, the sheet's own points as they are drawn at rest, a third (`between`)
+    let drawn: typeof cloth | null = null;
+    if (d.hug && !this.only) { const mid = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) mid[i] = d.hug[i] + (d.rest[i] - d.hug[i]) * d.fit; drawn = bindParticles(input, mid, region, bind); }
+    this.between = !!drawn;
+    const join = <A extends Float32Array | Uint32Array>(...parts: A[]): A => { const out = new (parts[0].constructor as new (length: number) => A)(parts.reduce((sum, a) => sum + a.length, 0)); let at = 0; for (const a of parts) { out.set(a, at); at += a.length; } return out; };
+    const sets = on ? (this.only ? [on] : drawn ? [cloth, on, drawn] : [cloth, on]) : [cloth];
+    const binding = sets.length === 1 ? sets[0] : { count: n * sets.length, tri: join(...sets.map((b) => b.tri)), bary: join(...sets.map((b) => b.bary)), offset: join(...sets.map((b) => b.offset)) };
+    this.skin = new ClothSkin(options.body, binding, { thickness: SKIRT_BODY.clearance * M, armBones: SARAH_V2_ARM_BONES, trunkOnly: new Uint8Array(binding.count).fill(1), ...(options.skin ? { triangles: options.skin } : {}) });
+    // (her skin is walked under the cloth's points and her places' as the cloth's own particles; under the sheet's, by themselves)
+    this.simOrder = drawn ? Uint32Array.from({ length: n * 2 }, (_, i) => i) : null; this.sheetOrder = drawn ? Uint32Array.from({ length: n }, (_, i) => n * 2 + i) : null;
+    this.sheet = drawn ? createContacts(n) : null;
+    if (this.simOrder) this.skin.setOrder(this.simOrder);
+    const slots = this.skin.slots;
+    this.before = createContacts(slots); this.after = createContacts(slots);
+    this.scratch = new Float32Array(slots * 3);
+    // the points of its on-her cut that are over the gap between her legs, each between the two points either side of it (`skirtDraft.heldSpans`)
+    { const spans = heldSpans(d, on ? on.offset : cloth.offset, SKIRT_FIT.span / options.scale, hemOf(input.joints, 0)); this.spanA = spans.a; this.spanB = spans.b; this.spanU = spans.u; this.spanned = spans.count; }
+    if (d.hug && this.spanned) {
+      // (her legs' capsules as `legs` lays them, at rest, metres: how far from each one's line each such point was cut)
+      const J = input.joints, H = d.hug, keep = this.spanKeep = new Float32Array(n * 6), clear = SKIRT_FIT.clear;
+      for (let side = 0, k = 0; side < 2; side++) for (const [a, b, f0, f1, r] of [[J.hip[side], J.knee[side], 0.12, 0.5, SKIRT_BODY.thighTop], [J.hip[side], J.knee[side], 0.5, 1, SKIRT_BODY.thigh], [J.knee[side], J.ankle[side], 0, 0.9, SKIRT_BODY.shin]] as const) {
+        const ax = a[0] + (b[0] - a[0]) * f0, ay = a[1] + (b[1] - a[1]) * f0, az = a[2] + (b[2] - a[2]) * f0, sx = (b[0] - a[0]) * (f1 - f0), sy = (b[1] - a[1]) * (f1 - f0), sz = (b[2] - a[2]) * (f1 - f0), ss = sx * sx + sy * sy + sz * sz;
+        for (let p = 0; p < n; p++) {
+          if (this.spanA[p] < 0) continue;
+          const x = H[p * 3], y = H[p * 3 + 1], z = H[p * 3 + 2];
+          let w = ss > 1e-12 ? ((x - ax) * sx + (y - ay) * sy + (z - az) * sz) / ss : 0;
+          w = w < 0 ? 0 : w > 1 ? 1 : w;
+          keep[p * 6 + k] = Math.min(Math.hypot(x - ax - sx * w, y - ay - sy * w, z - az - sz * w), r + clear) * M;
+        }
+        k++;
+      }
+    }
+    if (d.hug) {
+      // the crease at the top of her thighs, bridged in front of her (`bridgeTo`)
+      const H = d.hug, cols = d.columns, under = hemOf(input.joints, 0) - SKIRT_FIT.bridge, to = this.bridgeTo = new Int32Array(cols).fill(-1), share = this.bridgeShare = new Float32Array(cols), along = this.bridgeAt = new Float32Array(n);
+      for (let c = 0; c < cols; c++) {
+        const deg = Math.abs(((c / cols) * 360 + 180) % 360 - 180), t = Math.min(1, Math.max(0, (deg - SKIRT_FIT.bridgeFront[0]) / (SKIRT_FIT.bridgeFront[1] - SKIRT_FIT.bridgeFront[0])));
+        share[c] = 1 - t * t * (3 - 2 * t);
+        let last = d.rows - 1;
+        for (let r = 1; r < d.rows; r++) if (H[(r * cols + c) * 3 + 1] < under) { last = r; break; }
+        if (!(share[c] > 0) || last < 2) continue;
+        to[c] = last;
+        let run = 0;
+        const len = new Float32Array(last + 1);
+        for (let r = 1; r <= last; r++) { const p = (r * cols + c) * 3, q = p - cols * 3; run += Math.hypot(H[p] - H[q], H[p + 1] - H[q + 1], H[p + 2] - H[q + 2]); len[r] = run; }
+        for (let r = 1; r < last; r++) along[r * cols + c] = run > 1e-9 ? len[r] / run : r / last;
+      }
+    }
     const caps = (): Capsules => ({ count: 7, a: new Float32Array(21), b: new Float32Array(21), radius: new Float32Array(7) });
     this.capsNow = caps(); this.capsWas = caps();
     const g = new THREE.BufferGeometry();
@@ -154,7 +338,9 @@ export class ClothSkirt {
     this.normal = new THREE.BufferAttribute(new Float32Array(d.count * 3), 3).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.position);
     g.setAttribute('normal', this.normal);
+    g.setAttribute(HIDDEN_ATTRIBUTE, this.hidden = new THREE.BufferAttribute(new Float32Array(d.count), 1).setUsage(THREE.DynamicDrawUsage));
     g.setIndex(new THREE.BufferAttribute(d.triangles, 1));
+    hiddenEdge(options.material);
     this.mesh = new THREE.Mesh(g, options.material);
     this.mesh.name = 'cloth-skirt';
     this.mesh.frustumCulled = false;
@@ -197,22 +383,40 @@ export class ClothSkirt {
     // legs' capsules off as well; a skirt to her calf only ruffled). So a column's points are laid as cut, carried by
     // her pelvis, and then moved all alike by how far its ring point is from where that carry put it.
     const cols = d.columns, at = (p: number) => v.set((d.rest[p * 3] - o.offset[0]) / o.scale, (d.rest[p * 3 + 1] - o.offset[1]) / o.scale, (d.rest[p * 3 + 2] - o.offset[2]) / o.scale).applyMatrix4(this.m);
-    for (let c = 0; c < cols; c++) {
+    for (let c = 0; c < (this.only ? 0 : cols); c++) {
       at(c);
       const sx = x[c * 3] - v.x, sy = x[c * 3 + 1] - v.y, sz = x[c * 3 + 2] - v.z;
       for (let r = 1; r < d.rows; r++) { const p = r * cols + c; at(p); x[p * 3] = v.x + sx; x[p * 3 + 1] = v.y + sy; x[p * 3 + 2] = v.z + sz; }
     }
+    // (under FIT 1, her places: where her skin has them, the gaps spanned)
+    if (this.fitted) { this.legs(this.capsNow, null); this.place(x, false); }
     if (!this.sim) {
       // its rest lengths at her skinning's own size: her rest metres through her geometry's units to the world as her
       // bones lay them (MEASURED 2026-11-16: 100.0000 to the metre, the room's own)
-      const k = (this.skin.worldScale || 1) / o.scale, rest = new Float32Array(d.count * 3);
+      const k = (this.skin.worldScale || 1) / o.scale, n = d.count, base = this.base, all = this.fitted ? base + n : n, rest = new Float32Array(all * 3);
       this.restScaleWorld = k;
-      for (let i = 0; i < rest.length; i++) rest[i] = d.rest[i] * k;
-      this.sim = new ClothSim({ count: d.count, triangles: d.triangles, rest, pin: d.pin, capsuleMask: new Uint8Array(d.count).fill(1) }, this.cloth);
+      // (her places: held outright, no cloth between them and none to the cloth, and her legs' capsules not theirs)
+      const pin = new Float32Array(all).fill(1), mask = new Uint8Array(all);
+      if (!this.only) { for (let i = 0; i < n * 3; i++) rest[i] = d.rest[i] * k; pin.set(d.pin); mask.fill(1, 0, n); }
+      if (d.hug) for (let i = 0; i < n * 3; i++) rest[base * 3 + i] = d.hug[i] * k;
+      this.sim = new ClothSim({ count: all, triangles: d.triangles, rest, pin, capsuleMask: mask }, this.cloth);
     }
     this.sim.reset(x);
     this.primed = false; this.warm = WARM_SECONDS;
   }
+
+  /**
+   * SHE HAS GONE FROM STANDING TO WALKING, OR BACK (the room's to say: her hips are where they were, and her legs are
+   * all at once where the stride has them). It is NOT laid on her afresh: for half a second it keeps a quarter of its
+   * speed a frame and is damped as cloth just laid is, so what her legs put out of their way as they jump is a move
+   * and not a throw. A FAULT FOUND 2026-11-17 in the first pictures of the pencil skirt walking, fixed and told. Laid
+   * afresh at every change of pose, a skirt was laid AS CUT round her hips with her legs already in mid-stride: a
+   * straight skirt to her calf is cut through her forward thigh and her rear calf there, and was thrown up her legs
+   * as her skin and her legs put it out -- MEASURED in the room at FIT 1, half a second into a walk: its hem, 37.8 cm
+   * from the floor standing, at 53.9 cm all round and 61.2 at the most, in rolls at her knees; down to 42.8 half a
+   * second later.
+   */
+  calm(): void { if (this.sim) this.warm = WARM_SECONDS; }
 
   /** One frame: her skin under the cloth, her legs, the cloth, and the sheet drawn on it. Her world matrices must be current. */
   frame(dt: number, stool: SkirtStool | null = null, span: number = dt): void {
@@ -220,15 +424,19 @@ export class ClothSkirt {
     const sim = this.sim!, n = this.draft.count;
     sim.settings = this.cloth;
     let skinMs = this.skin.update(sim.positions, this.after);
+    this.legs(this.capsNow, stool);
+    // (under FIT 1, her places: where her skin has them now, the gaps spanned)
+    if (this.fitted) this.place(this.after.pinTarget);
     this.floors(sim.positions, this.after);
     this.raised = 0;
     if (this.under) { this.layer.build(this.under.x, this.under.n, CLOTH_LAYERS.cell * this.options.unitsPerMetre); this.raised = raiseOver(this.layer, this.after, n, this.options.unitsPerMetre, { most: CLOTH_LAYERS.tuckedMost, held: this.draft.pin, lift: this.under.lift ?? 0 }); }
-    this.legs(this.capsNow, stool);
     if (this.primed) {
       const a = this.after.pinTarget, b = this.before.pinTarget, jump = Math.max(JUMP_M, JUMP_SPEED * span) * this.options.unitsPerMetre, pin = this.draft.pin;
       let most = 0;
-      for (let p = 0; p < n; p++) { if (pin[p] < 1) continue; const i = p * 3, q = (a[i] - b[i]) ** 2 + (a[i + 1] - b[i + 1]) ** 2 + (a[i + 2] - b[i + 2]) ** 2; if (q > most) most = q; }
-      if (most > jump * jump) { this.jumps++; this.restart(); skinMs += this.skin.update(sim.positions, this.after); this.floors(sim.positions, this.after); }
+      // (its RING's places: on her hips. A skirt held further down her has held points on her knees and her shins,
+      // which a walk swings faster than any jump's measure)
+      for (let p = 0; p < this.draft.columns; p++) { if (pin[p] < 1) continue; const i = p * 3, q = (a[i] - b[i]) ** 2 + (a[i + 1] - b[i + 1]) ** 2 + (a[i + 2] - b[i + 2]) ** 2; if (q > most) most = q; }
+      if (most > jump * jump) { this.jumps++; this.restart(); skinMs += this.skin.update(sim.positions, this.after); if (this.fitted) this.place(this.after.pinTarget); this.floors(sim.positions, this.after); }
     }
     if (!this.primed) { copyContacts(this.after, this.before); this.copyCaps(this.capsNow, this.capsWas); this.primed = true; }
     if (this.warm > 0) { this.warm -= dt; sim.settings = { ...this.cloth, damping: Math.max(this.cloth.damping, WARM_DAMPING) }; }
@@ -252,16 +460,42 @@ export class ClothSkirt {
     }
     const swap = this.before; this.before = this.after; this.after = swap;
     this.copyCaps(this.capsNow, this.capsWas);
-    (this.position.array as Float32Array).set(sim.positions.subarray(0, n * 3));
-    clothNormals(sim.positions, this.draft.triangles, n, this.normal.array as Float32Array);
+    const shown = this.position.array as Float32Array;
+    if (this.fitted) {
+      // DRAWN FIT OF THE WAY FROM HER TO THE CLOTH (`SKIRT_FIT`): from each point's place on her, n further on
+      const X = sim.positions, f = this.draft.fit, o = this.base * 3;
+      for (let i = 0; i < n * 3; i++) shown[i] = X[o + i] + (X[i] - X[o + i]) * f;
+      // ...and out of her skin, which the straight way cuts the corner of as she moves (`between`)
+      this.skinPut = 0; this.skinPutMost = 0;
+      if (this.between && this.probe.floor) skinMs += this.outOfHer(shown);
+    } else shown.set(sim.positions.subarray(0, n * 3));
+    clothNormals(shown, this.draft.triangles, n, this.normal.array as Float32Array);
     this.position.needsUpdate = true; this.normal.needsUpdate = true;
-    const k = 1 / SMOOTHING, s = this.shown;
+    const k = 1 / SMOOTHING, s = this.shown_;
     s.skinMs += (skinMs - s.skinMs) * k; s.simMs += (stats.ms - s.simMs) * k; s.contacts = stats.contacts;
+  }
+
+  /**
+   * THE SHEET AS DRAWN, PUT OUT OF HER SKIN (`between`, `sheetOutOfSkin`): `x`, its points (world). Her skin is walked
+   * under them where they are (the third set: `sheetOrder`, in this frame's pose), and each is set against the nearest
+   * of her found there -- the point of her, and her skin's own facing -- to a stand-off between her places' (the
+   * cut's ease, at FIT 0) and the cloth's own (at 1). Never its ring, which is the cloth's. The milliseconds the walk took.
+   */
+  private outOfHer(x: Float32Array): number {
+    const c = this.sheet, d = this.draft, M = this.options.unitsPerMetre;
+    if (!c || !this.sheetOrder) return 0;
+    this.skin.setOrder(this.sheetOrder);
+    const ms = this.skin.update(x, c, true);
+    this.skin.setOrder(this.simOrder);
+    const ease = this.settings.tucked ? SKIRT_CUT.easeTucked : SKIRT_CUT.ease, off = (ease + (SKIRT_BODY.clearance - ease) * d.fit) * M;
+    const moved = sheetOutOfSkin(x, d.columns, d.count, c.point, c.normal, 0, off, SHEET_FLOOR.deep * M);
+    this.skinPut = moved.put; this.skinPutMost = moved.most;
+    return ms;
   }
 
   /** Each point's floor turned to face the point (`FLOOR`). */
   private floors(x: Float32Array, c: SkinContacts): void {
-    const n = this.draft.count, P = c.point, N = c.normal, inside = FLOOR.inside * this.options.unitsPerMetre;
+    const n = c.standOff.length, P = c.point, N = c.normal, inside = FLOOR.inside * this.options.unitsPerMetre;
     for (let i = 0, i3 = 0; i < n; i++, i3 += 3) {
       const dx = x[i3] - P[i3], dy = x[i3 + 1] - P[i3 + 1], dz = x[i3 + 2] - P[i3 + 2];
       const along = dx * N[i3] + dy * N[i3 + 1] + dz * N[i3 + 2], far = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -270,32 +504,87 @@ export class ClothSkirt {
     }
   }
 
+  /**
+   * HER PLACES, THE GAPS SPANNED (the fields' note above): in `t` (three a particle, world: every particle's own place
+   * on her skin, the cloth's first and then her places', from `base`), each place that is over the gap between her legs is put onto
+   * the span between the places either side of it, out of a leg that stands in the span's way (`spanKeep`). Her legs'
+   * capsules (`capsNow`) must be current.
+   */
+  private place(t: Float32Array, bridge = true): void {
+    const keep = this.spanKeep;
+    if (!this.fitted) return;
+    const A = this.spanA, B = this.spanB, U = this.spanU, n = this.draft.count, cols = this.draft.columns, base = this.base, ca = this.capsNow.a, cb = this.capsNow.b;
+    if (this.spanned && keep) for (let p = cols; p < n; p++) {
+      const a = A[p];
+      if (a < 0) continue;
+      const p3 = (base + p) * 3, a3 = (base + a) * 3, b3 = (base + B[p]) * 3, u = U[p];
+      let x = t[a3] + (t[b3] - t[a3]) * u, y = t[a3 + 1] + (t[b3 + 1] - t[a3 + 1]) * u, z = t[a3 + 2] + (t[b3 + 2] - t[a3 + 2]) * u;
+      // (out of the leg it is deepest in -- nearer that leg's line than it was cut -- straight out from that line)
+      let most = 0, qx = 0, qy = 0, qz = 0;
+      for (let k = 0, k3 = 0; k < 6; k++, k3 += 3) {
+        const ax = ca[k3], ay = ca[k3 + 1], az = ca[k3 + 2], sx = cb[k3] - ax, sy = cb[k3 + 1] - ay, sz = cb[k3 + 2] - az, ss = sx * sx + sy * sy + sz * sz;
+        let w = ss > 1e-9 ? ((x - ax) * sx + (y - ay) * sy + (z - az) * sz) / ss : 0;
+        w = w < 0 ? 0 : w > 1 ? 1 : w;
+        const cx = ax + sx * w, cy = ay + sy * w, cz = az + sz * w, in_ = keep[p * 6 + k] - Math.sqrt((x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2);
+        if (in_ > most) { most = in_; qx = cx; qy = cy; qz = cz; }
+      }
+      if (most > 0) { const dx = x - qx, dy = y - qy, dz = z - qz, l = Math.sqrt(dx * dx + dy * dy + dz * dz); if (l > 1e-6) { const k = most / l; x += dx * k; y += dy * k; z += dz * k; } }
+      t[p3] = x; t[p3 + 1] = y; t[p3 + 2] = z;
+    }
+    // across the crease at the top of her thighs: taut from its ring to her thighs (`bridgeTo`). Not as it is laid
+    // on her afresh: a place put into her has no floor to come out by (`FLOOR.inside`), and from her skin it has.
+    const to = this.bridgeTo, share = this.bridgeShare, along = this.bridgeAt;
+    if (!bridge || !to || !share || !along) return;
+    for (let c = 0; c < cols; c++) {
+      const last = to[c], w = share[c];
+      if (last < 0) continue;
+      const a3 = (base + c) * 3, b3 = (base + last * cols + c) * 3, ax = t[a3], ay = t[a3 + 1], az = t[a3 + 2], ex = t[b3] - ax, ey = t[b3 + 1] - ay, ez = t[b3 + 2] - az;
+      for (let r = 1; r < last; r++) {
+        const p = r * cols + c, p3 = (base + p) * 3, u = along[p];
+        t[p3] += (ax + ex * u - t[p3]) * w; t[p3 + 1] += (ay + ey * u - t[p3 + 1]) * w; t[p3 + 2] += (az + ez * u - t[p3 + 2]) * w;
+      }
+    }
+  }
+
   private copyCaps(from: Capsules, to: Capsules): void { to.a.set(from.a); to.b.set(from.b); to.radius.set(from.radius); }
 
   /** The cloth's points now, world (count x 3). */
   get positions(): Float32Array | null { return this.sim?.positions ?? null; }
+  /** The sheet's points as it is drawn, world (count x 3): the cloth's at FIT 1, FIT of the way from her to them under it. */
+  get shown(): Float32Array | null { return this.sim ? (this.position.array as Float32Array) : null; }
   get velocities(): Float32Array | null { return this.sim?.velocities ?? null; }
   /** Its skin contacts as laid this frame (after `frame`). */
   get contacts(): SkinContacts { return this.before; }
   /**
-   * WHAT OF IT IS UNDER A TEE WORN OVER IT AND NOT DRAWN (`clothLayers.ts` `coveredBy`): a mark a point, or null for all
-   * of it. Its own triangles alone are left out, never her skin -- those with ANY point marked: a skirt hangs outside a
-   * tee, and with only the triangles wholly under it left out, the rest stood up over the tee's hem in teeth a row
-   * tall (MEASURED 2026-11-17). Its edge is then a little under the hem, where its painted short is seen in its colour.
+   * WHAT OF IT IS UNDER A TEE WORN OVER IT AND NOT DRAWN (`clothLayers.ts` `besideCloth`): a mark a point, or null for all
+   * of it. Its own cloth alone is left out, never her skin. A skirt hangs outside a tee, and with only the triangles
+   * wholly under it left out, the rest stood up over the tee's hem in teeth a row tall (MEASURED 2026-11-17): so it is
+   * cut close under its last points that are NOT marked (`HIDDEN_EDGE`), where its painted short is seen in its colour.
+   * THE EDGE IS DRAWN A PIXEL AT A TIME (`hiddenEdge`): the marks ride each triangle as a number, and a pixel past
+   * `HIDDEN_EDGE` of the way to a marked point is not drawn -- a line that crosses a triangle. Until 2026-11-17 a
+   * triangle with any point marked was left out whole, and the edge under a tee's hem ran in steps a row of triangles
+   * tall.
    */
   hide(marks: Uint8Array | null): void {
-    const all = this.draft.triangles, g = this.mesh.geometry;
-    if (!marks) { if (this.hiddenKey !== '') { this.hiddenKey = ''; g.setIndex(new THREE.BufferAttribute(all, 1)); } return; }
-    const out: number[] = []; let key = '';
-    for (let t = 0; t + 2 < all.length; t += 3) { if (marks[all[t]] || marks[all[t + 1]] || marks[all[t + 2]]) key += t + ','; else out.push(all[t], all[t + 1], all[t + 2]); }
-    if (key === this.hiddenKey) return;
-    this.hiddenKey = key; g.setIndex(new THREE.BufferAttribute(Uint32Array.from(out), 1));
+    const h = this.hidden.array as Float32Array, n = this.draft.count;
+    let any = false, changed = false;
+    for (let p = 0; p < n; p++) { const v = marks && marks[p] ? 1 : 0; if (v) any = true; if (h[p] !== v) { h[p] = v; changed = true; } }
+    if (changed) this.hidden.needsUpdate = true;
+    this.hiddenAny = any;
   }
-  private hiddenKey = '';
+  private hiddenAny = false;
+  /** (a probe's) whether any of it is left out under a tee now */
+  get hiding(): boolean { return this.hiddenAny; }
+  /** (a probe's) her skin's points as it is posed under the skirt this frame, her soft body's moves among them: world, three a vertex. After `frame`. */
+  skinPosed(): Float32Array {
+    const n = this.options.body.geometry.getAttribute('position').count, out = new Float32Array(n * 3);
+    for (let v = 0; v < n; v++) this.skin.posedVertex(v, out, v * 3);
+    return out;
+  }
   /** Floors raised over a shirt under it this frame (a probe's). */
   get floorsRaised(): number { return this.raised; }
 
-  stats(): ClothSkirtStats { return { ...this.shown, worldPerMetre: this.restScaleWorld, particles: this.draft.count, jumps: this.jumps, rows: this.draft.rows, columns: this.draft.columns }; }
+  stats(): ClothSkirtStats { return { ...this.shown_, worldPerMetre: this.restScaleWorld, particles: this.draft.count, jumps: this.jumps, rows: this.draft.rows, columns: this.draft.columns, heldRows: this.draft.heldRows, spanned: this.spanned, skinPut: this.skinPut, skinPutMost: this.skinPutMost / this.options.unitsPerMetre }; }
 
   dispose(): void {
     this.mesh.removeFromParent();

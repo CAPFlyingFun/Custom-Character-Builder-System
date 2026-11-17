@@ -18,6 +18,9 @@
  *   either top (`SKIRT_CUT.shortest`, `hemOf`; the hem is level: one height all round, counted on her legs whatever
  *   her belly does to the ring);
  * - FLARE: 0 a tube that lies on her hips and falls straight from the widest of her, 1 a full skirt.
+ * And his fourth, drawn 2026-11-17 beside LENGTH (`SkirtSettings.fit`, `SKIRT_FIT`):
+ * - FIT: how closely it holds to her from leg to leg -- 0 on her all the way to its hem, 1 straight from her hips,
+ *   between the two that share of the way from her to the cloth.
  *
  * Its rest shape IS its cut: a ring that stands just off her, and under it a surface that never comes back in toward
  * her going down (the convex outline of her hips and both legs at each height, `garment/measure.ts` dressForm -- a
@@ -44,7 +47,18 @@ export interface SkirtSettings {
   readonly tucked: boolean;
   /** Which of its four anchors hold it (`SkirtAnchors`); absent: all four. */
   readonly anchors?: SkirtAnchors;
+  /**
+   * FIT, HIS SECOND NUMBER (Joshua, 2026-11-17, two red lines down a figure's side, "0%" along its leg from hip to ankle
+   * and "100%" straight down from its hip: "How tightly it curves with the body from legs to legs. Maybe for tighter
+   * ones, it's actually a simple bridge like between the breasts that span the front and back gap between the legs… not
+   * cloth and if you do a looser one, it fades somehow to cloth sim"). 0: on her all the way to its hem -- her hips' and
+   * her legs' own outline, the gap between her legs spanned front and back. 1: straight from her hips, as every skirt
+   * was before it. Between: that share of the way from the one to the other (`SKIRT_FIT`). Absent: 1.
+   */
+  readonly fit?: number;
 }
+/** A skirt's FIT as a number: 1, straight from her hips, where it says nothing (every skirt before there was one). */
+export const fitOf = (s: { readonly fit?: number | undefined }): number => (Number.isFinite(s.fit) ? Math.min(1, Math.max(0, s.fit!)) : 1);
 /**
  * ITS FOUR ANCHORS (Joshua, 2026-11-17: "I would add 4 anchor points for skirts either high or low sitting:
  * front/back/both sides"; "releasing all of them should make it fall down"): where its top is held to her -- her front,
@@ -70,7 +84,34 @@ export const clampSkirt = (s: Partial<SkirtSettings>): SkirtSettings => ({
   flare: Math.min(1, Math.max(0, Number.isFinite(s.flare) ? s.flare! : SKIRT_DEFAULTS.flare)),
   // (all four is said by saying nothing: an outfit written before there were anchors is as it was)
   ...((() => { const k = anchorsOf(s); return k.front && k.back && k.left && k.right ? {} : { anchors: k }; })()),
+  // (...and straight from her hips by saying nothing, the same)
+  ...(fitOf(s) < 1 ? { fit: fitOf(s) } : {}),
 });
+/** Two skirts cut the same: every number of theirs, their anchors and their fit said or not. */
+export function sameSkirt(a: Partial<SkirtSettings>, b: Partial<SkirtSettings>): boolean {
+  const x = clampSkirt(a), y = clampSkirt(b), p = anchorsOf(x), q = anchorsOf(y);
+  return x.top === y.top && x.tucked === y.tucked && Math.abs(x.length - y.length) < 5e-4 && Math.abs(x.flare - y.flare) < 5e-4 && Math.abs(fitOf(x) - fitOf(y)) < 5e-4
+    && p.front === q.front && p.back === q.back && p.left === q.left && p.right === q.right;
+}
+
+/**
+ * A SKIRT'S NUMBERS AS A SAVE KEEPS THEM (`characterSaves.ts` `SavedClothes.skirt`): one versioned record, never its
+ * mesh -- loading cuts it again from them and her own body. Kept only where they are not the outfit's own: a save from
+ * before a skirt's numbers could be moved has none, and is that outfit's skirt.
+ */
+export interface SkirtRecord { readonly version: typeof SKIRT_RECORD_VERSION; readonly settings: SkirtSettings }
+export const SKIRT_RECORD_VERSION = 1;
+/** A record read from a file that may hold anything: null unless it is this version's. */
+export function readSkirtRecord(v: unknown): SkirtRecord | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const r = v as { version?: unknown; settings?: unknown };
+  if (r.version !== SKIRT_RECORD_VERSION || typeof r.settings !== 'object' || r.settings === null) return null;
+  const q = r.settings as Record<string, unknown>, num = (x: unknown): number => (typeof x === 'number' ? x : NaN), k = (typeof q.anchors === 'object' && q.anchors !== null ? q.anchors : {}) as Record<string, unknown>;
+  return { version: SKIRT_RECORD_VERSION, settings: clampSkirt({
+    top: q.top === 'under' ? 'under' : 'over', tucked: q.tucked !== false, length: num(q.length), flare: num(q.flare), fit: num(q.fit),
+    anchors: { front: k.front !== false, back: k.back !== false, left: k.left !== false, right: k.right !== false },
+  }) };
+}
 
 /**
  * GAME TUNING: the ring's heights on her trunk. OVER is between her bust and the top of her belly (Joshua, 2026-11-16, of
@@ -121,6 +162,65 @@ export const SKIRT_CUT = Object.freeze({
   formStep: 0.01,
 });
 
+/**
+ * FIT (`SkirtSettings.fit`), HOW IT IS MADE. Every skirt is the cloth it always was: cut STRAIGHT (never back in
+ * toward her going down, opened by FLARE), hung from its ring and simulated. Under FIT 1 it has a second cut, ON HER
+ * (`hug`): her own outline at each height -- her hips, and under them the convex outline of both her legs, the gap
+ * between them spanned front and back -- `ease` off her, in and out as she goes. Each point of that cut has a place
+ * on her as she moves (`clothSkirt.ts`): on her skin where it was cut, or, over the gap between her legs, on the
+ * straight span between the points either side of it ("a simple bridge… not cloth"). THE SKIRT IS DRAWN FIT OF THE
+ * WAY FROM THAT PLACE TO WHERE THE CLOTH IS: at 0 on her and no cloth at all, at 1 the cloth and nothing else, and
+ * between them his two red lines' in-between -- "it fades somehow to cloth sim".
+ *
+ * WHY THE CLOTH ITSELF IS NEVER CUT CLOSER (two builds of it, 2026-11-17, each MEASURED in the room on the pencil
+ * skirt, walking with the clock held):
+ * - ON HER DOWN TO SOME HEIGHT, CLOTH FROM THERE (FIT 0.5: on her to her mid-thigh, cloth to her calf). Cloth let go
+ *   on her legs is a tube as big round as her two thighs, 74 cm at her knees; her stride wants 108 there and 131 at
+ *   her calf. It rode up her legs and stood in a crumpled roll at her knees in every stride.
+ * - CUT FIT OF THE WAY FROM ON-HER TO STRAIGHT, EVERY POINT TOLD WHERE TO BE: that share of the way from its place on
+ *   her to the straight cut as her pelvis carries it, outright up to a FIT of a half and as cloth drawn there past
+ *   it. A straight cut carried by her pelvis knows nothing of her legs: her knee came out through it (kept out of
+ *   her legs' capsules along each point's way, a point whose way was barred stood on her beside one whose way was
+ *   clear: a nick in the hem at each leg), and as cloth drawn toward such places it was pulled through her legs,
+ *   its hem in rags.
+ * The cloth as it always was already goes round her legs; half-way between it and her is round them too.
+ *
+ * EACH POINT'S PLACE ON HER IS THE NEAREST OF HER TO THAT POINT OF THE CLOTH AS CUT (`nearestOn`: of her outline at
+ * its height, `ease` off it). The way from the one to the other is then straight out of her, and no share of that
+ * way is in her. A FAULT FOUND 2026-11-17 in the first pictures of it from her back, fixed and told: her calves stood
+ * through the pencil skirt at every FIT from a quarter to three quarters. Each row of the on-her cut was laid round
+ * its outline's own middle, a point of it in each column's direction from there; the cloth's is laid round the one
+ * upright axis at its ring; and her calves stand BEHIND that axis (her outline under her knees does not hold it at
+ * all). So a point's place and its cloth were at two different places round her leg -- up to 8.6 cm apart along her
+ * outline -- and the straight way between them cut the corner through the back of her calf. MEASURED on her body
+ * file at 0%, the pencil as cut (LENGTH 0.54, FLARE 0): half-way, 32 of its 2,088 points under its ring were inside
+ * her outline, 11.7 mm at the most, all in its last four rows; at a quarter 34 and 7.8 mm, at three quarters 20 and
+ * 7.2. Laid at the nearest of her: none at any of the three, in the pencil, the A-line, the mini and the maxi
+ * (`tests/skirtFit.test.ts`). The on-her cut's points are no longer evenly spaced round her (1.6 to 20.7 mm apart in
+ * the pencil: close where her outline turns, far along its straight runs), and with FLARE they move along her
+ * outline, never off it. Its first rows are not eased from its ring into her outline, as they were while the two
+ * were laid round two middles: under its ring the cloth is cut ON her, and so its place is.
+ *
+ * GAME TUNING: `span`, metres: a point cut further than this off her skin, under where her legs part, is over the gap
+ * between them and is spanned; `clear`, metres: a span is kept this far outside her legs' capsules at the least
+ * where it was cut further off them than that (`clothSkirt.ts` `spanKeep`); `bridge`, metres under where her legs
+ * part, and `bridgeFront`, degrees round her from her front (all of it within the first, none past the second): the
+ * crease at the top of her thighs, which a sheet is drawn taut over (`clothSkirt.ts` `bridgeTo`); `paintTo`, the FIT
+ * up to which her legs are painted under it as far as its hem lets them be (`paintedLegs`).
+ */
+export const SKIRT_FIT = Object.freeze({ span: 0.016, clear: 0.008, bridge: 0.04, bridgeFront: Object.freeze([50, 85] as const), paintTo: 0.6 });
+/**
+ * ITS PAINTED PART'S LEGS (`paintedLegs`). GAME TUNING: they end `above` (metres) over its hem at the least, where
+ * they would show under it -- MEASURED 2026-11-17: at LENGTH 0 the short's legs ended 9.3 cm under her hip joints and
+ * the hem was 8.0 --, and are never shorter than `least` of her leg (a leg's end between her legs is not a line round
+ * a leg). `rise`, metres: how far up a leg a skirt's hem rides in a stride at FIT 1, and that share of it at a FIT
+ * between -- her legs are painted that much less far. Her paint is on her leg and goes where the leg goes; the sheet
+ * between her and the cloth goes only part of the way. MEASURED 2026-11-17 in the room, the pencil at FIT 0.5,
+ * mid-stride, her legs painted to its hem: about 6 cm of her painted calf under the sheet's hem at the back of her
+ * rear leg, a dark band like the leg of a short worn under it.
+ */
+export const SKIRT_PAINT = Object.freeze({ above: 0.012, least: 0.085, rise: 0.15 });
+
 export interface SkirtDraft {
   readonly count: number;
   readonly columns: number;
@@ -135,6 +235,15 @@ export interface SkirtDraft {
   readonly hemY: number;
   /** the upright axis it is laid round: (x, z), metres */
   readonly axis: readonly [number, number];
+  /** its FIT (`SKIRT_FIT`): 1 straight from her hips */
+  readonly fit: number;
+  /**
+   * Under FIT 1, its second cut, ON HER (`SKIRT_FIT`; count x 3, as `rest`, which is the cloth's own, the straight
+   * one, at every FIT): where each of its points has a place on her. Null at FIT 1.
+   */
+  readonly hug: Float32Array | null;
+  /** the rows that have a place on her, from its ring down: 1 at FIT 1 (its ring), all of them under it */
+  readonly heldRows: number;
   /** the share of its columns the under-belly waistband's line crossed (`SKIRT_LINE`): 1 all round her; 0 with no line handed in, or a skirt over her belly; under `SKIRT_LINE.least`, the line was not used */
   readonly lineFound: number;
 }
@@ -248,6 +357,28 @@ export function reachOf(h: ArrayLike<number>, cx: number, cz: number, a: number)
   return best;
 }
 
+/**
+ * The point of the outline `h` ((x, z) pairs: convex, either way round) nearest (px, pz), into `out` [x, z, inside]:
+ * `inside` 1 where the outline holds the point (its nearest point is then the nearest of its rim all the same). False
+ * with no outline.
+ */
+export function nearestOn(h: ArrayLike<number>, px: number, pz: number, out: Float64Array | number[]): boolean {
+  const n = h.length >> 1;
+  if (n < 3) return false;
+  let best = Infinity, bx = 0, bz = 0, left = 0, right = 0;
+  for (let k = 0; k < n; k++) {
+    const l = (k + 1) % n, ax = h[2 * k], az = h[2 * k + 1], ex = h[2 * l] - ax, ez = h[2 * l + 1] - az, ee = ex * ex + ez * ez;
+    let t = ee > 1e-18 ? ((px - ax) * ex + (pz - az) * ez) / ee : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const qx = ax + ex * t, qz = az + ez * t, d = (px - qx) * (px - qx) + (pz - qz) * (pz - qz);
+    if (d < best) { best = d; bx = qx; bz = qz; }
+    const side = ex * (pz - az) - ez * (px - ax);
+    if (side > 1e-15) left++; else if (side < -1e-15) right++;
+  }
+  out[0] = bx; out[1] = bz; out[2] = left === 0 || right === 0 ? 1 : 0;
+  return true;
+}
+
 /** The ring's height at angle `a` round her (0 her front, pi/2 her +x side), a share of her trunk. */
 export function ringShare(top: SkirtTop, a: number): number {
   const t = SKIRT_TOPS[top], f = (1 + Math.cos(a)) / 2, s = Math.sin(a) ** 2;
@@ -258,6 +389,63 @@ export function ringShare(top: SkirtTop, a: number): number {
 export function hemOf(joints: BodyInput['joints'], length: number): number {
   const hipY = (joints.hip[0][1] + joints.hip[1][1]) / 2, kneeY = (joints.knee[0][1] + joints.knee[1][1]) / 2, top = hipY - SKIRT_CUT.shortest * (hipY - kneeY);
   return top + (SKIRT_CUT.floorClear - top) * Math.min(1, Math.max(0, length));
+}
+/**
+ * HOW FAR DOWN HER LEGS A SKIRT'S PAINTED PART GOES: LEG LENGTH of the short under it, 0 her hip joints to 1 her ankles
+ * (`SKIRT_PAINT`). Under a skirt that lies ON her (FIT 0) her skin is painted to its hem, so what of her stands through
+ * the sheet -- it is 6 mm off her, and a point of it every centimetre or two -- is in its colour; from there up to
+ * `SKIRT_FIT.paintTo` less far by how far its hem rides up her leg in a stride (`rise`); from there to FIT 1 less far
+ * again, to the short every skirt has (`short`). Never to its hem itself, and never shorter than that short where its
+ * hem lets the short be.
+ */
+export function paintedLegs(joints: BodyInput['joints'], draft: Pick<SkirtDraft, 'fit' | 'hemY'>, short: number): number {
+  const P = SKIRT_PAINT, hipY = (joints.hip[0][1] + joints.hip[1][1]) / 2, leg = hipY - (joints.ankle[0][1] + joints.ankle[1][1]) / 2;
+  if (!(leg > 0.2)) return short;
+  const most = (hipY - draft.hemY - P.above) / leg, own = Math.min(short, most), near = Math.max(own, most - (P.rise * draft.fit) / leg);
+  const t = Math.min(1, Math.max(0, (draft.fit - SKIRT_FIT.paintTo) / (1 - SKIRT_FIT.paintTo))), far = near + (own - near) * (t * t * (3 - 2 * t));
+  return Math.min(1, Math.max(P.least, Math.min(far, most)));
+}
+/**
+ * THE POINTS OF ITS ON-HER CUT THAT ARE OVER A GAP (`SKIRT_FIT`), row by row: each run of points cut further than `far`
+ * off her skin (`off`: how far each point of `hug` stands off the skin it is bound to, in `far`'s units), between two
+ * points of its row that are on her skin -- `a` and `b` (-1 for a point with skin of its own), and `u` of the way from
+ * the one to the other as it was cut. Never its ring, which is on its waistband's line as it always was; and at FIT
+ * 1, where there is no on-her cut, none at all. A row with no point on her skin is left as it is.
+ *
+ * ONLY UNDER WHERE HER LEGS PART (`below`: a height, metres; `hemOf(joints, 0)`). A gap between her two legs is
+ * between two things that move apart, and a point over it has no one skin to go with; a hollow of her trunk -- across
+ * the front of her hips from the top of one thigh to the other's, over her cleft -- is all one thing, and a point over
+ * it goes with the skin under it, however far off that it was cut -- and, in front of her, with the run from its
+ * ring to her thighs (`clothSkirt.ts` `bridgeTo`), which is what is taut over the crease there. (Spanned across like
+ * a gap, the first build: a span from the top of one thigh to the other's as they scissor is no place for the front
+ * of a skirt.)
+ */
+export function heldSpans(d: Pick<SkirtDraft, 'count' | 'columns' | 'heldRows'> & { readonly hug: ArrayLike<number> | null }, off: ArrayLike<number>, far: number, below = Infinity): { readonly a: Int32Array; readonly b: Int32Array; readonly u: Float32Array; readonly count: number } {
+  const A = new Int32Array(d.count).fill(-1), B = new Int32Array(d.count).fill(-1), U = new Float32Array(d.count), cols = d.columns, R = d.hug;
+  if (!R) return { a: A, b: B, u: U, count: 0 };
+  // (over a gap: cut far off her skin, and under where her legs part)
+  const gap = (p: number): boolean => off[p] > far && R[p * 3 + 1] < below;
+  let count = 0;
+  for (let r = 1; r < d.heldRows; r++) {
+    const row = r * cols;
+    let first = -1;
+    for (let c = 0; c < cols && first < 0; c++) if (!gap(row + c)) first = c;
+    if (first < 0) continue;
+    for (let k = 1; k < cols; ) {
+      if (!gap(row + ((first + k) % cols))) { k++; continue; }
+      let len = 1;
+      while (k + len < cols && gap(row + ((first + k + len) % cols))) len++;
+      const a = row + ((first + k - 1) % cols), b = row + ((first + k + len) % cols);
+      const ex = R[b * 3] - R[a * 3], ey = R[b * 3 + 1] - R[a * 3 + 1], ez = R[b * 3 + 2] - R[a * 3 + 2], l2 = ex * ex + ey * ey + ez * ez;
+      for (let j = 0; j < len; j++) {
+        const q = row + ((first + k + j) % cols);
+        const u = l2 > 1e-12 ? ((R[q * 3] - R[a * 3]) * ex + (R[q * 3 + 1] - R[a * 3 + 1]) * ey + (R[q * 3 + 2] - R[a * 3 + 2]) * ez) / l2 : (j + 1) / (len + 1);
+        A[q] = a; B[q] = b; U[q] = Math.min(1, Math.max(0, u)); count++;
+      }
+      k += len;
+    }
+  }
+  return { a: A, b: B, u: U, count };
 }
 /**
  * `inside`: for a skirt UNDER her belly, how far inside the under-belly waistband each point of her skin is as she is
@@ -312,6 +500,25 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings, inside: Arr
     const f = Math.min(levels - 1, Math.max(0, (y - form.y0) / form.step)), i = Math.min(levels - 1, Math.floor(f)), j = Math.min(levels - 1, i + 1), p = table[i * cols + c], q = table[j * cols + c];
     return p !== p ? (q !== q ? 0 : q) : q !== q ? p : p + (f - i) * (q - p);
   };
+  // THE NEAREST OF HER OUTLINE, `ease` off it, TO A POINT OF THE CLOTH AS CUT, at a height (between two slices: between
+  // their two; a slice with nothing of her takes the other's; a point the outline holds, or nearer it than `ease`, is
+  // its own): where a point of the ON-HER cut is laid (`SKIRT_FIT`, "each point's place is the nearest of her").
+  const near = [0, 0, 0], foot = [0, 0];
+  const footOn = (i: number, tx: number, tz: number): boolean => {
+    if (!nearestOn(form.hulls[i], tx, tz, near)) return false;
+    const dx = tx - near[0], dz = tz - near[1], l = Math.hypot(dx, dz);
+    if (near[2] > 0 || l <= ease) { foot[0] = tx; foot[1] = tz; } else { foot[0] = near[0] + (dx / l) * ease; foot[1] = near[1] + (dz / l) * ease; }
+    return true;
+  };
+  const footAt = (tx: number, tz: number, y: number, out: number[]): void => {
+    out[0] = tx; out[1] = tz;
+    if (levels === 0) return;
+    const f = Math.min(levels - 1, Math.max(0, (y - form.y0) / form.step)), i = Math.min(levels - 1, Math.floor(f)), j = Math.min(levels - 1, i + 1);
+    const a = footOn(i, tx, tz), ax = foot[0], az = foot[1], b = footOn(j, tx, tz);
+    if (a && b) { out[0] = ax + (f - i) * (foot[0] - ax); out[1] = az + (f - i) * (foot[1] - az); } else if (a) { out[0] = ax; out[1] = az; } else if (b) { out[0] = foot[0]; out[1] = foot[1]; }
+  };
+  // FIT (`SKIRT_FIT`): under 1 its second cut, ON HER (`hug`), beside the cloth's own, which is as it always was
+  const fit = fitOf(s), hug = fit < 1 ? new Float32Array(count * 3) : null, on = [0, 0];
   for (let c = 0; c < cols; c++) {
     const a = (c / cols) * Math.PI * 2, y0 = ringY[c], held = anchorShare(anchors, a);
     const r0 = (under ? under.r[c] : reachAt(c, y0)) + ease;
@@ -327,6 +534,12 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings, inside: Arr
       const R = Math.max(widest, r0 + tan * drop), i = (r * cols + c) * 3;
       rest[i] = cx + Math.sin(a) * R; rest[i + 1] = y; rest[i + 2] = cz + Math.cos(a) * R;
       pin[r * cols + c] = (C.hold[r] ?? 0) * held;
+      if (!hug) continue;
+      // ON HER: the ring as it is; under it the nearest of her own outline at this height to the cloth's point here,
+      // in and out as she goes
+      if (r === 0) { hug[i] = rest[i]; hug[i + 1] = y; hug[i + 2] = rest[i + 2]; continue; }
+      footAt(rest[i], rest[i + 2], y, on);
+      hug[i] = on[0]; hug[i + 1] = y; hug[i + 2] = on[1];
     }
   }
   const triangles = new Uint32Array(cols * (rows - 1) * 6);
@@ -337,5 +550,5 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings, inside: Arr
     if ((r + c) & 1) { triangles[t++] = p00; triangles[t++] = p11; triangles[t++] = p01; triangles[t++] = p00; triangles[t++] = p10; triangles[t++] = p11; }
     else { triangles[t++] = p00; triangles[t++] = p10; triangles[t++] = p01; triangles[t++] = p01; triangles[t++] = p10; triangles[t++] = p11; }
   }
-  return { count, columns: cols, rows, rest, triangles, pin, ringY, hemY, axis: [cx, cz], lineFound };
+  return { count, columns: cols, rows, rest, triangles, pin, ringY, hemY, fit, hug, heldRows: hug ? rows : 1, axis: [cx, cz], lineFound };
 }
