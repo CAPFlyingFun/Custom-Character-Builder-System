@@ -24,6 +24,12 @@ export const CLOTH_LAYERS = Object.freeze({ tuckedMost: 0.012, gap: 0.003, reach
   cinchRows: 8, cinchSlack: 0.002, cinchReach: 0.05,
   /** a cloth hidden under another (`coveredBy`): how far out the outer cloth is looked for, how much nearer her than the inner point it may be and still cover it, and the outer cloth's first rows left out (its top edge covers where the hiding ends) */
   hideReach: 0.08, hideSlack: 0.002, hideSkipRows: 2,
+  /** a tee OVER a skirt (`holdInside`, `besideCloth`): the most a point of the skirt is brought in a frame, how far
+   *  outside the tee it may hang and still be brought in, and how far past a point of the skirt the tee is looked for
+   *  level with it, and how far UNDER the point's own height: `beside` and a centimetre, so the skirt is drawn up to a
+   *  centimetre above the tee's hem (looked for at the point's own height, the skirt was left out for 2 cm under the
+   *  hem as well, and her skin showed between the two -- MEASURED) */
+  insideStep: 0.003, insideNear: 0.08, besidePast: 0.03, besideDown: 0.032, besideIn: 0.1,
   /** a tucked cloth under the outer one's top edge (`underTop`): how far under that edge a point is before it is left out, and how far outside the edge's own reach from the axis it may stand and still be */
   topDrop: 0.015, topOut: 0.015, topNear: 0.025 });
 
@@ -77,6 +83,37 @@ export class ClothUnder {
     }
     return best;
   }
+
+  /**
+   * The same line, read EVENLY: the mean of how far out the inner cloth's points within `beside` of it lie, each weighed
+   * by how near the line it is (all at the line, none at `beside`). The furthest point of a cloth that leans away from
+   * her changes from one of its points to the next as the line moves, and what is laid on that stands in steps
+   * (MEASURED 2026-11-17, a tee's floor over a skirt). NaN: none there.
+   */
+  heightMean(px: number, py: number, pz: number, nx: number, ny: number, nz: number, reach: number, beside: number, under: number): number {
+    const inv = this.inv, step = 1 / inv, x = this.x, b2 = beside * beside;
+    let sum = 0, weight = 0, lastX = NaN, lastY = NaN, lastZ = NaN;
+    const seen = this.seen; seen.length = 0;
+    for (let t = 0; t <= reach + step; t += step) {
+      const cx = Math.floor((px + nx * t) * inv), cy = Math.floor((py + ny * t) * inv), cz = Math.floor((pz + nz * t) * inv);
+      if (cx === lastX && cy === lastY && cz === lastZ) continue;
+      lastX = cx; lastY = cy; lastZ = cz;
+      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) for (let oz = -1; oz <= 1; oz++) {
+        for (let j = this.head[hash(cx + ox, cy + oy, cz + oz)]; j >= 0; j = this.next[j]) {
+          const dx = x[j * 3] - px, dy = x[j * 3 + 1] - py, dz = x[j * 3 + 2] - pz;
+          const along = dx * nx + dy * ny + dz * nz;
+          if (along < -under || along > reach) continue;
+          const off = dx * dx + dy * dy + dz * dz - along * along;
+          if (off > b2 || seen.includes(j)) continue;
+          seen.push(j);
+          const w = (1 - off / b2) ** 2;
+          sum += along * w; weight += w;
+        }
+      }
+    }
+    return weight > 1e-9 ? sum / weight : NaN;
+  }
+  private seen: number[] = [];
 }
 
 function hash(cx: number, cy: number, cz: number): number { return (Math.imul(cx, 73856093) ^ Math.imul(cy, 19349663) ^ Math.imul(cz, 83492791)) & (TABLE - 1); }
@@ -206,4 +243,67 @@ export function underTop(ring: ArrayLike<number>, columns: number, x: ArrayLike<
     if (inReach) { out[i] = 1; added++; }
   }
   return added;
+}
+
+/**
+ * A TEE OVER A SKIRT (2026-11-17; Joshua, of what was tried: "Right now, only OVA.jpg looks good enough to push… keep
+ * working" -- OVA the tee riding the skirt as it was). What was tried, each MEASURED in the room at 0, 100 and 200%:
+ * - the tee RIDING the skirt (its floors raised over it), read as the furthest of the skirt, then evenly, with and
+ *   without the skirt's top rows, the skirt held within 2.5 cm of her under it: darts from her armpits (the first
+ *   only), a ridge right across her back at every one, and at 100% the tee left bunched on top of her bump;
+ * - the skirt brought to her skin at once wherever the tee is over it: a hand's jump in a frame, the skirt in pieces;
+ * - the tee NOT riding (it hangs as it does with no skirt: smooth, and over her bump at every size), with the skirt
+ *   left out of the drawing only where the tee is outside it: the skirt, which hangs wider than a tee, showed
+ *   through it in blocks; and left out wherever the tee is over its floor at all: holes to her legs under a bump,
+ *   whose underside is the nearest of her to the skirt under it, and the tee lies on that.
+ * So: the tee does not ride the skirt. A point of the skirt is brought in toward the tee's own height over its floor
+ * less the gap (`holdInside`: never under its own stand-off, never a point held to her, no more than `insideStep` a
+ * frame, and only while it hangs within `insideNear` outside the tee) -- and a point of the skirt is not drawn while
+ * the tee stands LEVEL WITH IT on its own side of her (`besideCloth`), whichever of the two is further out. Under the
+ * tee's hem, and under a bump, there is no tee level with it: it is drawn.
+ */
+export function holdInside(outer: ClothUnder, contacts: SkinContacts, x: Float32Array, v: Float32Array, n: number, unitsPerMetre: number, pin: ArrayLike<number> | null = null): number {
+  if (!outer.count) return 0;
+  const L = CLOTH_LAYERS, M = unitsPerMetre, reach = L.reach * M, beside = L.beside * M, under = L.under * M, gap = L.gap * M, step = L.insideStep * M, near = L.insideNear * M;
+  const P = contacts.point, N = contacts.normal, S = contacts.standOff, lo = outer.low - reach, hi = outer.high + reach;
+  let held = 0;
+  for (let i = 0, i3 = 0; i < n; i++, i3 += 3) {
+    if (pin && pin[i] > 0) continue;
+    const py = P[i3 + 1];
+    if (py < lo || py > hi) continue;
+    const nx = N[i3], ny = N[i3 + 1], nz = N[i3 + 2];
+    if (nx * nx + ny * ny + nz * nz < 0.5) continue;
+    const h = outer.heightMean(P[i3], py, P[i3 + 2], nx, ny, nz, reach, beside, under);
+    if (!(h === h)) continue;
+    const along = (x[i3] - P[i3]) * nx + (x[i3 + 1] - py) * ny + (x[i3 + 2] - P[i3 + 2]) * nz, most = Math.max(S[i], h - gap);
+    if (!(along > most) || along - h > near) continue;
+    const back = Math.min(along - most, step);
+    x[i3] -= nx * back; x[i3 + 1] -= ny * back; x[i3 + 2] -= nz * back;
+    const out = v[i3] * nx + v[i3 + 1] * ny + v[i3 + 2] * nz;
+    if (out > 0) { v[i3] -= nx * out; v[i3 + 1] -= ny * out; v[i3 + 2] -= nz * out; }
+    held++;
+  }
+  return held;
+}
+
+/**
+ * Which points (`x`, `n` of them) have the other cloth LEVEL WITH THEM on their own side of the axis (ax, az): a point
+ * of `other` within `beside` of the level line from the axis out through the point, no further out than the point and
+ * `besidePast`. Marks `out` (1: it has); returns how many.
+ */
+export function besideCloth(other: ClothUnder, ax: number, az: number, x: ArrayLike<number>, n: number, unitsPerMetre: number, out: Uint8Array): number {
+  out.fill(0, 0, n);
+  if (!other.count) return 0;
+  const L = CLOTH_LAYERS, M = unitsPerMetre, beside = L.beside * M, past = L.besidePast * M, down = L.besideDown * M, inside = L.besideIn * M;
+  let marked = 0;
+  for (let i = 0, i3 = 0; i < n; i++, i3 += 3) {
+    const y = x[i3 + 1];
+    if (!(y === y) || y < other.low - beside || y > other.high + beside) continue;
+    const dx = x[i3] - ax, dz = x[i3 + 2] - az, r = Math.hypot(dx, dz);
+    if (!(r > 1e-6)) continue;
+    // (and no further IN than `besideIn`: under a big bump the tee on its underside is level with the skirt that hangs
+    //  from its front, a hand and more inside it -- left out there, her leg showed in a notch: MEASURED at 200%)
+    if (other.heightAt(ax, y - down, az, dx / r, 0, dz / r, r + past, beside, 0) >= r - inside) { out[i] = 1; marked++; }
+  }
+  return marked;
 }

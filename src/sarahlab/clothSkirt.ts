@@ -254,6 +254,24 @@ export class ClothSkirt {
 
   /** The cloth's points now, world (count x 3). */
   get positions(): Float32Array | null { return this.sim?.positions ?? null; }
+  get velocities(): Float32Array | null { return this.sim?.velocities ?? null; }
+  /** Its skin contacts as laid this frame (after `frame`). */
+  get contacts(): SkinContacts { return this.before; }
+  /**
+   * WHAT OF IT IS UNDER A TEE WORN OVER IT AND NOT DRAWN (`clothLayers.ts` `coveredBy`): a mark a point, or null for all
+   * of it. Its own triangles alone are left out, never her skin -- those with ANY point marked: a skirt hangs outside a
+   * tee, and with only the triangles wholly under it left out, the rest stood up over the tee's hem in teeth a row
+   * tall (MEASURED 2026-11-17). Its edge is then a little under the hem, where its painted short is seen in its colour.
+   */
+  hide(marks: Uint8Array | null): void {
+    const all = this.draft.triangles, g = this.mesh.geometry;
+    if (!marks) { if (this.hiddenKey !== '') { this.hiddenKey = ''; g.setIndex(new THREE.BufferAttribute(all, 1)); } return; }
+    const out: number[] = []; let key = '';
+    for (let t = 0; t + 2 < all.length; t += 3) { if (marks[all[t]] || marks[all[t + 1]] || marks[all[t + 2]]) key += t + ','; else out.push(all[t], all[t + 1], all[t + 2]); }
+    if (key === this.hiddenKey) return;
+    this.hiddenKey = key; g.setIndex(new THREE.BufferAttribute(Uint32Array.from(out), 1));
+  }
+  private hiddenKey = '';
   /** Floors raised over a shirt under it this frame (a probe's). */
   get floorsRaised(): number { return this.raised; }
 

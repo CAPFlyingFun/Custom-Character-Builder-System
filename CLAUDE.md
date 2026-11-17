@@ -417,7 +417,27 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   gap between the ring and her) is marked as well, while it is within the edge's own reach and 1.5 cm, or lies within
   2.5 cm of the skirt's top rows (the shelf over a bump). MEASURED in the room (light skin, 1x): 0, 100 and 200%
   standing from three and four sides and walking: no fleck, her sleeves whole.
-  NOT RIGHT: the tee OVER a high skirt still rides in ridges and spikes. (The seven cards are baked again, 2026-11-17.)
+  (The seven cards were baked again, 2026-11-17.)
+- **A TEE OVER A SKIRT DOES NOT RIDE IT** (2026-11-17; `clothLayers.ts` `holdInside`, `besideCloth`, `ClothSkirt.hide`;
+  Joshua, of the tries shown on the way: "Right now, only OVA.jpg looks good enough to push… keep working" -- OVA the
+  tee riding the skirt as v0.9.42 has it). Riding a skirt that sits in the crease under her bust, the tee stood in
+  darts from her armpits, in a ridge right across her back, and at 100% bunched on top of her bump. Each MEASURED in
+  the room at 0, 100 and 200%, standing from four sides and walking:
+  - riding, read evenly and not where a floor faces down: no darts, the ridge and the bunching still; the skirt held
+    within 2.5 cm of her under it as well: the same;
+  - the skirt brought to her skin at once under the tee: a hand's jump in a frame, the skirt in pieces;
+  - not riding, the skirt undrawn only where the tee is outside it: it hangs wider than a tee, and showed through it
+    in blocks; undrawn wherever the tee is over its floor: holes to her legs under a bump (the nearest of her to the
+    skirt there is the bump's underside, and the tee lies on that).
+  NOW: the tee hangs as it does with no skirt (smooth, and over her bump at every size; it is laid again a second
+  after a skirt's re-cut). A point of the skirt is brought in toward the tee's height over its floor, 3 mm a frame at
+  the most; and it is not drawn while the tee stands LEVEL WITH IT on its own side of her -- looked for 3.2 cm under
+  its own height (so the skirt's edge is at the tee's hem, not 2 cm under it with her skin between), no further out
+  than 3 cm past it, no further in than 10 cm (the tee on a bump's underside) -- with every triangle that has ANY
+  such point left out (with only the wholly hidden ones, teeth a row tall over the hem). MEASURED: clean standing at
+  0, 100 and 200% from every side. NOT RIGHT: at 100 and 200% the skirt's top edge is seen from her three-quarter
+  and side, standing off her under the tee's hem (it hangs from the front of her bump); walking, the skirt gathers
+  between her legs in some strides. The tee over the LOW mini goes the same way: not pictured since.
 - **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.

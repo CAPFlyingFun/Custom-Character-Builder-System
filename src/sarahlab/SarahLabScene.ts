@@ -38,7 +38,7 @@ import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
 import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
 import { DRAW_LIFT, REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { ClothSkirt } from './clothSkirt';
-import { CLOTH_LAYERS, ClothUnder, cinchUnder, coveredBy, raiseOver, underTop } from './clothLayers';
+import { CLOTH_LAYERS, ClothUnder, besideCloth, cinchUnder, coveredBy, holdInside, underTop } from './clothLayers';
 import { anchorsOf, clampSkirt, type SkirtSettings } from './skirt/skirtDraft';
 import { bodyInputOf } from './garment/bodyInput';
 import { pickHex } from './fabricLibrary';
@@ -1952,8 +1952,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * her belly or under it, its length to the floor, how close it lies): the one an outfit wears (`BuiltInOutfit.skirt`),
    * or a probe's. `skirtKey` is the settings it was drafted for.
    */
-  const skirtLayer = new ClothUnder();
-  let teeRaised = 0;
   /**
    * CUT FOR HER AS SHE IS (Joshua, 2026-11-17, of a skirt cut once for her 0% belly and pictured at 200%, pushed up into a
    * ring on top of her bump: "Yes, do the recut…"): a skirt is drafted from her shape as it stands -- her belly, her
@@ -1965,6 +1963,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let skirtNavel: { body: THREE.SkinnedMesh; pose: SkinPose; spots: DetailSpots } | null = null;
   const skirtBand = new ClothUnder(); let teeCinched = 0;
   const skirtCover = new ClothUnder(); let teeHidden = new Uint8Array(0), teeUnderSkirt = 0;
+  const teeOver = new ClothUnder(); let skirtHidden = new Uint8Array(0), skirtUnderTee = 0, skirtHeldIn = 0;
   let skirtRoom: ClothSkirt | null = null, skirtKey = '', skirtPoseKey = '', skirtProbe: SkirtSettings | null = null, skirtColour = '';
   /**
    * The procedural tee an OUTFIT put on her (`OUTFITS[i].procedural`), its construction; null when none did. Once a
@@ -8935,7 +8934,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // the procedural tee a probe put on her (Stage 2b review): the room's tees stand aside while it is worn, it is laid
       // on her afresh when she changes pose (as the cloth tee is), and it collides with the stool when she sits
       // her skirt: laid on her afresh when she is put in another pose, stepped with her, put aside with her clothes
-      if (skirtRoom && skirtRecut) { skirtRecutAge += dt; if (skirtRecutAge >= SKIRT_RECUT_AFTER) { skirtRecut = false; skirtKey = ''; syncSkirt(); } }
+      if (skirtRoom && skirtRecut) { skirtRecutAge += dt; if (skirtRecutAge >= SKIRT_RECUT_AFTER) {
+        skirtRecut = false; skirtKey = ''; syncSkirt();
+        // a tee worn over it is laid again a second after: the skirt comes back as it is cut, wide, and the tee over
+        // it was left sitting on top of her bump until she walked (MEASURED 2026-11-17 at 100%)
+        if (garmentRoom && skirtRoom && !skirtRoom.settings.tucked) { garmentRefit = true; garmentRefitAge = Math.min(garmentRefitAge, GARMENT_REFIT_EVERY - 1); }
+      } }
       if (skirtRoom) {
         skirtRoom.mesh.visible = !!model?.visible && (skinBare ? 'none' : garmentView) === 'all' && !bottomsOff();
         if (model?.visible) {
@@ -8952,11 +8956,26 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             if (teeHidden.length < n) teeHidden = new Uint8Array(n);
             teeUnderSkirt = coveredBy(skirtCover, contacts, x, n, M, teeHidden) + underTop(sx, skirt.draft.columns, x, n, M, teeHidden, skirtBand); tee.hidden = teeHidden; };
           if (tee && !skirt.settings.tucked) tee.hidden = null;
-          if (tee) tee.over = skirt.settings.tucked ? null : (contacts, n) => { const x = skirt.positions; if (!x) return; skirtLayer.build(x, skirt.draft.count, CLOTH_LAYERS.cell * M); teeRaised = raiseOver(skirtLayer, contacts, n, M); };
+          // (a tee OVER the skirt does not ride it: `holdInside` and `besideCloth`, below)
+          if (tee) tee.over = null;
           model.updateMatrixWorld(true);
           const pieces = dt > 1 / 40 ? 2 : 1;
           const seat = sitAmount > 0 && stool.visible ? { x: stool.position.x, z: stool.position.z, radius: 0.21 * M, top: stool.scale.y } : null;
           for (let k = 0; k < pieces; k++) skirtRoom.frame(dt / pieces, seat);
+          // ...and what of the SKIRT is under that tee is not drawn (his: "can hide clothing"; never her skin)
+          if (tee && !skirt.settings.tucked && skirt.positions) {
+            const sx = skirt.positions, count = skirt.draft.count;
+            teeOver.build(tee.wornPositions, tee.active, CLOTH_LAYERS.cell * M);
+            // THE TEE DOES NOT RIDE THE SKIRT (`clothLayers.ts` `holdInside`): the skirt is brought in under it a little a
+            // frame, and is not drawn while the tee stands level with it on its side of her (`besideCloth`)
+            const sv = skirt.velocities;
+            if (sv) skirtHeldIn = holdInside(teeOver, skirt.contacts, sx, sv, count, M, skirt.draft.pin);
+            if (skirtHidden.length < count) skirtHidden = new Uint8Array(count);
+            let ax = 0, az = 0; const cols = skirt.draft.columns;
+            for (let c = 0; c < cols; c++) { ax += sx[c * 3]; az += sx[c * 3 + 2]; }
+            skirtUnderTee = besideCloth(teeOver, ax / cols, az / cols, sx, count, M, skirtHidden);
+            skirt.hide(skirtHidden);
+          } else skirt.hide(null);
           // HER NAVEL THROUGH A SKIRT OVER HER BELLY, as through the cloth tee (Joshua, 2026-11-17: "from the side
           // profile with the skirt over the shirt it showed the bellybutton profile which is good (can still be
           // adjustable), but didn't show from the front… probably need to add the same thing for the skirt like the
@@ -10782,7 +10801,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return out;
         },
         // a skirt as cloth (clothSkirt.ts): put one on by its three numbers (null: the outfit's own again), and read it
-        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats(), cutMs: Math.round(skirtCutMs), skirtFloorsRaised: skirtRoom.floorsRaised, teeFloorsRaised: teeRaised, teeCinched, teeUnderSkirt } : null; },
+        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats(), cutMs: Math.round(skirtCutMs), skirtFloorsRaised: skirtRoom.floorsRaised, teeCinched, teeUnderSkirt, skirtUnderTee, skirtHeldIn } : null; },
         skirtRestart: () => { skirtRoom?.restart(); return !!skirtRoom; },
         skirtParts: (capsules?: boolean, skin?: boolean) => { if (!skirtRoom) return null; if (capsules !== undefined) skirtRoom.probe.capsules = capsules; if (skin !== undefined) skirtRoom.probe.skin = skin; return { ...skirtRoom.probe }; },
         skirtWire: (on: boolean) => { if (!skirtRoom) return false; (skirtRoom.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },

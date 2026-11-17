@@ -3,7 +3,7 @@
  * clear of it, and only where the inner cloth lies between it and her skin.
  */
 import { describe, expect, it } from 'vitest';
-import { CLOTH_LAYERS, ClothUnder, cinchUnder, coveredBy, raiseOver, underTop } from '../src/sarahlab/clothLayers';
+import { CLOTH_LAYERS, ClothUnder, besideCloth, cinchUnder, coveredBy, holdInside, raiseOver, underTop } from '../src/sarahlab/clothLayers';
 import { createContacts } from '../src/sarahlab/clothTypes';
 import { clampSkirt } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, TEE_SKIRTS } from '../src/sarahlab/sarahLabTool';
@@ -126,5 +126,33 @@ describe('a tucked cloth below the skirt\'s top edge', () => {
     expect(Array.from(again)).toEqual([1, 0, 1, 1]);
     // one marked already is kept and not counted again
     expect(underTop(ring, cols, x, 4, M, out)).toBe(0);
+  });
+});
+
+describe('a tee over a skirt', () => {
+  it('brings a point of the skirt in toward the tee a little a frame, and leaves one that hangs far outside it', () => {
+    // the tee: a sheet 1 off the plane; the skirt's points over it: 3 off (brought in), 0.5 off (inside it already), 12 off (far outside)
+    const tee = new ClothUnder(), b = sheet(1);
+    tee.build(b, b.length / 3, CLOTH_LAYERS.cell * M);
+    const c = floors([[0, 10], [2, 10], [4, 10]]);
+    const x = Float32Array.from([0, 10, 3, 2, 10, 0.5, 4, 10, 12]), v = Float32Array.from([0, 0, 5, 0, 0, 5, 0, 0, 5]);
+    expect(holdInside(tee, c, x, v, 3, M)).toBe(1);
+    expect(x[2]).toBeCloseTo(3 - CLOTH_LAYERS.insideStep * M, 5); expect(v[2]).toBe(0);
+    expect(x[5]).toBeCloseTo(0.5, 6); expect(x[8]).toBe(12);
+    // a point held to her is left
+    const x2 = Float32Array.from([0, 10, 3]), v2 = new Float32Array(3);
+    expect(holdInside(tee, floors([[0, 10]]), x2, v2, 1, M, [1])).toBe(0);
+  });
+
+  it('marks a point of the skirt the tee stands level with, not one under its hem, and not one far outside it', () => {
+    // the tee: a ring 10 out from the axis, from height 50 up to 70
+    const pts: number[] = [];
+    for (let y = 50; y <= 70; y += 1) for (let k = 0; k < 48; k++) { const a = (k / 48) * Math.PI * 2; pts.push(Math.sin(a) * 10, y, Math.cos(a) * 10); }
+    const tee = new ClothUnder(), t = Float32Array.from(pts);
+    tee.build(t, t.length / 3, CLOTH_LAYERS.cell * M);
+    // the skirt's points in front of her: beside the tee and 4 outside it; 5 under its hem; beside it and 25 outside it
+    const x = Float32Array.from([0, 60, 14, 0, 45, 14, 0, 60, 35]), out = new Uint8Array(3);
+    expect(besideCloth(tee, 0, 0, x, 3, M, out)).toBe(1);
+    expect(Array.from(out)).toEqual([1, 0, 0]);
   });
 });
