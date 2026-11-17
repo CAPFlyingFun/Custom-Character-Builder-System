@@ -33,10 +33,17 @@ export interface SkirtSettings {
   readonly length: number;
   /** 0 a tube on her hips .. 1 a full skirt */
   readonly flare: number;
+  /**
+   * Worn with a shirt of cloth: true, the skirt is OVER it (the shirt tucked in); false, the shirt hangs over the skirt.
+   * Only an over-belly skirt may be either (Joshua, 2026-11-16: "an option for a high waisted skirt to be above or
+   * under the shirt, while under the belly is always under the shirt"): under her belly it is always false.
+   */
+  readonly tucked: boolean;
 }
-export const SKIRT_DEFAULTS: SkirtSettings = Object.freeze({ top: 'over', length: 0.45, flare: 0.5 });
+export const SKIRT_DEFAULTS: SkirtSettings = Object.freeze({ top: 'over', length: 0.45, flare: 0.5, tucked: true });
 export const clampSkirt = (s: Partial<SkirtSettings>): SkirtSettings => ({
   top: s.top === 'under' ? 'under' : s.top === 'over' ? 'over' : SKIRT_DEFAULTS.top,
+  tucked: s.top === 'under' ? false : s.tucked !== false,
   length: Math.min(1, Math.max(0, Number.isFinite(s.length) ? s.length! : SKIRT_DEFAULTS.length)),
   flare: Math.min(1, Math.max(0, Number.isFinite(s.flare) ? s.flare! : SKIRT_DEFAULTS.flare)),
 });
@@ -58,8 +65,9 @@ export const SKIRT_CUT = Object.freeze({
   columns: 72,
   /** metres between rows down it, and the most rows there are: a longer skirt's are further apart (`clothSkirt.ts`, how stiff it can be) */
   rowStep: 0.02, mostRows: 30,
-  /** the ring, and a tube under it, stand this far off her (metres) */
-  ease: 0.006,
+  /** the ring, and a tube under it, stand this far off her (metres); over a tucked shirt, this far (the shirt lies
+   *  1.5 mm off her and the two keep 3 mm apart: `clothLayers.ts`) */
+  ease: 0.006, easeTucked: 0.008,
   /** a mini's hem is this far under the lowest of the ring (metres); a floor-length one's this far over the floor
    *  as cut (worn, it hangs about a twentieth longer) */
   miniDrop: 0.3, floorClear: 0.06,
@@ -122,17 +130,17 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings): SkirtDraft
   let zMin = Infinity, zMax = -Infinity;
   for (let k = 1; k < ring.length; k += 2) { if (ring[k] < zMin) zMin = ring[k]; if (ring[k] > zMax) zMax = ring[k]; }
   const cx = 0, cz = Number.isFinite(zMin) ? (zMin + zMax) / 2 : 0;
-  const tan = Math.tan((C.fullAngle * s.flare * Math.PI) / 180);
+  const tan = Math.tan((C.fullAngle * s.flare * Math.PI) / 180), ease = s.tucked ? C.easeTucked : C.ease;
   const count = cols * rows, rest = new Float32Array(count * 3), pin = new Float32Array(count);
   for (let c = 0; c < cols; c++) {
     const a = (c / cols) * Math.PI * 2, y0 = ringY[c];
-    const r0 = reachOf(hullAt(form, y0), cx, cz, a) + C.ease;
+    const r0 = reachOf(hullAt(form, y0), cx, cz, a) + ease;
     let widest = r0;
     for (let r = 0; r < rows; r++) {
       const y = y0 + (hemY - y0) * (r / (rows - 1)), drop = y0 - y;
       // never back in toward her going down: the widest of her from the ring to here, read every slice of the way
       const yPrev = r > 0 ? y0 + (hemY - y0) * ((r - 1) / (rows - 1)) : y0;
-      for (let yy = yPrev; yy >= y - 1e-9; yy -= C.formStep) { const q = reachOf(hullAt(form, Math.max(yy, y)), cx, cz, a) + C.ease; if (q > widest) widest = q; }
+      for (let yy = yPrev; yy >= y - 1e-9; yy -= C.formStep) { const q = reachOf(hullAt(form, Math.max(yy, y)), cx, cz, a) + ease; if (q > widest) widest = q; }
       const R = Math.max(widest, r0 + tan * drop), i = (r * cols + c) * 3;
       rest[i] = cx + Math.sin(a) * R; rest[i + 1] = y; rest[i + 2] = cz + Math.cos(a) * R;
       pin[r * cols + c] = C.hold[r] ?? 0;

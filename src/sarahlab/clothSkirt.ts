@@ -20,6 +20,7 @@ import { BIND_TRUNK, bindParticles } from './garment/bind';
 import { SARAH_V2_ARM_BONES, SARAH_V2_JOINTS } from './garment/bodyInput';
 import type { BodyInput } from './garment/types';
 import { draftSkirt, type SkirtDraft, type SkirtSettings } from './skirt/skirtDraft';
+import { CLOTH_LAYERS, ClothUnder, raiseOver } from './clothLayers';
 
 /**
  * GAME TUNING: a woven skirt -- worn at the size it is cut (restScale 1), folding more easily than a tee's knit, slipping
@@ -96,6 +97,13 @@ export class ClothSkirt {
   private readonly normal: THREE.BufferAttribute;
   private capsNow: Capsules;
   private capsWas: Capsules;
+  /**
+   * A SHIRT OF CLOTH UNDER IT (tucked in: `clothLayers.ts`): its worn points, world, and how many. The skirt's floors are
+   * raised over it each frame. Null: none, or the shirt hangs over the skirt (which is then the shirt's to clear).
+   */
+  under: { readonly x: Float32Array; readonly n: number } | null = null;
+  private readonly layer = new ClothUnder();
+  private raised = 0;
   /** (a probe's) her legs' capsules and her skin's floor, each switched off to tell which does what */
   readonly probe = { capsules: true, skin: true };
   private restScaleWorld = 0;
@@ -191,6 +199,8 @@ export class ClothSkirt {
     sim.settings = this.cloth;
     let skinMs = this.skin.update(sim.positions, this.after);
     this.floors(sim.positions, this.after);
+    this.raised = 0;
+    if (this.under) { this.layer.build(this.under.x, this.under.n, CLOTH_LAYERS.cell * this.options.unitsPerMetre); this.raised = raiseOver(this.layer, this.after, n, this.options.unitsPerMetre, { most: CLOTH_LAYERS.tuckedMost, held: this.draft.pin }); }
     this.legs(this.capsNow, stool);
     if (this.primed) {
       const a = this.after.pinTarget, b = this.before.pinTarget, jump = JUMP_M * this.options.unitsPerMetre, pin = this.draft.pin;
@@ -234,8 +244,10 @@ export class ClothSkirt {
 
   private copyCaps(from: Capsules, to: Capsules): void { to.a.set(from.a); to.b.set(from.b); to.radius.set(from.radius); }
 
-  /** The cloth's points now, world (count x 3): a probe's. */
+  /** The cloth's points now, world (count x 3). */
   get positions(): Float32Array | null { return this.sim?.positions ?? null; }
+  /** Floors raised over a shirt under it this frame (a probe's). */
+  get floorsRaised(): number { return this.raised; }
 
   stats(): ClothSkirtStats { return { ...this.shown, worldPerMetre: this.restScaleWorld, particles: this.draft.count, jumps: this.jumps, rows: this.draft.rows, columns: this.draft.columns }; }
 

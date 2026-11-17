@@ -154,8 +154,10 @@ describe('the room opens with only what she has on', () => {
     // of bottoms (the same day: the high-rise leggings to the bike shorts)
     // ...and the ten cloth tops (2026-11-16), put after them all
     // ...and the skirts' pilot (the same day): four of them, paint and a sheet of cloth, fetching nothing
-    for (let i = 46; i < OUTFITS.length; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
-    expect(OUTFITS).toHaveLength(50);
+    for (let i = 46; i < 50; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
+    // ...and three with the cloth tee over or under a skirt, fetching the light tee alone, as every cloth tee does
+    for (let i = 50; i < OUTFITS.length; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(OUTFITS[i].procedural).toBe('raglan'); expect(recoveredPartsFor(wornGarments(i, all))).toEqual(recoveredPartsFor(wornGarments(7, all))); }
+    expect(OUTFITS).toHaveLength(53);
   });
 
   it('cycles through the painted outfits, the light tee, the bikini and none on the slim v2 body, never the big modelled shirts and leggings', () => {

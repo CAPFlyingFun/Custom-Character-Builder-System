@@ -367,6 +367,18 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - MEASURED in the room (the light skin, 1x, no error on the page): the four standing from her three-quarter and her
   back at 0%; the A-line walking and seated; the A-line, the mini and the maxi at 100%. About 5 ms of her skin and 4 ms
   of cloth a frame on the build machine (2,160 to 2,304 points).
+- **WORN WITH THE CLOTH TEE: ONE CLOTH OVER THE OTHER, 3 MM APART** (Joshua, 2026-11-16: "an option for a high waisted
+  skirt to be above or under the shirt, while under the belly is always under the shirt"; "I would add collisions…
+  shirt to skirt with it to know which way to offset by maybe 3mm spacing between cloths"). `SkirtSettings.tucked`
+  (an under-belly skirt: always false) says which is outside, so nothing is searched both ways (`clothLayers.ts`): the
+  OUTER cloth's floors on her skin are raised to the inner cloth's height off her there and 3 mm more; the inner cloth
+  is not told. Tucked, the skirt is outer: its ring is cut 8 mm off her and keeps its floor, and no floor is raised over
+  1.2 cm (the tee's loose hem flapping under it threw the skirt about until then -- MEASURED); the tee is the cropped
+  one. Untucked, the tee is outer (`GarmentCloth.over`). Skin to shirt was 1.5 mm and skin to skirt 4 mm already.
+  Three outfits (`TEE_SKIRTS`): the tee tucked into a high A-line, over a high one, over a low mini. MEASURED in the
+  room (light skin, 1x), standing from three sides and walking: tucked, clean; over the mini, clean; over the high
+  skirt, no tee through the skirt, and the tee lies in ridges across her back where it rides the skirt's band. Two
+  cloths at once: about 9 ms of skirt and 12 to 24 ms of tee a frame on the build machine -- NOT MEASURED on a phone.
 - NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
   keep them); its colour is one flat colour, not the fabric's weave; seated, it passes through the stool's edge and
   shows a hole at her side; her hands pass through it; it does not collide with itself; at a big belly an over-belly

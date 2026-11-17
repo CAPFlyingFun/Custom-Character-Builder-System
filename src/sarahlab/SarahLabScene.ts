@@ -38,6 +38,7 @@ import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
 import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
 import { REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { ClothSkirt } from './clothSkirt';
+import { CLOTH_LAYERS, ClothUnder, raiseOver } from './clothLayers';
 import { clampSkirt, type SkirtSettings } from './skirt/skirtDraft';
 import { bodyInputOf } from './garment/bodyInput';
 import { pickHex } from './fabricLibrary';
@@ -1951,6 +1952,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * her belly or under it, its length to the floor, how close it lies): the one an outfit wears (`BuiltInOutfit.skirt`),
    * or a probe's. `skirtKey` is the settings it was drafted for.
    */
+  const skirtLayer = new ClothUnder();
+  let teeRaised = 0;
   let skirtRoom: ClothSkirt | null = null, skirtKey = '', skirtPoseKey = '', skirtProbe: SkirtSettings | null = null, skirtColour = '';
   /**
    * The procedural tee an OUTFIT put on her (`OUTFITS[i].procedural`), its construction; null when none did. Once a
@@ -3007,7 +3010,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const body = clothBody();
     if (!want || !loaded || !body || !model) { if (skirtRoom) { skirtRoom.dispose(); skirtRoom = null; skirtKey = ''; } return; }
     const first = own?.paint?.[0]?.fabric, colour = first ? pickHex({ family: first.family, colour: first.colour, ...(first.tint ? { tint: first.tint } : {}) } as Parameters<typeof pickHex>[0]) : '#6a6f7c';
-    const key = `${want.top}|${want.length.toFixed(3)}|${want.flare.toFixed(3)}`;
+    const key = `${want.top}|${want.length.toFixed(3)}|${want.flare.toFixed(3)}|${want.tucked ? 't' : 'u'}`;
     if (skirtRoom && key === skirtKey) { if (colour !== skirtColour) { (skirtRoom.mesh.material as THREE.MeshStandardMaterial).color.set(colour); skirtColour = colour; } return; }
     skirtRoom?.dispose(); skirtRoom = null;
     model.updateMatrixWorld(true);
@@ -8918,6 +8921,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         skirtRoom.mesh.visible = !!model?.visible && (skinBare ? 'none' : garmentView) === 'all' && !bottomsOff();
         if (model?.visible) {
           if (pose !== skirtPoseKey) { skirtPoseKey = pose; if (!sitMoving) skirtRoom.restart(); }
+          // WORN WITH THE CLOTH TEE (`clothLayers.ts`): tucked, the skirt's floors are raised over the tee; untucked, the
+          // tee's over the skirt. Each reads the other as it stood a frame ago at the most.
+          const tee = garmentRoom?.cloth ?? null, skirt = skirtRoom;
+          skirt.under = tee && skirt.settings.tucked ? { x: tee.wornPositions, n: tee.active } : null;
+          if (tee) tee.over = skirt.settings.tucked ? null : (contacts, n) => { const x = skirt.positions; if (!x) return; skirtLayer.build(x, skirt.draft.count, CLOTH_LAYERS.cell * M); teeRaised = raiseOver(skirtLayer, contacts, n, M); };
           model.updateMatrixWorld(true);
           const pieces = dt > 1 / 40 ? 2 : 1;
           const seat = sitAmount > 0 && stool.visible ? { x: stool.position.x, z: stool.position.z, radius: 0.21 * M, top: stool.scale.y } : null;
@@ -10734,7 +10742,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return out;
         },
         // a skirt as cloth (clothSkirt.ts): put one on by its three numbers (null: the outfit's own again), and read it
-        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats() } : null; },
+        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats(), skirtFloorsRaised: skirtRoom.floorsRaised, teeFloorsRaised: teeRaised } : null; },
         skirtRestart: () => { skirtRoom?.restart(); return !!skirtRoom; },
         skirtParts: (capsules?: boolean, skin?: boolean) => { if (!skirtRoom) return null; if (capsules !== undefined) skirtRoom.probe.capsules = capsules; if (skin !== undefined) skirtRoom.probe.skin = skin; return { ...skirtRoom.probe }; },
         skirtWire: (on: boolean) => { if (!skirtRoom) return false; (skirtRoom.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },

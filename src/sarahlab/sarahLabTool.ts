@@ -702,10 +702,21 @@ export type OutfitFabric = PaintedLayer['fabric'];
 /** GAME TUNING: an over-belly skirt's painted waistband's top, on her trunk: just under her bust (0.56), where the tee over it ends. */
 export const SKIRT_OVER_BAND = 0.55;
 export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Object.freeze([
-  ['cloth A-line skirt (over belly)', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55 }],
-  ['cloth mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75 }],
-  ['cloth maxi skirt (over belly)', '#2f5d50', { top: 'over', length: 1, flare: 0.4 }],
-  ['cloth pencil skirt (under belly)', '#3a3a40', { top: 'under', length: 0.4, flare: 0 }],
+  ['cloth A-line skirt (over belly)', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55, tucked: true }],
+  ['cloth mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }],
+  ['cloth maxi skirt (over belly)', '#2f5d50', { top: 'over', length: 1, flare: 0.4, tucked: true }],
+  ['cloth pencil skirt (under belly)', '#3a3a40', { top: 'under', length: 0.4, flare: 0, tucked: false }],
+] as const);
+/**
+ * A CLOTH TEE WITH A CLOTH SKIRT (Joshua, 2026-11-16: "have you tried both cloth shirt over a cloth skirt yet?"; "an
+ * option for a high waisted skirt to be above or under the shirt, while under the belly is always under the shirt";
+ * 3 mm between the two cloths: `clothLayers.ts`): [its name, the skirt's colour, the skirt, the tee's own cut]. TUCKED,
+ * the tee is the cropped one, so there is a hand of it under the skirt and not a hip-length shirt. GAME TUNING.
+ */
+export const TEE_SKIRTS: readonly (readonly [string, string, SkirtSettings, Partial<GarmentSettings>])[] = Object.freeze([
+  ['cloth tee tucked into A-line skirt', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55, tucked: true }, { neckDepth: 0.04, length: 0 }],
+  ['cloth tee over high A-line skirt', '#2f5d50', { top: 'over', length: 0.42, flare: 0.55, tucked: false }, { neckDepth: 0.04 }],
+  ['cloth tee over mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }, { neckDepth: 0.04 }],
 ] as const);
 /**
  * A built-in outfit. `procedural`: its tee is the PROCEDURAL GARMENT (`garment/roomGarment.ts`) in that construction,
@@ -802,6 +813,12 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
       { template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.01 } },
       { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: skirt.top === 'under' ? SHEET_BOTTOMS_TEE_HEM : SKIRT_OVER_BAND } },
     ],
+  })),
+  // ...AND WITH THE CLOTH TEE (`TEE_SKIRTS`): the new tee over or under the skirt, the skirt's painted short under both.
+  ...TEE_SKIRTS.map(([name, tint, skirt, cut]): BuiltInOutfit => ({
+    name, garments: ['shirtSpandexLite'], skirt, procedural: 'raglan', cut,
+    paint: [{ template: 'shortsAthletic', fabric: { family: 'athletic', colour: 0, tint }, dials: skirt.top === 'under' ? { rise: 0.125, riseBack: 0.19 } : { rise: SKIRT_OVER_BAND, riseBack: SKIRT_OVER_BAND - 0.01 } }],
+    fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } },
   })),
 ];
 /**

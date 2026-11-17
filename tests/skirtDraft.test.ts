@@ -10,7 +10,7 @@ import { RISES } from '../src/sarahlab/paintTemplates';
 describe('a skirt, drafted', () => {
   it('holds its three numbers to what they may be', () => {
     expect(clampSkirt({})).toEqual(SKIRT_DEFAULTS);
-    expect(clampSkirt({ top: 'under', length: 4, flare: -1 })).toEqual({ top: 'under', length: 1, flare: 0 });
+    expect(clampSkirt({ top: 'under', length: 4, flare: -1 })).toEqual({ top: 'under', length: 1, flare: 0, tucked: false });
     expect(clampSkirt({ top: 'sideways' as never, length: NaN })).toEqual({ ...SKIRT_DEFAULTS });
   });
   it('hangs its ring a little under the painted waistband, over her belly or under it', () => {
@@ -39,9 +39,9 @@ describe('a skirt, drafted', () => {
     expect(SKIRT_CUT.hold[0]).toBe(1);
   });
   it('is worn by the pilot outfits, each over a short painted in its colour, put after everything there was', () => {
-    const worn = OUTFITS.filter((o) => o.skirt);
+    // (the three with the cloth tee come after them: `tests/clothLayers.test.ts`)
+    const worn = OUTFITS.filter((o) => o.skirt && !o.procedural);
     expect(worn.map((o) => o.name)).toEqual(SKIRTS.map(([name]) => name));
-    expect(OUTFITS.slice(-SKIRTS.length).map((o) => o.name)).toEqual(SKIRTS.map(([name]) => name));
     for (const o of worn) {
       expect(o.paint?.[0].template, o.name).toBe('shortsAthletic');
       expect(o.skirt).toEqual(clampSkirt(o.skirt!));

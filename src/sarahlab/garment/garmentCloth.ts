@@ -992,6 +992,8 @@ export class GarmentCloth {
     const skinMs = this.skin.update(x.subarray(0, n * 3), this.after);
     // her navel and nipples: domes over them stand in for her skin (garmentDetail.ts, the cloth tee's method)
     this.detail?.follow(this.skin, x, this.after, this.before, n, !this.primed);
+    // another cloth worn under this one raises its floors (`clothLayers.ts`)
+    this.over?.(this.after, n);
     if (!this.primed) { copyContacts(this.after, this.before); this.primed = true; }
     const damping = this.sim.settings.damping;
     if (this.warm > 0) { this.warm -= dt; this.sim.settings.damping = Math.max(damping, WARM_DAMPING); }
@@ -1260,6 +1262,15 @@ export class GarmentCloth {
 
   /** What it draws now: its own sheet, and the cloth drawn finely round her navel when that is drawn (a probe's look at the tee alone). */
   get drawn(): THREE.Mesh[] { return this.navelPatch.mesh.visible ? [this.mesh, this.navelPatch.mesh] : [this.mesh]; }
+
+  /**
+   * ANOTHER CLOTH UNDER THIS ONE (a skirt under an untucked tee: `clothLayers.ts`): called each frame with this cloth's
+   * skin contacts (its first `n` slots) before it is stepped, to raise its floors over the other. Null: none.
+   */
+  over: ((contacts: SkinContacts, n: number) => void) | null = null;
+
+  /** What is worn of it now, world (3 numbers a slot, `active` slots; the simulation's own array: read, never kept). */
+  get wornPositions(): Float32Array { return this.sim.positions; }
 
   /** The particles' positions now (world, 3 each, particle order; NaN where not worn): for a probe. */
   get positions(): Float32Array {
