@@ -48,7 +48,7 @@ describe('a skirt, drafted', () => {
       if (o.skirt!.top === 'under') expect(o.paint?.[0].dials?.rise, o.name).toBeLessThan(0.2);
       else expect(o.paint?.[0].dials?.rise, o.name).toBe(SKIRT_OVER_BAND);
     }
-    expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['over', 'under']));
+    expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['under']));
   });
 
   it('is held by four anchors: all four hold the whole ring, each its quarter, none of them nothing', () => {

@@ -704,9 +704,13 @@ export type OutfitFabric = PaintedLayer['fabric'];
  *  the two -- MEASURED in the room). Behind, the dial's most (0.6). */
 export const SKIRT_OVER_BAND = 0.63;
 export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Object.freeze([
-  ['cloth A-line skirt (over belly)', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55, tucked: true }],
+  // (ALL FOUR SIT LOW since 2026-11-17 -- Joshua: "Leave it sit low, most don't actually ride high… For now, only do
+  //  under the belly since that's how most skirts sit, lol, we can come back to the look over later": the A-line and
+  //  the maxi were over her belly, in the crease under her bust. The A-line's LENGTH is 0.17 where it was 0.42: from
+  //  the lower top that is the same hem, at her knee -- GAME TUNING. An over-belly skirt is still the probe's to put on)
+  ['cloth A-line skirt (under belly)', '#3d5a80', { top: 'under', length: 0.17, flare: 0.55, tucked: false }],
   ['cloth mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }],
-  ['cloth maxi skirt (over belly)', '#2f5d50', { top: 'over', length: 1, flare: 0.4, tucked: true }],
+  ['cloth maxi skirt (under belly)', '#2f5d50', { top: 'under', length: 1, flare: 0.4, tucked: false }],
   ['cloth pencil skirt (under belly)', '#3a3a40', { top: 'under', length: 0.4, flare: 0, tucked: false }],
 ] as const);
 /**
@@ -716,8 +720,10 @@ export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Obj
  * the tee is the cropped one, so there is a hand of it under the skirt and not a hip-length shirt. GAME TUNING.
  */
 export const TEE_SKIRTS: readonly (readonly [string, string, SkirtSettings, Partial<GarmentSettings>])[] = Object.freeze([
-  ['cloth tee tucked into A-line skirt', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55, tucked: true }, { neckDepth: 0.04, length: 6 }],
-  ['cloth tee over high A-line skirt', '#2f5d50', { top: 'over', length: 0.42, flare: 0.55, tucked: false }, { neckDepth: 0.04 }],
+  // (low as well since 2026-11-17, and under her belly the tee is always over the skirt: these two were the tee tucked
+  //  into a high A-line, and over a high one)
+  ['cloth tee over A-line skirt (under belly)', '#3d5a80', { top: 'under', length: 0.17, flare: 0.55, tucked: false }, { neckDepth: 0.04 }],
+  ['cloth tee over maxi skirt (under belly)', '#2f5d50', { top: 'under', length: 1, flare: 0.4, tucked: false }, { neckDepth: 0.04 }],
   ['cloth tee over mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }, { neckDepth: 0.04 }],
 ] as const);
 /**
@@ -832,6 +838,11 @@ export const OUTFIT_FORMER_NAMES: Readonly<Record<string, string>> = Object.free
   'Sarah · red raglan tee + charcoal leggings': 'red raglan tee + charcoal leggings',
   'Sarah · red spandex tee + charcoal leggings': 'red spandex tee + charcoal leggings',
   'Sarah · red tee + charcoal leggings': 'red tee + charcoal leggings',
+  // (the skirts that sat over her belly until 2026-11-17, v0.9.41 and v0.9.42)
+  'cloth A-line skirt (over belly)': 'cloth A-line skirt (under belly)',
+  'cloth maxi skirt (over belly)': 'cloth maxi skirt (under belly)',
+  'cloth tee tucked into A-line skirt': 'cloth tee over A-line skirt (under belly)',
+  'cloth tee over high A-line skirt': 'cloth tee over maxi skirt (under belly)',
 });
 /** The built-in outfit of this name, or of a name it used to have; -1 for none. */
 export function outfitNamed(name: string | null | undefined): number {

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { CLOTH_LAYERS, ClothUnder, besideCloth, cinchUnder, coveredBy, holdInside, raiseOver, underTop } from '../src/sarahlab/clothLayers';
 import { createContacts } from '../src/sarahlab/clothTypes';
 import { clampSkirt } from '../src/sarahlab/skirt/skirtDraft';
-import { OUTFITS, TEE_SKIRTS } from '../src/sarahlab/sarahLabTool';
+import { OUTFITS, outfitNamed, TEE_SKIRTS } from '../src/sarahlab/sarahLabTool';
 
 const M = 100;
 /** an inner cloth: a flat sheet `h` world units in front of the plane z = 0, a point each centimetre, from y 0 to 20 */
@@ -68,13 +68,14 @@ describe('one cloth over another', () => {
     expect(clampSkirt({ top: 'over' }).tucked).toBe(true);
     expect(clampSkirt({ top: 'over', tucked: false }).tucked).toBe(false);
   });
-  it('is worn by the cloth tee with a skirt: tucked into a high one, over a high one, over a low one', () => {
+  it('is worn by the cloth tee with a skirt: over a low one, each of the three (his: only under her belly for now)', () => {
     const worn = OUTFITS.filter((o) => o.skirt && o.procedural);
     expect(worn.map((o) => o.name)).toEqual(TEE_SKIRTS.map(([name]) => name));
     expect(OUTFITS.slice(-TEE_SKIRTS.length).map((o) => o.name)).toEqual(TEE_SKIRTS.map(([name]) => name));
-    expect(worn.map((o) => `${o.skirt!.top}/${o.skirt!.tucked}`)).toEqual(['over/true', 'over/false', 'under/false']);
-    // tucked, the tee is a short one: a hand of it under the skirt's band (which sits in the crease under her bust), not a hip-length shirt
-    expect(worn[0].cut?.length).toBe(6);
+    expect(worn.map((o) => `${o.skirt!.top}/${o.skirt!.tucked}`)).toEqual(['under/false', 'under/false', 'under/false']);
+    // and no skirt on the menu sits over her belly; a name one had still finds its outfit
+    expect(OUTFITS.filter((o) => o.skirt?.top === 'over')).toEqual([]);
+    for (const was of ['cloth A-line skirt (over belly)', 'cloth maxi skirt (over belly)', 'cloth tee tucked into A-line skirt', 'cloth tee over high A-line skirt']) expect(OUTFITS[outfitNamed(was)]?.skirt?.top).toBe('under');
     for (const o of worn) expect(o.skirt).toEqual(clampSkirt(o.skirt!));
   });
 });
