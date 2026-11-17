@@ -300,8 +300,20 @@ export interface TopOutlineSpec {
   readonly backY: number; readonly racerX: number; readonly racerY: number; readonly sag: number; readonly corner: number; readonly collarY: number;
 }
 
+/**
+ * A ONE-PIECE whose edges are drawn (Joshua, 2026-11-16, of the painted swimsuit and leotard: "those two still have
+ * jagged edges all over it including between the legs and underneath"; "use the bikini bottom work to set the size
+ * between the legs"): a top with leg openings of its own -- the swimsuit, a tank's outline above them, and the leotard,
+ * a long-sleeved crew.
+ */
+export function isOnePiece(p: Partial<Pick<CoverageParams, 'legCut' | 'neckFront' | 'topFront'>>): boolean {
+  return !!p.legCut && (p.neckFront ?? null) !== null && (p.topFront ?? null) === null;
+}
 /** Whether a template's top is drawn this way: a shirt with a level hem and a neck opening (no straps, no straight top edge, no lower part of its own). */
-export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFront' | 'riseFront' | 'length' | 'neckFront' | 'top'>): boolean {
+export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFront' | 'riseFront' | 'length' | 'neckFront' | 'top' | 'legCut'>): boolean {
+  // (a ONE-PIECE, the swimsuit and the leotard: its top is drawn as a top's is and has no hem; where it ends below is
+  // its leg openings' field, `paintTemplates.designedField`)
+  if (isOnePiece(p)) return true;
   // (a kind of its own -- the outlines and the crop tee -- is drawn whatever else a look saved before said of it)
   if (p.top && (p.top === 'cropTee' || p.top in TOP_OUTLINES)) return true;
   return p.hemFront !== null && p.neckFront !== null && p.length !== null && !(p.strap > 0) && p.topFront === null && p.riseFront === null;

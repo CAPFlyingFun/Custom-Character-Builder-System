@@ -42,7 +42,7 @@ import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricL
 import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, planeFront, planeShare, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
 import { makePulledSlip, pulledSlipDriver, type PulledDriver } from './pulledSlip';
 import { MOTION_SHAPES } from './levelLine';
-import { ARMSCYE, TOP_CUT, cutPicture, isCutTop, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
+import { ARMSCYE, TOP_CUT, cutPicture, isCutTop, isOnePiece, sleevePlane, topFrame, type TopCut, type TopFrame } from './topCut';
 import type { TopDetailSpec } from './topDetails';
 import { layCarried, poseTurns, settleCarry } from './designPose';
 import { besideShapes, makeFrameSlip, makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
@@ -923,7 +923,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (cuts.size >= 24) { const oldest = cuts.keys().next().value as string; cuts.delete(oldest); cutTextures.get(oldest)?.dispose(); cutTextures.delete(oldest); }
     }
     cuts.set(key, made);
-    return { key, cut: made.cut, detail: made.detail, ownHem: params.length === null && params.hemFront !== null };
+    return { key, cut: made.cut, detail: made.detail, ownHem: params.length === null && params.hemFront !== null && !isOnePiece(params) };
   }
   /** A drawn top's layer beside its fabric: its bands, its EDGING and what is drawn on it. */
   const cutLayerOf = (worn: WornCut, c: FabricChoice) => ({ ...cutLayer(worn.cut), edging: edgingOf(c), detail: worn.detail ? { pack: worn.detail.pack } : null });
@@ -1237,7 +1237,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const t = templates[i], d = t ? designedField(t.params, body.geometry.getAttribute('position').count) : null;
     if (!d) return null;
     const f = d.field, have = fields.get(f.path);
-    if (have) return { texture: have, level: d.level, scale: f.scale, offset: f.offset };
+    if (have) return { texture: have, level: d.level, scale: f.scale, offset: f.offset, open: d.open === true };
     if (!fieldLoads.has(f.path)) { loadsOut++; fieldLoads.set(f.path, hooks.loadImage(f.path).finally(() => { loadsOut--; }).then((image) => {
       if (!image || disposed) return;
       // its picture read back as numbers (its slices lie side by side), and laid as one block: linear data, blended
@@ -1674,11 +1674,13 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         // a layer shows once something is painted on it and while the editor is not hiding it: an empty or hidden
         // layer leaves her approved skin shader alone (its paint is kept)
         const l = p && p.has(i) && layerShown(i) ? layerFor(body, c, c.fabric, 'plain') : null;
-        const t = templates[i], mine = l && worn && t && cutOf(t.params)?.key === worn.key ? cutLayerOf(worn, c) : null;
+        // (a one-piece is drawn by its cut only once its leg openings' field is in: a cut with no hem alone would paint her legs)
+        const t = templates[i], field = l ? fieldFor(i, body) : null;
+        const mine = l && worn && t && cutOf(t.params)?.key === worn.key && (!isOnePiece(t.params) || field) ? cutLayerOf(worn, c) : null;
         // a DRAWN bottom (`bottomCut.ts`): each layer whose template is one is drawn from its own waistband and legs
         const lowSpecOf = l && t && !mine ? lowOfParams(t.params) : null;
         lowSpecs[i] = lowSpecOf;
-        setFabricLayer(body, material, i, l ? { ...l, field: fieldFor(i, body), cut: mine, low: lowSpecOf ? lowLayerOf(lowSpecOf, c) : null } : null, { layers: PAINT_LAYER_COUNT, masked: true, rest: hooks.rest(body) });
+        setFabricLayer(body, material, i, l ? { ...l, field, cut: mine, low: lowSpecOf ? lowLayerOf(lowSpecOf, c) : null } : null, { layers: PAINT_LAYER_COUNT, masked: true, rest: hooks.rest(body) });
       }
       wornCut = worn;
       setFabricCut(material, worn ? fabricCutOf(worn) : null);

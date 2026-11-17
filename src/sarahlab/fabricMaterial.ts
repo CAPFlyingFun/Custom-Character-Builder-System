@@ -46,7 +46,13 @@ export interface FabricLayer {
    * each vertex's carry to it is laid in `fabricSlip` with its slip. The layer shows where the field is above `level`
    * (0..1). One field at a time: every such layer on a material reads the same one.
    */
-  readonly field?: { readonly texture: THREE.Data3DTexture; readonly level: number; readonly scale: readonly [number, number, number]; readonly offset: readonly [number, number, number] } | null;
+  readonly field?: { readonly texture: THREE.Data3DTexture; readonly level: number; readonly scale: readonly [number, number, number]; readonly offset: readonly [number, number, number];
+    /**
+     * A ONE-PIECE'S (`paintTemplates.designedField`): the field holds its leg openings alone, and outside its block her
+     * trunk is the garment and her legs are not. With a `cut` on the same layer the layer is there where both have it:
+     * the top's neck opening and sleeves or armholes, and the field's leg openings (her arm's skin is the cut's alone).
+     */
+    readonly open?: boolean } | null;
   /**
    * Painted on (or a sheet in a top's fabric: her cleavage bridge): where the layer ends drawn from a TOP'S CUT
    * (`topCut.ts`: its neck opening's rim drawn from her front and from her back, its sleeves' ends and its hem flat cuts
@@ -193,7 +199,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
   const cut = masked || withCut;
   const uniforms: Record<string, THREE.IUniform> = {
     fabricShowRegions: { value: 0 }, fabricHangLayer: { value: -1 }, fabricUnderLayer: { value: -1 },
-    fabricFieldMap: { value: null }, fabricFieldScale: { value: new THREE.Vector3(1, 1, 1) }, fabricFieldOffset: { value: new THREE.Vector3() },
+    fabricFieldMap: { value: null }, fabricFieldScale: { value: new THREE.Vector3(1, 1, 1) }, fabricFieldOffset: { value: new THREE.Vector3() }, fabricFieldOpen: { value: 0 },
   };
   if (cut) Object.assign(uniforms, {
     fabricCutMap: { value: null }, fabricCutRect: { value: new THREE.Vector4(0, 0, 1, 1) }, fabricCutDepth: { value: new THREE.Vector4(0, 1, 1, 1) },
@@ -452,6 +458,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         if (fabricCutOn${i} > 0.5) {${cutLine(i, false)}
           fm${i} = 0.5 + fd / (2.0 * fabricCutDepth.w);
           fe${i} = min(fabricEdge(0.5 + fn / (2.0 * fabricCutDepth.w)), fabricEdge(0.5 + fl / (2.0 * fabricCutDepth.w)));
+          if (fabricFieldOn${i} > 0.5) fe${i} = min(fe${i}, mix(fabricEdge(fabricFieldValue + 0.5 - fabricFieldLevel${i}), 1.0, smoothstep(0.4, 0.6, vFabricLimb)));
         }${entry.low ? lowLine(i) : ''}
         float fk = (fe${i} < 0.0 ? fabricEdge(fm${i}) : fe${i}) * (1.0 - pow(1.0 - fabricOpacity${i}, 2.2)) * (1.0 - fabricEdge(vFabricAux.x) * step(abs(fabricHangLayer - ${i}.0), 0.5)) * (1.0 - fabricEdge(vFabricAux.y) * step(abs(fabricUnderLayer - ${i}.0), 0.5));\n        diffuseColor.rgb = mix(diffuseColor.rgb, fc, fk);`
           : cut
@@ -467,12 +474,14 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       }`;
     shader.fragmentShader = [
       'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;', ...(masked ? ['varying vec3 vFabricMask;', 'varying vec4 vFabricTint;', 'uniform float fabricShowRegions;', 'varying float vFabricDetailKeep;', 'varying vec3 vFabricAux;', 'centroid varying float vFabricLimb;', 'varying float vFabricAlong;', 'uniform float fabricHangLayer;', 'uniform float fabricUnderLayer;',
-        'varying vec3 vFabricSlip;', 'uniform highp sampler3D fabricFieldMap;', 'uniform vec3 fabricFieldScale;', 'uniform vec3 fabricFieldOffset;', ...idx.flatMap((i) => [`uniform float fabricFieldOn${i};`, `uniform float fabricFieldLevel${i};`]),
+        'varying vec3 vFabricSlip;', 'uniform highp sampler3D fabricFieldMap;', 'uniform vec3 fabricFieldScale;', 'uniform vec3 fabricFieldOffset;', 'uniform float fabricFieldOpen;', ...idx.flatMap((i) => [`uniform float fabricFieldOn${i};`, `uniform float fabricFieldLevel${i};`]),
         // a designed garment's field at this pixel's own place on her skin (where the garment was designed: her rest
         // place, her points' slip taken off and their carry to the garment's pose added); nothing outside its block
         `float fabricFieldAt() {
           vec3 c = (vFabricPos + vFabricSlip) * fabricFieldScale + fabricFieldOffset;
-          if (!(all(greaterThan(c, vec3(0.0))) && all(lessThan(c, vec3(1.0))))) return 0.0;
+          // (a one-piece's, fabricFieldOpen: over its block all of her is the garment -- her hips' sides and her seat
+          // are her leg's skin by her bones, and reach above it; beside and under it her trunk is and her legs are not)
+          if (!(all(greaterThan(c, vec3(0.0))) && all(lessThan(c, vec3(1.0))))) return fabricFieldOpen > 0.5 && (c.y >= 1.0 || vFabricLimb > -0.5) ? 1.0 : 0.0;
           return textureLod(fabricFieldMap, c, 0.0).r;
         }`,
         ] : cut ? ['varying vec3 vFabricSlip;'] : []),
@@ -503,7 +512,12 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;
           }
           float a = smoothstep(0.4, 0.6, vFabricLimb);
-          return vec3(neck, mix(vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, fabricCutLimb.y - vFabricAlong, a), a);
+          // (a ONE-PIECE has no hem -- its hem is told far under the floor -- and its trunk's distance from that, metres,
+          // against a sleeve's own across the one row that joins her arm to her trunk was a slope of many ranges a
+          // pixel: a dotted hairline down the front of each shoulder of the leotard. Both are held to a hand's width)
+          float hd = vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, sd = fabricCutLimb.y - vFabricAlong;
+          if (fabricCutLimb.z < -1.0) { hd = min(hd, 0.12); sd = min(sd, 0.12); }
+          return vec3(neck, mix(hd, sd, a), a);
         }`
           // (a sheet across her front: her front's drawing alone)
           : `vec3 fabricCutAt() {
@@ -552,7 +566,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       ${masked ? 'if (fabricShowRegions > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vFabricTint.rgb, 0.78 * vFabricTint.a);' : ''}
     }`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v18${entry.details ? '-detail' : ''}${entry.low ? '-low' : ''}`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|fabric-${layers}${masked ? '-painted' : cut ? '-cut' : ''}-v19${entry.details ? '-detail' : ''}${entry.low ? '-low' : ''}`; };
   material.needsUpdate = true;
   const entry: Patched = { uniforms, layers, masked, cut, details: false, low: false };
   patched.set(material, entry);
@@ -624,6 +638,7 @@ export function setFabricLayer(mesh: THREE.Mesh, material: THREE.Material, index
     uniforms.fabricFieldMap.value = field.texture;
     (uniforms.fabricFieldScale.value as THREE.Vector3).fromArray(field.scale);
     (uniforms.fabricFieldOffset.value as THREE.Vector3).fromArray(field.offset);
+    uniforms.fabricFieldOpen.value = field.open ? 1 : 0;
   }
   uniforms[`fabricOn${index}`].value = on ? 1 : 0;
   uniforms[`fabricMap${index}`].value = layer?.texture ?? null;

@@ -72,6 +72,8 @@ import sharp from 'sharp';
 export const BODY_GLB = 'assets-archive/models/sarah-v2-body.glb';
 export const OUT_TS = 'src/sarahlab/athleticBottomStencil.ts';
 export const OUT_PNG = 'public/models/paint/sarah-v2-athletic-bottom-field.png';
+/** The one-piece's field (the swimsuit's and the leotard's leg openings): the same block, no waistband. */
+export const OUT_ONE_PIECE_PNG = 'public/models/paint/sarah-v2-one-piece-field.png';
 /** The field's path as the room asks for it (public/ is the site's root). */
 export const FIELD_PATH = 'models/paint/sarah-v2-athletic-bottom-field.png';
 
@@ -797,10 +799,11 @@ function wallSide(p, walls) {
  * The garment as a block of cells in her rest frame: `lo` its corner (metres), `dims` its cells along x, y, z, and one
  * value a cell (metres, + inside, within +-FIELD_RANGE_M), x fastest then y then z.
  */
-function fieldVolume(at, tris, tools, walls, field) {
+function fieldVolume(at, tris, tools, walls, field, blockOf = walls) {
   const h = FIELD_VOXEL_M, R = FIELD_RANGE_M;
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-  for (const w of walls) for (const q of w.points) for (let k = 0; k < 3; k += 1) { lo[k] = Math.min(lo[k], q[k] - FIELD_PAD_M); hi[k] = Math.max(hi[k], q[k] + FIELD_PAD_M); }
+  // (`blockOf`: the curves the block is laid round -- the one-piece's field is cut in the bottom's own block)
+  for (const w of blockOf) for (const q of w.points) for (let k = 0; k < 3; k += 1) { lo[k] = Math.min(lo[k], q[k] - FIELD_PAD_M); hi[k] = Math.max(hi[k], q[k] + FIELD_PAD_M); }
   const dims = [0, 1, 2].map((k) => Math.ceil((hi[k] - lo[k]) / h)), [nx, ny, nz] = dims, N = nx * ny * nz;
   const centre = (i, k) => lo[k] + (i + 0.5) * h;
   // every curve sample, with the samples before and after it on its own loop
@@ -980,7 +983,7 @@ export function athleticBottomCarry(vertexCount?: number): Float32Array | null {
 `;
 }
 
-export async function designAthleticBottom({ log = console.log, pose = POSE_BIN, outTs = OUT_TS, outPng = OUT_PNG } = {}) {
+export async function designAthleticBottom({ log = console.log, pose = POSE_BIN, outTs = OUT_TS, outPng = OUT_PNG, outOnePiece = OUT_ONE_PIECE_PNG } = {}) {
   const t0 = Date.now();
   const { pos, idx, onArm, vertices, toMetres } = await load(BODY_GLB);
   const { pointOf, at, count } = weld(pos);
@@ -1064,6 +1067,32 @@ export async function designAthleticBottom({ log = console.log, pose = POSE_BIN,
   mkdirSync(dirname(outPng), { recursive: true });
   await sharp(Buffer.from(atlas.bytes), { raw: { width: atlas.width, height: atlas.height, channels: 1 } }).toColourspace('b-w').png({ compressionLevel: 9 }).toFile(outPng);
   log(`field: ${volume.dims.join(' x ')} cells of ${FIELD_VOXEL_M * 1000} mm from (${volume.lo.map((v) => v.toFixed(3)).join(', ')}), ${volume.near} of them within reach of a curve (the curves' walls face the garment at ${walls.map((w) => (w.agree * 100).toFixed(0)).join(' / ')} % of their samples); written ${outPng} (${atlas.width} x ${atlas.height})`);
+
+  // THE ONE-PIECE'S FIELD (Joshua, 2026-11-16, of the painted swimsuit and leotard, the last with jagged edges: "use the
+  // bikini bottom work to set the size between the legs"): the same two leg openings with no waistband -- all of her
+  // above them is the garment -- as a field in the bottom's own block, so the room looks it up by the same numbers
+  // and the same legs-apart places (`paintTemplates.designedField`).
+  {
+    const legs = [curves[1], curves[2]], segs2 = segments(legs), blocked2 = blockedEdges(apartAt, apartNrm, graph, segs2);
+    const far2 = new Float64Array(count), barrier2 = new Uint8Array(count);
+    for (let p = 0; p < count; p += 1) {
+      const q = pt(apartAt, p), reach = q.every((v, k) => v >= lo[k] && v <= hi[k]);
+      far2[p] = reach ? segs2.distance(q, FAR_M) : FAR_M;
+      if (far2[p] < BARRIER_M) barrier2[p] = 1;
+    }
+    const inside2 = flood(seeds, apartAt, count, graph, blocked2, barrier2);
+    const walls2 = curveWalls(legs, apartTools, apartAt, tris, apartNrm, inside2, barrier2);
+    for (let p = 0; p < count; p += 1) if (far2[p] < FIELD_WALL_M) inside2[p] = wallSide(pt(apartAt, p), walls2) > 0 ? 1 : 0;
+    let in2 = 0; for (let p = 0; p < count; p += 1) in2 += inside2[p];
+    // (the walk goes up over all of her from her mons and down neither leg: most of her points, and not all)
+    if (in2 < inCount || in2 > count - 4000) throw new Error(`the one-piece came out ${in2} of ${count} points: a leg opening is not closed`);
+    const field2 = new Float64Array(count);
+    for (let p = 0; p < count; p += 1) field2[p] = inside2[p] ? far2[p] : -far2[p];
+    const volume2 = fieldVolume(apartAt, tris, apartTools, walls2, field2, walls), atlas2 = fieldAtlas(volume2);
+    if (volume2.dims.join() !== volume.dims.join() || volume2.lo.join() !== volume.lo.join()) throw new Error('the one-piece\'s field is not in the bottom\'s block');
+    await sharp(Buffer.from(atlas2.bytes), { raw: { width: atlas2.width, height: atlas2.height, channels: 1 } }).toColourspace('b-w').png({ compressionLevel: 9 }).toFile(outOnePiece);
+    log(`one-piece: ${in2} points above her two leg openings; its field in the same block -> ${outOnePiece}`);
+  }
 
   // her legs-apart places the room needs: every vertex carried at all whose place, at rest or with her legs apart, is in
   // the field's block or within POSE_PAD_M of it (a vertex left out is looked up at its rest place, outside the block)

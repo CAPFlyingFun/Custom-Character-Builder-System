@@ -14,7 +14,7 @@ import { cutAt, neckDefault, topCut, topCutSpec, topFrame, type TopCut, type Top
 import { DETAIL_LOOK, TOP_DETAIL_STYLES, detailOf, topDetailAt, topDetailGlsl, topDetailSpec, type TopDetailParams, type TopDetailSpec } from '../src/sarahlab/topDetails';
 import { setFabricCut, setFabricLayer } from '../src/sarahlab/fabricMaterial';
 import { COVERAGE_TEMPLATES, pieceKind, templateDetail } from '../src/sarahlab/paintTemplates';
-import { isCutTop } from '../src/sarahlab/topCut';
+import { isCutTop, isOnePiece } from '../src/sarahlab/topCut';
 import { readBody } from '../scripts/sarahV2SideLock.mjs';
 
 const MM = 0.001;
@@ -235,7 +235,7 @@ describe('a top\'s details in the shader', () => {
     // (...and before a top's own hem was level on her as she is shaped: d27c39a7… and 23dfa6e1…)
     // (...and before which of her skin a pixel is was read inside the triangle the pixel is drawn for: 04c1d084… her
     // skin's; a sheet does not ask)
-    expect(compiled(true, 3, null).hash).toBe('e5eb05f2d3311a1f9eee17b7552652aaf011ce6d556dc1746c3b11e275c311a1');
+    expect(compiled(true, 3, null).hash).toBe('276feab9d4c182c65e6d3bfe8747f76d252597b577cc696a636aaeefbe64cb62');
     expect(compiled(false, 1, null).hash).toBe('3fac908ee59b894ad4cb7ae0f0ab5d217cc4f17ad16bccba7bce24f571e8b005');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
@@ -273,7 +273,8 @@ describe('a top\'s details in the shader', () => {
     // A TOP'S OWN HEM (a sports bra's, a boxy crop tee's: no drape's band over it) is level on her AS SHE IS SHAPED: at
     // the height the pixel stands about her frame -- its rest place and its slip -- while `fabricCutHem` is 1; a
     // shirt's, under its drape's band, at its rest height as before (0, the uniform's own value)
-    expect(skin.fragmentShader).toContain('mix(vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, fabricCutLimb.y - vFabricAlong, a)');
+    expect(skin.fragmentShader).toContain('float hd = vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, sd = fabricCutLimb.y - vFabricAlong;');
+    expect(skin.fragmentShader).toContain('return vec3(neck, mix(hd, sd, a), a);');
     expect((skin.uniforms.fabricCutHem as { value: number }).value).toBe(0);
     // ...and a cut says which it is when it is laid on her skin's material (`FabricCut.ownHem`; left out: a shirt's)
     {
@@ -292,14 +293,14 @@ describe('a top\'s details in the shader', () => {
       expect(s.uniforms.fabricCutHem.value).toBe(0);
     }
     // the tops whose hem is their own are the ones cut above a shirt's LENGTH: the sports bra and the boxy crop tee
-    expect(COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params) && t.params.length === null && t.params.hemFront !== null).map((t) => t.id).sort()).toEqual(['cropTee', 'sportsBra']);
+    expect(COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params) && !isOnePiece(t.params) && t.params.length === null && t.params.hemFront !== null).map((t) => t.id).sort()).toEqual(['cropTee', 'sportsBra']);
     expect(skin.fragmentShader).toContain('vec2(fabricCutLimb.x + place.z * fabricCutLimb.w - fabricCutSide.x, place.y)');
     expect(skin.fragmentShader).toContain('neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;');
     expect(sheet.fragmentShader).not.toContain('fabricCutSide.x');
     // off until a cut with an armscye is laid: its rounding is 0, and a camisole's line is nowhere
     expect((skin.uniforms.fabricCutSide.value as THREE.Vector4).toArray()).toEqual([0, 0, 1, 0]);
     expect((skin.uniforms.fabricCutStart.value as THREE.Vector3).toArray()).toEqual([0, 1e9, 0]);
-    expect(skin.key).toContain('-v18');
+    expect(skin.key).toContain('-v19');
   });
 
   it('a layer with one is given the detail\'s code, its uniforms and the table\'s own numbers', () => {

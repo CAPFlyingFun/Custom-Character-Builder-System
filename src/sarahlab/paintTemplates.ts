@@ -17,7 +17,7 @@ import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
-import { NECK_STYLES, TOP_OUTLINES, cutCoverage, isCutTop, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
+import { NECK_STYLES, TOP_OUTLINES, cutCoverage, isCutTop, isOnePiece, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
 import { waistLine, type LowBands } from './bottomCut';
 import { TOP_DETAIL_STYLES, topDetailSpec, type TopDetailName, type TopDetailSpec } from './topDetails';
 
@@ -540,7 +540,9 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // a one-piece swimsuit's bottom is cut the leotard's way, a strip between her legs and the openings over her hips
   // (Joshua, 2026-10-23: "the swimsuit has no bottom covering the crotch and underside like the Leotard"): cut straight
   // across the tops of her thighs instead, it left her crotch bare
-  ['swimsuit', 'One-piece swimsuit', 'Other', { ...upper(-1, -1, LINES.neckScoop, -1, { strapIn: 0.98, strap: 0.47, neckBack: 0.86, armhole: LINES.armhole }), ...FULL, legEnd: 0.4, legCut: ONE_PIECE_CUT }, 'swimsuit'],
+  // (its top is DRAWN as the tank's is since 2026-11-16 -- its straps, its scoop and its armholes, `top` -- and its
+  // leg openings are its field's: `topCut.isOnePiece`)
+  ['swimsuit', 'One-piece swimsuit', 'Other', { ...upper(-1, -1, LINES.neckScoop, -1, { strapIn: 0.98, strap: 0.47, neckBack: 0.86, armhole: LINES.armhole, top: 'tank' }), ...FULL, legEnd: 0.4, legCut: ONE_PIECE_CUT }, 'swimsuit'],
   // her Meshy bikini bottom, painted to the modelled brief's own outline (`outline`)
   ['bikiniBottom', 'Bikini bottom', 'Other', lower(NO_RISE, 0, { outline: 'bikiniBottom' })],
   // her athletic bikini bottom, designed on her skin from Joshua's reference: its fill, and its edging under it
@@ -608,7 +610,8 @@ export function dialsFor(p: CoverageParams): CoverageDial['id'][] {
   // (its band's depth where its edges are drawn: `bottomCut.isDrawnBottom`)
   if (p.riseFront !== null && p.riseFront > -5 && p.riseFront < 1 && p.hemFront === null && p.neckFront === null && !p.legCut && !p.outline) out.push('band');
   if (p.riseFront !== null && p.legStart > 0) out.push('legStart');
-  if (p.legCut) out.push('legCut'); else if (p.riseFront !== null) out.push('legEnd');
+  // (a one-piece's leg openings are DRAWN, her bikini bottom's own two: no height to move until his line can be -- `isOnePiece`)
+  if (p.legCut) { if (!isOnePiece(p)) out.push('legCut'); } else if (p.riseFront !== null) out.push('legEnd');
   // (a shirt's length is a dial only while a painted shirt has any length to choose from: PAINTED_SHIRT_LONGEST)
   if (p.length !== null) { if (PAINTED_SHIRT_LONGEST > 0) out.push('length'); }
   else if (p.hemFront !== null && p.hemFront > -1) out.push('hem');
@@ -757,12 +760,20 @@ export interface DesignedField {
  * that scale -- its edging's outer side or inner side. Null for any other template, or for a body it was not designed
  * on (`vertexCount`).
  */
-export function designedField(p: Pick<CoverageParams, 'outline' | 'outlineLine'>, vertexCount: number): { readonly field: DesignedField; readonly level: number } | null {
+export function designedField(p: Pick<CoverageParams, 'outline' | 'outlineLine'> & Partial<Pick<CoverageParams, 'legCut' | 'neckFront' | 'topFront'>>, vertexCount: number): { readonly field: DesignedField; readonly level: number; readonly open?: boolean } | null {
+  // A ONE-PIECE'S LEG OPENINGS (`topCut.isOnePiece`): her athletic bottom's own two, with no waistband -- all of her
+  // above them is the garment -- as a field in the bottom's block (`scripts/designAthleticBottom.mjs`), looked up by the
+  // same numbers and the same legs-apart places. `open`: outside the block her trunk is the garment and her legs are not.
+  if (isOnePiece(p) && vertexCount === ATHLETIC_BOTTOM.vertices) {
+    return { field: onePieceField ?? (onePieceField = layField({ ...ATHLETIC_BOTTOM.field, path: ONE_PIECE_FIELD_PATH }, athleticBottomCarry())), level: 0.5, open: true };
+  }
   if (p.outline !== 'athleticBottom' || vertexCount !== ATHLETIC_BOTTOM.vertices) return null;
   const f = ATHLETIC_BOTTOM.field, inset = p.outlineLine === 'edge' ? 0 : ATHLETIC_BOTTOM.band;
   return { field: athleticField ?? (athleticField = layField(f, athleticBottomCarry())), level: 0.5 + inset / (2 * f.range) };
 }
-let athleticField: DesignedField | null = null;
+let athleticField: DesignedField | null = null, onePieceField: DesignedField | null = null;
+/** The one-piece's field (`scripts/designAthleticBottom.mjs` `OUT_ONE_PIECE_PNG`, under public/). */
+export const ONE_PIECE_FIELD_PATH = 'models/paint/sarah-v2-one-piece-field.png';
 /** A generated field's numbers (metres, her rest frame) as the room uses them (her mesh's own units, and 0..1 of its block). */
 function layField(f: { readonly path: string; readonly dims: readonly [number, number, number]; readonly lo: readonly [number, number, number]; readonly voxel: number; readonly range: number; readonly cols: number; readonly toMetres: { readonly scale: number; readonly offset: readonly [number, number, number] } }, carry: Float32Array | null): DesignedField {
   const k = [0, 1, 2] as const, size = k.map((i) => f.dims[i] * f.voxel);
@@ -790,8 +801,13 @@ function layField(f: { readonly path: string; readonly dims: readonly [number, n
 export function templateCut(map: BodyMap, p: CoverageParams, frame: TopFrame | null): TopCut | null {
   if (!frame || !isCutTop(p)) return null;
   // (a top cut above her LENGTH's reach -- the crop tee, the sports bra -- has its hem where `hemFront` says)
-  return topCut(topCutSpec(p, frame, p.length === null && p.hemFront !== null ? p.hemFront : shirtHem(map, p.length ?? 0)), frame);
+  // (a one-piece has no hem: it ends at its leg openings, which are its field's. Its hem is put under the floor, a
+  // number and not "none": the shader mixes a hem's distance with a sleeve's by which skin a pixel is, and no number
+  // times nothing is no number -- MEASURED in the room, her arms drawn half covered)
+  return topCut(topCutSpec(p, frame, isOnePiece(p) ? ONE_PIECE_HEM : p.length === null && p.hemFront !== null ? p.hemFront : shirtHem(map, p.length ?? 0)), frame);
 }
+/** A one-piece's "hem", on her trunk (0 her hip joints, 1 the base of her neck): under the floor. */
+export const ONE_PIECE_HEM = -4;
 /**
  * GAME TUNING: how much darker a band is drawn in its own fabric (a collar's rib, a turned hem: his sheet's read a
  * shade under the tee's).
@@ -848,7 +864,8 @@ export function armSkinOf(map: BodyMap): Float32Array {
  */
 export function coverage(map: BodyMap, p: CoverageParams, cut: TopCut | null = null): Float32Array {
   const n = map.region.length, out = new Float32Array(n);
-  if (cut && map.rest && map.rest.length === n * 3) return cutCoverage(cut, map.rest, armSkinOf(map), out);
+  // (a one-piece's cut has no hem and would paint her legs: per vertex it is laid as it always was, by its own lines)
+  if (cut && !isOnePiece(p) && map.rest && map.rest.length === n * 3) return cutCoverage(cut, map.rest, armSkinOf(map), out);
   if (p.outline === 'bikiniBottom') {
     // how far in from the brief's outline each point of her is (metres), a straight ramp either side of it: the paint's
     // crisp edge falls on the outline itself (see EDGE); none where her body is not the one it was traced on

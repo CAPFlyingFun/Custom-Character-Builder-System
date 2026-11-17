@@ -526,6 +526,36 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   whole in the picture and her front square on, her hips' outlines and the point of an under-belly front from below
   READ PIXEL BY PIXEL for single lighter ones (both faults above were a pixel or two wide).
 
+## A painted one-piece, drawn
+
+- **The swimsuit and the leotard are a drawn top with no hem and her bikini bottom's two leg openings** (Joshua,
+  2026-11-16: "finish the swimsuit and leotard as those two still have jagged edges all over it including between the
+  legs and underneath"; "use the bikini bottom work to set the size between the legs and when you do it, do it both
+  standing and reclined to make sure it covers every and down to that approximately 3cm width"). `topCut.ts`
+  `isOnePiece` (a leg cut, a neck opening, no top edge of its own: `bodysuit`, `swimsuit`; the full bodysuit has no
+  leg openings and is as it was). One paint layer with BOTH:
+  - a top's `cut` (the leotard a crew tee's neck and long sleeves; the swimsuit the tank's outline, `top: 'tank'`), its
+    hem told far under the floor (`paintTemplates.ONE_PIECE_HEM`);
+  - a designed `field` (`public/models/paint/sarah-v2-one-piece-field.png`, written by
+    `scripts/designAthleticBottom.mjs` beside the bottom's own: the bottom's two leg curves WITHOUT its waistband, in
+    the bottom's block, looked up on her legs-apart skin by the same numbers), `open`: outside the block her trunk is
+    the garment and her leg's skin is not. The layer is there where the cut and the field both have it
+    (`fabricMaterial.ts`: `fe = min(cut's edges, field's edge)`, her arm's skin left to the cut alone). Between her
+    legs it is the bottom's own strip: 4.2 cm at the front of her crotch, 3.3 under it, 2.8 between her cheeks.
+  - The cut is laid only once the field is in (`fabricPanel.ts`): until then it is the per-vertex paint it was.
+- **LEG CUT HEIGHT is not offered for a one-piece** (`dialsFor`): its leg openings are the drawn line, one height.
+  NECKLINE and the leotard's SLEEVE are as they were. TOLD TO HIM; a higher or lower leg wants a second line drawn.
+- Two faults met and fixed on the way: with the hem told as -Infinity her arms were half covered (a NaN in the mix of
+  the hem's and the sleeve's distances); and with it metres under her a dotted hairline ran down the front of each of
+  the leotard's shoulders (the trunk's distance from that hem against the sleeve's, across the one row that joins her
+  arm to her trunk: many ranges a pixel) -- a one-piece's two distances are held to 12 cm before they are mixed.
+- MEASURED in the room 2026-11-16 (the light skin, the base model at 0%, no error on the page): both from her front,
+  three-quarter, side, back, from below in front and behind; LEGS APART from her front and below; SQUAT; RECLINE from
+  her front, low and three-quarter: one smooth line round each leg, covered between her legs in each.
+- NOT DONE: no band or edging at the leg openings; not pictured on a bump (the field is the bottom's, which is).
+- After anything changes it: `tests/topCut.test.ts`, `tests/topDetails.test.ts`, `tests/bottomCut.test.ts`; after the
+  bottom's curves change, run the design script (it writes both fields); then the room, standing, apart and reclined.
+
 ## The under-belly waistband (a hoop)
 
 - **One plane on her as she stands** (Joshua, 2026-11-15, of the edging still uneven after a day on her rest skin: "Try
