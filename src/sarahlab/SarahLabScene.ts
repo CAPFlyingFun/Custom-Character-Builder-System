@@ -38,7 +38,7 @@ import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
 import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
 import { DRAW_LIFT, REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { ClothSkirt } from './clothSkirt';
-import { CLOTH_LAYERS, ClothUnder, cinchUnder, coveredBy, raiseOver } from './clothLayers';
+import { CLOTH_LAYERS, ClothUnder, cinchUnder, coveredBy, raiseOver, underTop } from './clothLayers';
 import { anchorsOf, clampSkirt, type SkirtSettings } from './skirt/skirtDraft';
 import { bodyInputOf } from './garment/bodyInput';
 import { pickHex } from './fabricLibrary';
@@ -8950,7 +8950,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             const skip = Math.min(skirt.draft.rows - 1, CLOTH_LAYERS.hideSkipRows) * skirt.draft.columns;
             skirtCover.build(sx.subarray(skip * 3), skirt.draft.count - skip, CLOTH_LAYERS.cell * M);
             if (teeHidden.length < n) teeHidden = new Uint8Array(n);
-            teeUnderSkirt = coveredBy(skirtCover, contacts, x, n, M, teeHidden); tee.hidden = teeHidden; };
+            teeUnderSkirt = coveredBy(skirtCover, contacts, x, n, M, teeHidden) + underTop(sx, skirt.draft.columns, x, n, M, teeHidden, skirtBand); tee.hidden = teeHidden; };
           if (tee && !skirt.settings.tucked) tee.hidden = null;
           if (tee) tee.over = skirt.settings.tucked ? null : (contacts, n) => { const x = skirt.positions; if (!x) return; skirtLayer.build(x, skirt.draft.count, CLOTH_LAYERS.cell * M); teeRaised = raiseOver(skirtLayer, contacts, n, M); };
           model.updateMatrixWorld(true);

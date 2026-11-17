@@ -23,7 +23,9 @@ export const CLOTH_LAYERS = Object.freeze({ tuckedMost: 0.012, gap: 0.003, reach
   /** a tucked shirt under a skirt's top (`cinchUnder`): the skirt's rows that press it to her, how far off her floor it may stand there, and how far out a skirt's point is looked for */
   cinchRows: 8, cinchSlack: 0.002, cinchReach: 0.05,
   /** a cloth hidden under another (`coveredBy`): how far out the outer cloth is looked for, how much nearer her than the inner point it may be and still cover it, and the outer cloth's first rows left out (its top edge covers where the hiding ends) */
-  hideReach: 0.08, hideSlack: 0.002, hideSkipRows: 2 });
+  hideReach: 0.08, hideSlack: 0.002, hideSkipRows: 2,
+  /** a tucked cloth under the outer one's top edge (`underTop`): how far under that edge a point is before it is left out, and how far outside the edge's own reach from the axis it may stand and still be */
+  topDrop: 0.015, topOut: 0.015, topNear: 0.025 });
 
 const TABLE = 1 << 13;
 
@@ -164,4 +166,44 @@ export function coveredBy(outer: ClothUnder, contacts: SkinContacts, x: ArrayLik
     if (h >= along - slack) { out[i] = 1; covered++; }
   }
   return covered;
+}
+
+/**
+ * AND WHAT OF A TUCKED CLOTH IS BELOW THE SKIRT'S TOP EDGE (Joshua, 2026-11-17, three circles on the pictures: a fleck of
+ * the tee by the band at 100% from two sides and at 200% walking). In the crease under her bust the tee's nearest skin
+ * is the underside of her breast, which faces down: looked for along that, no skirt is over the point, so it was
+ * neither held in nor hidden, and hung as a chip in front of the band with everything round it gone. Tucked, nothing
+ * of the shirt is seen below the skirt's top edge: a point lower than the edge where it stands round her (`ring`, the
+ * skirt's first row, `columns` points, world) by `topDrop`, and no further out from the ring's axis than the edge
+ * there and `topOut` (her arm and its sleeve hang further out), is marked as well. ORs into `out`; returns how many it added.
+ */
+export function underTop(ring: ArrayLike<number>, columns: number, x: ArrayLike<number>, n: number, unitsPerMetre: number, out: Uint8Array, near: ClothUnder | null = null): number {
+  if (columns < 3) return 0;
+  let cx = 0, cz = 0;
+  for (let c = 0; c < columns; c++) { cx += ring[c * 3]; cz += ring[c * 3 + 2]; }
+  cx /= columns; cz /= columns;
+  if (!(cx === cx && cz === cz)) return 0;
+  // the edge's height and reach by where it stands round the axis (a bin a column; an empty bin takes its neighbour's)
+  const B = columns, Y = new Float32Array(B).fill(NaN), R = new Float32Array(B), bin = (dx: number, dz: number) => Math.min(B - 1, Math.floor(((Math.atan2(dx, dz) + Math.PI) / (2 * Math.PI)) * B));
+  for (let c = 0; c < columns; c++) {
+    const dx = ring[c * 3] - cx, dz = ring[c * 3 + 2] - cz, b = bin(dx, dz), r = Math.hypot(dx, dz);
+    if (!(Y[b] === Y[b]) || ring[c * 3 + 1] > Y[b]) Y[b] = ring[c * 3 + 1];
+    if (r > R[b]) R[b] = r;
+  }
+  for (let pass = 0; pass < B; pass++) { let holes = 0; for (let b = 0; b < B; b++) if (!(Y[b] === Y[b])) { const a = (b + B - 1) % B; if (Y[a] === Y[a]) { Y[b] = Y[a]; R[b] = R[a]; } else holes++; } if (!holes) break; }
+  const drop = CLOTH_LAYERS.topDrop * unitsPerMetre, past = CLOTH_LAYERS.topOut * unitsPerMetre;
+  let added = 0;
+  for (let i = 0, i3 = 0; i < n; i++, i3 += 3) {
+    if (out[i]) continue;
+    const dx = x[i3] - cx, dz = x[i3 + 2] - cz, b = bin(dx, dz);
+    if (!(dx === dx) || !(Y[b] === Y[b])) continue;
+    if (!(x[i3 + 1] < Y[b] - drop)) continue;
+    const r = Math.hypot(dx, dz);
+    let inReach = r <= R[b] + past;
+    // ...or it lies on the skirt itself further out (`near`: the skirt's top rows): over a bump the skirt under its edge
+    // stands far out past the edge's own reach, and the tee drooped onto that shelf (MEASURED at 100 and 200%)
+    if (!inReach && near && r > 1e-6) { const ux = dx / r, uz = dz / r, k = CLOTH_LAYERS.topNear * unitsPerMetre; inReach = near.heightAt(x[i3] - ux * k, x[i3 + 1], x[i3 + 2] - uz * k, ux, 0, uz, 2 * k, k, 0) >= 0; }
+    if (inReach) { out[i] = 1; added++; }
+  }
+  return added;
 }

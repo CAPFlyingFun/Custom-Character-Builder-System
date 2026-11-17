@@ -3,7 +3,7 @@
  * clear of it, and only where the inner cloth lies between it and her skin.
  */
 import { describe, expect, it } from 'vitest';
-import { CLOTH_LAYERS, ClothUnder, cinchUnder, coveredBy, raiseOver } from '../src/sarahlab/clothLayers';
+import { CLOTH_LAYERS, ClothUnder, cinchUnder, coveredBy, raiseOver, underTop } from '../src/sarahlab/clothLayers';
 import { createContacts } from '../src/sarahlab/clothTypes';
 import { clampSkirt } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, TEE_SKIRTS } from '../src/sarahlab/sarahLabTool';
@@ -106,5 +106,25 @@ describe('a cloth hidden under another', () => {
     // the outer cloth gone: nothing is hidden
     expect(coveredBy(new ClothUnder(), c, x, 3, M, out)).toBe(0);
     expect(Array.from(out)).toEqual([0, 0, 0]);
+  });
+});
+
+describe('a tucked cloth below the skirt\'s top edge', () => {
+  it('marks a point under the edge and within its reach, not one over it, and not one well outside it (her arm)', () => {
+    // the edge: a ring of 24 points, 12 across, at height 100
+    const cols = 24, ring = new Float32Array(cols * 3);
+    for (let c = 0; c < cols; c++) { const a = (c / cols) * Math.PI * 2; ring.set([Math.sin(a) * 12, 100, Math.cos(a) * 12], c * 3); }
+    // in front: under the edge just outside it; over the edge; under it and 5 further out; under it, inside
+    const x = Float32Array.from([0, 98, 13, 0, 101, 13, 0, 98, 17, 3, 90, 5]), out = new Uint8Array(4);
+    expect(underTop(ring, cols, x, 4, M, out)).toBe(2);
+    expect(Array.from(out)).toEqual([1, 0, 0, 1]);
+    // ...and one well outside the edge is marked after all when the skirt itself lies there (a shelf over a bump)
+    const shelf = new ClothUnder(), sp = Float32Array.from([0, 97, 17.5, 1, 97, 17, -1, 97, 17]);
+    shelf.build(sp, 3, CLOTH_LAYERS.cell * M);
+    const again = new Uint8Array(4);
+    expect(underTop(ring, cols, x, 4, M, again, shelf)).toBe(3);
+    expect(Array.from(again)).toEqual([1, 0, 1, 1]);
+    // one marked already is kept and not counted again
+    expect(underTop(ring, cols, x, 4, M, out)).toBe(0);
   });
 });

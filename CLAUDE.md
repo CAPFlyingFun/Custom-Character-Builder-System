@@ -410,9 +410,13 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   hides touching vertices on collision"). `clothLayers.ts` `coveredBy`, `GarmentCloth.hidden`: each frame a point of
   the tucked tee is marked while the skirt (under its top two rows, whose edge covers where the hiding ends) lies over
   its floor on her, no nearer her than the point itself; the tee leaves out the triangles whose three points are all
-  marked. HER SKIN IS NEVER HIDDEN, and where the skirt lifts away the tee is drawn again. MEASURED in the room (light
-  skin, 1x): 0, 100 and 200% standing and walking -- none of the tee through the skirt at 0 and 100%; a fleck by the
-  band at 100% standing and one at 200% walking (a triangle one of whose points is not covered).
+  marked. HER SKIN IS NEVER HIDDEN, and where the skirt lifts away the tee is drawn again. That left three flecks by
+  the band (his three circles on v0.9.41's pictures: 100% from two sides, 200% walking): in the crease the tee's
+  nearest skin is the underside of her breast, which faces down, so no skirt was found over the point. So a point
+  BELOW THE SKIRT'S TOP EDGE where it stands round her (`underTop`: 1.5 cm under it -- at 0.5 her skin showed in the
+  gap between the ring and her) is marked as well, while it is within the edge's own reach and 1.5 cm, or lies within
+  2.5 cm of the skirt's top rows (the shelf over a bump). MEASURED in the room (light skin, 1x): 0, 100 and 200%
+  standing from three and four sides and walking: no fleck, her sleeves whole.
   NOT RIGHT: the tee OVER a high skirt still rides in ridges and spikes; the seven cards are of the skirt 5 cm lower.
 - **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
