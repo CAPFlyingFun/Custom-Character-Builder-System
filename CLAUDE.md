@@ -417,7 +417,7 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   gap between the ring and her) is marked as well, while it is within the edge's own reach and 1.5 cm, or lies within
   2.5 cm of the skirt's top rows (the shelf over a bump). MEASURED in the room (light skin, 1x): 0, 100 and 200%
   standing from three and four sides and walking: no fleck, her sleeves whole.
-  NOT RIGHT: the tee OVER a high skirt still rides in ridges and spikes; the seven cards are of the skirt 5 cm lower.
+  NOT RIGHT: the tee OVER a high skirt still rides in ridges and spikes. (The seven cards are baked again, 2026-11-17.)
 - **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.
