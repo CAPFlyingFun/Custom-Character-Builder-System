@@ -341,7 +341,7 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   "a combination of paint and cloth for like skirts, etc… that are loose and flowing"; "have the top of the skirt above
   or below the belly, with adjustable length all the way down to the ground and you can select how tight/close it is
   to the body"; "the top is either one or the other, but both can reach the floor length"). `skirt/skirtDraft.ts`
-  (pure) drafts it round her rest shape at 0% belly from his three numbers -- TOP (`over` / `under`: the ring's
+  (pure) drafts it round her rest shape as she is built (below: cut for her as she is) from his three numbers -- TOP (`over` / `under`: the ring's
   heights -- OVER between her bust and the top of her belly, his: "right between the breasts and top belly… yours appears
   mid belly which would fall off in real life"; UNDER a little under a low rise's painted band, `SKIRT_TOPS`), LENGTH (0 a mini, 1 the
   floor, a level hem) and FLARE (0 a tube that falls from the widest of her, 1 a full skirt): a ring just off her and
@@ -379,6 +379,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   room (light skin, 1x), standing from three sides and walking: tucked, clean; over the mini, clean; over the high
   skirt, no tee through the skirt, and the tee lies in ridges across her back where it rides the skirt's band. Two
   cloths at once: about 9 ms of skirt and 12 to 24 ms of tee a frame on the build machine -- NOT MEASURED on a phone.
+- **CUT FOR HER AS SHE IS** (Joshua, 2026-11-17: "Yes, do the recut…"). Cut once for her 0% belly, a high skirt at 200%
+  was not wide enough to go round her bump and was pushed up into a ring on top of it, her legs bare (MEASURED, the
+  three with the tee). A skirt is drafted from her shape as it stands -- her rest places with her shape fields as laid
+  and every morph she wears but her pose's and her motion's (`MOTION_SHAPES`) -- and drafted again
+  `SKIRT_RECUT_AFTER` (0.6 s) after her shape last changed (`syncSkirt`, `skirtRecut`). MEASURED after, the same three
+  and the maxi at 100 and 200%, standing from three sides and walking: each hangs over her bump to its hem. A re-cut
+  is 1.3 to 2.6 s on the build machine beside a render (her dress form and the binding): a pause as a slider is let
+  go -- NOT MEASURED on a phone.
 - NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
   keep them); its colour is one flat colour, not the fabric's weave; seated, it passes through the stool's edge and
   shows a hole at her side; her hands pass through it; it does not collide with itself; at a big belly an over-belly

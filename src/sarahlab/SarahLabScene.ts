@@ -32,7 +32,7 @@ import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_ORIGI
 import { SkinPainter, standingSourceOf, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
 import { ACTIVITY, ACTIVITIES, breathFlare, chestShare, diaphragmRise, restingVitals, stepVitals, type Activity, type VitalsNow } from '../actor/vitals';
 import { breathAt, breathVolumes, layBreathTable } from './breathSkin';
-import { LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, standingShape, type LineMode } from './levelLine';
+import { MOTION_SHAPES, LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, standingShape, type LineMode } from './levelLine';
 import { ensureRest, ensureSkinFabric, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
 import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
@@ -1954,6 +1954,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   const skirtLayer = new ClothUnder();
   let teeRaised = 0;
+  /**
+   * CUT FOR HER AS SHE IS (Joshua, 2026-11-17, of a skirt cut once for her 0% belly and pictured at 200%, pushed up into a
+   * ring on top of her bump: "Yes, do the recut…"): a skirt is drafted from her shape as it stands -- her belly, her
+   * bust, her build -- and drafted again `SKIRT_RECUT_AFTER` seconds after her shape last changed (a slider dragged
+   * re-cuts it once, when it is let go). GAME TUNING.
+   */
+  const SKIRT_RECUT_AFTER = 0.6;
+  let skirtShapeKey = '', skirtRecut = false, skirtRecutAge = 0, skirtCutMs = 0;
   let skirtRoom: ClothSkirt | null = null, skirtKey = '', skirtPoseKey = '', skirtProbe: SkirtSettings | null = null, skirtColour = '';
   /**
    * The procedural tee an OUTFIT put on her (`OUTFITS[i].procedural`), its construction; null when none did. Once a
@@ -2652,6 +2660,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (cloth && shapeKey !== clothShapeKey) { clothShapeKey = shapeKey; clothRefit = true; }
     // the procedural garment a probe put on her, the same way (on its next frame)
     if (garmentRoom && shapeKey !== garmentShapeKey) { garmentShapeKey = shapeKey; garmentRefit = true; }
+    // her skirt is cut again for her shape once it has stood a moment (the frame's: `SKIRT_RECUT_AFTER`)
+    if (skirtRoom && shapeKey !== skirtShapeKey) { skirtShapeKey = shapeKey; skirtRecut = true; skirtRecutAge = 0; }
   }
 
   /**
@@ -3014,11 +3024,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (skirtRoom && key === skirtKey) { if (colour !== skirtColour) { (skirtRoom.mesh.material as THREE.MeshStandardMaterial).color.set(colour); skirtColour = colour; } return; }
     skirtRoom?.dispose(); skirtRoom = null;
     model.updateMatrixWorld(true);
-    let input!: ReturnType<typeof bodyInputOf>;
-    designRest(() => { input = bodyInputOf(body, { belly: 1 }); });
+    // her shape as it stands: her rest places with her shape fields as they are laid, and every morph she wears but her
+    // pose's and her motion's (`MOTION_SHAPES`), which the cloth rides as it rides her bones
+    const t0 = performance.now();
+    const worn: Record<string, number> = {}, inf = body.morphTargetInfluences ?? [];
+    for (const [name, at] of Object.entries(body.morphTargetDictionary ?? {})) if (inf[at] && !MOTION_SHAPES.has(name)) worn[name] = inf[at];
+    const input = bodyInputOf(body, worn);
     const material = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
     skirtRoom = new ClothSkirt({ body, input, settings: want, material, unitsPerMetre: M, scale: FACE_REST_SCALE, offset: FACE_REST_OFFSET });
-    skirtKey = key; skirtColour = colour; skirtPoseKey = pose;
+    skirtKey = key; skirtColour = colour; skirtPoseKey = pose; skirtShapeKey = shapeKeyNow(); skirtRecut = false;
+    skirtCutMs = performance.now() - t0;
     three.add(skirtRoom.mesh);
   }
   /** The procedural tee off her, and the light tee's cloth copy drawn again if it is on. */
@@ -8917,6 +8932,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // the procedural tee a probe put on her (Stage 2b review): the room's tees stand aside while it is worn, it is laid
       // on her afresh when she changes pose (as the cloth tee is), and it collides with the stool when she sits
       // her skirt: laid on her afresh when she is put in another pose, stepped with her, put aside with her clothes
+      if (skirtRoom && skirtRecut) { skirtRecutAge += dt; if (skirtRecutAge >= SKIRT_RECUT_AFTER) { skirtRecut = false; skirtKey = ''; syncSkirt(); } }
       if (skirtRoom) {
         skirtRoom.mesh.visible = !!model?.visible && (skinBare ? 'none' : garmentView) === 'all' && !bottomsOff();
         if (model?.visible) {
@@ -10742,7 +10758,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return out;
         },
         // a skirt as cloth (clothSkirt.ts): put one on by its three numbers (null: the outfit's own again), and read it
-        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats(), skirtFloorsRaised: skirtRoom.floorsRaised, teeFloorsRaised: teeRaised } : null; },
+        skirt: (settings?: Partial<SkirtSettings> | null) => { if (settings !== undefined) { skirtProbe = settings ? clampSkirt(settings) : null; syncSkirt(); } return skirtRoom ? { settings: skirtRoom.settings, stats: skirtRoom.stats(), cutMs: Math.round(skirtCutMs), skirtFloorsRaised: skirtRoom.floorsRaised, teeFloorsRaised: teeRaised } : null; },
         skirtRestart: () => { skirtRoom?.restart(); return !!skirtRoom; },
         skirtParts: (capsules?: boolean, skin?: boolean) => { if (!skirtRoom) return null; if (capsules !== undefined) skirtRoom.probe.capsules = capsules; if (skin !== undefined) skirtRoom.probe.skin = skin; return { ...skirtRoom.probe }; },
         skirtWire: (on: boolean) => { if (!skirtRoom) return false; (skirtRoom.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },

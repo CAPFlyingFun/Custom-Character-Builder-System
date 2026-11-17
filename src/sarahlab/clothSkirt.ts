@@ -3,7 +3,7 @@
  * her cloth bikini bottom (`clothBrief.ts`): her skin under every point of it (`clothSkin.ts`), the cloth moved
  * (`clothSim.ts`), and the sheet drawn where the cloth is, in WORLD space.
  *
- * - DRAFTED from her rest shape as designed at 0% belly, BOUND there to the nearest of her that is not her arm
+ * - DRAFTED from her rest shape as she is built now (the room drafts it again when her shape changes), BOUND there to the nearest of her that is not her arm
  *   (`garment/bind.ts`): its ring's points are held to those places of her skin, so the ring rides her hips, her
  *   belly and her build as her skin does.
  * - LAID on her, when it is put on and when she jumps from one pose to another, as it was cut, carried whole by her
@@ -65,7 +65,7 @@ const SMOOTHING = 20;
 
 export interface ClothSkirtOptions {
   readonly body: THREE.SkinnedMesh;
-  /** her rest shape as designed at 0% belly (`bodyInputOf`) */
+  /** her rest shape as she is built now (`bodyInputOf` with the morphs she wears) */
   readonly input: BodyInput;
   readonly settings: SkirtSettings;
   readonly material: THREE.Material;
