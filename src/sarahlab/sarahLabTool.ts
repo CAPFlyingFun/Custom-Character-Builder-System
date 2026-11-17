@@ -716,7 +716,7 @@ export const SKIRTS: readonly (readonly [string, string, SkirtSettings])[] = Obj
  * the tee is the cropped one, so there is a hand of it under the skirt and not a hip-length shirt. GAME TUNING.
  */
 export const TEE_SKIRTS: readonly (readonly [string, string, SkirtSettings, Partial<GarmentSettings>])[] = Object.freeze([
-  ['cloth tee tucked into A-line skirt', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55, tucked: true }, { neckDepth: 0.04, length: 0 }],
+  ['cloth tee tucked into A-line skirt', '#3d5a80', { top: 'over', length: 0.42, flare: 0.55, tucked: true }, { neckDepth: 0.04, length: 6 }],
   ['cloth tee over high A-line skirt', '#2f5d50', { top: 'over', length: 0.42, flare: 0.55, tucked: false }, { neckDepth: 0.04 }],
   ['cloth tee over mini skirt (under belly)', '#8a2f45', { top: 'under', length: 0.06, flare: 0.75, tucked: false }, { neckDepth: 0.04 }],
 ] as const);

@@ -19,7 +19,9 @@
 import type { SkinContacts } from './clothTypes';
 
 /** GAME TUNING (metres; his 3 mm between cloths): the gap, how far out of her an inner cloth is looked for, and how near the line. */
-export const CLOTH_LAYERS = Object.freeze({ tuckedMost: 0.012, gap: 0.003, reach: 0.14, beside: 0.022, under: 0.006, cell: 0.03 });
+export const CLOTH_LAYERS = Object.freeze({ tuckedMost: 0.012, gap: 0.003, reach: 0.14, beside: 0.022, under: 0.006, cell: 0.03,
+  /** a tucked shirt under a skirt's top (`cinchUnder`): the skirt's rows that press it to her, how far off her floor it may stand there, and how far out a skirt's point is looked for */
+  cinchRows: 8, cinchSlack: 0.002, cinchReach: 0.05 });
 
 const TABLE = 1 << 13;
 
@@ -79,16 +81,20 @@ function hash(cx: number, cy: number, cz: number): number { return (Math.imul(cx
  * Raise the outer cloth's floors over the inner cloth: `contacts` are the outer cloth's (its first `n` slots), `inner`
  * the inner cloth as built this frame, `unitsPerMetre` the world's. Returns how many floors were raised.
  */
-export function raiseOver(inner: ClothUnder, contacts: SkinContacts, n: number, unitsPerMetre: number, options: { readonly most?: number; readonly held?: ArrayLike<number> } = {}): number {
+export function raiseOver(inner: ClothUnder, contacts: SkinContacts, n: number, unitsPerMetre: number, options: { readonly most?: number; readonly held?: ArrayLike<number>; readonly lift?: number } = {}): number {
   if (!inner.count) return 0;
-  const L = CLOTH_LAYERS, M = unitsPerMetre, reach = L.reach * M, beside = L.beside * M, under = L.under * M, gap = L.gap * M;
+  const L = CLOTH_LAYERS, M = unitsPerMetre, reach = L.reach * M, beside = L.beside * M, under = L.under * M;
+  // `lift` (metres): how far out of where it is simulated the inner cloth is DRAWN (the tee: 3 mm, `roomGarment.DRAW_LIFT`).
+  // Without it the tee was drawn exactly at the skirt's floor, and over a bump showed through it in bands (MEASURED 2026-11-17, 100%)
+  const gap = (L.gap + (options.lift ?? 0)) * M;
   const P = contacts.point, N = contacts.normal, S = contacts.standOff, lo = inner.low - reach, hi = inner.high + reach;
   // `most` (metres): no floor is raised further than this -- a tucked shirt's loose hem, flapping under a skirt, is not
-  // the skirt's floor; `held`: a point held to her (its pin over 0) keeps the floor it has
+  // the skirt's floor; `held`: a point held whole to her (its pin 1: the ring itself) keeps the floor it has -- the rows
+  // under it, held in part, are raised: left out, the tee showed in slivers just under the band over a bump (MEASURED 2026-11-17)
   const most = (options.most ?? Infinity) * M, held = options.held;
   let raised = 0;
   for (let i = 0, i3 = 0; i < n; i++, i3 += 3) {
-    if (held && held[i] > 0) continue;
+    if (held && held[i] >= 1) continue;
     const py = P[i3 + 1];
     if (py < lo || py > hi) continue;
     const nx = N[i3], ny = N[i3 + 1], nz = N[i3 + 2];
@@ -98,4 +104,34 @@ export function raiseOver(inner: ClothUnder, contacts: SkinContacts, n: number, 
     if (want > S[i]) { S[i] = want; raised++; }
   }
   return raised;
+}
+
+/**
+ * A TUCKED SHIRT IS HELD IN BY THE SKIRT OVER IT (Joshua, 2026-11-17, of the skirt's anchors: they pin the skirt at its
+ * height and cinch a shirt tucked under its band). A loose tee hangs from her bust in front of the crease a high skirt
+ * sits in: tucked, its hem showed ragged over the skirt's top, and cut longer it came through the skirt in bands
+ * (MEASURED in the room, 0 and 100%). So where the top of the skirt (`band`: its first rows, as built this frame) lies
+ * over a point of the shirt's floor on her skin, the shirt's point stands no further off that floor than its stand-off
+ * and `cinchSlack`, and keeps none of its speed out from her. After the shirt's step; returns how many were held in.
+ */
+export function cinchUnder(band: ClothUnder, contacts: SkinContacts, x: Float32Array, v: Float32Array, n: number, unitsPerMetre: number): number {
+  if (!band.count) return 0;
+  const L = CLOTH_LAYERS, M = unitsPerMetre, reach = L.cinchReach * M, beside = L.beside * M, under = L.under * M, slack = L.cinchSlack * M;
+  const P = contacts.point, N = contacts.normal, S = contacts.standOff, lo = band.low - reach, hi = band.high + reach;
+  let held = 0;
+  for (let i = 0, i3 = 0; i < n; i++, i3 += 3) {
+    const py = P[i3 + 1];
+    if (py < lo || py > hi) continue;
+    const nx = N[i3], ny = N[i3 + 1], nz = N[i3 + 2];
+    if (nx * nx + ny * ny + nz * nz < 0.5) continue;
+    const along = (x[i3] - P[i3]) * nx + (x[i3 + 1] - py) * ny + (x[i3 + 2] - P[i3 + 2]) * nz, most = S[i] + slack;
+    if (!(along > most)) continue;
+    if (band.heightAt(P[i3], py, P[i3 + 2], nx, ny, nz, reach, beside, under) < -under) continue;
+    const back = along - most;
+    x[i3] -= nx * back; x[i3 + 1] -= ny * back; x[i3 + 2] -= nz * back;
+    const out = v[i3] * nx + v[i3 + 1] * ny + v[i3 + 2] * nz;
+    if (out > 0) { v[i3] -= nx * out; v[i3 + 1] -= ny * out; v[i3 + 2] -= nz * out; }
+    held++;
+  }
+  return held;
 }

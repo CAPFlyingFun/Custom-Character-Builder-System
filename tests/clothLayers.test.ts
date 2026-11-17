@@ -3,7 +3,7 @@
  * clear of it, and only where the inner cloth lies between it and her skin.
  */
 import { describe, expect, it } from 'vitest';
-import { CLOTH_LAYERS, ClothUnder, raiseOver } from '../src/sarahlab/clothLayers';
+import { CLOTH_LAYERS, ClothUnder, cinchUnder, raiseOver } from '../src/sarahlab/clothLayers';
 import { createContacts } from '../src/sarahlab/clothTypes';
 import { clampSkirt } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, TEE_SKIRTS } from '../src/sarahlab/sarahLabTool';
@@ -73,8 +73,23 @@ describe('one cloth over another', () => {
     expect(worn.map((o) => o.name)).toEqual(TEE_SKIRTS.map(([name]) => name));
     expect(OUTFITS.slice(-TEE_SKIRTS.length).map((o) => o.name)).toEqual(TEE_SKIRTS.map(([name]) => name));
     expect(worn.map((o) => `${o.skirt!.top}/${o.skirt!.tucked}`)).toEqual(['over/true', 'over/false', 'under/false']);
-    // tucked, the tee is the cropped one: a hand of it under the skirt, not a hip-length shirt
-    expect(worn[0].cut?.length).toBe(0);
+    // tucked, the tee is a short one: a hand of it under the skirt's band (which sits in the crease under her bust), not a hip-length shirt
+    expect(worn[0].cut?.length).toBe(6);
     for (const o of worn) expect(o.skirt).toEqual(clampSkirt(o.skirt!));
+  });
+});
+
+describe('a tucked shirt held in by the skirt over it', () => {
+  it('brings a point of the shirt back to its stand-off and the slack where the band lies over its floor, and nowhere else', () => {
+    // the band: a sheet 0.8 off the plane from y 0 to 20; the shirt's points: one under it standing 3 off, one under it
+    // lying close, one far above the band standing 3 off
+    const band = new ClothUnder(), b = sheet(0.8);
+    band.build(b, b.length / 3, CLOTH_LAYERS.cell * M);
+    const c = floors([[0, 10], [2, 10], [0, 60]]);
+    const x = Float32Array.from([0, 10, 3, 2, 10, 0.2, 0, 60, 3]), v = Float32Array.from([0, 0, 5, 0, 0, 5, 0, 0, 5]);
+    expect(cinchUnder(band, c, x, v, 3, M)).toBe(1);
+    expect(x[2]).toBeCloseTo(0.15 + CLOTH_LAYERS.cinchSlack * M, 5); expect(v[2]).toBe(0);
+    expect(x[5]).toBeCloseTo(0.2, 6); expect(v[5]).toBe(5);
+    expect(x[8]).toBe(3); expect(v[8]).toBe(5);
   });
 });

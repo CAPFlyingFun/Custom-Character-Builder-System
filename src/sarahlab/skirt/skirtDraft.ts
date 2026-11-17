@@ -39,6 +39,25 @@ export interface SkirtSettings {
    * under the shirt, while under the belly is always under the shirt"): under her belly it is always false.
    */
   readonly tucked: boolean;
+  /** Which of its four anchors hold it (`SkirtAnchors`); absent: all four. */
+  readonly anchors?: SkirtAnchors;
+}
+/**
+ * ITS FOUR ANCHORS (Joshua, 2026-11-17: "I would add 4 anchor points for skirts either high or low sitting:
+ * front/back/both sides"; "releasing all of them should make it fall down"): where its top is held to her -- her front,
+ * her back, her left side and her right. Each holds the quarter of the ring round it and eases to nothing at the next
+ * (`anchorShare`): all four on, the whole ring is held as it always was; one off, that quarter hangs from its
+ * neighbours; all off, nothing holds it and it falls until her body stops it.
+ */
+export interface SkirtAnchors { readonly front: boolean; readonly back: boolean; readonly left: boolean; readonly right: boolean }
+export const ALL_ANCHORS: SkirtAnchors = Object.freeze({ front: true, back: true, left: true, right: true });
+export const anchorsOf = (s: { readonly anchors?: Partial<SkirtAnchors> | undefined }): SkirtAnchors => ({
+  front: s.anchors?.front !== false, back: s.anchors?.back !== false, left: s.anchors?.left !== false, right: s.anchors?.right !== false,
+});
+/** How much of the ring's hold there is at angle `a` round her (0 her front, pi/2 her +x side, her LEFT): 0..1; 1 all round with all four. */
+export function anchorShare(anchors: SkirtAnchors, a: number): number {
+  const c = Math.cos(a), s = Math.sin(a);
+  return c * c * ((c >= 0 ? anchors.front : anchors.back) ? 1 : 0) + s * s * ((s >= 0 ? anchors.left : anchors.right) ? 1 : 0);
 }
 export const SKIRT_DEFAULTS: SkirtSettings = Object.freeze({ top: 'over', length: 0.45, flare: 0.5, tucked: true });
 export const clampSkirt = (s: Partial<SkirtSettings>): SkirtSettings => ({
@@ -46,6 +65,8 @@ export const clampSkirt = (s: Partial<SkirtSettings>): SkirtSettings => ({
   tucked: s.top === 'under' ? false : s.tucked !== false,
   length: Math.min(1, Math.max(0, Number.isFinite(s.length) ? s.length! : SKIRT_DEFAULTS.length)),
   flare: Math.min(1, Math.max(0, Number.isFinite(s.flare) ? s.flare! : SKIRT_DEFAULTS.flare)),
+  // (all four is said by saying nothing: an outfit written before there were anchors is as it was)
+  ...((() => { const k = anchorsOf(s); return k.front && k.back && k.left && k.right ? {} : { anchors: k }; })()),
 });
 
 /**
@@ -70,8 +91,9 @@ export const SKIRT_CUT = Object.freeze({
   /** metres between rows down it, and the most rows there are: a longer skirt's are further apart (`clothSkirt.ts`, how stiff it can be) */
   rowStep: 0.02, mostRows: 30,
   /** the ring, and a tube under it, stand this far off her (metres); over a tucked shirt, this far (the shirt lies
-   *  1.5 mm off her and the two keep 3 mm apart: `clothLayers.ts`) */
-  ease: 0.006, easeTucked: 0.008,
+   *  1.5 mm off her, is held in to 2 mm more under the band, is drawn 3 mm out of that, and the two keep 3 mm apart:
+   *  `clothLayers.ts`) */
+  ease: 0.006, easeTucked: 0.01,
   /** a mini's hem is this far under the lowest of the ring (metres); a floor-length one's this far over the floor
    *  as cut (worn, it hangs about a twentieth longer) */
   miniDrop: 0.3, floorClear: 0.06,
@@ -120,7 +142,7 @@ export function ringShare(top: SkirtTop, a: number): number {
 }
 
 export function draftSkirt(body: BodyInput, settings: SkirtSettings): SkirtDraft {
-  const C = SKIRT_CUT, s = clampSkirt(settings), J = body.joints;
+  const C = SKIRT_CUT, s = clampSkirt(settings), J = body.joints, anchors = anchorsOf(s);
   const hipY = (J.hip[0][1] + J.hip[1][1]) / 2, trunk = J.neck[1] - hipY;
   if (!(trunk > 0.2)) throw new RangeError(`draftSkirt: her trunk reads ${trunk} m`);
   const cols = C.columns, ringY = new Float32Array(cols);
@@ -137,7 +159,7 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings): SkirtDraft
   const tan = Math.tan((C.fullAngle * s.flare * Math.PI) / 180), ease = s.tucked ? C.easeTucked : C.ease;
   const count = cols * rows, rest = new Float32Array(count * 3), pin = new Float32Array(count);
   for (let c = 0; c < cols; c++) {
-    const a = (c / cols) * Math.PI * 2, y0 = ringY[c];
+    const a = (c / cols) * Math.PI * 2, y0 = ringY[c], held = anchorShare(anchors, a);
     const r0 = reachOf(hullAt(form, y0), cx, cz, a) + ease;
     let widest = r0;
     for (let r = 0; r < rows; r++) {
@@ -147,7 +169,7 @@ export function draftSkirt(body: BodyInput, settings: SkirtSettings): SkirtDraft
       for (let yy = yPrev; yy >= y - 1e-9; yy -= C.formStep) { const q = reachOf(hullAt(form, Math.max(yy, y)), cx, cz, a) + ease; if (q > widest) widest = q; }
       const R = Math.max(widest, r0 + tan * drop), i = (r * cols + c) * 3;
       rest[i] = cx + Math.sin(a) * R; rest[i + 1] = y; rest[i + 2] = cz + Math.cos(a) * R;
-      pin[r * cols + c] = C.hold[r] ?? 0;
+      pin[r * cols + c] = (C.hold[r] ?? 0) * held;
     }
   }
   const triangles = new Uint32Array(cols * (rows - 1) * 6);

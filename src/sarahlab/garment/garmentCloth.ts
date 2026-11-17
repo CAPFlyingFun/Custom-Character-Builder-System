@@ -1002,6 +1002,8 @@ export class GarmentCloth {
     if (this.weightless) this.sim.settings.gravity = [0, 0, 0];
     const stats = this.sim.step(dt, this.before, this.after, caps);
     this.sim.settings.damping = damping; this.sim.settings.gravity = gravity;
+    // another cloth worn over this one holds it in to her (`clothLayers.ts` `cinchUnder`)
+    this.belt?.(this.after, n, this.sim.positions, this.sim.velocities);
     this.capsBefore = capsules ? snapshotCapsules(capsules, this.capsBefore) : null;
     const swap = this.before; this.before = this.after; this.after = swap;
     const t1 = performance.now();
@@ -1268,6 +1270,12 @@ export class GarmentCloth {
    * skin contacts (its first `n` slots) before it is stepped, to raise its floors over the other. Null: none.
    */
   over: ((contacts: SkinContacts, n: number) => void) | null = null;
+
+  /**
+   * ANOTHER CLOTH OVER THIS ONE THAT HOLDS IT IN (a skirt over a tucked tee: `clothLayers.ts` `cinchUnder`): called each
+   * frame after its step with its skin contacts, its points and their speeds (its first `n` slots). Null: none.
+   */
+  belt: ((contacts: SkinContacts, n: number, x: Float32Array, v: Float32Array) => void) | null = null;
 
   /** What is worn of it now, world (3 numbers a slot, `active` slots; the simulation's own array: read, never kept). */
   get wornPositions(): Float32Array { return this.sim.positions; }

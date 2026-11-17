@@ -3,7 +3,7 @@
  * reaches, and the outfits that wear one.
  */
 import { describe, expect, it } from 'vitest';
-import { SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, clampSkirt, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
+import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, SKIRTS, SKIRT_OVER_BAND } from '../src/sarahlab/sarahLabTool';
 import { RISES } from '../src/sarahlab/paintTemplates';
 
@@ -49,5 +49,24 @@ describe('a skirt, drafted', () => {
       else expect(o.paint?.[0].dials?.rise, o.name).toBe(SKIRT_OVER_BAND);
     }
     expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['over', 'under']));
+  });
+
+  it('is held by four anchors: all four hold the whole ring, each its quarter, none of them nothing', () => {
+    const none = { front: false, back: false, left: false, right: false };
+    for (let k = 0; k < 72; k++) {
+      const a = (k / 72) * Math.PI * 2;
+      expect(anchorShare(ALL_ANCHORS, a)).toBeCloseTo(1, 9);
+      expect(anchorShare(none, a)).toBe(0);
+    }
+    const front = { ...none, front: true };
+    expect(anchorShare(front, 0)).toBeCloseTo(1, 9); expect(anchorShare(front, Math.PI / 2)).toBeCloseTo(0, 9); expect(anchorShare(front, Math.PI)).toBeCloseTo(0, 9);
+    expect(anchorShare(front, Math.PI / 4)).toBeCloseTo(0.5, 9);
+    // +x is her left: a quarter turn from her front
+    const left = { ...none, left: true };
+    expect(anchorShare(left, Math.PI / 2)).toBeCloseTo(1, 9); expect(anchorShare(left, -Math.PI / 2)).toBeCloseTo(0, 9);
+    // all four is said by saying nothing; one released is kept
+    expect(clampSkirt({ top: 'over', length: 0.4, flare: 0.5 }).anchors).toBeUndefined();
+    expect(clampSkirt({ top: 'over', length: 0.4, flare: 0.5, anchors: ALL_ANCHORS }).anchors).toBeUndefined();
+    expect(anchorsOf(clampSkirt({ top: 'under', length: 0.4, flare: 0.5, anchors: { ...ALL_ANCHORS, back: false } }))).toEqual({ ...ALL_ANCHORS, back: false });
   });
 });

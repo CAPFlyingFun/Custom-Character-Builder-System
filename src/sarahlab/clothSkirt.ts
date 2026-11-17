@@ -41,6 +41,8 @@ export const SKIRT_CLOTH_SETTINGS: Readonly<ClothSettings> = Object.freeze({
  * capsules are this thick -- about her own, since her skin's walk is local and it is the capsules a swung leg meets it with.
  */
 export const SKIRT_BODY = Object.freeze({ clearance: 0.004, thighTop: 0.088, thigh: 0.07, shin: 0.052 });
+/** how far over the room's floor (world y = 0) a point of it lies at the least, metres */
+const GROUND_CLEAR = 0.004;
 /**
  * GAME TUNING (metres a second): no point of it moves faster than this from one frame to the next. A leg that meets the
  * cloth hands it the leg's own speed, and nothing here is air: thrown by a stride, a hem flew up over her hips and
@@ -101,7 +103,7 @@ export class ClothSkirt {
    * A SHIRT OF CLOTH UNDER IT (tucked in: `clothLayers.ts`): its worn points, world, and how many. The skirt's floors are
    * raised over it each frame. Null: none, or the shirt hangs over the skirt (which is then the shirt's to clear).
    */
-  under: { readonly x: Float32Array; readonly n: number } | null = null;
+  under: { readonly x: Float32Array; readonly n: number; readonly lift?: number } | null = null;
   private readonly layer = new ClothUnder();
   private raised = 0;
   /** (a probe's) her legs' capsules and her skin's floor, each switched off to tell which does what */
@@ -200,7 +202,7 @@ export class ClothSkirt {
     let skinMs = this.skin.update(sim.positions, this.after);
     this.floors(sim.positions, this.after);
     this.raised = 0;
-    if (this.under) { this.layer.build(this.under.x, this.under.n, CLOTH_LAYERS.cell * this.options.unitsPerMetre); this.raised = raiseOver(this.layer, this.after, n, this.options.unitsPerMetre, { most: CLOTH_LAYERS.tuckedMost, held: this.draft.pin }); }
+    if (this.under) { this.layer.build(this.under.x, this.under.n, CLOTH_LAYERS.cell * this.options.unitsPerMetre); this.raised = raiseOver(this.layer, this.after, n, this.options.unitsPerMetre, { most: CLOTH_LAYERS.tuckedMost, held: this.draft.pin, lift: this.under.lift ?? 0 }); }
     this.legs(this.capsNow, stool);
     if (this.primed) {
       const a = this.after.pinTarget, b = this.before.pinTarget, jump = JUMP_M * this.options.unitsPerMetre, pin = this.draft.pin;
@@ -221,6 +223,12 @@ export class ClothSkirt {
         const sp = Math.sqrt(V[i] * V[i] + V[i + 1] * V[i + 1] + V[i + 2] * V[i + 2]), k = keep * (sp > most ? most / sp : 1);
         if (k !== 1) { V[i] *= k; V[i + 1] *= k; V[i + 2] *= k; }
       }
+    }
+    // THE FLOOR: with its anchors let go it falls (Joshua, 2026-11-17: "releasing all of them should make it fall
+    // down"), and nothing but her body stopped it -- it went on through the floor and out of sight (MEASURED in the room)
+    {
+      const X = sim.positions, V = sim.velocities, low = GROUND_CLEAR * this.options.unitsPerMetre;
+      for (let i = 1; i < n * 3; i += 3) if (X[i] < low) { X[i] = low; if (V[i] < 0) V[i] = 0; V[i - 1] *= 0.5; V[i + 1] *= 0.5; }
     }
     const swap = this.before; this.before = this.after; this.after = swap;
     this.copyCaps(this.capsNow, this.capsWas);

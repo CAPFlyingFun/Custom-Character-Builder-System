@@ -389,10 +389,26 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   and the maxi at 100 and 200%, standing from three sides and walking: each hangs over her bump to its hem. A re-cut
   is 1.3 to 2.6 s on the build machine beside a render (her dress form and the binding): a pause as a slider is let
   go -- NOT MEASURED on a phone.
-- AT THE CREASE, WITH THE CLOTH TEE: NOT RIGHT YET (MEASURED in the room 2026-11-17, 0 and 100%). The painted crop tee
-  with a high skirt is clean from four sides. The CLOTH tee hangs from her bust in front of the crease: tucked, its hem
-  shows ragged over the skirt's top (through it in bands at 100% when cut longer); over the skirt, it rides in ridges
-  and spikes. A waistband there has to hold the tee in to her; the outfits' cards are of the skirt 5 cm lower still.
+- **ITS FOUR ANCHORS** (Joshua, 2026-11-17: "I would add 4 anchor points for skirts either high or low sitting:
+  front/back/both sides"; "releasing all of them should make it fall down for the skirts"). `SkirtSettings.anchors`
+  (`skirtDraft.ts` `SkirtAnchors`, `anchorShare`; absent: all four): her front, her back, her left and her right each
+  hold the quarter of the ring round them, eased to nothing at the next -- all four, the whole ring as it always was.
+  MEASURED in the room: her sides let go, it hangs from front and back as before to the eye; all four let go, a high
+  one and a low one fall to the floor round her feet (the room's floor is its floor now, `GROUND_CLEAR`: without one it
+  went on through and out of sight). The probe's `skirt({ ..., anchors })` sets them; no control in the editor yet.
+- **A TUCKED TEE IS HELD IN BY THE SKIRT'S TOP** (`clothLayers.ts` `cinchUnder`, `GarmentCloth.belt`). At the crease the
+  cloth tee hangs from her bust in front of the skirt's top: tucked, its hem showed ragged over it. Where the skirt's
+  first 8 rows lie over a point of the tee's floor, the tee's point stands no more than 2 mm past its stand-off, after
+  its step. And the tee is DRAWN 3 mm out of where it is simulated (`DRAW_LIFT`) -- exactly the skirt's floor over it:
+  over a bump it showed through in bands, so a tucked skirt's floors are raised by that and 2 mm more, the rows held
+  in part among them (only the ring itself keeps its floor), and its ring is cut 10 mm off her. The tucked tee's
+  LENGTH is 6 (at 14 its hem drew a line across her bump). MEASURED in the room (light skin, 1x): 0% from four sides
+  and walking, 100 and 200% standing from her three-quarter and side: the tee bloused over the band, none of it
+  through the skirt. NOT RIGHT: WALKING at 100% the tee comes through under the band; the tee OVER a high skirt still
+  rides in ridges and spikes; the seven cards are of the skirt 5 cm lower.
+- **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
+  front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
+  cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.
 - NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
   keep them); its colour is one flat colour, not the fabric's weave; seated, it passes through the stool's edge and
   shows a hole at her side; her hands pass through it; it does not collide with itself; at a big belly an over-belly
