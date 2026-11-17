@@ -345,13 +345,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   heights -- OVER in the crease at the base of her breasts, his, 2026-11-17: "the high skirt point is too low, it should
   basically sit at the base of the breasts at that crease" (MEASURED on her body file: the crease is 0.61 to 0.64 of her
   trunk; the painted band's top is 0.63, `SKIRT_OVER_BAND`, the ring 0.61 in front, and the crop tee ends 0.03 under the
-  band's top, under it -- ended at it, a sliver of her skin showed); UNDER a little under a low rise's painted band, `SKIRT_TOPS`), LENGTH (0 a mini, 1 the
-  floor, a level hem) and FLARE (0 a tube that falls from the widest of her, 1 a full skirt): a ring just off her and
+  band's top, under it -- ended at it, a sliver of her skin showed); UNDER on the under-belly leggings' own line: below), LENGTH (0 a mini, 1 the
+  floor, a level hem counted from `SKIRT_TOPS`' heights) and FLARE (0 a tube that falls from the widest of her, 1 a full skirt): a ring just off her and
   under it a surface that never comes back in toward her (her dress form, which spans her legs) and opens by FLARE's
   angle. `clothSkirt.ts` wears it: bound to her skin (`garment/bind.ts`), her skin its floor (`clothSkin.ts`), moved by
   the room's cloth (`clothSim.ts`). Four outfits wear one (`sarahLabTool.ts` `SKIRTS`, `BuiltInOutfit.skirt`), put
   after everything there was: an A-line and a maxi over her belly, a mini and a pencil under it, each over
-  `shortsAthletic` in its colour and the grey crop tee. The probe's `skirt({ top, length, flare })` puts any on.
+  `shortsAthletic` in its colour and the grey crop tee (all four under her belly since 2026-11-17, over the under-belly
+  leggings cut short: below). The probe's `skirt({ top, length, flare })` puts any on.
 - WHAT WAS LEARNED MAKING IT STAND (all MEASURED 2026-11-16, in the room and off it):
   - A COLUMN HANGS FROM ITS OWN RING POINT AS HER SKIN HAS IT. Laid whole by her pelvis, the row under the ring began
     centimetres from the ring (her spine carries her waist too); the strain limit closed that in one substep and the
@@ -447,13 +448,62 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   tuck and the crease are as built, the probe's to put on. THE LOOK OVER HER BELLY, WHEN HE COMES BACK TO IT, IS ONE
   PIECE: the shirt made long like a dress, its flare beginning under her belly, in two tones -- not a skirt over a shirt.
   MEASURED in the room (light skin, 1x): the A-line and the maxi at 0 and 100%, standing: clean; with the tee at 0%:
-  clean; at 100 and 200% the skirt's top edge is seen under the tee's hem and, at 200%, gaps beside it.
+  clean; at 100 and 200% the skirt's top edge is seen under the tee's hem and, at 200%, gaps beside it (its ring was
+  then at three heights on her trunk, on her bump by 100%: the next is what was done about it).
+- **UNDER HER BELLY ITS TOP IS THE UNDER-BELLY LEGGINGS' OWN LINE** (Joshua, 2026-11-17, of those pictures: "how the
+  skirt should sit is like how we did the lower rider leggings, just above her pelvis, below her belly following that
+  same curved lines…"). A low skirt's ring was at `SKIRT_TOPS.under`'s three heights (5.0, 7.6 and 8.9 cm over her hip
+  joints) over a short of its own whose waistband is ON her belly -- which rides her skin as it stretches, up the
+  front of her bump. Now:
+  - ITS PAINTED PART IS THE UNDER-BELLY LEGGINGS CUT SHORT (`sarahLabTool.ts` `SKIRT_UNDER_BAND`, `SKIRT_UNDER_LEGS`,
+    `skirtPaint`): that style's waistband -- his line, the hoop ("The under-belly waistband (a hoop)") -- its bowl and
+    its 1.5 cm band, with LEG LENGTH 0.12, the short shorts' own. An over-belly skirt's is the short it was.
+  - ITS RING IS LAID ON THAT LINE AS IT LIES ON HER. `bottomCut.hoopInside` (`fabricPanel.hoopOn`) tells how far
+    inside that waistband each point of her skin is as she is shaped -- `planeAt`, its hoop swung (`swingOf`) and its
+    front told (`planeFront`) off the very points the skirt is cut from; `skirtDraft.ts` finds where that is 8 mm, in
+    the painted band, on her triangles (`underLine`), reads its height and how far out it is in each of the ring's 72
+    directions (`ringOn`: the furthest where a direction crosses it twice), and evens the two round her
+    (`SKIRT_LINE`). UNDER THE RING THE CLOTH GOES ROUND HER SKIN UNDER THE LINE ALONE -- her hips, her seat, her legs:
+    a dress form of what that waistband covers -- never the belly that hangs in front of it. Its hem is still counted
+    from `SKIRT_TOPS`' heights: a ring that follows her belly down does not take the hem with it. A line not found all
+    the way round her (`SKIRT_LINE.least`) is not used, and the ring is at the three heights.
+  - HER OPENING'S AREA IS HER SKIN TOO. It is drawn by a patch of its own (`vulvaMesh.ts`) and her drawn list of
+    triangles has a hole there; at a big belly the line runs across it, a centimetre over her opening. MEASURED in the
+    room at 200%: on her drawn list 15 of the 72 directions were uncrossed, all in front of her (the ring's front was
+    eased between its neighbours, 2 cm high). So a skirt is drafted on, bound to and walks over ALL of her skin's
+    triangles (`SarahLabScene.ts` `skinTrianglesOf`, the list her fabric is laid by; `ClothSkirtOptions.skin`,
+    `ClothSkin`'s `triangles`), as her cloth bikini bottom is.
+  - MEASURED in the room (light skin, 1x; the probe's `skirt()`: `ring`, `lineFound`), centimetres over her hip joints
+    at her front, her side and her back: 0%: 4.3, 10.4, 16.4; 50%: 2.0, 9.2, 16.4; 100%: -1.9, 9.8, 16.4; 150%: -6.0,
+    8.6, 16.6; 200%: -7.5, 6.8, 16.7 -- the line found in all 72 directions at each. Off the room, on her points read
+    out of it (her full list of triangles and the light one: the same ring to a millimetre), the same fronts.
+    PICTURED (light skin, 1x, no error on the page): the A-line at 0, 50, 100, 150 and 200%, from four sides at 0, 100
+    and 200% and from below at 200%; the mini, the maxi and the pencil at 0, 100 and 200%; the cloth tee over the
+    A-line at 0, 100 and 200% from four sides and over the mini at 0, 100, 150 and 200%: its top under her belly at
+    every size, as the leggings' is, and the tee's hem over it with no edge standing off and no gap beside it.
+  - TWO THINGS FOUND IN THE DRAFT ON THE WAY, fixed and told. (1) A ROW IS READ AT ITS OWN HEIGHT: read only on the
+    slices' steps from the row above, a row between two slices was cut for the slice OVER it, and where she widens fast
+    going down -- the top of her seat, under a ring at the small of her back -- the cloth as cut was 3 mm inside her
+    (MEASURED at 0%; her skin put it out as it was worn). (2) HER OUTLINE'S REACH TOWARD EACH COLUMN IS READ ONCE A
+    SLICE (a height between two slices: between their two reaches): asked of `hullAt` for every row and every slice
+    between rows, each asking made two outlines again. A cut was 1.3 to 2.6 s in the room beside a render and is 0.33
+    to 0.61 s (0.9 to 2.6 s off it, now 0.06 to 0.24); the shapes cut differ by under 0.6 mm but for the rows (1)
+    moves out, up to 7 mm over a big belly under an over-belly ring.
 - **A WALK IS NOT A JUMP** (a fault found in those pictures, fixed and told; `clothSkirt.ts` `JUMP_SPEED`). A low skirt's
   ring is on her hips; in a long frame (a tenth of a second on the build machine) a stride carried it over 6 cm, which
   was read as a pose put on, and the skirt was laid afresh in mid-stride: crumpled round her thighs. MEASURED: 2
   restarts in 4.5 s of walking in the A-line and 5 in the mini; now none in either or with the tee, a jump being
-  further than 6 cm AND than 3 m/s over the frame. It still swings wide as she walks at that frame rate: NOT JUDGED,
-  the build machine draws ten frames a second -- his phone is to say.
+  further than 6 cm AND than 3 m/s over the frame.
+- **HOW SHE WALKS IN IT IS READ WITH THE ROOM'S CLOCK HELD** (a wrong reading of mine, found and told). The probe's
+  `animate(seconds)` steps her at a sixtieth of a second; between two of a script's calls the room's own frames go on
+  moving her, a tenth of a second and more at a time on the build machine, and a picture taken after one shows the
+  cloth as that frame threw it. The skirts pictured walking on 2026-11-17 -- crumpled, gathered between her legs, a
+  hole under a tee's hem -- were that, and were told to him as the skirt's own. `hold(true)` first, then
+  `animate(seconds, 1 / 60)` (or `1 / 30`) and the picture. MEASURED so (light skin, 1x): the A-line at 0% at a
+  sixtieth and at a thirtieth, the mini at 0 and 100%, the A-line at 100%, and the A-line under the cloth tee at 0 and
+  100%: it swings with her stride and hangs, no restart, nothing gathered between her legs, no hole. At 200% the
+  A-line GATHERS IN FOLDS BETWEEN HER THIGHS under her belly in some strides (its front is in the crease her thighs
+  move in): named below. A phone's frames; a device that draws ten a second throws it about as the build machine does.
 - HIS TWO SHEETS OF SKIRTS (`docs/reference/skirts/`): 31 pictures, 24 styles. As outfits: 4 (A-line, mini, maxi,
   pencil). By the numbers there are, not yet outfits: tube, skater, circle. Wanting something a skirt has not got:
   pleats (pleated, accordion, box, knife); tiers and layers (ruffled, layered, tulle, gypsy); an uneven or wrapped hem
@@ -463,11 +513,17 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.
 - NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
-  keep them); its colour is one flat colour, not the fabric's weave; seated, it passes through the stool's edge and
-  shows a hole at her side; her hands pass through it; it does not collide with itself; at a big belly an over-belly
+  keep them -- he is to draw where LENGTH's 0% and 100% are: today 0% ends 11 cm over her knee, longer than a mini,
+  and 100% 6 cm off the floor); its colour is one flat colour, not the fabric's weave; seated, it passes through the
+  stool's edge and shows a hole at her side (pictured again at 0 and 100% on the new line: as it was); her hands pass
+  through it; it does not collide with itself; walking at 200% it gathers between her thighs; under a tee's hem its
+  edge is in small steps, a row of its triangles at a time; a look saved in a low skirt on v0.9.41 or v0.9.42 keeps
+  the short it was saved with, its waistband on her belly, under a ring on the new line; at a big belly an over-belly
   ring is stretched round her and the cloth bunches in front; RECLINE and SQUAT not looked at; the looser trousers and
   the jackets wait on it.
-- After anything changes it: `tests/skirtDraft.test.ts`; then the room: the four standing, the A-line walking and seated.
+- After anything changes it: `tests/skirtDraft.test.ts`, `tests/skirtLine.test.ts`, `tests/clothLayers.test.ts`; then
+  the room: the four standing at 0, 100 and 200% (the probe's `skirt()` says `lineFound` 1), the A-line seated, and
+  walking WITH THE CLOCK HELD.
 
 ## A painted bottom, drawn
 
@@ -743,8 +799,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - A SKETCH WITHOUT A BROWSER reads the room's own points (her shaped skin read out at each size): keep one beside the
   work -- the room's pictures cost minutes, a sketch three seconds -- AND JUDGE BY THE ROOM: a sketch draws the band by
   the raw number, the room by the number over its slope.
-- After anything changes the hoop: `tests/bottomCut.test.ts`; then the room at 0, 100, 150 and 200% from her front, the
-  side view he marked and behind-below.
+- A CLOTH SKIRT UNDER HER BELLY HANGS FROM THIS LINE (`bottomCut.hoopInside`: how far inside the hoop each point of her
+  skin is, as `planeAt` tells a pixel; "The skirts": its ring is laid where that is 8 mm).
+- After anything changes the hoop: `tests/bottomCut.test.ts`, `tests/skirtLine.test.ts`; then the room at 0, 100, 150
+  and 200% from her front, the side view he marked and behind-below -- and a low skirt at 100 and 200%.
 
 ## A modelled garment and the shapes laid on her afterwards
 
