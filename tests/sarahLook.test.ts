@@ -18,7 +18,7 @@ describe('Sarah as Joshua set her (2026-10-24: "Here is Sarah and the minor twea
   // (Joshua, 2026-11-13: "let's remove the word Sarah and keep everything generic")
   it('no built-in outfit is named for her now, and each name one had still finds it', () => {
     for (const o of OUTFITS) expect(o.name).not.toMatch(/sarah/i);
-    for (const [was, now] of Object.entries(OUTFIT_FORMER_NAMES)) { expect(was).toBe(`Sarah · ${now}`); expect(OUTFITS[outfitNamed(was)].name).toBe(now); expect(outfitNamed(now)).toBe(outfitNamed(was)); }
+    for (const [was, now] of Object.entries(OUTFIT_FORMER_NAMES)) { if (/sarah/i.test(was)) expect(was).toBe(`Sarah · ${now}`); else expect(was).not.toBe(now); /* (a skirt moved under her belly, 2026-11-17, was never named for her) */ expect(OUTFITS[outfitNamed(was)].name).toBe(now); expect(outfitNamed(now)).toBe(outfitNamed(was)); }
     expect(outfitNamed('an outfit of his own')).toBe(-1); expect(outfitNamed(null)).toBe(-1); expect(outfitNamed('')).toBe(-1);
   });
 
