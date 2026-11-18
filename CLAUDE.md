@@ -337,6 +337,56 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 
 ## The skirts (paint and cloth together): the pilot
 
+- **IN PROGRESS ON `claude-work`, NOT ON `main` (which is v0.9.44): NO PAINT UNDER A SKIRT -- THE SHEET IS THE SKIRT, A SHELL
+  ROUND HER** (Joshua, 2026-11-17: "I would do 0% fit for the pencil skirt. Did you remove all the paint under the skirts?
+  That would allow more flexibility for undergarments or none for birth, etc…"; "basically create a shell around the body as
+  the skirt"; "Sounds good and will wait until you're all done with the 7 skirts"; then, short of usage: "will need to stop
+  for now… you can save and resume later"). SAVED UNFINISHED. UNTIL THIS IS FINISHED AND THIS SECTION REWRITTEN, WHAT IS
+  WRITTEN BELOW OF A SKIRT'S PAINTED PART IS v0.9.44's AND NO LONGER SO ON THIS BRANCH ("a short painted on her", "ITS PAINTED
+  PART IS THE UNDER-BELLY LEGGINGS CUT SHORT", "ITS PAINTED PART'S LEGS", `paintedLegs`, `SKIRT_PAINT`, `setDial`,
+  `laySkirtPaint`, `skirtPaint`, `SKIRT_UNDER_LEGS`: all taken out), and "ASKED OF HIM: whether the pencil outfit should
+  come at a FIT under 1" is answered: 0.
+  - WHAT IS IN THE CODE: the seven outfits (`sarahLabTool.ts` `SKIRTS`, `TEE_SKIRTS`) paint nothing under the skirt -- the
+    four skirts wear the grey crop tee alone, the three with the cloth tee paint nothing -- and say the skirt's colour
+    themselves (`BuiltInOutfit.skirtTint`, a tint of the ATHLETIC knit; `syncSkirt`). THE PENCIL IS `fit: 0`. An undergarment
+    is whatever bottom is added in the Outfit tab, or none. `SKIRT_UNDER_BAND` stays as the STYLE whose waistband line a low
+    ring is laid on (`fabricPanel.hoopOn`), worn or not. A look saved in a skirt before keeps the short it was saved with.
+  - ON HER (FIT 0) HER SKIN IS THE SHEET'S FLOOR AS WELL (`clothSkirt.ts` `outOfHer`, for `only` too: her places' own slots,
+    walked again in the same frame). With no paint and no floor, MEASURED in the room in a stride: 157 to 163 of the pencil's
+    2,160 points under her skin, 8.8 to 9.3 mm, her thigh through the skirt.
+  - AND IT IS TAUT ACROSS HER CREASES (`tautColumns`, `SHEET_TAUT`: its comment has the why). Without it, a crescent of her
+    skin 6 to 8 cm long under the seat of her rear leg, from her back, in two strides of four: the sheet went into the fold,
+    behind the lip of skin over it -- no point of it under her skin. `skirtParts(capsules, skin, floor, taut)` switches each.
+  - MEASURED in the room (light skin, 1x, her belly at 0%, the pencil at FIT 0, no paint; walking with the clock held at a
+    thirtieth, six moments 0.2 s apart): points under her skin standing none; striding none, one (a point of a span between
+    her thighs, row 12 column 70, 35.9 mm), none, none, none, none; seated one, 1.1 mm. NO PATCH OF HER SKIN ENCLOSED BY THE
+    SKIRT in any of eighteen pictures (standing from three sides, the six moments from her back and her front, seated from
+    three: `scripts/room/holes.py`). Her skin 3.4 to 7.6 ms a frame, the "cloth" 0.6 to 1.6 (none is stepped). The four
+    skirts standing from her three-quarter and her back, their top edges close: clean with no painted band.
+  - TWO WRONG READINGS OF MINE, EACH CAUGHT BEFORE A CURE WAS BUILT (the lesson a third and fourth time: READ THE POINTS):
+    (1) "a band of her skin over the stool, seated, from her back" is the sheet's OWN underside, lit warm by the room's
+    `under` light, seen through the gap between the back of her seat and the stool -- drawn flat with the stool hidden (the
+    `sheet` probe hides it: from her back, from 10 degrees above and from below) there is no skin, and a z-buffer of the
+    sheet's points and her skin's has none either (`scripts/room/seen.py`, `seen2.py`); (2) the "crescent still there" under
+    her seat in one stride is the sheet's fold, a dark grey (30, 30, 30), not skin.
+  - FOUND, NOT FIXED: (a) ONE POINT THROWN OUT OF THE SHEET in one moment of six: row 25 column 36, between her calves at her
+    back, put 51.8 mm out by `sheetOutOfSkin` (a point of a span: her skin's walk had lost its place -- the far side of a
+    calf), a dent by its hem from her back; and in strides the points at the backs of her knees (row 25, columns 31, 32 and
+    40) stand 12 to 22 mm off their four neighbours' mean, where standing none is over 8.4 (`scripts/room/rough.py`).
+    PLANNED, NOT WRITTEN: at the end of `outOfHer`, a point further than 12 mm from its neighbours' mean brought back (to
+    12 squared over its distance; the hem by its two side neighbours). (b) THE RING'S TOP EDGE HAS TEETH SEATED, 3 to 8 mm,
+    at the small of her back (its heights there 78.4, 77.9, 78.6, 77.8 cm; standing it is smooth) -- under paint the painted
+    band's edge was the edge seen. PLANNED: the drawn ring evened along itself, shrink-free (two rounds of 0.5 and -0.53).
+    (c) `SHEET_TAUT.most` (3 cm) is reached in two strides of six and seated.
+  - NOT LOOKED AT YET WITHOUT PAINT: the pencil half-way (FIT 0.5) walking; any skirt on her 100 and 200% bellies; the three
+    with the cloth tee; the A-line, the mini and the maxi walking (bare legs under them are meant). NOT DONE: the seven
+    cards baked again (`ONLY=skirt npm run bake:outfits`); this section rewritten; his pictures at a phone's 2x.
+  - THE LEAD'S ROOM DRIVER AND ITS READERS ARE KEPT IN `scripts/room/` (they were a session's scratch files, and their paths
+    are that session's: set `S` and the repo's path): `room.mjs` opens the built room once and runs posted scripts against
+    that one page ("One preview, one page"), `pre.js` its helpers, `n3.js` a batch as an example; `inside*.py` a sheet's
+    points against her skin, `seen.py` / `seen2.py` what is seen from a side (flat, or by a camera with the stool),
+    `holes.py` not-skirt patches inside a skirt in a picture, `rough.py` where a sheet is rough, `grid.py` / `sheet.py`
+    pictures side by side.
 - **A skirt is a short painted on her and one sheet of cloth hung from just under its waistband** (Joshua, 2026-11-16:
   "a combination of paint and cloth for like skirts, etc… that are loose and flowing"; "have the top of the skirt above
   or below the belly, with adjustable length all the way down to the ground and you can select how tight/close it is

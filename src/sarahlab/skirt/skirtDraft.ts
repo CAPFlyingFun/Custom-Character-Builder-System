@@ -205,22 +205,9 @@ export const SKIRT_CUT = Object.freeze({
  * between them and is spanned; `clear`, metres: a span is kept this far outside her legs' capsules at the least
  * where it was cut further off them than that (`clothSkirt.ts` `spanKeep`); `bridge`, metres under where her legs
  * part, and `bridgeFront`, degrees round her from her front (all of it within the first, none past the second): the
- * crease at the top of her thighs, which a sheet is drawn taut over (`clothSkirt.ts` `bridgeTo`); `paintTo`, the FIT
- * up to which her legs are painted under it as far as its hem lets them be (`paintedLegs`).
+ * crease at the top of her thighs, which a sheet is drawn taut over (`clothSkirt.ts` `bridgeTo`).
  */
-export const SKIRT_FIT = Object.freeze({ span: 0.016, clear: 0.008, bridge: 0.04, bridgeFront: Object.freeze([50, 85] as const), paintTo: 0.6 });
-/**
- * ITS PAINTED PART'S LEGS (`paintedLegs`). GAME TUNING: they end `above` (metres) over its hem at the least, where
- * they would show under it -- MEASURED 2026-11-17: at LENGTH 0 the short's legs ended 9.3 cm under her hip joints and
- * the hem was 8.0 --, and are never shorter than `least` of her leg (a leg's end between her legs is not a line round
- * a leg). `rise`, metres: how far up a leg a skirt's hem rides in a stride at FIT 1, and that share of it at a FIT
- * between -- her legs are painted that much less far. Her paint is on her leg and goes where the leg goes; the sheet
- * between her and the cloth goes only part of the way. MEASURED 2026-11-17 in the room, the pencil at FIT 0.5,
- * mid-stride, her legs painted to its hem: about 6 cm of her painted calf under the sheet's hem at the back of her
- * rear leg, a dark band like the leg of a short worn under it.
- */
-export const SKIRT_PAINT = Object.freeze({ above: 0.012, least: 0.085, rise: 0.15 });
-
+export const SKIRT_FIT = Object.freeze({ span: 0.016, clear: 0.008, bridge: 0.04, bridgeFront: Object.freeze([50, 85] as const) });
 export interface SkirtDraft {
   readonly count: number;
   readonly columns: number;
@@ -389,21 +376,6 @@ export function ringShare(top: SkirtTop, a: number): number {
 export function hemOf(joints: BodyInput['joints'], length: number): number {
   const hipY = (joints.hip[0][1] + joints.hip[1][1]) / 2, kneeY = (joints.knee[0][1] + joints.knee[1][1]) / 2, top = hipY - SKIRT_CUT.shortest * (hipY - kneeY);
   return top + (SKIRT_CUT.floorClear - top) * Math.min(1, Math.max(0, length));
-}
-/**
- * HOW FAR DOWN HER LEGS A SKIRT'S PAINTED PART GOES: LEG LENGTH of the short under it, 0 her hip joints to 1 her ankles
- * (`SKIRT_PAINT`). Under a skirt that lies ON her (FIT 0) her skin is painted to its hem, so what of her stands through
- * the sheet -- it is 6 mm off her, and a point of it every centimetre or two -- is in its colour; from there up to
- * `SKIRT_FIT.paintTo` less far by how far its hem rides up her leg in a stride (`rise`); from there to FIT 1 less far
- * again, to the short every skirt has (`short`). Never to its hem itself, and never shorter than that short where its
- * hem lets the short be.
- */
-export function paintedLegs(joints: BodyInput['joints'], draft: Pick<SkirtDraft, 'fit' | 'hemY'>, short: number): number {
-  const P = SKIRT_PAINT, hipY = (joints.hip[0][1] + joints.hip[1][1]) / 2, leg = hipY - (joints.ankle[0][1] + joints.ankle[1][1]) / 2;
-  if (!(leg > 0.2)) return short;
-  const most = (hipY - draft.hemY - P.above) / leg, own = Math.min(short, most), near = Math.max(own, most - (P.rise * draft.fit) / leg);
-  const t = Math.min(1, Math.max(0, (draft.fit - SKIRT_FIT.paintTo) / (1 - SKIRT_FIT.paintTo))), far = near + (own - near) * (t * t * (3 - 2 * t));
-  return Math.min(1, Math.max(P.least, Math.min(far, most)));
 }
 /**
  * THE POINTS OF ITS ON-HER CUT THAT ARE OVER A GAP (`SKIRT_FIT`), row by row: each run of points cut further than `far`

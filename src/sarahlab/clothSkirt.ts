@@ -107,6 +107,51 @@ export function sheetOutOfSkin(x: Float32Array, from: number, to: number, point:
   }
   return { put, most };
 }
+/**
+ * THE SHEET IS TAUT ACROSS HER CREASES (`tautColumns`; Joshua, 2026-11-17, of the paint taken out from under the
+ * skirts: "basically create a shell around the body as the skirt"). A point of the sheet that is ON her goes where her
+ * skin goes, and where her skin folds -- under her seat as a leg goes back, at the back of a bent knee, in her lap --
+ * the sheet went into the fold with it, into the pocket of air between the fold's two sides: out of her skin (no point
+ * of it under her), and BEHIND the lip of skin that hangs over the pocket. With paint under a skirt that lip was in the
+ * skirt's colour; without it, MEASURED 2026-11-17 in the room, the pencil on her (FIT 0) walking, from her back: a
+ * crescent of her skin 6 to 8 cm long under the seat of her rear leg, in two strides of four. Cloth does not go into a
+ * crease: it lies across it. So down each column, a point that stands INSIDE the straight run between the points
+ * `m` rows over it and `m` under it -- by the way her skin faces at those two, which are out of the fold -- is
+ * brought out to that run: for m from `reach` down to 1, never further than `most` (metres), never for less than
+ * `slack`, never its ring, never a point over the gap between her legs or beside one (`skip`: a span is straight
+ * already, and her skin does not face it). GAME TUNING: a crease as tall as six rows is lain across; her back's hollow
+ * over her seat, which is no crease, by a few millimetres.
+ */
+export const SHEET_TAUT = Object.freeze({ reach: 3, slack: 0.001, most: 0.03 });
+/**
+ * `x`: a sheet's points (three a point, `columns` a row, `rows` rows from its ring down), moved in place; `normal`: her
+ * skin's own facing under each (unit, three a point; none: no skin was found); `reach`, `slack` and `most` in `x`'s
+ * own units and rows (`SHEET_TAUT`); `skip`: 1 for a point that is neither moved nor measured from. How many points
+ * were brought out, and the furthest.
+ */
+export function tautColumns(x: Float32Array, columns: number, rows: number, normal: ArrayLike<number>, reach: number, slack: number, most: number, skip: ArrayLike<number> | null = null): { put: number; most: number } {
+  let put = 0, furthest = 0;
+  for (let m = Math.floor(reach); m >= 1; m--) {
+    for (let r = m; r + m < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const i = r * columns + c, ia = i - m * columns, ib = i + m * columns;
+        if (skip && (skip[i] || skip[ia] || skip[ib])) continue;
+        const p = i * 3, a = ia * 3, b = ib * 3;
+        let nx = normal[a] + normal[b], ny = normal[a + 1] + normal[b + 1], nz = normal[a + 2] + normal[b + 2];
+        const la = normal[a] * normal[a] + normal[a + 1] * normal[a + 1] + normal[a + 2] * normal[a + 2], lb = normal[b] * normal[b] + normal[b + 1] * normal[b + 1] + normal[b + 2] * normal[b + 2], l = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        // (no skin found under one of the two, or the two facing more than a third of a turn apart: no saying which way is out)
+        if (la < 0.25 || lb < 0.25 || l < 1) continue;
+        nx /= l; ny /= l; nz /= l;
+        const d = ((x[a] + x[b]) / 2 - x[p]) * nx + ((x[a + 1] + x[b + 1]) / 2 - x[p + 1]) * ny + ((x[a + 2] + x[b + 2]) / 2 - x[p + 2]) * nz;
+        if (!(d > slack)) continue;
+        const up = Math.min(d, most);
+        x[p] += nx * up; x[p + 1] += ny * up; x[p + 2] += nz * up;
+        put++; if (up > furthest) furthest = up;
+      }
+    }
+  }
+  return { put, most: furthest };
+}
 /** The name of its points' mark, 1 where a point is under a tee and not drawn (`ClothSkirt.hide`). */
 const HIDDEN_ATTRIBUTE = 'skirtHidden';
 /** GAME TUNING: a pixel of it further than this share of the way from a point that is drawn toward one that is not, is not drawn. */
@@ -155,7 +200,7 @@ export interface ClothSkirtOptions {
 /** What she sits on, world units: its middle, its radius and its top's height. */
 export interface SkirtStool { readonly x: number; readonly z: number; readonly radius: number; readonly top: number }
 
-export interface ClothSkirtStats { readonly worldPerMetre: number; readonly skinMs: number; readonly simMs: number; readonly particles: number; readonly contacts: number; readonly jumps: number; readonly rows: number; readonly columns: number; /** rows held to her whole, and held points that are over a gap (`SKIRT_FIT`) */ readonly heldRows: number; readonly spanned: number; /** points of the sheet put out of her skin this frame, and the furthest one was moved, metres (`outOfHer`: between her and the cloth) */ readonly skinPut: number; readonly skinPutMost: number }
+export interface ClothSkirtStats { readonly worldPerMetre: number; readonly skinMs: number; readonly simMs: number; readonly particles: number; readonly contacts: number; readonly jumps: number; readonly rows: number; readonly columns: number; /** rows held to her whole, and held points that are over a gap (`SKIRT_FIT`) */ readonly heldRows: number; readonly spanned: number; /** points of the sheet put out of her skin this frame, and the furthest one was moved, metres (`outOfHer`: under FIT 1) */ readonly skinPut: number; readonly skinPutMost: number; /** ...and brought out across a crease of her (`tautColumns`), and the furthest, metres */ readonly tautPut: number; readonly tautMost: number }
 
 export class ClothSkirt {
   readonly mesh: THREE.Mesh;
@@ -246,6 +291,11 @@ export class ClothSkirt {
   /** points of the sheet put out of her skin this frame, and the deepest one was, world units (a probe's) */
   private skinPut = 0;
   private skinPutMost = 0;
+  /** ...and brought out across a crease (`tautColumns`), and the furthest, world units (a probe's) */
+  private tautPut = 0;
+  private tautMost = 0;
+  /** 1 for a point over the gap between her legs (a span's: `spanA`), which is straight already and is not drawn taut */
+  private overGap: Uint8Array | null = null;
   /**
    * ACROSS THE CREASE AT THE TOP OF HER THIGHS IT IS TAUT FROM ITS RING TO HER THIGHS (`bridge`). A place bound to her
    * skin goes where that skin goes, and where her thigh meets her trunk her skin FOLDS: in a stride the top of her
@@ -261,8 +311,8 @@ export class ClothSkirt {
   private bridgeTo: Int32Array | null = null;
   private bridgeShare: Float32Array | null = null;
   private bridgeAt: Float32Array | null = null;
-  /** (a probe's) her legs' capsules, her skin's floor, and the drawn sheet put out of her skin (`outOfHer`), each switched off to tell which does what */
-  readonly probe = { capsules: true, skin: true, floor: true };
+  /** (a probe's) her legs' capsules, her skin's floor, the drawn sheet put out of her skin (`outOfHer`) and drawn taut across her creases (`tautColumns`), each switched off to tell which does what */
+  readonly probe = { capsules: true, skin: true, floor: true, taut: true };
   private restScaleWorld = 0;
   private primed = false;
   private warm = 0;
@@ -293,13 +343,15 @@ export class ClothSkirt {
     this.skin = new ClothSkin(options.body, binding, { thickness: SKIRT_BODY.clearance * M, armBones: SARAH_V2_ARM_BONES, trunkOnly: new Uint8Array(binding.count).fill(1), ...(options.skin ? { triangles: options.skin } : {}) });
     // (her skin is walked under the cloth's points and her places' as the cloth's own particles; under the sheet's, by themselves)
     this.simOrder = drawn ? Uint32Array.from({ length: n * 2 }, (_, i) => i) : null; this.sheetOrder = drawn ? Uint32Array.from({ length: n }, (_, i) => n * 2 + i) : null;
-    this.sheet = drawn ? createContacts(n) : null;
+    // (ON HER, FIT 0, the sheet drawn IS her places: her skin is walked under them a second time, where they are)
+    this.sheet = drawn || this.only ? createContacts(n) : null;
     if (this.simOrder) this.skin.setOrder(this.simOrder);
     const slots = this.skin.slots;
     this.before = createContacts(slots); this.after = createContacts(slots);
     this.scratch = new Float32Array(slots * 3);
     // the points of its on-her cut that are over the gap between her legs, each between the two points either side of it (`skirtDraft.heldSpans`)
     { const spans = heldSpans(d, on ? on.offset : cloth.offset, SKIRT_FIT.span / options.scale, hemOf(input.joints, 0)); this.spanA = spans.a; this.spanB = spans.b; this.spanU = spans.u; this.spanned = spans.count; }
+    if (this.spanned) { const gap = this.overGap = new Uint8Array(n); for (let p = 0; p < n; p++) if (this.spanA[p] >= 0) gap[p] = 1; }
     if (d.hug && this.spanned) {
       // (her legs' capsules as `legs` lays them, at rest, metres: how far from each one's line each such point was cut)
       const J = input.joints, H = d.hug, keep = this.spanKeep = new Float32Array(n * 6), clear = SKIRT_FIT.clear;
@@ -453,8 +505,8 @@ export class ClothSkirt {
       const X = sim.positions, f = this.draft.fit, o = this.base * 3;
       for (let i = 0; i < n * 3; i++) shown[i] = X[o + i] + (X[i] - X[o + i]) * f;
       // ...and out of her skin, which the straight way cuts the corner of as she moves (`between`)
-      this.skinPut = 0; this.skinPutMost = 0;
-      if (this.between && this.probe.floor) skinMs += this.outOfHer(shown);
+      this.skinPut = 0; this.skinPutMost = 0; this.tautPut = 0; this.tautMost = 0;
+      if ((this.between || this.only) && this.probe.floor) skinMs += this.outOfHer(shown);
     } else shown.set(sim.positions.subarray(0, n * 3));
     clothNormals(shown, this.draft.triangles, n, this.normal.array as Float32Array);
     this.position.needsUpdate = true; this.normal.needsUpdate = true;
@@ -470,13 +522,17 @@ export class ClothSkirt {
    */
   private outOfHer(x: Float32Array): number {
     const c = this.sheet, d = this.draft, M = this.options.unitsPerMetre;
-    if (!c || !this.sheetOrder) return 0;
-    this.skin.setOrder(this.sheetOrder);
+    if (!c) return 0;
+    // (between her and the cloth: the third set's slots; on her, FIT 0: her places' own, the only ones there are)
+    if (this.sheetOrder) this.skin.setOrder(this.sheetOrder);
     const ms = this.skin.update(x, c, true);
-    this.skin.setOrder(this.simOrder);
+    if (this.sheetOrder) this.skin.setOrder(this.simOrder);
     const ease = this.settings.tucked ? SKIRT_CUT.easeTucked : SKIRT_CUT.ease, off = (ease + (SKIRT_BODY.clearance - ease) * d.fit) * M;
     const moved = sheetOutOfSkin(x, d.columns, d.count, c.point, c.normal, 0, off, SHEET_FLOOR.deep * M);
     this.skinPut = moved.put; this.skinPutMost = moved.most;
+    // ...and taut across her creases, which it would otherwise go into behind her skin's own lip (`SHEET_TAUT`)
+    this.tautPut = 0; this.tautMost = 0;
+    if (this.probe.taut) { const t = tautColumns(x, d.columns, d.rows, c.normal, SHEET_TAUT.reach, SHEET_TAUT.slack * M, SHEET_TAUT.most * M, this.overGap); this.tautPut = t.put; this.tautMost = t.most; }
     return ms;
   }
 
@@ -571,7 +627,7 @@ export class ClothSkirt {
   /** Floors raised over a shirt under it this frame (a probe's). */
   get floorsRaised(): number { return this.raised; }
 
-  stats(): ClothSkirtStats { return { ...this.shown_, worldPerMetre: this.restScaleWorld, particles: this.draft.count, jumps: this.jumps, rows: this.draft.rows, columns: this.draft.columns, heldRows: this.draft.heldRows, spanned: this.spanned, skinPut: this.skinPut, skinPutMost: this.skinPutMost / this.options.unitsPerMetre }; }
+  stats(): ClothSkirtStats { return { ...this.shown_, worldPerMetre: this.restScaleWorld, particles: this.draft.count, jumps: this.jumps, rows: this.draft.rows, columns: this.draft.columns, heldRows: this.draft.heldRows, spanned: this.spanned, skinPut: this.skinPut, skinPutMost: this.skinPutMost / this.options.unitsPerMetre, tautPut: this.tautPut, tautMost: this.tautMost / this.options.unitsPerMetre }; }
 
   dispose(): void {
     this.mesh.removeFromParent();

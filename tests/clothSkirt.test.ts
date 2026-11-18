@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { ClothSkirt } from '../src/sarahlab/clothSkirt';
+import { ClothSkirt, SHEET_TAUT } from '../src/sarahlab/clothSkirt';
 import { SARAH_V2_JOINTS } from '../src/sarahlab/garment/bodyInput';
 import type { BodyInput } from '../src/sarahlab/garment/types';
 import { clampSkirt, type SkirtSettings } from '../src/sarahlab/skirt/skirtDraft';
@@ -139,17 +139,37 @@ describe('a skirt worn on a stand-in for her', () => {
     expect(skirt.stats().skinPut).toBe(0);
   });
 
-  it('at FIT 0 no cloth is made: the sheet is her places, on her as she strides', () => {
+  it('at FIT 0 no cloth is made: the sheet is her places, on her as she strides -- put out of her skin where it is drawn, and taut across her creases', () => {
+    // how far the furthest drawn point is from its place, under where a tube of a thigh is hinged into a tube of a
+    // trunk (there the stand-in passes through itself, `JOINT`); and how many are anywhere but on it
+    const from = (skirt: ClothSkirt): { most: number; moved: number } => {
+      const x = skirt.shown!, X = skirt.positions!;
+      let most = 0, moved = 0;
+      for (let p = 0; p < skirt.draft.count; p++) { if (X[p * 3 + 1] > HIP - 2 * JOINT) continue; const d = Math.hypot(x[p * 3] - X[p * 3], x[p * 3 + 1] - X[p * 3 + 1], x[p * 3 + 2] - X[p * 3 + 2]); if (d > most) most = d; if (d > 1e-6) moved++; }
+      return { most, moved };
+    };
     const f = figure(), skirt = skirtOn(f, { fit: 0 }), n = skirt.draft.count;
     const s = stride(f, skirt, 0.45);
     expect(skirt.positions!.length).toBe(n * 3);
-    expect(Array.from(skirt.shown!)).toEqual(Array.from(skirt.positions!));
     expect(s.deepest).toBeLessThan(0.001);
+    // each drawn point is its place, or its place put out of her skin or brought out across a crease: never far from it
+    const all = from(skirt);
+    expect(all.most).toBeLessThan(SHEET_TAUT.most + 0.005); expect(all.moved).toBeGreaterThan(0);
+    expect(skirt.stats().skinPut).toBeGreaterThan(0);
     // ...and near her: no point of it further than a hand off her legs' own lines (a place over the gap between them is between them)
     const x = skirt.shown!;
     for (let p = skirt.draft.columns; p < n; p++) expect(Math.abs(x[p * 3]), `point ${p}`).toBeLessThan(0.2);
+    // not drawn taut (a probe's): her places stand the shell's ease off her and no more (they are bound no nearer her than the cloth's clearance)
+    const g = figure(), slack = skirtOn(g, { fit: 0 });
+    slack.probe.taut = false;
+    expect(stride(g, slack, 0.45).deepest).toBeLessThan(0.001);
+    expect(from(slack).most).toBeLessThan(0.005); expect(slack.stats().tautPut).toBe(0);
+    // ...and with her skin not its floor where it is drawn either, the sheet is her places and nothing else
+    const h = figure(), bare = skirtOn(h, { fit: 0 });
+    bare.probe.floor = false;
+    stride(h, bare, 0.45);
+    expect(Array.from(bare.shown!)).toEqual(Array.from(bare.positions!));
   });
-
   it('between her and the cloth no point of the sheet is in her as she strides; with her skin not its floor, the straight way goes through her', () => {
     for (const fit of [0.25, 0.5, 0.75]) {
       const f = figure(), skirt = skirtOn(f, { fit }), n = skirt.draft.count;

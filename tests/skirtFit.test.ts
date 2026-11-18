@@ -7,8 +7,6 @@
  *   it the nearest of her to that point of the cloth, so no share of the way between the two is in her;
  * - a point of that cut over the gap between her legs is spanned between the points either side (`heldSpans`);
  * - drawn between her and the cloth, a point found in her skin is put out through it (`sheetOutOfSkin`);
- * - its painted part's legs go to its hem under a skirt that lies on her, less far by its hem's ride up her leg
- *   between her and the cloth, never to the hem itself (`paintedLegs`);
  * - a save keeps it (`readSkirtRecord`), and saying nothing is 1.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -19,11 +17,11 @@ import { bodyInputOf } from '../src/sarahlab/garment/bodyInput';
 import { dressForm } from '../src/sarahlab/garment/measure';
 import type { BodyInput } from '../src/sarahlab/garment/types';
 import {
-  SKIRT_CUT, SKIRT_FIT, SKIRT_LINE, SKIRT_PAINT, SKIRT_RECORD_VERSION, clampSkirt, draftSkirt, fitOf, heldSpans, nearestOn, paintedLegs, readSkirtRecord, sameSkirt, underLine,
+  SKIRT_CUT, SKIRT_FIT, SKIRT_LINE, SKIRT_RECORD_VERSION, clampSkirt, draftSkirt, fitOf, heldSpans, nearestOn, readSkirtRecord, sameSkirt, underLine,
   type SkirtDraft, type SkirtSettings,
 } from '../src/sarahlab/skirt/skirtDraft';
-import { SKIRT_UNDER_BAND, SKIRT_UNDER_LEGS } from '../src/sarahlab/sarahLabTool';
-import { sheetOutOfSkin } from '../src/sarahlab/clothSkirt';
+import { SKIRT_UNDER_BAND } from '../src/sarahlab/sarahLabTool';
+import { SHEET_TAUT, sheetOutOfSkin, tautColumns } from '../src/sarahlab/clothSkirt';
 import { loadHerBody, type HerBody } from './herBodyMap';
 
 /** An upright post, `radius(y)` round, from the floor to 1.5 m (as `tests/skirtLine.test.ts`'s). */
@@ -224,6 +222,69 @@ describe('the sheet as drawn, put out of her skin', () => {
   });
 });
 
+describe('the sheet as drawn, taut across her creases', () => {
+  // a strip of sheet down her back: `columns` points a row, a row every 2 cm going down (-y), her skin facing back (+z)
+  // under every point of it; `z(r)`: how far out each row stands
+  const columns = 3, step = 0.02;
+  const strip = (z: readonly number[], facing: (r: number) => readonly [number, number, number] = () => [0, 0, 1]) => {
+    const rows = z.length, x = new Float32Array(rows * columns * 3), n = new Float32Array(rows * columns * 3);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < columns; c++) { const i = (r * columns + c) * 3; x.set([c * 0.015, -r * step, z[r]], i); n.set(facing(r), i); }
+    return { x, n, rows, z: (r: number, c = 1) => x[(r * columns + c) * 3 + 2] };
+  };
+  it('a row gone into a fold is brought out to the straight run between the rows either side of it', () => {
+    const s = strip([0, 0, -0.012, 0, 0]), t = tautColumns(s.x, columns, s.rows, s.n, 1, 0.001, 0.03);
+    expect(t.put).toBe(columns); expect(t.most).toBeCloseTo(0.012, 6);
+    for (let r = 0; r < s.rows; r++) expect(s.z(r), `row ${r}`).toBeCloseTo(0, 6);
+    // ...straight out, by the way her skin faces: not along the sheet
+    expect(s.x[(2 * columns + 1) * 3 + 1]).toBeCloseTo(-2 * step, 7);
+  });
+  it('a fold as tall as its reach is lain across; one row of reach only rounds its corners', () => {
+    const fold = [0, 0, -0.01, -0.016, -0.01, 0, 0, 0];
+    const wide = strip(fold); tautColumns(wide.x, columns, wide.rows, wide.n, 3, 0.001, 0.03);
+    for (let r = 0; r < wide.rows; r++) expect(wide.z(r), `row ${r}`).toBeGreaterThan(-0.0012);
+    const narrow = strip(fold); tautColumns(narrow.x, columns, narrow.rows, narrow.n, 1, 0.001, 0.03);
+    expect(narrow.z(3)).toBeLessThan(-0.005); expect(narrow.z(3)).toBeGreaterThan(-0.016 - 1e-9);
+  });
+  it('a slope and a round are left as they are: only what is inside the run between its neighbours moves', () => {
+    for (const z of [[0, 0.01, 0.02, 0.03, 0.04], [0, 0.004, 0.006, 0.006, 0.004, 0]]) {
+      const s = strip(z), was = Array.from(s.x), t = tautColumns(s.x, columns, s.rows, s.n, 3, 0.001, 0.03);
+      expect(t.put, String(z)).toBe(0); expect(Array.from(s.x)).toEqual(was);
+    }
+  });
+  it('over a point of her that stands out it is a tent: that point stays, the rows beside it come out to the run', () => {
+    const s = strip([0, 0, 0, 0.012, 0, 0, 0]); tautColumns(s.x, columns, s.rows, s.n, 1, 0.001, 0.03);
+    expect(s.z(3)).toBeCloseTo(0.012, 6); expect(s.z(2)).toBeCloseTo(0.006, 6); expect(s.z(4)).toBeGreaterThan(0.005); expect(s.z(0)).toBe(0);
+  });
+  it('never its ring, never further than its most, never for less than its slack', () => {
+    // (the ring is its first row: nothing is over it to run from)
+    const ring = strip([-0.02, 0, 0, 0]), was = ring.z(0); tautColumns(ring.x, columns, ring.rows, ring.n, 3, 0.001, 0.03);
+    expect(ring.z(0)).toBe(was);
+    const deep = strip([0, 0, -0.05, 0, 0]), t = tautColumns(deep.x, columns, deep.rows, deep.n, 1, 0.001, 0.03);
+    expect(t.most).toBeCloseTo(0.03, 6); expect(deep.z(2)).toBeCloseTo(-0.02, 6);
+    const slight = strip([0, 0, -0.0008, 0, 0]), same = Array.from(slight.x);
+    expect(tautColumns(slight.x, columns, slight.rows, slight.n, 3, 0.001, 0.03).put).toBe(0); expect(Array.from(slight.x)).toEqual(same);
+  });
+  it('by the way her skin faces at the two it runs between: none found under one, or the two facing apart, and it is left', () => {
+    const none = strip([0, 0, -0.012, 0, 0], (r) => (r === 1 ? [0, 0, 0] : [0, 0, 1])), a = Array.from(none.x);
+    expect(tautColumns(none.x, columns, none.rows, none.n, 1, 0.001, 0.03).put).toBe(0); expect(Array.from(none.x)).toEqual(a);
+    const apart = strip([0, 0, -0.012, 0, 0], (r) => (r === 1 ? [0, 0, 1] : r === 3 ? [0, 0.3, -0.954] : [0, 0, 1])), b = Array.from(apart.x);
+    expect(tautColumns(apart.x, columns, apart.rows, apart.n, 1, 0.001, 0.03).put).toBe(0); expect(Array.from(apart.x)).toEqual(b);
+    // ...and where her skin faces back and DOWN over the fold and back under it, out is between the two
+    const lip = strip([0, 0, -0.012, 0, 0], (r) => (r <= 1 ? [0, -0.6, 0.8] : [0, 0, 1]));
+    expect(tautColumns(lip.x, columns, lip.rows, lip.n, 1, 0.001, 0.03).put).toBe(columns);
+    expect(lip.z(2)).toBeGreaterThan(-0.002); expect(lip.x[(2 * columns + 1) * 3 + 1]).toBeLessThan(-2 * step);
+  });
+  it('a point over the gap between her legs, and one beside it, are not moved or measured from', () => {
+    const s = strip([0, 0, -0.012, 0, 0]), skip = new Uint8Array(s.rows * columns);
+    skip[2 * columns + 0] = 1; skip[1 * columns + 2] = 1;
+    const t = tautColumns(s.x, columns, s.rows, s.n, 1, 0.001, 0.03, skip);
+    expect(t.put).toBe(1); expect(s.z(2, 0)).toBeCloseTo(-0.012, 6); expect(s.z(2, 2)).toBeCloseTo(-0.012, 6); expect(s.z(2, 1)).toBeCloseTo(0, 6);
+  });
+  it('lies across a crease six rows tall and no more: GAME TUNING', () => {
+    expect(SHEET_TAUT.reach).toBe(3); expect(SHEET_TAUT.most).toBeLessThanOrEqual(0.03); expect(SHEET_TAUT.slack).toBeGreaterThan(0);
+  });
+});
+
 describe('the held points that are over a gap', () => {
   // twelve points a row round a circle, four rows, three of them held whole
   const cols = 12, rows = 4, count = cols * rows, rest = new Float32Array(count * 3);
@@ -252,31 +313,6 @@ describe('the held points that are over a gap', () => {
     // (at FIT 1 there is no on-her cut: nothing is spanned, as nothing ever was)
     expect(heldSpans({ ...d, heldRows: 1 }, offsets([[1, 3], [2, 3]]), 1).count).toBe(0);
     expect(heldSpans({ ...d, hug: null }, offsets([[1, 3], [2, 3]]), 1).count).toBe(0);
-  });
-});
-
-describe('its painted part\'s legs', () => {
-  const joints = post(() => 0.1).joints, leg = 0.9 - 0.08, at = (fit: number, hemY: number) => paintedLegs(joints, { fit, hemY }, SKIRT_UNDER_LEGS);
-  it('are the short every skirt has at FIT 1, while its hem is clear of them', () => {
-    expect(at(1, 0.5)).toBe(SKIRT_UNDER_LEGS); expect(at(1, 0.06)).toBe(SKIRT_UNDER_LEGS);
-  });
-  it('go to its hem under a skirt that lies on her; between her and the cloth less far, by how far its hem rides up her leg; and less far again from there to FIT 1', () => {
-    const toHem = (0.9 - 0.5 - SKIRT_PAINT.above) / leg, ride = (fit: number) => (SKIRT_PAINT.rise * fit) / leg;
-    expect(at(0, 0.5)).toBeCloseTo(toHem, 6);
-    expect(at(0.3, 0.5)).toBeCloseTo(toHem - ride(0.3), 6); expect(at(SKIRT_FIT.paintTo, 0.5)).toBeCloseTo(toHem - ride(SKIRT_FIT.paintTo), 6);
-    expect(at(0.8, 0.5)).toBeCloseTo((toHem - ride(0.8) + SKIRT_UNDER_LEGS) / 2, 6);
-    expect(at(0.9, 0.5)).toBeLessThan(at(0.8, 0.5)); expect(at(0.9, 0.5)).toBeGreaterThan(SKIRT_UNDER_LEGS);
-    // (shorter with every step of FIT, and never shorter than the short every skirt has)
-    for (let f = 0.05; f <= 1.0001; f += 0.05) { expect(at(f, 0.5), `fit ${f}`).toBeLessThan(at(f - 0.05, 0.5) + 1e-9); expect(at(f, 0.5)).toBeGreaterThanOrEqual(SKIRT_UNDER_LEGS - 1e-9); }
-    // a short skirt between her and the cloth: the short it has at 1, where what its hem would leave is less
-    expect(at(0.5, 0.74)).toBe(SKIRT_UNDER_LEGS); expect(at(0, 0.74)).toBeCloseTo((0.9 - 0.74 - SKIRT_PAINT.above) / leg, 6);
-  });
-  it('never to its hem itself: a skirt shorter than the short, at any FIT', () => {
-    for (const fit of [0, 0.5, 1]) {
-      expect(at(fit, 0.8), `fit ${fit}`).toBeCloseTo((0.9 - 0.8 - SKIRT_PAINT.above) / leg, 6);
-      expect(at(fit, 0.89), `fit ${fit}`).toBe(SKIRT_PAINT.least);
-    }
-    expect(at(0, 0.02)).toBeLessThanOrEqual(1);
   });
 });
 

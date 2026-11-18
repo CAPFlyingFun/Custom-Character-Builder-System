@@ -39,7 +39,7 @@ import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFace
 import { DRAW_LIFT, REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { ClothSkirt } from './clothSkirt';
 import { CLOTH_LAYERS, ClothUnder, besideCloth, cinchUnder, coveredBy, holdInside, underTop } from './clothLayers';
-import { SKIRT_RECORD_VERSION, anchorsOf, clampSkirt, fitOf, paintedLegs, sameSkirt, type SkirtRecord, type SkirtSettings } from './skirt/skirtDraft';
+import { SKIRT_RECORD_VERSION, anchorsOf, clampSkirt, fitOf, sameSkirt, type SkirtRecord, type SkirtSettings } from './skirt/skirtDraft';
 import { SkirtPanel } from './skirtPanel';
 import { bodyInputOf } from './garment/bodyInput';
 import type { BodyInput } from './garment/types';
@@ -364,7 +364,7 @@ import { LIGHT_BODY_TRIANGLES,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn, outfitNamed, modelName, modelsOnMenu,
-  BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE, SKIRT_UNDER_BAND, SKIRT_UNDER_LEGS,
+  BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE, SKIRT_UNDER_BAND,
 } from './sarahLabTool';
 import { blendJointTurns, sitEase, stepSit } from './poseBlend';
 import { createSkinShell, type SkinShell } from './skinShellMesh';
@@ -2895,7 +2895,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // ...and her skirt's numbers the same
     adoptSkirt(pendingClothes?.skirt ?? null);
     // saved clothes put on with this outfit go on over its defaults
-    if (pendingClothes && fabric?.putOnClothes(pendingClothes)) { builder?.load(pendingClothes.built ?? null); pendingClothes = null; laySkirtPaint(); }
+    if (pendingClothes && fabric?.putOnClothes(pendingClothes)) { builder?.load(pendingClothes.built ?? null); pendingClothes = null; }
     // what she has on now is what the editor's SAVE compares against
     if (fabric && !pendingClothes) { outfits?.editing(nextSource ?? { kind: 'builtin', name: OUTFITS[outfit].name }); nextSource = null; }
   }
@@ -2975,7 +2975,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     else {
       adoptGarment(rest.garment ?? null);
       adoptSkirt(rest.skirt ?? null);
-      if (fabric?.putOnClothes(rest)) { builder?.load(rest.built ?? null); pendingClothes = null; laySkirtPaint(); outfits?.editing(source); nextSource = null; }
+      if (fabric?.putOnClothes(rest)) { builder?.load(rest.built ?? null); pendingClothes = null; outfits?.editing(source); nextSource = null; }
       applyLook(); refresh();
     }
   }
@@ -3054,14 +3054,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!want) wantCloth();
   }
   /**
-   * THE OUTFIT'S SKIRT: drafted from her design at 0% belly and hung on her when an outfit that has one is put on (or a
-   * probe asks for one), taken off with it. In its paint's own colour (the short under it is its fitted part).
+   * THE OUTFIT'S SKIRT: drafted from her shape as it stands and put on her when an outfit that has one is put on (or a
+   * probe asks for one), taken off with it. A garment of its own, with no paint under it (`sarahLabTool.ts` `SKIRTS`).
    */
   function syncSkirt(): void {
     const own = OUTFITS[outfit], want = skirtProbe ?? (recovered && own?.skirt ? skirtWorn ?? clampSkirt(own.skirt) : null);
     const body = clothBody();
     if (!want || !loaded || !body || !model) { if (skirtRoom) { skirtRoom.dispose(); skirtRoom = null; skirtKey = ''; skirtNavel = null; if (garmentRoom) { garmentRoom.cloth.over = null; garmentRoom.cloth.belt = null; garmentRoom.cloth.hidden = null; } } return; }
-    const first = own?.paint?.[0]?.fabric, colour = first ? pickHex({ family: first.family, colour: first.colour, ...(first.tint ? { tint: first.tint } : {}) } as Parameters<typeof pickHex>[0]) : '#6a6f7c';
+    // its colour: the outfit's own skirt's (`BuiltInOutfit.skirtTint`); a probe's skirt over some other outfit takes that outfit's first paint layer's
+    const first = own?.skirt && own.skirtTint ? { family: 'athletic', colour: 0, tint: own.skirtTint } as const : own?.paint?.[0]?.fabric, colour = first ? pickHex({ family: first.family, colour: first.colour, ...(first.tint ? { tint: first.tint } : {}) } as Parameters<typeof pickHex>[0]) : '#6a6f7c';
     const anchors = anchorsOf(want), key = `${want.top}|${want.length.toFixed(3)}|${want.flare.toFixed(3)}|${fitOf(want).toFixed(3)}|${want.tucked ? 't' : 'u'}|${anchors.front ? 'f' : ''}${anchors.back ? 'b' : ''}${anchors.left ? 'l' : ''}${anchors.right ? 'r' : ''}`;
     if (skirtRoom && key === skirtKey) { if (colour !== skirtColour) { (skirtRoom.mesh.material as THREE.MeshStandardMaterial).color.set(colour); skirtColour = colour; } return; }
     skirtRoom?.dispose(); skirtRoom = null; skirtNavel = null;
@@ -3089,16 +3090,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     skirtKey = key; skirtColour = colour; skirtPoseKey = pose; skirtShapeKey = shapeKeyNow(); skirtRecut = false;
     skirtCutMs = performance.now() - t0;
     three.add(skirtRoom.mesh);
-    laySkirtPaint();
-  }
-  /**
-   * ITS PAINTED PART'S LEGS GO TO ITS HEM UNDER A SKIRT THAT LIES CLOSE TO HER, and never to the hem itself
-   * (`skirtDraft.paintedLegs`): the outfit's own skirt's short alone (a probe's skirt on some other outfit moves no
-   * one's leggings). After each cut, and after saved clothes are put on over the outfit's.
-   */
-  function laySkirtPaint(): void {
-    if (!skirtRoom || !skirtJoints || !OUTFITS[outfit]?.skirt || skirtRoom.settings.top !== 'under') return;
-    fabric?.setDial(SKIRT_UNDER_BAND, 'legEnd', +paintedLegs(skirtJoints, skirtRoom.draft, SKIRT_UNDER_LEGS).toFixed(3));
   }
   /** The procedural tee off her, and the light tee's cloth copy drawn again if it is on. */
   function takeOffGarment(): void {
@@ -10900,7 +10891,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         skirtPoints: (of: 'shown' | 'cloth' | 'places' = 'shown') => { const all = skirtRoom?.positions, n = skirtRoom?.draft.count ?? 0, x = of === 'shown' ? skirtRoom?.shown : !all ? null : of === 'cloth' ? (all.length >= n * 6 ? all.subarray(0, n * 3) : skirtRoom!.draft.hug && skirtRoom!.draft.fit <= 0 ? null : all.subarray(0, n * 3)) : all.length >= n * 6 ? all.subarray(n * 3, n * 6) : skirtRoom!.draft.hug ? all.subarray(0, n * 3) : null; if (!skirtRoom || !x) return null; const out = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) out[i] = x[i] / M; const bytes = new Uint8Array(out.buffer); let t = ''; for (let i = 0; i < bytes.length; i += 0x8000) t += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return { columns: skirtRoom.draft.columns, rows: skirtRoom.draft.rows, data: btoa(t) }; },
         // her skirt's own numbers, as its panel moves them (`skirtChanged`): what she wears, and what a save would keep
         skirtSettings: (patch?: Partial<SkirtSettings> | null, final = true) => { if (patch && skirtShown) skirtChanged(clampSkirt({ ...skirtShown, ...patch }), final); else if (patch === null) adoptSkirt(null); return { shown: skirtShown, worn: skirtWorn, saved: currentClothes().skirt ?? null }; },
-        skirtParts: (capsules?: boolean | null, skin?: boolean | null, floor?: boolean | null) => { if (!skirtRoom) return null; if (typeof capsules === 'boolean') skirtRoom.probe.capsules = capsules; if (typeof skin === 'boolean') skirtRoom.probe.skin = skin; if (typeof floor === 'boolean') skirtRoom.probe.floor = floor; return { ...skirtRoom.probe }; },
+        skirtParts: (capsules?: boolean | null, skin?: boolean | null, floor?: boolean | null, taut?: boolean | null) => { if (!skirtRoom) return null; if (typeof capsules === 'boolean') skirtRoom.probe.capsules = capsules; if (typeof skin === 'boolean') skirtRoom.probe.skin = skin; if (typeof floor === 'boolean') skirtRoom.probe.floor = floor; if (typeof taut === 'boolean') skirtRoom.probe.taut = taut; return { ...skirtRoom.probe }; },
         skirtWire: (on: boolean) => { if (!skirtRoom) return false; (skirtRoom.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },
         garmentWire: (on: boolean) => { if (!garmentRoom) return false; (garmentRoom.cloth.mesh.material as THREE.MeshStandardMaterial).wireframe = on; return true; },
         // her particles now (world), and which piece each is of, for a probe drawing its own pictures

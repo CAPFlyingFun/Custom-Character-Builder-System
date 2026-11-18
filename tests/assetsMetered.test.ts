@@ -139,7 +139,9 @@ describe('the room opens with only what she has on', () => {
     expect(OUTFITS[7].procedural).toBe('raglan');
     expect(OUTFITS[8].procedural).toBeUndefined();
     // the painted outfits (Joshua, 2026-10-21) download nothing: they are paint on her own skin
-    for (let i = 9; i < OUTFITS.length; i++) expect(OUTFITS[i].paint?.length ?? 0).toBeGreaterThan(0);
+    // (but the three with the cloth tee and a skirt, which paint nothing since 2026-11-17 -- Joshua: "Did you remove all
+    // the paint under the skirts? That would allow more flexibility for undergarments or none": a tee and a sheet)
+    for (let i = 9; i < OUTFITS.length; i++) expect((OUTFITS[i].paint?.length ?? 0) > 0 || (!!OUTFITS[i].skirt && !!OUTFITS[i].procedural)).toBe(true);
     for (let i = 9; i < 36; i++) expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]);
     // THE TEN CLOTH TOPS (Joshua, 2026-11-16: "Just add, don't replace. Just the 10 is fine"): the new tee in ten cuts,
     // each over painted leggings and each fetching only the light tee its material is borrowed from, as the red one does
@@ -153,7 +155,8 @@ describe('the room opens with only what she has on', () => {
     // and the other eleven of his sixteen (2026-11-15: the tank to the button-up), then the six tight ones of his sheet
     // of bottoms (the same day: the high-rise leggings to the bike shorts)
     // ...and the ten cloth tops (2026-11-16), put after them all
-    // ...and the skirts' pilot (the same day): four of them, paint and a sheet of cloth, fetching nothing
+    // ...and the skirts' pilot (the same day): four of them, a sheet of cloth under a painted crop tee (nothing painted
+    // under the sheet since 2026-11-17), fetching nothing
     for (let i = 46; i < 50; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
     // ...and three with the cloth tee over or under a skirt, fetching the light tee alone, as every cloth tee does
     for (let i = 50; i < OUTFITS.length; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(OUTFITS[i].procedural).toBe('raglan'); expect(recoveredPartsFor(wornGarments(i, all))).toEqual(recoveredPartsFor(wornGarments(7, all))); }
@@ -168,7 +171,8 @@ describe('the room opens with only what she has on', () => {
     // the big modelled shirts and leggings are kept but not offered (Joshua, 2026-10-22): bikini, none, the light tee and
     // the painted ones (the light tee is the one outfit with both a garment and paint)
     // (the bikini's bottom is painted now: it is among the painted ones as well -- Joshua, 2026-11-12)
-    expect([...new Set(seen)].sort((a, b) => a - b)).toEqual([...new Set([2, 4, ...OUTFITS.map((o, i) => (o.paint ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b));
+    // (and the three with the cloth tee and a skirt, which paint nothing since 2026-11-17 and are offered all the same)
+    expect([...new Set(seen)].sort((a, b) => a - b)).toEqual([...new Set([2, 4, ...OUTFITS.map((o, i) => (o.paint || o.skirt ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b));
     expect(seen).toContain(SARAH_DEFAULT_OUTFIT);
   });
 

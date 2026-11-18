@@ -7,14 +7,14 @@
  * `belly200` morphs: her 0%, her 100% and her 200%), where the ring has to be under her belly at every size.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { COVERAGE_TEMPLATES, withDial } from '../src/sarahlab/paintTemplates';
+import { COVERAGE_TEMPLATES } from '../src/sarahlab/paintTemplates';
 import { hoopInside, limbSkin, lowFrame, lowSpec, type LowFrame } from '../src/sarahlab/bottomCut';
 import { FACE_REST_OFFSET, FACE_REST_SCALE } from '../src/sarahlab/faceRig';
 import { bodyInputOf } from '../src/sarahlab/garment/bodyInput';
 import { dressForm } from '../src/sarahlab/garment/measure';
 import type { BodyInput } from '../src/sarahlab/garment/types';
 import { SKIRT_CUT, SKIRT_LINE, SKIRT_TOPS, draftSkirt, hemOf, reachOf, ringOn, underLine } from '../src/sarahlab/skirt/skirtDraft';
-import { OUTFITS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND, SKIRT_UNDER_LEGS, skirtPaint } from '../src/sarahlab/sarahLabTool';
+import { OUTFITS, SKIRT_UNDER_BAND } from '../src/sarahlab/sarahLabTool';
 import { loadHerBody, type HerBody } from './herBodyMap';
 
 /** An upright post, `radius(y)` round, from the floor to 1.5 m: `around` points a ring, a ring every `step`. */
@@ -128,23 +128,16 @@ describe('a skirt drafted on that line', () => {
   });
 });
 
-describe('an under-belly skirt\'s painted part and its outfits', () => {
-  it('is the under-belly leggings cut short: their waistband, their bowl and their band, a short\'s legs', () => {
-    const p = skirtPaint({ top: 'under' }, '#123456');
-    expect(p.template).toBe(SKIRT_UNDER_BAND);
-    expect(p.dials).toEqual({ legEnd: SKIRT_UNDER_LEGS });
-    const leggings = COVERAGE_TEMPLATES.find((t) => t.id === SKIRT_UNDER_BAND)!.params, short = COVERAGE_TEMPLATES.find((t) => t.id === 'shortsAthletic')!.params;
-    const worn = withDial(leggings, 'legEnd', SKIRT_UNDER_LEGS);
-    expect(worn.legEnd).toBe(short.legEnd);
-    expect([worn.riseFront, worn.riseSide, worn.riseBack, worn.lowBowl, worn.lowBand]).toEqual([leggings.riseFront, leggings.riseSide, leggings.riseBack, leggings.lowBowl, leggings.lowBand]);
-    // over her belly it is the short it was
-    const over = skirtPaint({ top: 'over' }, '#123456');
-    expect(over.template).toBe('shortsAthletic'); expect(over.dials?.rise).toBe(SKIRT_OVER_BAND);
-  });
-  it('is what every skirt on the menu wears', () => {
+describe('the skirts on the menu', () => {
+  it('all sit under her belly, their ring on the under-belly leggings\' line -- the style\'s line, which none of them wears', () => {
     const worn = OUTFITS.filter((o) => o.skirt);
     expect(worn.length).toBe(7);
-    for (const o of worn) { expect(o.skirt!.top, o.name).toBe('under'); expect(o.paint?.[0], o.name).toEqual(skirtPaint(o.skirt!, o.paint![0].fabric.tint!)); }
+    for (const o of worn) {
+      expect(o.skirt!.top, o.name).toBe('under');
+      expect((o.paint ?? []).some((l) => l.template === SKIRT_UNDER_BAND), o.name).toBe(false);
+    }
+    // (that style is a drawn bottom with a hoop of a waistband: what `fabricPanel.hoopOn` is asked of)
+    expect(COVERAGE_TEMPLATES.some((t) => t.id === SKIRT_UNDER_BAND)).toBe(true);
   });
 });
 

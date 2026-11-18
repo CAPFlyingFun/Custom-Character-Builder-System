@@ -3,8 +3,8 @@
  * reaches, and the outfits that wear one.
  */
 import { describe, expect, it } from 'vitest';
-import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, hemOf, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
-import { OUTFITS, SKIRTS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND, SKIRT_UNDER_LEGS } from '../src/sarahlab/sarahLabTool';
+import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, fitOf, hemOf, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
+import { OUTFITS, SKIRTS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND } from '../src/sarahlab/sarahLabTool';
 import { RISES } from '../src/sarahlab/paintTemplates';
 
 describe('a skirt, drafted', () => {
@@ -38,19 +38,27 @@ describe('a skirt, drafted', () => {
     expect(SKIRT_CUT.mostRows).toBeLessThanOrEqual(36);
     expect(SKIRT_CUT.hold[0]).toBe(1);
   });
-  it('is worn by the pilot outfits, each over a short painted in its colour, put after everything there was', () => {
+  // (Joshua, 2026-11-17: "Did you remove all the paint under the skirts? That would allow more flexibility for
+  //  undergarments or none for birth, etc…"; "basically create a shell around the body as the skirt")
+  it('is worn by the pilot outfits, each a garment of its own with no paint under it, put after everything there was', () => {
     // (the three with the cloth tee come after them: `tests/clothLayers.test.ts`)
     const worn = OUTFITS.filter((o) => o.skirt && !o.procedural);
     expect(worn.map((o) => o.name)).toEqual(SKIRTS.map(([name]) => name));
     for (const o of worn) {
-      // (under her belly its painted part is the under-belly leggings cut short, whose line its ring is laid on:
-      // `tests/skirtLine.test.ts`; over it, the short shorts with their waistband in the crease under her bust)
-      expect(o.paint?.[0].template, o.name).toBe(o.skirt!.top === 'under' ? SKIRT_UNDER_BAND : 'shortsAthletic');
       expect(o.skirt).toEqual(clampSkirt(o.skirt!));
-      if (o.skirt!.top === 'under') expect(o.paint?.[0].dials, o.name).toEqual({ legEnd: SKIRT_UNDER_LEGS });
-      else expect(o.paint?.[0].dials?.rise, o.name).toBe(SKIRT_OVER_BAND);
+      // nothing painted but the crop tee over it: no short, no waistband of the leggings whose line its ring is laid on
+      expect(o.paint?.map((l) => l.template), o.name).toEqual(['cropTee']);
+      expect(o.skirtTint, o.name).toBe(SKIRTS.find(([name]) => name === o.name)![1]);
+    }
+    for (const o of OUTFITS.filter((x) => x.skirt)) {
+      expect((o.paint ?? []).some((l) => l.template === SKIRT_UNDER_BAND || l.template === 'shortsAthletic'), o.name).toBe(false);
+      expect(o.skirtTint, o.name).toMatch(/^#[0-9a-f]{6}$/);
     }
     expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['under']));
+  });
+  // (Joshua, 2026-11-17, of the pencil as cloth, which can not take her stride: "I would do 0% fit for the pencil skirt")
+  it('the pencil lies on her (FIT 0); the A-line, the mini and the maxi are cloth (FIT 1)', () => {
+    expect(SKIRTS.map(([name, , s]) => [name.split(' ')[1], fitOf(s)])).toEqual([['A-line', 1], ['mini', 1], ['maxi', 1], ['pencil', 0]]);
   });
 
   // (Joshua, 2026-11-17, three lines across a figure's legs: "0%", "50%", "100%")
