@@ -78,13 +78,13 @@ const FLOOR = Object.freeze({ inside: 0.012 });
  * degrees of straight in (`behind`: the least of that way's share along her skin's own facing; less squarely, the
  * point hangs off an edge of her, `FLOOR`).
  */
-export const SHEET_FLOOR = Object.freeze({ deep: 0.04, behind: 0.5 });
+export const SHEET_FLOOR = Object.freeze({ deep: 0.06, behind: 0.5 });
 /**
  * POINTS OF A SHEET PUT OUT OF HER SKIN (`ClothSkirt.outOfHer`): `x` (three a point), points `from` up to `to`, each
  * against the nearest of her skin found under it -- `point` and `normal` (her skin's own facing there, unit; none: no
  * skin was found), three a point, point p's at `first + p` -- to `off` from her. Squarely behind that skin and no
- * deeper than `deep` (`SHEET_FLOOR`), a point is in her: it is put out through her skin there. Before it, or off an
- * edge of it, and nearer than `off`: out to `off` the way it lies. How many were moved, and the furthest.
+ * deeper than `deep` (`SHEET_FLOOR`), a point is in her: it is put straight out through her skin there. Before it, or
+ * off an edge of it, and nearer than `off`: out to `off` the way it lies. How many were moved, and the furthest.
  */
 export function sheetOutOfSkin(x: Float32Array, from: number, to: number, point: ArrayLike<number>, normal: ArrayLike<number>, first: number, off: number, deep: number, behind: number = SHEET_FLOOR.behind): { put: number; most: number } {
   let put = 0, most = 0;
@@ -231,8 +231,8 @@ export class ClothSkirt {
    * So the sheet's points AS DRAWN are a third set of her skin's (after the cloth's and her places': bound where they
    * are cut to be drawn, `sheetOrder`), and once the cloth has been stepped and the sheet laid between, her skin is
    * walked under them WHERE THEY NOW ARE (`ClothSkin.update`'s `again`: the same frame, her pose read once), and a
-   * point found in her is put out through her skin there (`outOfHer`, `sheetOutOfSkin`): the sheet lies ON her where
-   * the straight way would have gone through her. MEASURED after, the same three moments and standing: none under
+   * point found in her is put out of her (`outOfHer`, `sheetOutOfSkin`): the sheet lies ON her where the straight
+   * way would have gone through her. MEASURED after, the same three moments and standing: none under
    * her skin, none within 2 mm of it but one; 314 to 397 points a frame put out, 10.7 to 18.1 mm at the most (280
    * standing, 2 mm). Under where it was drawn the frame BEFORE -- tried first, one walk for all three sets -- a
    * stride carries her leg centimetres a frame, the skin found was no longer the skin under it, and two to five
@@ -405,19 +405,6 @@ export class ClothSkirt {
     this.primed = false; this.warm = WARM_SECONDS;
   }
 
-  /**
-   * SHE HAS GONE FROM STANDING TO WALKING, OR BACK (the room's to say: her hips are where they were, and her legs are
-   * all at once where the stride has them). It is NOT laid on her afresh: for half a second it keeps a quarter of its
-   * speed a frame and is damped as cloth just laid is, so what her legs put out of their way as they jump is a move
-   * and not a throw. A FAULT FOUND 2026-11-17 in the first pictures of the pencil skirt walking, fixed and told. Laid
-   * afresh at every change of pose, a skirt was laid AS CUT round her hips with her legs already in mid-stride: a
-   * straight skirt to her calf is cut through her forward thigh and her rear calf there, and was thrown up her legs
-   * as her skin and her legs put it out -- MEASURED in the room at FIT 1, half a second into a walk: its hem, 37.8 cm
-   * from the floor standing, at 53.9 cm all round and 61.2 at the most, in rolls at her knees; down to 42.8 half a
-   * second later.
-   */
-  calm(): void { if (this.sim) this.warm = WARM_SECONDS; }
-
   /** One frame: her skin under the cloth, her legs, the cloth, and the sheet drawn on it. Her world matrices must be current. */
   frame(dt: number, stool: SkirtStool | null = null, span: number = dt): void {
     if (!this.sim) this.restart();
@@ -479,7 +466,7 @@ export class ClothSkirt {
    * THE SHEET AS DRAWN, PUT OUT OF HER SKIN (`between`, `sheetOutOfSkin`): `x`, its points (world). Her skin is walked
    * under them where they are (the third set: `sheetOrder`, in this frame's pose), and each is set against the nearest
    * of her found there -- the point of her, and her skin's own facing -- to a stand-off between her places' (the
-   * cut's ease, at FIT 0) and the cloth's own (at 1). Never its ring, which is the cloth's. The milliseconds the walk took.
+   * cut's ease, at FIT 0) and the cloth's own (at 1). Never its ring, which is the cloth's. The milliseconds her skin took.
    */
   private outOfHer(x: Float32Array): number {
     const c = this.sheet, d = this.draft, M = this.options.unitsPerMetre;

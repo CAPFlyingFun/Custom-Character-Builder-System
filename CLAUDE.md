@@ -341,7 +341,7 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   "a combination of paint and cloth for like skirts, etc… that are loose and flowing"; "have the top of the skirt above
   or below the belly, with adjustable length all the way down to the ground and you can select how tight/close it is
   to the body"; "the top is either one or the other, but both can reach the floor length"). `skirt/skirtDraft.ts`
-  (pure) drafts it round her rest shape as she is built (below: cut for her as she is) from his three numbers -- TOP (`over` / `under`: the ring's
+  (pure) drafts it round her rest shape as she is built (below: cut for her as she is) from his three numbers (and FIT, his fourth: below) -- TOP (`over` / `under`: the ring's
   heights -- OVER in the crease at the base of her breasts, his, 2026-11-17: "the high skirt point is too low, it should
   basically sit at the base of the breasts at that crease" (MEASURED on her body file: the crease is 0.61 to 0.64 of her
   trunk; the painted band's top is 0.63, `SKIRT_OVER_BAND`, the ring 0.61 in front, and the crop tee ends 0.03 under the
@@ -396,7 +396,7 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   hold the quarter of the ring round them, eased to nothing at the next -- all four, the whole ring as it always was.
   MEASURED in the room: her sides let go, it hangs from front and back as before to the eye; all four let go, a high
   one and a low one fall to the floor round her feet (the room's floor is its floor now, `GROUND_CLEAR`: without one it
-  went on through and out of sight). The probe's `skirt({ ..., anchors })` sets them; no control in the editor yet.
+  went on through and out of sight). HELD AT in its panel sets them ("Its controls", below), and the probe's `skirt({ ..., anchors })`.
 - **A TUCKED TEE IS HELD IN BY THE SKIRT'S TOP** (`clothLayers.ts` `cinchUnder`, `GarmentCloth.belt`). At the crease the
   cloth tee hangs from her bust in front of the skirt's top: tucked, its hem showed ragged over it. Where the skirt's
   first 8 rows lie over a point of the tee's floor, the tee's point stands no more than 2 mm past its stand-off, after
@@ -509,12 +509,175 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     43.3 and 6.0 cm from the floor at 0, 0.15, 0.36, 0.5 and 1, each pictured from her front and her side; the mini
     from four sides, seated, walking with the clock held, at 100 and 200%, and under the cloth tee at 0, 100 and
     200%. Its two cards baked again.
-  - HIS SECOND NUMBER, NOT BEGUN: how closely it holds to her from leg to leg. His "0%" line follows her leg's outline
-    from her hip to her ankle; his "100%" falls straight from her hip. The straight one is FLARE 0 today (a tube from
-    the widest of her, as cloth). The close one is NOT CLOTH, his: paint on her legs and a bridge across the gap
-    between them, front and back, as her cleavage bridge spans her breasts (`cleavageBridge.ts`); between the two it
-    "fades somehow" to the cloth. ASKED OF HIM: whether fullness past straight (FLARE: the A-line, the skater, the
-    circle) stays a number of its own beside it.
+  - HIS SECOND NUMBER IS FIT: "FIT, between her and the cloth", below.
+- **FIT, BETWEEN HER AND THE CLOTH** (his second number; Joshua, 2026-11-17, the same drawing's two red lines, "0%" along
+  the figure's leg from hip to ankle and "100%" straight down from its hip: "How tightly it curves with the body from
+  legs to legs. Maybe for tighter ones, it's actually a simple bridge like between the breasts that span the front and
+  back gap between the legs… not cloth and if you do a loser one, it fades somehow to cloth sim"). READ AS a number of
+  its own beside FLARE, which stays the number it was (asked of him before it was built; he had not said, and was told
+  which reading was taken). `SkirtSettings.fit`, `skirtDraft.SKIRT_FIT`: 0 on her all the way to its hem, 1 straight
+  from her hips -- every skirt until now, and what a skirt that says nothing is (`fitOf`).
+  - THE CLOTH IS THE CLOTH AT EVERY FIT: its cut and its ring's grip are FIT 1's to the last bit
+    (`tests/skirtFit.test.ts`). Under 1 it has a SECOND CUT, ON HER (`SkirtDraft.hug`): her own outline at each height,
+    her hips and under them the convex outline of both her legs, `ease` off her, in and out as she goes -- EACH POINT
+    THE NEAREST OF HER OUTLINE TO THAT POINT OF THE CLOTH AS CUT (`nearestOn`), so the straight way from the one to the
+    other is straight out of her and no share of it is in her.
+  - EACH POINT HAS A PLACE ON HER, AND THE SHEET IS DRAWN FIT OF THE WAY FROM THAT PLACE TO THE CLOTH
+    (`clothSkirt.ts`, `shown`): at 0 on her and no cloth made at all (`only`), at 1 the cloth and nothing else, between
+    them his two lines' in-between -- his "fades somehow to cloth sim". Her places are particles of the cloth's own,
+    held outright, with no cloth between them (`fitted`, `base`): her skin is walked under each, and each is put out
+    of her as a held point of cloth is.
+    - A place is where its on-her cut is bound to her skin, carried by that skin;
+    - or, UNDER WHERE HER LEGS PART, for a point cut over the gap between them (`heldSpans`: further than 1.6 cm off
+      her skin, `below` `hemOf(joints, 0)`), on the straight span between the places either side of it in its row --
+      his "simple bridge… not cloth" -- put out of a leg that stands in the span's way to as far from that leg's line
+      as it was CUT (`spanKeep`). By her legs' capsules' size alone, her leg over her knee being thinner than its
+      capsule, every span beside it was put a centimetre out and the skirt stood in pleats from her knees to its hem;
+    - and ACROSS THE CREASE AT THE TOP OF HER THIGHS, IN FRONT OF HER, taut from its ring to her thighs (`bridgeTo`: each
+      front column's places from under its ring down to 4 cm under where her legs part, on the straight run from the
+      one to the other; all of it within 50 degrees of her front, none past 85). A place bound to her skin goes where
+      that skin goes, and there her skin FOLDS. MEASURED on the sheet's own points (the probe's `skirtPoints`), FIT 0,
+      mid-stride, her front's middle column: its rows ran down her front to 83 cm, then stood 2 cm HIGHER and 1.5 cm
+      further forward, and on down -- the part her thighs carry ridden up over the part her trunk carries: a ledge
+      round a V of her front from hip to hip, in every stride. (A WRONG READING OF MINE FIRST: taken from the pictures
+      for the sheet gone INTO her there, its paint showing, and two cures for that built and taken out -- every hollow
+      of her spanned across, a place put out of her by her skin's own facing -- before the sheet's points were read.
+      READ THE POINTS BEFORE A THIRD CURE.)
+  - BETWEEN HER AND THE CLOTH HER SKIN IS THE SHEET'S OWN FLOOR (`between`, `ClothSkirt.outOfHer`,
+    `sheetOutOfSkin`, `SHEET_FLOOR`). At rest the straight way from a place to its cloth is straight out of her; she
+    does not stay at rest -- her places turn with her legs, and the cloth hangs and slides round her. So the sheet's
+    points AS DRAWN are a third set of her skin's (after the cloth's and her places'), and once the cloth has been
+    stepped her skin is walked under them WHERE THEY ARE (`ClothSkin.update`'s `again`: other slots served in the
+    same frame, her pose read once). A point squarely behind the nearest of her skin, and no deeper than 6 cm, is IN
+    her and is put straight out through that skin; one before it, or off an edge of it, and nearer than its
+    stand-off: out to the stand-off the way it lies. The stand-off is between her places' and the cloth's.
+  - ITS PAINTED PART'S LEGS (`skirtDraft.paintedLegs`, `fabricPanel.setDial`, the room's `laySkirtPaint`): to its hem
+    under a skirt that lies ON her (FIT 0: what of her stands through a sheet 6 mm off her is in its colour); between
+    her and the cloth less far, by how far its hem rides up her leg in a stride (`SKIRT_PAINT.rise`, 15 cm at FIT 1
+    and that share of it: her paint goes where her leg goes and the sheet only part of the way); from FIT 0.6 to 1 less
+    far again, to the short every skirt has (LEG LENGTH 0.12); and NEVER TO ITS HEM ITSELF (1.2 cm short of it), which
+    is also what a skirt shorter than its short needed -- at LENGTH 0 the short's legs ended 9.3 cm under her hip
+    joints and the hem was 8.0.
+  - FAULTS FOUND IN ITS OWN PICTURES ON THE WAY, each fixed and told (all MEASURED 2026-11-17):
+    - HER CALVES THROUGH IT FROM HER BACK, at every FIT from a quarter to three quarters, standing. Each row of the
+      on-her cut was laid round its outline's own middle, a point in each column's direction from there; the
+      cloth's is laid round the one upright axis at its ring, and her calves stand BEHIND that axis (her outline
+      under her knees does not hold it at all). A point's place and its cloth were up to 8.6 cm apart round her leg,
+      and the straight way between them cut the corner through the back of her calf: on her body file, half-way, 32
+      of the pencil's 2,088 points under its ring inside her outline, 11.7 mm, all in its last four rows. At the
+      nearest of her: none, in the pencil, the A-line, the mini and the maxi.
+    - HER SKIN THROUGH IT IN A STRIDE: the pencil at FIT 0.5, three moments of a stride, the sheet's own points against
+      her skin as the skirt poses it (the probes' `skirtPoints`, `skirtSkin`; `inside.py` beside the work): 17, 60
+      and 53 of 2,160 under her skin, 8.1, 17.7 and 12.5 mm -- across the tops of her thighs and at her calves. (Kept
+      out of her legs' capsules, as a span is: 12, 48 and 44, to 15.7 mm; taken out again. Her skin walked under where
+      the sheet was drawn a frame BEFORE: two to five a frame left 1 to 2 mm under.) With her skin its floor where it
+      is drawn: none.
+    - HER PAINTED CALF UNDER ITS HEM: painted to its hem at FIT 0.5, about 6 cm of her painted calf under the sheet's
+      hem at the back of her rear leg in a stride, like the leg of a short worn under it (`SKIRT_PAINT.rise`).
+  - A WRONG READING OF MINE, THE SAME LESSON A SECOND TIME: THE MAXI'S SHELF ACROSS HER SEAT in a stride at FIT 0.5,
+    taken from its pictures for the sheet torn by being put out of her skin (a row put up through the back of her
+    seat, the next down through its underside). Three cures were built and taken out -- a point slid along its own
+    way to her skin's plane (6 points left 43 mm under); the way halved until it was out (her skin's walk is local,
+    and over centimetres it loses its place); the way first and then straight out (the shelf still there) -- before
+    its rows were read down her back: it is the CLOTH's own fold, at FIT 1 as v0.9.43 has it ("The maxi walking",
+    below), drawn half-way to her. READ THE POINTS.
+  - TWO BUILDS OF IT BEFORE THIS ONE, the same day, each MEASURED in the room on the pencil skirt walking with the clock
+    held (`SKIRT_FIT`'s comment has both): ON HER DOWN TO SOME HEIGHT AND CLOTH FROM THERE -- cloth let go on her legs
+    is a tube as big round as her two thighs, 74 cm at her knees, and her stride wants 108 there and 131 at her calf:
+    it rode up and stood in a crumpled roll at her knees; and CUT FIT OF THE WAY FROM ON-HER TO STRAIGHT, EVERY POINT
+    TOLD WHERE TO BE (that share of the way to the straight cut as her pelvis carries it) -- that cut knows nothing of
+    her legs: her knee came out through it, and as cloth drawn toward such places it was pulled through her legs. The
+    cloth as it always was already goes round her legs; half-way between it and her is round them too.
+  - MEASURED in the room (light skin, 1x, her belly at 0% but where said, no error on the page; walking with the clock
+    held at a thirtieth; the sheet's points read against her skin, not judged by the pictures alone): the pencil at FIT
+    0.25, 0.5 and 0.75 standing from her back, her side and her three-quarter, and at three moments of a stride each:
+    none of its 2,160 points under her skin (standing at 73% as well); half-way and laid afresh as her walk begins,
+    three moments: none; half-way on her 100 and 200% bellies, standing from her side and her back: none, its top under
+    her belly; seated half-way it sits whole -- 12 points under her skin at the crease of her lap, 9.4 mm, in her
+    paint's colour there (FIT 0: 5, 3.0 mm) -- where as cloth (FIT 1) it passes through the stool's edge as it did; the
+    A-line half-way, standing and in two strides: none; the maxi half-way standing: none, and in four moments of a
+    stride none, none, one (33.8 mm, at her seat) and two (16 mm, at its hem by her foot); the mini at LENGTH 0 from her
+    front and her back: nothing of its painted part under its hem (its legs end at 0.076 of her leg). Her painted legs
+    end at 0.526 of her leg under the pencil at FIT 0, 0.484 at a quarter, 0.442 half-way, 0.307 at three quarters and
+    the short's own at 1; under the A-line at 0.376 and 0.292 (FIT 0, and half-way), under the maxi at 0.867 and 0.825.
+    PICTURED FOR HIM at a phone's 2x: the pencil at FIT 0, 0.5 and 1 standing, walking and seated; the A-line and the
+    maxi at 0 and 0.5; the mini at LENGTH 0.
+  - WHAT IT COSTS (the build machine): cut again in 0.38 to 1.1 s at a FIT between (three sets bound to her skin
+    where a skirt has one); striding at a FIT between, her skin 6.5 to 8.8 ms a frame and the cloth 2.3 to 5 (FIT
+    1: about 5 and 4; FIT 0: 2.4 to 3.6 and 1.2 -- no cloth is stepped); 219 to 461 of the pencil's 2,160 points put
+    out of her a frame, 18.1 mm at the most (standing 242 to 326, 2.1 mm). NOT MEASURED on a phone.
+  - NOT RIGHT, AND NAMED: a narrow skirt as her walk begins ("As her walk begins", below); seated at a FIT under 1, the
+    dozen points at the crease of her lap; a point or two of the maxi's under her skin in a stride half-way; HER SHOES
+    stand through a maxi's hem, standing at a FIT under 1 and walking at any (her skin is the sheet's floor and the
+    cloth's; her shoes are neither's); from BELOW, the mini at LENGTH 0 shows the ends of its painted part's legs
+    between her legs (a leg's end under 0.08 of her leg: "A painted bottom, drawn" names it); HELD AT lets go of the
+    cloth alone (at FIT 0 nothing falls); nothing of it has been measured on a phone.
+- **AS HER WALK BEGINS A SKIRT IS LAID AFRESH, AS v0.9.43 HAS IT: LEFT HANGING WAS TRIED AND PUT BACK** (2026-11-17;
+  the room's pose switch, `ClothSkirt.restart`). Her legs go from standing to mid-stride in ONE frame. The pencil's
+  first pictures walking showed it rolled up to her knees half a second into a walk: laid afresh there it is cut
+  through her legs, and for the half second it settles it keeps a quarter of its speed a frame -- it can not fall,
+  and her striding legs walk it up them. For an afternoon a skirt was left hanging from standing to walking and back
+  instead. MEASURED in the room with the clock held, at FIT 1, its hem's height from the floor all round and at the
+  most:
+  - the pencil (37.8 cm standing): laid afresh, 53.9 and 61.2 half a second in; left hanging 45.4 then -- but 73.8
+    and 76.3 a fifth of a second in, at her thighs. Half-way to her (FIT 0.5; 39.9): laid afresh 55.5 and 59.1 half a
+    second in and 46.4 by a second; left hanging 46.3. (The settling kept and nothing laid afresh: 63.6 and 74.4.)
+  - the maxi (1.3 standing: it lies on the floor), a fifth of a second in: left hanging 56 and 92 -- its hem at her
+    thighs --, laid afresh 7 and 9; the A-line (49.8) 70 and 85, and 54 and 56; the mini (66.1) laid afresh 69 and 72.
+  Left hanging is worse for three of the four and no better for the pencil: it is as v0.9.43 has it. NOT FIXED: A
+  NARROW SKIRT BEGINS A WALK BADLY, for half a second, at any FIT but 0. WHAT WOULD MEND IT, NOT TRIED: her legs' jump
+  taken over several of the cloth's own steps on that frame (its contacts and her legs' capsules eased from where they
+  were to where they are), or her pose itself eased from standing into the walk, as SIT is (`poseBlend.ts`).
+  - Cut again WHILE she walks (a slider let go, her belly changed) it is laid afresh in mid-stride the same way, and a
+    narrow one rides up for that half second (the pencil 69 cm at 0.3 s).
+  - THE PENCIL AS CLOTH (FIT 1) CAN NOT TAKE HER STRIDE, AND IS HIS TO SAY: a straight skirt to her calf is 100 cm
+    round at her hips, 108 stretched, and her stride wants 108 at her knees and 131 at her calf. It rides up in every
+    stride -- its hem 44 to 53 cm from the floor all round, 60 at the most, where it hangs at 37.8 -- and its top
+    stands off her hips in an ear. At FIT 0.5 it walks whole (41 to 46 cm), at FIT 0 clean. ASKED OF HIM: whether the
+    pencil outfit should come at a FIT under 1.
+  - THE MAXI WALKING, FOUND THE SAME EVENING AND NOT FIXED: IT IS v0.9.43's (the maxi had been pictured standing, at
+    three sizes of belly, and never walking). In some strides its back folds into a roll across her seat and its hem
+    is at her mid-calf: MEASURED down her back's middle column at FIT 1, 1.6 s into a walk at a thirtieth (that walk
+    begun left hanging; pictured the same begun laid afresh, at a thirtieth and at a sixtieth), its rows at 104, 99,
+    95, 92, 90, 91, 95, 97, 98 and 95 cm from the floor (standing: 107, 103, 100, 95, 92, 89, 85, 82, 78, 75) -- rows
+    from under her seat stood ON it; gone 0.8 s later and back in a later stride. Walking, its hem is 10 to 29 cm
+    from the floor all round (1.3 standing: it lies on the floor), and her shoes come through it. And begun left
+    hanging, at a thirtieth, her calf stood through its back in two pictures of eight. ITS CAUSE IS NOT KNOWN;
+    nothing was tried.
+- **ITS CONTROLS** (Joshua, 2026-11-17: "is the length adjustable yet or not yet? Setting preset lengths first then will
+  add customization like the painted bottoms?"). `skirtPanel.ts`, in the OUTFIT tab while the outfit has a skirt, plain
+  DOM as the new tee's (`garmentPanel.ts`): LENGTH (chips MINI 15%, KNEE 40%, MIDI 66%, MAXI 100%: GAME TUNING), FIT
+  (TIGHT, HALF, STRAIGHT), FLARE, HELD AT (its four anchors, each on or off) and SKIRT DEFAULTS (the outfit's own
+  again). A line says where its hem is on her own joints ("LENGTH · 36% · 2 cm over her knee").
+  - A SKIRT IS CUT AGAIN FOR EVERY ONE OF THEM, a third of a second and more: a slider shows as it is dragged (its line
+    ends "let go to cut") and the skirt is cut when the finger lets go (`skirtShown`, `skirtWorn`, `skirtChanged`).
+  - A SAVE KEEPS THEM (`skirtDraft.SkirtRecord`, `SavedClothes.skirt`): only where they are not the outfit's own -- a
+    save from before, and a skirt nobody moved, hold none and are that outfit's skirt. They are part of how an outfit
+    is MADE, as a painted bottom's sliders are (`characterSaves.sameMake`): a character who moves one wears an outfit
+    of her own. Its top and whether a tee is tucked into it are the outfit's always (`adoptSkirt`).
+  - The probe's `skirtSettings(patch)` moves them as the panel does and says what a save would keep; `skirt()` is as it
+    was, a skirt of the probe's own over whatever she wears; `skirtPoints(of)` is the sheet's points as drawn (or its
+    cloth's, or her places'), `skirtSkin()` her skin as the skirt poses it, `skirtParts(capsules, skin, floor)`
+    switches a part of it off, `skirtRestart()` lays it afresh.
+  - MEASURED in the built room opened as a phone (430 x 932 at 2x, a touch screen; light skin, no error on the page):
+    the panel in the Outfits tab; HALF and MIDI by real touches, each landing on its own button -- "FIT · 50% ·
+    half-way", "LENGTH · 66% · 20 cm over her ankle", the skirt cut again each time (shown and worn the same) and a save
+    holding them; FLARE's own input moved to 60%: shown and not worn until it is let go, then cut; LEFT let go (its
+    anchors front, back and right) and held again; SKIRT DEFAULTS: "LENGTH · 54% · 12 cm under her knee", "FIT · 100% ·
+    straight from her hips", and a save holds nothing again. Its chips are 30 px tall and 49 to 121 wide, as the new
+    tee's are (one style: `CHIP_CSS`) -- under the 32 px he asked of the face's swatches: TOLD TO HIM. NOT TRIED: a
+    slider dragged by a real finger; a character saved and loaded through the Library on a phone
+    (`tests/characterSaves.test.ts` holds the record).
+- **ITS EDGE UNDER A TEE'S HEM IS DRAWN A PIXEL AT A TIME** (`clothSkirt.ts` `hiddenEdge`, `HIDDEN_EDGE`): the marks of
+  what is under the tee ride each triangle as a number and a pixel past 0.15 of the way to a marked point is not drawn.
+  Until then a triangle with any point marked was left out whole, and the edge ran in steps a row of triangles tall.
+  Under FIT 1 what is left out is told by where the sheet is DRAWN (`ClothSkirt.shown`). MEASURED in the room 2026-11-17
+  (light skin, 1x, 0%), the cloth tee over the mini and over the A-line, close from her three-quarter and her back: no
+  triangle's teeth, and IT STILL STEPS A ROW AT A TIME in places -- two each side of her back over the mini, one by her
+  hand over the A-line, three small ones over the A-line half-way to her (FIT 0.5). NOT RIGHT YET: a mark is one number
+  a point (under the tee, or not), and where the marked row changes from one column to the next the line jumps a row.
+  What it wants is HOW FAR over the tee's hem each point stands, as a length, so that the line drawn is the hem's own:
+  not begun.
 - **A WALK IS NOT A JUMP** (a fault found in those pictures, fixed and told; `clothSkirt.ts` `JUMP_SPEED`). A low skirt's
   ring is on her hips; in a long frame (a tenth of a second on the build machine) a stride carried it over 6 cm, which
   was read as a pose put on, and the skirt was laid afresh in mid-stride: crumpled round her thighs. MEASURED: 2
@@ -538,18 +701,20 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.
-- NOT DONE, AND NAMED: no control for it in the outfit editor yet (its three numbers are the outfit's; a save does not
-  keep them); a skirt under about 2% of LENGTH shows its painted short's legs under its hem (they end 9.3 cm under her
-  hip joints, 0% is 8.0); its colour is one flat colour, not the fabric's weave; seated, it passes through the
-  stool's edge and shows a hole at her side (pictured again at 0 and 100% on the new line: as it was); her hands pass
-  through it; it does not collide with itself; walking at 200% it gathers between her thighs; under a tee's hem its
-  edge is in small steps, a row of its triangles at a time; a look saved in a low skirt on v0.9.41 or v0.9.42 keeps
-  the short it was saved with, its waistband on her belly, under a ring on the new line; at a big belly an over-belly
-  ring is stretched round her and the cloth bunches in front; RECLINE and SQUAT not looked at; the looser trousers and
-  the jackets wait on it.
-- After anything changes it: `tests/skirtDraft.test.ts`, `tests/skirtLine.test.ts`, `tests/clothLayers.test.ts`; then
-  the room: the four standing at 0, 100 and 200% (the probe's `skirt()` says `lineFound` 1), the A-line seated, and
-  walking WITH THE CLOCK HELD.
+- NOT DONE, AND NAMED: its colour is one flat colour, not the fabric's weave; seated, the CLOTH passes through the
+  stool's edge and shows a hole at her side (pictured again at 0 and 100% on the new line: as it was; on her, FIT 0,
+  and half-way it sits whole); her hands pass through it; it does not collide with itself; walking at 200% it gathers
+  between her thighs; the maxi walking and a narrow skirt as her walk begins ("As her walk begins", above); a look saved in a low skirt on v0.9.41
+  or v0.9.42 keeps the short it was saved with, its waistband on her belly, under a ring on the new line; at a big
+  belly an over-belly ring is stretched round her and the cloth bunches in front; RECLINE and SQUAT not looked at;
+  HELD AT lets go of the cloth alone (at FIT 0 nothing falls); the looser trousers and the jackets wait on it.
+- After anything changes it: `tests/skirtDraft.test.ts`, `tests/skirtLine.test.ts`, `tests/skirtFit.test.ts`,
+  `tests/clothSkirt.test.ts` (a skirt worn on a stand-in for her), `tests/skirtPanel.test.ts`,
+  `tests/characterSaves.test.ts`, `tests/clothLayers.test.ts`, `tests/clothSkin.test.ts`; then the room: the four
+  standing at 0, 100 and 200% (the probe's `skirt()` says `lineFound` 1), the A-line seated, and ALL FOUR walking WITH
+  THE CLOCK HELD, from her back as well, their hems read as her walk begins (`skirtPoints`) -- and the pencil at FIT 0
+  and 0.5 (`skirtSettings({ fit })`) standing, walking and seated, FROM HER BACK AND HER SIDE as well as her front,
+  with the sheet's points read against her skin (`skirtPoints`, `skirtSkin`) and not judged by the pictures alone.
 
 ## A painted bottom, drawn
 

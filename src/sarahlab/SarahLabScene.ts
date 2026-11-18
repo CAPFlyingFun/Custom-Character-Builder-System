@@ -9021,8 +9021,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (skirtRoom) {
         skirtRoom.mesh.visible = !!model?.visible && (skinBare ? 'none' : garmentView) === 'all' && !bottomsOff();
         if (model?.visible) {
-          // (...but for standing to walking and back, where her hips stay and only her legs jump: `ClothSkirt.calm`)
-          if (pose !== skirtPoseKey) { const upright = (p: string) => p === 'stand' || p === 'walk', stays = upright(pose) && upright(skirtPoseKey); skirtPoseKey = pose; if (stays) skirtRoom.calm(); else if (!sitMoving) skirtRoom.restart(); }
+          // LAID ON HER AFRESH WHEN HER POSE CHANGES, STANDING TO WALKING AND BACK AMONG THEM, as v0.9.43 has it. LEFT
+          // HANGING between those two was tried 2026-11-17 (the pencil rolls up her legs as her walk begins) AND PUT
+          // BACK. Her legs go from standing to mid-stride in ONE frame, and what hangs is thrown by it. MEASURED in the
+          // room with the clock held, at FIT 1, its hem's height from the floor all round and at the most, a fifth of a
+          // second into a walk: the maxi (1.3 cm standing) 56 and 92 cm left hanging, 7 and 9 laid afresh; the A-line
+          // (49.8) 70 and 85, and 54 and 56; the pencil itself (37.8) 73.8 and 76.3 left hanging -- at her thighs --
+          // and down to 43 by half a second, where laid afresh it is at 53.9 and 61.2 then, in rolls at her knees. (The
+          // settling kept and nothing laid afresh: 63.6 and 74.4.) NOT FIXED: a skirt too narrow for her stride begins
+          // a walk badly either way. What would mend it is her legs' jump itself, taken over several of the cloth's
+          // own steps (or her pose eased into the walk): not tried.
+          if (pose !== skirtPoseKey) { skirtPoseKey = pose; if (!sitMoving) skirtRoom.restart(); }
           // WORN WITH THE CLOTH TEE (`clothLayers.ts`): tucked, the skirt's floors are raised over the tee; untucked, the
           // tee's over the skirt. Each reads the other as it stood a frame ago at the most.
           const tee = garmentRoom?.cloth ?? null, skirt = skirtRoom;
@@ -10887,7 +10896,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // is, base64 Float32 triples: row by row from its ring, `columns` a row
         // (a probe's) her skin as the skirt's own walk poses it this frame (her soft body's moves among them), metres, base64 Float32
         skirtSkin: () => { if (!skirtRoom) return null; const x = skirtRoom.skinPosed(); for (let i = 0; i < x.length; i++) x[i] /= M; const bytes = new Uint8Array(x.buffer); let t = ''; for (let i = 0; i < bytes.length; i += 0x8000) t += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(t); },
-        skirtPoints: () => { const x = skirtRoom?.shown; if (!skirtRoom || !x) return null; const n = skirtRoom.draft.count, out = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) out[i] = x[i] / M; const bytes = new Uint8Array(out.buffer); let t = ''; for (let i = 0; i < bytes.length; i += 0x8000) t += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return { columns: skirtRoom.draft.columns, rows: skirtRoom.draft.rows, data: btoa(t) }; },
+        // (...`of` 'cloth': its cloth's own points; 'places': each point's place on her, under FIT 1 -- the two it is drawn between)
+        skirtPoints: (of: 'shown' | 'cloth' | 'places' = 'shown') => { const all = skirtRoom?.positions, n = skirtRoom?.draft.count ?? 0, x = of === 'shown' ? skirtRoom?.shown : !all ? null : of === 'cloth' ? (all.length >= n * 6 ? all.subarray(0, n * 3) : skirtRoom!.draft.hug && skirtRoom!.draft.fit <= 0 ? null : all.subarray(0, n * 3)) : all.length >= n * 6 ? all.subarray(n * 3, n * 6) : skirtRoom!.draft.hug ? all.subarray(0, n * 3) : null; if (!skirtRoom || !x) return null; const out = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) out[i] = x[i] / M; const bytes = new Uint8Array(out.buffer); let t = ''; for (let i = 0; i < bytes.length; i += 0x8000) t += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return { columns: skirtRoom.draft.columns, rows: skirtRoom.draft.rows, data: btoa(t) }; },
         // her skirt's own numbers, as its panel moves them (`skirtChanged`): what she wears, and what a save would keep
         skirtSettings: (patch?: Partial<SkirtSettings> | null, final = true) => { if (patch && skirtShown) skirtChanged(clampSkirt({ ...skirtShown, ...patch }), final); else if (patch === null) adoptSkirt(null); return { shown: skirtShown, worn: skirtWorn, saved: currentClothes().skirt ?? null }; },
         skirtParts: (capsules?: boolean | null, skin?: boolean | null, floor?: boolean | null) => { if (!skirtRoom) return null; if (typeof capsules === 'boolean') skirtRoom.probe.capsules = capsules; if (typeof skin === 'boolean') skirtRoom.probe.skin = skin; if (typeof floor === 'boolean') skirtRoom.probe.floor = floor; return { ...skirtRoom.probe }; },
