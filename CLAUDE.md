@@ -1533,6 +1533,13 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (`atHerStart`). A week to 12 typed at that belly is kept as her week (`herWeek`), and with no START typed that belly IS
   her START; one typed over a START typed under it is not used, and says so. Her chart past it is as it was.
   `tests/earlyWeek.test.ts`.
+- **EXACT: HER BELLY TYPED, OR PICKED FROM A LIST THAT NARROWS AS IT IS TYPED** (Joshua, 2026-11-19: "the option to type a
+  specific amount like max belly and stuff… like exactly 30%, or 76%… a scrollable list with a smart look up so if you
+  start typing 5… it will only show things starting at 5 like 50-59"). `valueLookup.ts`: `valuesStartingWith` (pure)
+  and `attachLookup`, a list fixed to the screen under its box, rows 32 px. Under the belly slider (`bumpExact`; Enter
+  or a row tapped) and on each of HER PREGNANCY's boxes, each in its own range. MEASURED in the built room as a phone
+  (430 x 932 at 2x, real touches): 5 typed listed 5% and 50-59%, 56% tapped set her belly to 56; 76 and Enter, 76; in
+  BIGGEST, 1 listed 1, 10-19 and 100-199 (111), 150 tapped set 150. `tests/valueLookup.test.ts`.
 - After anything changes the rule, her chart or the panel: `tests/pregnancyRule.test.ts`, `tests/pregnantToggle.test.ts`, `tests/earlyWeek.test.ts`.
 
 ## Her baby's kicks by her week
