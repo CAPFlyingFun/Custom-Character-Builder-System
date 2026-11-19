@@ -4,7 +4,7 @@
  *
  * His file has no belly shapes (hers were baked from her own growth: `belly25` … `belly200`). So his is one SMOOTH FIELD
  * IN SPACE laid on his rest shape: each point of his trunk moved straight out from his body's middle at its own height,
- * by one round arch from his pubic bone to his breastbone's tip, fullest at his navel or just under it, all round his
+ * by his own side profile from the bottom of his pubic bone to his breastbone's tip (`MALE_BELLY_PROFILE`), all round his
  * front and onto his sides, none at his back. A field smooth in space carries his navel's hollow out whole
  * (moved along each point's own normal, the walls of the hollow would be pushed apart and it would open up).
  *
@@ -26,23 +26,16 @@ export const MALE_BELLY = Object.freeze({
   /** MEASURED: his midline (his spine's root bone). */
   midX: 0.00996,
   /**
-   * MEASURED on the skeleton as it is laid in him (2026-11-19, `skeletonLandmarks`): the top of his pubic symphysis and the
-   * tip of his breastbone (xiphoid). His belly lies between them: under his ribs, down into his pelvis (Joshua, 2026-11-19:
+   * MEASURED on the skeleton as it is laid in him (2026-11-19, `skeletonLandmarks`): the BOTTOM of his pubic symphysis (its
+   * top 0.850 less her symphysis's own 2.5 cm) and the tip of his breastbone (xiphoid). His belly lies between them (his:
+   * "my belly starts (blends) at the bottom of my pubic bone"): under his ribs, down into his pelvis (Joshua, 2026-11-19:
    * "it should sit below the ribs, you have his in his chest basically"). A first try with a guess at his ribs (1.2, and
    * eased off 20 cm over them) sat his belly up in his chest and flat.
    */
-  pubisY: 0.85,
+  pubisY: 0.825,
   ribsY: 1.194,
-  /**
-   * BIOLOGICAL SHAPE, off his own side profile (Joshua's photographs, 2026-11-19: "you can use my actual belly profile to help
-   * set the shape and curve"; not kept in the repo): one round curve from under his breastbone to his pubic bone, fullest at
-   * his navel or just under it (half way between the two, here 1.022 -- his navel is at 1.047), as round under as over, the
-   * lower curve turning in to his pubic line rather than ending in a ledge. `round` is how full the curve is between its
-   * ends (1 a sine's arch; under 1 fuller, a rounder side profile).
-   */
-  round: 0.7,
-  /** GAME TUNING: how far his belly stands forward at 100%, metres (a big belly: 12 cm). */
-  most: 0.12,
+  /** GAME TUNING: how far his belly stands forward at 100%, metres (MEASURED off his own side profile, below: 6.9 cm past the line from under his chest to his pubic bone; 200% is twice it -- Joshua: "200% will be just doubled the size"). */
+  most: 0.069,
   /** GAME TUNING: how much his sides fill with it (0 front only, 1 as much as his front), and his back (none). */
   sides: 0.45,
   /** GAME TUNING: how far his navel's floor comes out at OUTIE 1, metres past where it would sit flush (a few mm). */
@@ -52,13 +45,27 @@ export const MALE_BELLY = Object.freeze({
   navelRadius: 0.012,
 });
 
+/**
+ * HIS BELLY'S SIDE PROFILE: how far forward it stands at 21 heights from the bottom of his pubic bone (0) to his
+ * breastbone's tip (1), its most 1. MEASURED off Joshua's own side photograph (2026-11-19: "my belly starts (blends) at the
+ * bottom of my pubic bone… below belly button, has more of that pregnancy belly look, above the bellybutton, extends about
+ * the same"; the photograph is not kept): his skin's edge traced against the wall, less a straight line from under his chest
+ * to his pubic bone, evened twice over three samples. Fullest at 0.40 to 0.50 -- a little under his navel; it rises
+ * steeply from his pubic bone (the round, low curve) and eases off slowly to his ribs. Set beside hers (the female base
+ * model's front, measured in the room standing, between the same two bones): its shape is nearest her belly at 40%
+ * (0.116 apart, root mean square of the two curves each at its most 1; 0.129 at 60%, 0.199 at 20%), and its size her 45%
+ * (her 40% stands 6.3 cm out, his 6.9 cm).
+ */
+export const MALE_BELLY_PROFILE: readonly number[] = Object.freeze([0, 0.231, 0.397, 0.545, 0.681, 0.808, 0.909, 0.973, 0.999, 1, 0.99, 0.956, 0.883, 0.794, 0.712, 0.623, 0.511, 0.376, 0.235, 0.113, 0]);
+
 const smoothstep = (a: number, b: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-/** How much of the bell a point at height `y` takes (1 at its fullest, half way between his pubic bone and his breastbone's tip; none past either). */
+/** How much of the bell a point at height `y` takes (his side profile: 1 at its fullest, none past his pubic bone's bottom or his breastbone's tip). */
 export function bellyBell(y: number, m = MALE_BELLY): number {
   const t = (y - m.pubisY) / (m.ribsY - m.pubisY);
   if (!(t > 0 && t < 1)) return 0;
-  return Math.sin(Math.PI * t) ** m.round;
+  const k = t * (MALE_BELLY_PROFILE.length - 1), i = Math.min(MALE_BELLY_PROFILE.length - 2, Math.floor(k)), f = k - i;
+  return MALE_BELLY_PROFILE[i] * (1 - f) + MALE_BELLY_PROFILE[i + 1] * f;
 }
 
 /** How much of it a point takes round him: 1 straight ahead, `sides` at his sides, none behind his middle. */

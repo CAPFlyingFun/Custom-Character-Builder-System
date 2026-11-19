@@ -4,13 +4,13 @@ import { MALE_BELLY, bellyBell, bellyRound, maleBellyField, maleOutieField } fro
 
 const M = MALE_BELLY;
 describe('his belly', () => {
-  it('lies between his pubic bone and his breastbone, fullest half way (just under his navel), round both ways', () => {
-    const mid = (M.pubisY + M.ribsY) / 2;
-    expect(bellyBell(mid)).toBeCloseTo(1);
+  it('follows his own side profile: from his pubic bone bottom to his breastbone, fullest a little under his navel, steep below and gentle above', () => {
+    const at = (t: number) => M.pubisY + t * (M.ribsY - M.pubisY), mid = at(0.45);
+    expect(bellyBell(mid)).toBeCloseTo(1, 1);
     expect(mid).toBeLessThan(M.navelY);
     expect(bellyBell(M.pubisY)).toBe(0); expect(bellyBell(M.ribsY)).toBe(0);
-    expect(bellyBell(mid - 0.08)).toBeCloseTo(bellyBell(mid + 0.08));
-    expect(bellyBell(M.navelY)).toBeGreaterThan(0.95);
+    expect(bellyBell(at(0.1))).toBeGreaterThan(bellyBell(at(0.9)));
+    expect(bellyBell(M.navelY)).toBeGreaterThan(0.85);
   });
   it('is all of it ahead of him, some at his sides, none behind', () => {
     expect(bellyRound(M.midX, M.middleZ + 0.1)).toBeCloseTo(1);
@@ -18,9 +18,9 @@ describe('his belly', () => {
     expect(bellyRound(M.midX, M.middleZ - 0.1)).toBe(0);
   });
   it('moves his front forward by its most at 100%, and nothing his limbs carry', () => {
-    const y = (M.pubisY + M.ribsY) / 2, rest = Float32Array.of(M.midX, y, 0.13, M.midX, y, 0.13, M.midX, y, -0.08);
+    const y = M.pubisY + 0.45 * (M.ribsY - M.pubisY), rest = Float32Array.of(M.midX, y, 0.13, M.midX, y, 0.13, M.midX, y, -0.08);
     const f = maleBellyField(rest, Float32Array.of(1, 0, 1));
-    expect(f[2]).toBeCloseTo(M.most); expect(f[5]).toBe(0); expect(f[8]).toBe(0);
+    expect(f[2]).toBeCloseTo(M.most, 3); expect(f[5]).toBe(0); expect(f[8]).toBe(0);
   });
   it('his navel: its floor comes out to his skin and a little past at OUTIE; nothing off his navel', () => {
     const rest = Float32Array.of(M.midX, M.navelY, 0.121, M.midX, M.navelY + 0.05, 0.12);

@@ -2523,8 +2523,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Her shape fields' weights at a belly size: her controls', and her refined 0% shape fading out (zeroRefine.ts: by 200% on HYBRID, 80% on the others). */
   function fieldWeightsAt(b: number): Record<string, number> {
     const out: Record<string, number> = { ...bodyShapeFieldWeights(body, b, bellyCurve), [ZERO_FIELD]: zeroRefineWeight(b, bellyCurve) };
-    // HIS belly (maleBelly.ts): his belly slider's 0 to 100% (Joshua, 2026-11-19: "maybe a max 100%"), and his navel
-    out[MALE_BELLY_FIELD] = Math.min(1, Math.max(0, b / 100));
+    // HIS belly (maleBelly.ts) on his belly slider, and his navel
+    // (100% his own belly, 200% twice it: Joshua, 2026-11-19, "200% will be just doubled the size")
+    out[MALE_BELLY_FIELD] = Math.min(2, Math.max(0, b / 100));
     out[MALE_OUTIE_FIELD] = maleOutie;
     // her birth area, shaped the same at every size (birthArea.ts)
     // (its folds fuller only while nothing is worn over them: a fitted bottom is a few millimetres off her skin)
