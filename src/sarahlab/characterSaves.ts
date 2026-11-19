@@ -45,6 +45,7 @@ import {
 import { CLOTH_TUNE_DEFAULT, type ClothTune } from './sarahLabTool';
 import { readSkirtRecord, sameSkirt, type SkirtRecord } from './skirt/skirtDraft';
 
+import { PICTURE_ID } from './pictureStore';
 export type SaveScope = 'all' | 'body' | 'clothes';
 
 export interface SavedBody {
@@ -379,7 +380,9 @@ const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max
 function readPick(v: unknown): FabricChoice['fabric'] {
   if (!isRecord(v) || typeof v.family !== 'string') return null;
   const tint = readTint(v.tint);
-  return { family: v.family as NonNullable<FabricChoice['fabric']>['family'], colour: Math.round(num(v.colour, 0, 255, 0)), ...(tint ? { tint } : {}) };
+  // (a picture of his own: its id in the device's store, `pictureStore.ts`)
+  const image = typeof v.image === 'string' && PICTURE_ID.test(v.image) ? v.image : null;
+  return { family: v.family as NonNullable<FabricChoice['fabric']>['family'], colour: Math.round(num(v.colour, 0, 255, 0)), ...(tint ? { tint } : {}), ...(image ? { image } : {}) };
 }
 /** The most a card's picture may weigh, in characters of its data URL (a 168 × 224 JPEG is about 15 000). */
 export const THUMB_MAX_CHARS = 80_000;

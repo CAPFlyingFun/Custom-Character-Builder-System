@@ -102,7 +102,18 @@ export function swatchRect(layout: FabricLayout, index: number, size: number): R
  * from the Character Studio preview) is `tint`: the family's White swatch dyed that colour (`fabricTint.ts`), with
  * `colour` kept at White.
  */
-export interface FabricPick { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string }
+export interface FabricPick {
+  readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string;
+  /**
+   * A PICTURE OF HIS OWN in place of the family's swatch (Joshua, 2026-11-19: "upload my own textures to replace the
+   * default textures/solid color… for that top/bottom… and what's selected"): its id in the device's picture store
+   * (`pictureStore.ts`). The family is FLAT (no weave over it); `colour` and `tint` are left as they were and stand for
+   * it until the picture is in.
+   */
+  readonly image?: string;
+}
+/** GAME TUNING: how many centimetres of her one copy of an uploaded picture spans at SCALE 1 before it repeats. */
+export const IMAGE_TILE_CM = 25;
 
 export interface FabricChoice {
   readonly fabric: FabricPick | null;
@@ -146,7 +157,7 @@ export function edgingOf(choice: FabricChoice): { readonly colour: readonly [num
 }
 
 /** Whether two picks are one fabric: the same family, colour and dye (two of none are; one of none and a fabric are not). */
-export const samePick = (a: FabricPick | null, b: FabricPick | null): boolean => (!a || !b ? a === b : a.family === b.family && a.colour === b.colour && (a.tint ?? '') === (b.tint ?? ''));
+export const samePick = (a: FabricPick | null, b: FabricPick | null): boolean => (!a || !b ? a === b : a.family === b.family && a.colour === b.colour && (a.tint ?? '') === (b.tint ?? '') && (a.image ?? '') === (b.image ?? ''));
 
 /**
  * A SET'S TWO HALVES IN ONE FABRIC (Joshua, 2026-11-12, of her bikini: "match up the bikini top and bottom together...

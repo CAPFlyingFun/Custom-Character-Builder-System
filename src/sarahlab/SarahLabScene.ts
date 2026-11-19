@@ -1,7 +1,7 @@
+import { keepPicture, readPicture } from './pictureStore';
 import { GarmentShapeTransfer } from './garmentShapeTransfer';
 import { BELLY_CURVES, BELLY_CURVE_NAMES, DEFAULT_BELLY_CURVE, type BellyCurve } from './bellyInterpolation';
 import { attachRecoveredMeshes, applyRecoveredBaseline, fitWeights, LEGGINGS_FIT_KEYS, SHIRT_FINE_FIT_KEYS, updateLeggingsHem, releaseRecoveredMeshes } from './recoveredClothes';
-import { garmentTexturePanel } from './garmentTexturePanel';
 import { fabricPanel, type FabricPanel } from './fabricPanel';
 import { strapBuilder, type StrapBuilder } from './strapBuilder';
 import { mapBody } from './bodyRegions';
@@ -1522,7 +1522,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
 
   // ------------------------------------------------------------------ HUD
   let hud: HTMLElement | null = null;
-  let texturePanel: ReturnType<typeof garmentTexturePanel> | null = null;
   // the fabric editor (fabricPanel.ts); while it paints onto her body every garment is hidden (Joshua, 2026-10-20)
   let fabric: FabricPanel | null = null;
   /** The clothing builder (strapBuilder.ts): straps and cords pinned to her skin (Joshua, 2026-10-23). */
@@ -3771,8 +3770,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       },
       putOnClothes: (saved, from, character) => putOnSaved(saved, from, { kind: 'personal', name: character }),
       thumbnail: () => thumbnail(),
-      download: (name, text) => {
-        const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      pictures: async (ids) => (await Promise.all(ids.map((id) => readPicture(id)))).filter((p): p is NonNullable<typeof p> => !!p).map((p) => ({ id: p.id, type: p.type, bytes: p.bytes })),
+      keepPictures: async (pics) => { for (const p of pics) await keepPicture('imported', p.type, p.bytes); },
+      download: (name, type, data) => {
+        const url = URL.createObjectURL(new Blob([data as BlobPart], { type }));
         const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 10_000);
       },
@@ -3826,12 +3827,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     note.style.cssText = 'font-size:10px;opacity:.7';
     fields[SARAH_LAB_FIELD.bodyNote] = note;
     right.appendChild(note);
-    texturePanel = garmentTexturePanel(() => skinned, (garment) => {
-      const next = OUTFITS.findIndex(look => look.garments.includes(garment));
-      if (next >= 0 && next !== outfit) dress(next);
-      else { applyLook(); refresh(); }
-    });
-    texturePanel.element.dataset.tab = 'fabric';
     const scaleOf = new THREE.Vector3();
     fabric = fabricPanel({
       meshes: () => skinned,
@@ -3936,7 +3931,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     (builder.element as HTMLDetailsElement).open = true;
     right.appendChild(builder.element);
     bodyDetail.appendChild(fabric.detailControl());
-    right.appendChild(texturePanel.element);
     // the outfit cards and saves (outfitPanel.ts): the OUTFIT section's own, not a space inside the fabric editor
     outfits.element.dataset.tab = 'outfit';
     right.appendChild(outfits.element);
@@ -11178,8 +11172,6 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       skinUpload?.texture.dispose(); skinUpload = null;
       for (const run of inflight.values()) run.abort.abort();
       inflight.clear();
-      texturePanel?.dispose();
-      texturePanel = null;
       fabric?.dispose();
       fabric = null;
       builder?.dispose();
