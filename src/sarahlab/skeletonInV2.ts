@@ -61,6 +61,8 @@ export interface LimbFit {
    * her neck): her spine and ribs a little shorter, as her trunk is in v2.
    */
   readonly trunk?: { readonly raise: number; readonly rigidTo: number; readonly to: number; readonly skip: ReadonlySet<string> };
+  /** the body's bone for one of the skeleton's, when the body's rig names its bones otherwise (the male base model's: maleRig.ts) */
+  readonly bodyName?: (skeletonName: string) => string;
 }
 
 /**
@@ -131,7 +133,8 @@ export class SkeletonInV2 {
     const restN = new THREE.Matrix3().getNormalMatrix(skeletonToRest);
     // its bones by name onto v2's (the skeleton's Jaw onto v2's head: the bone its own Jaw hangs from)
     const theirs = skeletonMesh.skeleton.bones, ours = body.skeleton.bones, byName = new Map(ours.map((b, k) => [b.name, k]));
-    const map = theirs.map((b) => byName.get(b.name) ?? byName.get(b.parent?.name ?? '') ?? 0);
+    const bodyName = fit?.bodyName ?? ((x: string) => x);
+    const map = theirs.map((b) => byName.get(bodyName(b.name)) ?? byName.get(bodyName(b.parent?.name ?? '')) ?? 0);
     const si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
     const n = pos.count, I = new Uint16Array(n * 4), W = new Float32Array(n * 4);
     this.owner = new Array(n);

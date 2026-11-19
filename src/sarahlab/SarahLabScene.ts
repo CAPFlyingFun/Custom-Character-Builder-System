@@ -347,6 +347,7 @@ const AFTERBIRTH = Object.freeze({
 import { BIRTH_CONTACT_FIELD, createBirthContact, type BirthContact } from './birthContact';
 import { KNEE_TURN_FIELD, createKneeTurn, type KneeTurn } from './kneeTurn';
 import { HIP_TURN_FIELD, bellyHold, createHipTurn, type HipTurn } from './hipTurn';
+import { hisBone, herBone } from './maleRig';
 import { MALE_BELLY, maleBellyField, maleOutieField, vertexNormals } from './maleBelly';
 /** His belly's and his navel's shape fields (the male base model's: maleBelly.ts). */
 const MALE_BELLY_FIELD = 'shape:maleBelly', MALE_OUTIE_FIELD = 'shape:maleOutie';
@@ -8690,14 +8691,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // seconds of work on a phone)
         skeletonV2Lay = null;
         const frameNow = babyFrame;
-        if (recovered && frameNow) skeletonV2Lay = () => {
+        const maleNow = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+        // (his bones are named one on from hers: the skeleton, named as her rig is, is laid in him through maleRig.ts)
+        const bodyBone = maleNow ? hisBone : (x: string) => x, skelBone = maleNow ? herBone : (x: string) => x;
+        if ((recovered || maleNow) && frameNow) skeletonV2Lay = () => {
           skeletonV2Lay = null;
           const request = ++skeletonV2Request, toRest = frameNow.meshToRest.clone();
           void assets.loadModel(SARAH_SKELETON_MODEL, () => new THREE.Object3D(), {}).then((skel) => {
             if (disposed || request !== skeletonV2Request || !model) { release(skel); return; }
             try {
               // (her body itself: her clothes are copies of it, the same points, so the first skinned mesh may be a garment)
-              const body = bodyOf()?.mesh;
+              const body = bodyOf()?.mesh ?? (maleNow ? herSkinned() : null);
               if (!body) throw new Error('her body is not found');
               skel.scale.setScalar(M); skel.updateMatrixWorld(true);
               const sm = findSkinnedMesh(skel);
@@ -8705,7 +8709,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (each limb onto v2's own joints: her joints at bind, in her rest frame, from each file)
               const skelInv = new THREE.Matrix4().copy(skel.matrixWorld).invert(), skelBones = new Map(sm.skeleton.bones.map((b) => [b.name, b]));
               const bodyBind = new THREE.Matrix4().copy(body.bindMatrix).invert(), bodyBones = new Map(body.skeleton.bones.map((b, k) => [b.name, k]));
-              const jt = measure?.joints, nameOf = (k: number | undefined) => (k === undefined ? '' : body.skeleton.bones[k]?.name ?? '');
+              const jt = measure?.joints, nameOf = (k: number | undefined) => (k === undefined ? '' : skelBone(body.skeleton.bones[k]?.name ?? ''));
               // (each leg on to the ball of its foot -- its ankle bone's first child -- so the foot is laid along v2's foot)
               const ballOf = (k: number) => { const c = body.skeleton.bones[k]?.children.find((o) => (o as THREE.Bone).isBone); return c?.name ?? ''; };
               void ballOf;
@@ -8726,7 +8730,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (her pelvis onto her own hip joints -- v2's stand above the skeleton file's sockets -- her trunk shorter by
               // that above her sacrum, up to the base of her neck: skeletonInV2.ts LimbFit.trunk)
               const restOf = (bones: Map<string, THREE.Bone>, name: string) => { const b = bones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; };
-              const v2RestOf = (name: string) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); };
+              const v2RestOf = (name: string) => { const k = bodyBones.get(bodyBone(name)); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); };
               let trunk: { raise: number; rigidTo: number; to: number; skip: Set<string> } | undefined;
               if (jt && SKELETON_TRUNK_ON_HIPS) {
                 const rises = [jt.hipL, jt.hipR].map((h) => { const a = restOf(skelBones, nameOf(h)), b = v2RestOf(nameOf(h)); return a && b ? b.y - a.y : NaN; }), neck = restOf(skelBones, nameOf(jt.neck));
@@ -8737,12 +8741,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                 chains, noFit, whole, wholeScale, trunk, wholeSlideMost: [Infinity, FOOT_SLIDE_MOST, FOOT_SLIDE_MOST],
                 set: jt ? [jt.ankleL, jt.ankleR].map((a) => ({ names: under(a), pivot: nameOf(a), pitchDeg: FOOT_SET.pitchDeg, shift: FOOT_SET.shift })) : [],
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
-                v2Joint: (name) => { const k = bodyBones.get(name); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
+                bodyName: bodyBone,
+                v2Joint: (name) => { const k = bodyBones.get(bodyBone(name)); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });
               // (her skull at its real size, only slid in: it fits her head so, back and up a little -- the head-size renders,
               // Joshua 2026-11-09; the Head slider grows and shrinks it with her head, it rides her head bone)
               skeletonV2 = make([1, 1, 1]);
-              { const pj = jt ? nameOf(jt.pelvis) : '', k = bodyBones.get(pj); skeletonV2PelvisJoint = k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest).toArray(); }
+              { const pj = jt ? nameOf(jt.pelvis) : '', k = bodyBones.get(bodyBone(pj)); skeletonV2PelvisJoint = k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest).toArray(); }
               // HER BARE FEET OVER HER FOOT BONES (footCover.ts; Joshua 2026-11-09): a field on her shape, drawn barefoot
               try {
                 const sb = shaped.find((x) => x.mesh === body), feet = new Set<string>();
