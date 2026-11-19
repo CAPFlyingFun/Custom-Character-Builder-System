@@ -1513,6 +1513,20 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   rule reaches a week at a bigger belly. With no count her 60% is week 28.8, and clear. Her baby is never bigger for
   her belly by the rule than on the chart (the chart's % is at most her own: tested), and at full term it is drawn the
   same either way -- 51.0 cm, 3.46 kg, 1% smaller to fit -- on the chart at her 100% and by the rule at her 120%.
+- **HER BELLY GROWS ON A CURVE, NOT A STRAIGHT LINE** (Joshua, 2026-11-19, of a character typed START 10%, BIGGEST 150%
+  at week 42, whose belly went from 80% to 150% in her last two weeks: "70% size difference over 2 weeks is quite large…
+  does pregnancy belly size kind of look like a power curve starting small at first, but accelerating in the 3rd
+  trimester?"; of an even line and the curve, "Maybe a hybrid"; "Yes, so hybrid"). `baby.ts` `BELLY_CURVE` (0.5),
+  `bellyGrown`: from week 12 to her delivery week the share of her growth is half an even line and half a square of the
+  share of those weeks gone. HER OWN CHART IS HOW FAR ALONG SHE IS (`HerChart.anchors`: her belly %, 0 at her START, 1 at
+  her BIGGEST), her week read through the curve from 12 to HER delivery week -- so a delivery week past 40 is no longer
+  squeezed into the chart's oversized top. The chart itself (`BUMP_WEEKS`, nothing typed) is on the curve from 0% at
+  week 12 to its delivery belly (one baby 100% at 40, twins 175% at 37, triplets 180% at 34; twins were 100% at week 32
+  and triplets at 29, straight), then on straight to 200% (42, 38, 35). PAST HER BIGGEST it is as before, a % of the
+  chart for each % of her belly: her baby is never bigger for her belly than on the chart (`tests/pregnancyRule.test.ts`).
+  His character: 10% week 12, 49% week 24, 77% week 30, 111% week 36, 136% week 40, 150% week 42 -- 2.6% a week at first,
+  7.2 at the end. The room opens her on a first baby by the rule (120% at 40): 60% is week 29.3 (26 on the straight line),
+  100% week 36.8. WHAT IS WRITTEN BELOW OF WEEKS AT A BELLY % WAS MEASURED ON THE STRAIGHT LINE. `tests/kickWeeks.test.ts`.
 - **AT HER START SHE IS WEEKS 1 TO 12** (Joshua, 2026-11-19: "I want one character to have a 10% starting belly, be at
   150% at 42 weeks, and end up with a belly size of 30%… But it kept saying she was 12 weeks at 10%"). Her belly does not
   show before week 12 (`EARLY_WEEK`), so her START belly is every week to 12: the panel says `1–12` there, not 12

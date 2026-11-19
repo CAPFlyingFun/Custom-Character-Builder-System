@@ -37,24 +37,46 @@ export const FETAL_CHART: readonly ChartWeek[] = Object.freeze([
 /** The model's crown-rump (crown to its hip joints) as a share of its crown-heel, upright: turns the chart's early crown-rump into a length. MEASURED on the model. */
 export const MODEL_CROWN_RUMP = 0.602;
 
-/** The week her belly stands for: 0% week 12, 100% week 40, on to 42 at 200%. */
+/**
+ * HOW HER BELLY GROWS WITH THE WEEKS (Joshua, 2026-11-19, of a chart that grew a belly 70% in its last two weeks: "does
+ * pregnancy belly size kind of look like a power curve starting small at first, but accelerating in the 3rd trimester?";
+ * of an even line and the curve: "Maybe a hybrid"; "Yes, so hybrid"). From week 12, when it begins to show, to her
+ * delivery, the share of the way her belly has grown is `bellyGrown(t)` of the share of those weeks gone: half an even line
+ * and half a square -- small at first, fastest at the end. BIOLOGICAL SHAPE: the top of her womb rises about 1 cm a week
+ * from week 20 to 36 (Cleveland Clinic, "Fundal height") while it widens and deepens as it rises, so what shows grows
+ * faster than its height. `BELLY_CURVE` is the one number: 0 an even line (his rule of 2026-10-29: "0-100% ≈ weeks
+ * 12-40 linear"), 1 all square, 0.5 his hybrid. GAME TUNING.
+ */
+export const BELLY_CURVE = 0.5;
+/** The share her belly has grown when `t` of its weeks have gone (0 at week 12, 1 at her delivery; past 1 it goes on). */
+export const bellyGrown = (t: number, c = BELLY_CURVE): number => { const x = Math.max(0, t); return (1 - c) * x + c * x * x; };
+/** `bellyGrown` the other way: the share of its weeks gone when her belly has grown `u`. */
+export const bellyWeeksGone = (u: number, c = BELLY_CURVE): number => { const y = Math.max(0, u); return c > 1e-9 ? (-(1 - c) + Math.sqrt((1 - c) * (1 - c) + 4 * c * y)) / (2 * c) : y; };
+
+/** The week her belly stands for: 0% week 12, one baby's 100% week 40 (on the curve between, `bellyGrown`), on to 42 at 200% (`BUMP_WEEKS`). */
 export function weekForBump(bumpPercent: number, babies = 1): number {
   const b = Math.min(200, Math.max(0, Number.isFinite(bumpPercent) ? bumpPercent : 0));
   const t = BUMP_WEEKS[Math.round(babies)] ?? BUMP_WEEKS[1];
-  for (let i = 1; i < t.length; i++) if (b <= t[i][0]) { const [b0, w0] = t[i - 1], [b1, w1] = t[i]; return w0 + (w1 - w0) * (b - b0) / (b1 - b0); }
+  // (from week 12 to her delivery's belly, on the curve; past it, the oversized bellies the slider goes on to, straight)
+  if (b <= t[1][0]) { const [b0, w0] = t[0], [b1, w1] = t[1]; return w0 + (w1 - w0) * bellyWeeksGone((b - b0) / (b1 - b0)); }
+  for (let i = 2; i < t.length; i++) if (b <= t[i][0]) { const [b0, w0] = t[i - 1], [b1, w1] = t[i]; return w0 + (w1 - w0) * (b - b0) / (b1 - b0); }
   return t[t.length - 1][1];
 }
 
 /**
- * The week her belly stands for, by how many babies are in it: [belly %, week]. A twin belly runs ahead of a single
- * baby's -- it measures what a full-term one does by about week 32 -- and twins are born around 36-37 weeks, triplets
- * around 33-35 (Joshua, 2026-10-30: "the babies slow down in size so more can fit in the same area"). So the same belly
- * holds twins at an earlier week, each smaller. BIOLOGICAL SHAPE (fundal height, delivery), GAME TUNING (the lines).
+ * The week her belly stands for, by how many babies are in it: [belly %, week] -- from week 12 to her delivery on the
+ * curve (`bellyGrown`), then on straight to the slider's 200%, the oversized bellies past it. A twin belly runs ahead of a
+ * single baby's, and twins are born around 36-37 weeks, triplets around 33-35 (Joshua, 2026-10-30: "the babies slow down
+ * in size so more can fit in the same area"). So the same belly holds twins at an earlier week, each smaller. Their
+ * delivery bellies are the lines they had before the curve (175% at week 37, 180% at 34: the rule's first-pregnancy
+ * BIGGEST, `ruleFirst`); between, since 2026-11-19, the curve: "Yes, so hybrid" -- until then, twins 100% at week 32
+ * and 150% at 36, triplets 100% at 29 and 150% at 32.5, straight. BIOLOGICAL SHAPE (fundal height, delivery), GAME
+ * TUNING (the lines).
  */
 export const BUMP_WEEKS: Readonly<Record<number, readonly (readonly [number, number])[]>> = Object.freeze({
   1: [[0, 12], [100, 40], [200, 42]],
-  2: [[0, 12], [100, 32], [150, 36], [200, 38]],
-  3: [[0, 12], [100, 29], [150, 32.5], [200, 35]],
+  2: [[0, 12], [175, 37], [200, 38]],
+  3: [[0, 12], [180, 34], [200, 35]],
 });
 
 /** The week she delivers, by how many babies: one at full term; twins around 36-37 weeks, triplets around 33-35. BIOLOGICAL SHAPE. */
@@ -64,7 +86,8 @@ export const DELIVERY_WEEKS: Readonly<Record<number, number>> = Object.freeze({ 
 export function bumpForWeek(week: number, babies = 1): number {
   const t = BUMP_WEEKS[Math.round(babies)] ?? BUMP_WEEKS[1], w = Number.isFinite(week) ? week : 0;
   if (w <= t[0][1]) return t[0][0];
-  for (let i = 1; i < t.length; i++) if (w <= t[i][1]) { const [b0, w0] = t[i - 1], [b1, w1] = t[i]; return b0 + (b1 - b0) * (w - w0) / (w1 - w0); }
+  if (w <= t[1][1]) { const [b0, w0] = t[0], [b1, w1] = t[1]; return b0 + (b1 - b0) * bellyGrown((w - w0) / (w1 - w0)); }
+  for (let i = 2; i < t.length; i++) if (w <= t[i][1]) { const [b0, w0] = t[i - 1], [b1, w1] = t[i]; return b0 + (b1 - b0) * (w - w0) / (w1 - w0); }
   return t[t.length - 1][0];
 }
 
@@ -118,7 +141,7 @@ export function ruleBiggest(births: Births, babies: number): number {
  * is (their BIGGEST is the chart's), while one baby's reaches the chart's week 40 at her 120% belly.
  */
 export interface HerChart {
-  /** [her belly %, the chart's belly %], each rising */
+  /** [her belly %, how far along she is: 0 her START at week 12, 1 her BIGGEST at her delivery week, on the curve `bellyGrown` between], each rising */
   readonly anchors: readonly (readonly [number, number])[];
   readonly unused: readonly ('week' | 'delivery')[];
   /** what is in force: her START (her first week's belly %), her BIGGEST (her delivery's belly %) and its week, and her END (her belly % after): typed, or the rule's, or with no count the chart's */
@@ -138,38 +161,57 @@ export function herChart(babies: number, p: PregnancyNumbers): HerChart {
   // by from a START that leaves her BIGGEST no room -- a first pregnancy's need, or the chart's)
   const start = p.firstWeekBump ?? (births ? ruleStart(births) : 0), grown = births ? ruleFirst(n) : dChart;
   let first = start, delivery = p.deliveryBump ?? (births ? ruleBiggest(births, n) : dChart);
+  // (how far along she is at a week: 0 at week 12, 1 at her delivery week, on the curve: `bellyGrown`)
+  const along = (week: number): number => bellyGrown((week - EARLY_WEEK) / Math.max(1e-6, deliveryWeek - EARLY_WEEK));
   let pin: [number, number] | null = null;
-  if (p.week !== null && p.weekAtBump !== null && bumpForWeek(p.week, n) <= 0) {
+  if (p.week !== null && p.weekAtBump !== null && p.week <= EARLY_WEEK) {
     // AN EARLY WEEK (12 or under, before her belly shows: Joshua, 2026-11-19, "I want one character to have a 10% starting
     // belly… But it kept saying she was 12 weeks at 10%"): it is a week of her START, and draws nothing of her chart -- her
     // START is its belly when that is not typed; one typed above her START is not used
     if (p.firstWeekBump === null) first = p.weekAtBump;
     else if (!(p.weekAtBump <= first + 0.5)) unused.push('week');
   } else if (p.week !== null && p.weekAtBump !== null) {
-    const c = bumpForWeek(p.week, n), at = p.weekAtBump;
-    let ok = c > 0;
-    // (her first week's belly below it, as typed, or moved down out of its way)
-    if (ok && !(first < at)) { if (p.firstWeekBump === null) first = at - c; else ok = false; }
+    const u = along(p.week), at = p.weekAtBump;
+    let ok = true;
+    // (her first week's belly below it, as typed, or moved down out of its way: the belly it has grown by then of her whole growth)
+    if (!(first < at)) { if (p.firstWeekBump === null) first = at - u * grown; else ok = false; }
     // (and her delivery's on the side of it the weeks say)
-    if (ok && c < dChart && !(at < delivery)) { if (p.deliveryBump === null) delivery = at + (dChart - c); else ok = false; }
-    if (ok && c > dChart && !(at > delivery)) { if (p.deliveryBump === null) delivery = at - (c - dChart); else ok = false; }
-    if (ok && c === dChart) { if (p.deliveryBump === null) delivery = at; else ok = at === delivery; }
+    if (ok && p.week < deliveryWeek && !(at < delivery)) { if (p.deliveryBump === null) delivery = first + (at - first) / u; else ok = false; }
+    if (ok && p.week > deliveryWeek && !(at > delivery)) { if (p.deliveryBump === null) delivery = first + (at - first) / u; else ok = false; }
+    if (ok && p.week === deliveryWeek) { if (p.deliveryBump === null) delivery = at; else ok = at === delivery; }
     if (ok && !(first < delivery)) ok = false;
-    if (ok) { if (c !== dChart) pin = [at, c]; } else unused.push('week');
+    if (ok) { if (p.week !== deliveryWeek) pin = [at, u]; } else unused.push('week');
   }
   if (!(first < delivery)) { if (p.deliveryBump !== null) unused.push('delivery'); delivery = first + grown; }
-  const anchors = [[first, 0], [delivery, dChart], ...(pin ? [pin] : [])].sort((a, b) => a[1] - b[1]) as [number, number][];
+  const anchors = [[first, 0], [delivery, 1], ...(pin ? [pin] : [])].sort((x, y) => x[1] - y[1]) as [number, number][];
   return { anchors, unused, firstWeekBump: first, deliveryBump: delivery, deliveryWeek, afterBump: p.afterBump ?? ruleEnd(start, n), ruled: births !== null };
 }
 
-/** The % of the chart her belly stands for at `bumpPercent` (her own belly %): `bumpPercent` itself while nothing is typed and nothing counted. */
+const nothingOfHers = (p: PregnancyNumbers): boolean => p.week === null && p.firstWeekBump === null && p.deliveryBump === null && p.deliveryWeek === null && (p.births ?? null) === null;
+
+/** The week her belly stands for by her own chart, before an early week typed is looked at: her START week 12, her BIGGEST her delivery week, on the curve between and past. */
+function chartWeek(bumpPercent: number, babies: number, p: PregnancyNumbers): number {
+  const n = Math.min(3, Math.max(1, Math.round(Number.isFinite(babies) ? babies : 1)));
+  if (nothingOfHers(p)) return weekForBump(bumpPercent, n);
+  const c = herChart(n, p), a = c.anchors, b = Number.isFinite(bumpPercent) ? bumpPercent : 0;
+  // (past her BIGGEST, the chart's own past her delivery week: a % of the chart for each % of her belly, as it always was --
+  // so her baby is never bigger for her belly than on the chart, which its fit in her womb is built on)
+  const [hl] = a[a.length - 1];
+  if (b > hl) return weekForBump(bumpForWeek(c.deliveryWeek, n) + (b - hl), n);
+  let u = 0;
+  if (b > a[0][0]) {
+    let i = 1;
+    while (b > a[i][0]) i++;
+    const [h0, u0] = a[i - 1], [h1, u1] = a[i];
+    u = u0 + (u1 - u0) * (b - h0) / (h1 - h0);
+  }
+  return EARLY_WEEK + (c.deliveryWeek - EARLY_WEEK) * bellyWeeksGone(u);
+}
+
+/** The % of the chart her belly stands for at `bumpPercent` (her own belly %): the chart's belly at her week; `bumpPercent` itself while nothing is typed and nothing counted. */
 export function chartBump(bumpPercent: number, babies: number, p: PregnancyNumbers): number {
-  if (p.week === null && p.firstWeekBump === null && p.deliveryBump === null && p.deliveryWeek === null && (p.births ?? null) === null) return bumpPercent;
-  const a = herChart(babies, p).anchors, b = Number.isFinite(bumpPercent) ? bumpPercent : 0;
-  if (b <= a[0][0]) return Math.max(0, a[0][1] + (b - a[0][0]));
-  for (let i = 1; i < a.length; i++) if (b <= a[i][0]) { const [h0, c0] = a[i - 1], [h1, c1] = a[i]; return c0 + (c1 - c0) * (b - h0) / (h1 - h0); }
-  const [hl, cl] = a[a.length - 1];
-  return cl + (b - hl);
+  if (nothingOfHers(p)) return bumpPercent;
+  return bumpForWeek(chartWeek(bumpPercent, babies, p), babies);
 }
 
 /**
@@ -177,14 +219,14 @@ export function chartBump(bumpPercent: number, babies: number, p: PregnancyNumbe
  * it: `EARLY_WEEK`), and her chart says the last of them -- unless a week to 12 is typed for that belly, which it says.
  */
 export function herWeek(bumpPercent: number, babies: number, p: PregnancyNumbers): number {
-  const w = weekForBump(chartBump(bumpPercent, babies, p), babies);
-  if (p.week !== null && p.weekAtBump !== null && p.week < w && bumpForWeek(p.week, babies) <= 0 && Math.round(p.weekAtBump) === Math.round(bumpPercent) && herChart(babies, p).unused.length === 0) return Math.max(1, p.week);
+  const w = chartWeek(bumpPercent, babies, p);
+  if (p.week !== null && p.weekAtBump !== null && p.week < w && p.week <= EARLY_WEEK && Math.round(p.weekAtBump) === Math.round(bumpPercent) && herChart(babies, p).unused.length === 0) return Math.max(1, p.week);
   return w;
 }
 /** Her belly shows from the week after this: at her START she is anywhere from week 1 to it (the chart's own: BIOLOGICAL SHAPE). */
 export const EARLY_WEEK = 12;
 /** True while her belly is at or under her START: her week is one of 1 to `EARLY_WEEK`, not to be told by her belly. */
-export const atHerStart = (bumpPercent: number, babies: number, p: PregnancyNumbers): boolean => chartBump(bumpPercent, babies, p) <= 0;
+export const atHerStart = (bumpPercent: number, babies: number, p: PregnancyNumbers): boolean => (nothingOfHers(p) ? bumpPercent <= 0 : bumpPercent <= herChart(babies, p).anchors[0][0]);
 
 export interface BabySize {
   readonly week: number;

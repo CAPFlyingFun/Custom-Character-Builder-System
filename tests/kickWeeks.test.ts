@@ -57,3 +57,28 @@ describe('kicks by her week', () => {
     expect(nextMove(rnd, 200 * at(30).often).inS).toBeLessThan(nextMove(rnd, 100 * at(30).often).inS);
   });
 });
+
+// HOW HER BELLY GROWS WITH THE WEEKS (Joshua, 2026-11-19: "Yes, so hybrid"): half an even line, half a square
+import { BELLY_CURVE, bellyGrown, bellyWeeksGone, bumpForWeek, herWeek, weekForBump } from '../src/sarahlab/baby';
+describe('her belly by week: his hybrid curve', () => {
+  it('is half an even line and half a square, and the other way round undoes it', () => {
+    expect(BELLY_CURVE).toBe(0.5);
+    expect(bellyGrown(0)).toBe(0); expect(bellyGrown(1)).toBe(1); expect(bellyGrown(0.5)).toBeCloseTo(0.375);
+    for (const u of [0, 0.1, 0.375, 0.8, 1, 1.2]) expect(bellyGrown(bellyWeeksGone(u))).toBeCloseTo(u, 12);
+  });
+  it('his character: 10% at her START, 150% at week 42 -- no jump at the end', () => {
+    const his = { week: null, weekAtBump: null, firstWeekBump: 10, deliveryBump: 150, deliveryWeek: 42, afterBump: 30, births: null };
+    for (const [b, w] of [[10, 12], [49.2, 24], [77.2, 30], [110.8, 36], [136.3, 40], [150, 42]] as const) expect(herWeek(b, 1, his)).toBeCloseTo(w, 0);
+    // (each week, never more than 7.2% of her belly: a straight line would be 4.7, the old chart's last two weeks 35)
+    for (let w = 13; w <= 42; w++) {
+      const step = [w - 1, w].map((x) => { let lo = 10, hi = 150; for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (herWeek(m, 1, his) < x) lo = m; else hi = m; } return lo; });
+      expect(step[1] - step[0]).toBeLessThan(7.3);
+    }
+  });
+  it('one baby, twins and triplets: week 12 at 0%, their delivery bellies at their delivery weeks, the chart both ways', () => {
+    for (const [n, b, w] of [[1, 100, 40], [2, 175, 37], [3, 180, 34]] as const) {
+      expect(weekForBump(0, n)).toBe(12); expect(weekForBump(b, n)).toBeCloseTo(w, 9); expect(weekForBump(200, n)).toBe(n === 1 ? 42 : n === 2 ? 38 : 35);
+      for (let x = 0; x <= 200; x += 7) expect(bumpForWeek(weekForBump(x, n), n)).toBeCloseTo(x, 6);
+    }
+  });
+});

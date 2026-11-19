@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_BOOK, exportBook, importBook, saveInto, type SavedBody, type SavedClothes } from '../src/sarahlab/characterSaves';
 import { NO_RULES } from '../src/actor/bodyRandom';
 import { controlSpec } from '../src/actor/bodyShape';
-import { bumpForWeek, chartBump, DELIVERY_WEEKS, herChart, herWeek, ruleBiggest, ruleFirst, weekForBump } from '../src/sarahlab/baby';
+import { bellyWeeksGone, bumpForWeek, chartBump, DELIVERY_WEEKS, herChart, herWeek, ruleBiggest, ruleFirst, weekForBump } from '../src/sarahlab/baby';
 import {
   BIRTH_KINDS, NO_BIRTHS, PREGNANCY_DEFAULT, PREGNANCY_OPENING, PREGNANCY_RANGE, PREGNANCY_RULE, bellySetting, bellySize, birthKind, birthsAdded, birthsCount, bornTo, numbersLine, ordinal,
   pickDeliveryWeek, pregnancyOf, readPregnancy, ruleEnd, ruleStart, typeBirths, typeWeek, type Births, type Pregnancy,
@@ -115,8 +115,9 @@ describe('the rule: every pregnancy adds its own amount to her belly for good', 
     const first = had({}, { pregnant: true });
     expect(herWeek(120, 1, first)).toBeCloseTo(40, 9);
     expect(herWeek(0, 1, first)).toBe(12);
-    expect(herWeek(60, 1, first)).toBeCloseTo(26, 9);
-    expect(herWeek(100, 1, first)).toBeCloseTo(35.33, 2);
+    // (half her growth: week 26 on a straight line, 29.3 on his hybrid curve, 2026-11-19)
+    expect(herWeek(60, 1, first)).toBeCloseTo(12 + 28 * bellyWeeksGone(0.5), 9);
+    expect(herWeek(100, 1, first)).toBeCloseTo(12 + 28 * bellyWeeksGone(100 / 120), 9);
     // (and past it the chart's own growth, as before)
     expect(chartBump(150, 1, first)).toBeCloseTo(130, 9);
     // a second baby's chart is the first's, 10% further up her slider

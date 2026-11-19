@@ -15,7 +15,7 @@ import { defaultBodyShape, serializeShape } from '../src/actor/bodyShape';
 import { EMPTY_BOOK, exportBook, importBook, saveInto, type SavedBody, type SavedClothes } from '../src/sarahlab/characterSaves';
 import { NO_RULES } from '../src/actor/bodyRandom';
 import { PREGNANCY_DEFAULT, legacyPregnancy, pregnancyOf, pregnantLine, readPregnancy, typedNumber, typeWeek, weekIsFor, type Pregnancy } from '../src/sarahlab/pregnancy';
-import { bumpForWeek, chartBump, DELIVERY_WEEKS, herChart, herWeek, weekForBump } from '../src/sarahlab/baby';
+import { bellyWeeksGone, bumpForWeek, chartBump, DELIVERY_WEEKS, herChart, herWeek, weekForBump } from '../src/sarahlab/baby';
 
 const typed = (p: Partial<Pregnancy>): Pregnancy => ({ ...PREGNANCY_DEFAULT, ...p });
 
@@ -56,7 +56,7 @@ describe('her weeks: her own chart', () => {
   it('her first week\'s belly and her delivery\'s move the chart\'s ends', () => {
     const round = typed({ firstWeekBump: 30 });
     expect(herWeek(30, 1, round)).toBe(12); expect(herWeek(20, 1, round)).toBe(12);
-    expect(herWeek(65, 1, round)).toBeCloseTo(26, 9); expect(herWeek(100, 1, round)).toBeCloseTo(40, 9);
+    expect(herWeek(65, 1, round)).toBeCloseTo(12 + 28 * bellyWeeksGone(0.5), 9); expect(herWeek(100, 1, round)).toBeCloseTo(40, 9);
     const small = typed({ deliveryBump: 85, deliveryWeek: 39 });
     expect(herWeek(85, 1, small)).toBeCloseTo(39, 9);
     expect(herChart(1, small)).toMatchObject({ deliveryBump: 85, deliveryWeek: 39, unused: [] });
