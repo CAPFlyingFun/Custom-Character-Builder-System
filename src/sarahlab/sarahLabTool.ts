@@ -752,12 +752,15 @@ export const TEE_SKIRTS: readonly (readonly [string, string, SkirtSettings, Part
  */
 /**
  * WHAT SHE WEARS UNDER A SKIRT (Joshua, 2026-11-19: "for all skirts add the Athletic Bikini 👙 Bottom… so she has underwear
- * but can be removed if wanted later"): her athletic bikini bottom, its edging under its fill, in her bikini's own red and
- * black -- two paint layers of six, each a piece the editor's REMOVE PIECE takes off.
+ * but can be removed if wanted later"): her athletic bikini bottom, its edging under its fill -- two paint layers of six,
+ * each a piece the editor's REMOVE PIECE takes off. IN THE SKIRT'S OWN COLOUR (the same day: "can we try and match by
+ * default the color of the panties to the skirt, but like with top and bottom or the edgings, you can change if you
+ * want?"): its fill and its edging the skirt's tint of the ATHLETIC knit, the very fabric the skirt is dyed as
+ * (`BuiltInOutfit.skirtTint`); each is a piece whose fabric the Outfit tab changes, as any other's.
  */
-export const SKIRT_UNDERWEAR: readonly PaintedLayer[] = Object.freeze([
-  { template: 'athleticBottomEdge', fabric: BIKINI_EDGING_FABRIC },
-  { template: 'athleticBottom', fabric: BIKINI_FABRIC },
+export const skirtUnderwear = (tint: string): readonly PaintedLayer[] => Object.freeze([
+  { template: 'athleticBottomEdge', fabric: { family: 'athletic' as const, colour: 0, tint } },
+  { template: 'athleticBottom', fabric: { family: 'athletic' as const, colour: 0, tint } },
 ]);
 export interface BuiltInOutfit { readonly name: string; readonly garments: readonly Garment[]; readonly paint?: readonly PaintedLayer[]; readonly fabrics?: Partial<Record<Garment, OutfitFabric>>; readonly trims?: Partial<Record<Garment, OutfitFabric>>; readonly procedural?: 'raglan' | 'setIn';
   /** A procedural tee's own settings where they are not the approved tee's (`garment/settings.ts`): its neckline, its sleeves, its length. */
@@ -846,14 +849,14 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ...SKIRTS.map(([name, tint, skirt]): BuiltInOutfit => ({
     name, garments: [], skirt, skirtTint: tint,
     paint: [
-      ...SKIRT_UNDERWEAR,
+      ...skirtUnderwear(tint),
       { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: skirt.top === 'under' ? SHEET_BOTTOMS_TEE_HEM : SKIRT_OVER_BAND - 0.03 } },
     ],
   })),
   // ...AND WITH THE CLOTH TEE (`TEE_SKIRTS`): the new tee over or under the skirt, the skirt's painted short under both.
   ...TEE_SKIRTS.map(([name, tint, skirt, cut]): BuiltInOutfit => ({
     name, garments: ['shirtSpandexLite'], skirt, skirtTint: tint, procedural: 'raglan', cut,
-    fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } }, paint: SKIRT_UNDERWEAR,
+    fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } }, paint: skirtUnderwear(tint),
   })),
 ];
 /**

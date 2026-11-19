@@ -389,8 +389,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   SHORT", "ITS PAINTED PART'S LEGS", `paintedLegs`, `SKIRT_PAINT`, `setDial`, `laySkirtPaint`, `skirtPaint`,
   `SKIRT_UNDER_LEGS`) IS v0.9.44's AND TAKEN OUT; the pencil's FIT is answered: 0.
   - THE SEVEN OUTFITS (`sarahLabTool.ts` `SKIRTS`, `TEE_SKIRTS`) wear HER ATHLETIC BIKINI BOTTOM under the skirt
-    (`SKIRT_UNDERWEAR`: its edging and its fill in the bikini's own fabrics, two paint layers a piece in the Outfit tab
-    takes off) -- the four skirts with the grey crop tee over it, the three with the cloth tee nothing else painted -- and
+    (`skirtUnderwear`: its edging and its fill, two paint layers a piece in the Outfit tab takes off) IN THE SKIRT'S OWN
+    COLOUR (his, the same day: "match by default the color of the panties to the skirt, but like with top and bottom or the
+    edgings, you can change if you want"): the skirt's tint of the ATHLETIC knit, each piece's fabric his to change -- the four skirts with the grey crop tee over it, the three with the cloth tee nothing else painted -- and
     say the skirt's colour themselves (`BuiltInOutfit.skirtTint`, a tint of the ATHLETIC knit; `syncSkirt`). THE PENCIL IS
     `fit: 0`. `SKIRT_UNDER_BAND` stays as the STYLE whose waistband line a low ring is laid on (`fabricPanel.hoopOn`), worn
     or not. A look saved in a skirt before keeps the short it was saved with.

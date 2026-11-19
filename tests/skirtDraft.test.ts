@@ -2,7 +2,7 @@
  * A skirt's draft (`src/sarahlab/skirt/skirtDraft.ts`): its three numbers, its ring's heights, how far an outline
  * reaches, and the outfits that wear one.
  */
-import { SKIRT_UNDERWEAR } from '../src/sarahlab/sarahLabTool';
+import { skirtUnderwear } from '../src/sarahlab/sarahLabTool';
 import { describe, expect, it } from 'vitest';
 import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, fitOf, hemOf, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, SKIRTS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND } from '../src/sarahlab/sarahLabTool';
@@ -55,7 +55,9 @@ describe('a skirt, drafted', () => {
     for (const o of OUTFITS.filter((x) => x.skirt)) {
       expect((o.paint ?? []).some((l) => l.template === SKIRT_UNDER_BAND || l.template === 'shortsAthletic'), o.name).toBe(false);
       expect(o.skirtTint, o.name).toMatch(/^#[0-9a-f]{6}$/);
-      expect((o.paint ?? []).slice(0, 2), o.name).toEqual(SKIRT_UNDERWEAR);
+      expect((o.paint ?? []).slice(0, 2), o.name).toEqual(skirtUnderwear(o.skirtTint!));
+      // (her underwear in the skirt's own colour: Joshua, 2026-11-19, "match by default the color of the panties to the skirt")
+      expect((o.paint ?? []).slice(0, 2).map((l) => l.fabric.tint), o.name).toEqual([o.skirtTint, o.skirtTint]);
     }
     expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['under']));
   });
