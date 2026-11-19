@@ -63,6 +63,7 @@ import { STYLE_FRAME, picturedStyles, stylePictureLayers, styleThumbPath } from 
 import type { PieceKind } from './paintTemplates';
 import { PAINT_LAYER_COUNT, paintAt } from './bodyPaint';
 import { lookOpenedOn } from './sarahLook';
+import { attachLookup } from './valueLookup';
 import { BIRTH_KINDS, PREGNANCY_OPENING, PREGNANCY_RANGE, PREGNANCY_RULE, bellySize, numbersLine, pregnancyOf, pregnantLine, typeBirths, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
 import { BUILD_INFO } from '../ui/buildInfo';
@@ -1388,6 +1389,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const lockButtons = new Map<string, HTMLButtonElement>();
   const rangeRows: { spec: RandomSpec; row: HTMLElement; lo: HTMLInputElement; hi: HTMLInputElement }[] = [];
   let bumpInput: HTMLInputElement | null = null;
+  /** BELLY's exact box (valueLookup.ts): a % typed, or picked from the list that narrows as it is typed. */
+  let bumpExact: HTMLInputElement | null = null;
   /** the BIRTH OPENING slider (percent, 0 closed .. 100 the full 10 cm) */
   let birthOpenInput: HTMLInputElement | null = null, birthOpenPct = 0, birthBulgeInput: HTMLInputElement | null = null, birthBulgePct = 0;
   let foldBackInput: HTMLInputElement | null = null, foldBackPct = 0;
@@ -2233,6 +2236,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (f3) f3.textContent = birthBulgeLine(birthBulgePct, VULVA_OPEN.bulge * 100);
       if (birthBulgeInput && Number(birthBulgeInput.value) !== birthBulgePct) birthBulgeInput.value = String(birthBulgePct); }
     if (bumpInput && Number(bumpInput.value) !== bump) bumpInput.value = String(bump);
+    if (bumpExact && document.activeElement !== bumpExact) bumpExact.placeholder = `${bump}%`;
     refreshWeeks();
     for (const spec of BODY_RANDOM_SPECS) {
       const b = lockButtons.get(spec.key);
@@ -3381,6 +3385,23 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     };
     bumpInput = slider(SARAH_LAB_FIELD.bump, bump, (v) => { bump = v; }, BUMP_MAX_PERCENT);
     {
+      // EXACT: her belly typed to the %, or picked from a list that keeps only what begins with what is typed (Joshua,
+      // 2026-11-19: "the option to type a specific amount… like exactly 30%, or 76%… a scrollable list with a smart look up")
+      const row = document.createElement('div'); row.dataset.tab = 'body';
+      row.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:-2px 0 2px;font-size:11px;letter-spacing:.05em;opacity:.9';
+      const i = document.createElement('input');
+      i.type = 'text'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.dataset.field = SARAH_LAB_FIELD.bumpExact; i.placeholder = `${bump}%`;
+      i.style.cssText = 'width:72px;height:30px;border-radius:6px;border:1px solid #ffffff30;background:#0d1117;color:#e8e2d8;font:600 13px system-ui;padding:0 8px';
+      const take = (v: number) => { bump = Math.max(0, Math.min(BUMP_MAX_PERCENT, Math.round(v))); if (bumpInput) bumpInput.value = String(bump); i.value = ''; applyLook(); applyMotion(); refresh(); };
+      // (Enter, or the box left, takes a whole number typed: 76, or 76%)
+      i.addEventListener('change', () => { const v = Number(i.value.trim().replace(/%$/, '')); if (i.value.trim() && Number.isFinite(v)) take(v); else i.value = ''; });
+      i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') i.blur(); });
+      attachLookup(i, { min: 0, max: BUMP_MAX_PERCENT, unit: '%', now: () => bump, pick: take });
+      bumpExact = i;
+      row.append('EXACT', i);
+      right.appendChild(row);
+    }
+    {
       // QUICK SIZES (from the Character Studio preview): the five sizes the belly is keyed at, one tap each
       const sizes = document.createElement('div'); sizes.dataset.tab = 'body';
       sizes.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:-2px';
@@ -3424,6 +3445,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (applied when the box is left or Enter pressed, not at each key: typing 32 is never a 3 first)
         i.addEventListener('change', () => { const v = typedNumber(i.value, range); if (v === undefined) refresh(); else set(v); });
         i.addEventListener('keydown', (e) => e.stopPropagation());
+        // (and the same look-up list as BELLY's: what begins with what is typed, a value tapped is typed)
+        attachLookup(i, { min: Math.ceil(range[0]), max: Math.floor(range[1]), now: () => { const v = Number(i.value || i.placeholder); return Number.isFinite(v) ? v : null; }, pick: () => i.dispatchEvent(new Event('change')) });
         weekBoxes.set(field, i);
         return i;
       };

@@ -275,6 +275,8 @@ export const SARAH_LAB_FIELD = Object.freeze({
   /** `${birth}<control>`: a BIRTH control's line (holdCm, firmness, headPush); its slider follows it */
   birth: 'sarahlab-birth-',
   bump: 'sarahlab-bump',
+  /** BELLY's exact box: a % typed or picked (valueLookup.ts) */
+  bumpExact: 'sarahlab-bump-exact',
   /** HER PREGNANCY (pregnancy.ts), each a box that may be left blank: her baby counter (`${pregnancyBirths}single` /
    * `twins` / `triplets`: how many pregnancies of each she has had), her START (her belly % at week 1), her BIGGEST (at
    * delivery) and its week, her END (after the birth), and the exact week for her belly %; and the lines under them: her
