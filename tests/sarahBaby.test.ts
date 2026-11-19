@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { awayFromHead, KICK_AWAY, Cord, cordLength, cordRadius, placentaSpots, placentaSize, kickOnSkin, KICK_FELT_M, KICK_MOST_M, kicksShare, liningPast, moveEnvelope, moveLength, MOVES, MOVE_SOONEST_S, nextMove, turnToward, carriedShare, floatDrift, floatTune, fluidMl, FLUID, AUTO_DEPTH_MOST, babiesInHer, babyBody, babySolid, balanceDeg, BALANCE_MOST_DEG, FIT_TOLERANCE, PACK_SOFT, SHRINK_MOST, solidDeep, type BabyPlace, multipleShare, placeBabies, sacAround, babyPast, bellyPush, growSac, placeBaby, pushAt, pushZone, babyLine, babyPlace, babySize, curlFrame, FETAL_CHART, fitInSac, MODEL_CROWN_RUMP, sacRadius, SAC_FILL, weekForBump, wombAt, wombFromSkin, wombRadius, WOMB_BACK_Z, WOMB_FLOOR_Y, WOMB_TISSUE_M } from '../src/sarahlab/baby';
+import { awayFromHead, KICK_AWAY, Cord, cordLength, cordRadius, placentaSpots, placentaSize, kickOnSkin, KICK_FELT_M, KICK_MOST_M, kicksShare, liningPast, moveEnvelope, moveLength, MOVES, MOVE_SOONEST_S, nextMove, turnToward, carriedShare, floatDrift, floatTune, fluidMl, FLUID, AUTO_DEPTH_MOST, babiesInHer, babyBody, babySolid, balanceDeg, BALANCE_MOST_DEG, FIT_TOLERANCE, PACK_SOFT, SHRINK_MOST, solidDeep, type BabyPlace, multipleShare, placeBabies, sacAround, babyPast, bellyPush, growSac, placeBaby, pushAt, pushZone, babyLine, babyPlace, babySize, curlFrame, FETAL_CHART, fitInSac, bellyWeeksGone, bumpForWeek, MODEL_CROWN_RUMP, sacRadius, SAC_FILL, weekForBump, wombAt, wombFromSkin, wombRadius, WOMB_BACK_Z, WOMB_FLOOR_Y, WOMB_TISSUE_M } from '../src/sarahlab/baby';
 
 describe('her baby: the chart', () => {
   it('runs weeks 12 to 41 in order, every weight inside its 10th to 90th', () => {
@@ -9,8 +9,9 @@ describe('her baby: the chart', () => {
     for (let i = 1; i < FETAL_CHART.length; i++) expect(FETAL_CHART[i].g).toBeGreaterThan(FETAL_CHART[i - 1].g);
   });
 
-  it('0% is week 12, 100% week 40, a straight line between; on to 42 at 200%', () => {
-    expect(weekForBump(0)).toBe(12); expect(weekForBump(50)).toBe(26); expect(weekForBump(100)).toBe(40);
+  // (his hybrid curve between since 2026-11-19, "Yes, so hybrid": 50% was week 26 on the straight line)
+  it('0% is week 12, 100% week 40, on his hybrid curve between; on to 42 at 200%', () => {
+    expect(weekForBump(0)).toBe(12); expect(weekForBump(50)).toBeCloseTo(12 + 28 * bellyWeeksGone(0.5), 9); expect(weekForBump(100)).toBe(40);
     expect(weekForBump(200)).toBe(42); expect(weekForBump(-10)).toBe(12); expect(weekForBump(500)).toBe(42);
   });
 
@@ -28,7 +29,7 @@ describe('her baby: the chart', () => {
 
   it('reads as a line', () => {
     expect(babyLine(100, 0)).toBe('week 40 · 51.0 cm (20.1 in) · 3.46 kg (7 lb 10 oz)');
-    expect(babyLine(25, 0)).toContain('240 g');
+    expect(babyLine(bumpForWeek(19), 0)).toContain('240 g');
   });
 });
 
@@ -150,8 +151,10 @@ describe('her babies: twins and triplets, and how they lie', () => {
     expect(multipleShare(34, 3)).toBeCloseTo(0.89, 9);   // ~10% below a singleton by 34 (triplet EFW 1.9 kg against 2.1)
     expect(multipleShare(40, 1)).toBe(1);
     expect(babySize(40, 0, 2).g).toBeCloseTo(3460 * 0.84, 6);
-    // and the same belly holds them earlier: twins at 32 weeks at 100%, triplets at 29; born around 36-37 and 33-35
-    expect(weekForBump(100, 2)).toBe(32); expect(weekForBump(150, 2)).toBe(36); expect(weekForBump(100, 3)).toBe(29);
+    // and the same belly holds them earlier: twins 175% at week 37, triplets 180% at 34, born then (on his hybrid curve from
+    // week 12 since 2026-11-19: twins were 100% at week 32 and triplets at 29, straight; now 29.0 and 26.7)
+    expect(weekForBump(175, 2)).toBeCloseTo(37, 9); expect(weekForBump(180, 3)).toBeCloseTo(34, 9);
+    expect(weekForBump(100, 2)).toBeLessThan(32); expect(weekForBump(100, 3)).toBeLessThan(weekForBump(100, 2));
     expect(weekForBump(100)).toBe(40); expect(weekForBump(0, 3)).toBe(12);
     expect(babySize(40, 0, 2).cm).toBeLessThan(babySize(40).cm);
     expect(babyLine(100, 0, 2)).toContain('TWINS'); expect(babyLine(100, 0, 2)).toContain('each');
@@ -286,7 +289,9 @@ describe('her babies: in their fluid', () => {
     expect(fluidMl(34)).toBeGreaterThan(fluidMl(28)); expect(fluidMl(34)).toBeGreaterThan(fluidMl(40));
     for (const b of [50, 100, 150, 200]) {
       expect(carriedShare(b, 0, 1)).toBe(1);
-      expect(carriedShare(b, 0, 2)).toBeGreaterThan(1); expect(carriedShare(b, 0, 3)).toBeGreaterThan(carriedShare(b, 0, 2) - 0.05);
+      // (twins about as much as one baby at a middling belly on his hybrid curve -- 0.96 at 50%, 0.90 at 100%, where one
+      //  baby is older for her belly than on the straight line -- and more past it; triplets more than twins)
+      expect(carriedShare(b, 0, 2)).toBeGreaterThan(b < 150 ? 0.85 : 1); expect(carriedShare(b, 0, 3)).toBeGreaterThan(carriedShare(b, 0, 2) - 0.05);
     }
   });
 });
