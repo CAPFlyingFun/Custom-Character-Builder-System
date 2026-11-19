@@ -77,8 +77,8 @@ describe('assetUrl carries a content revision', () => {
     // The map is keyed by the path a caller passes, with no leading
     // slash. A caller that writes one must still get the revision, or the
     // stamp silently stops applying for that call site.
-    const withSlash = assetUrl('/models/sarah-v2.glb');
-    const without = assetUrl('models/sarah-v2.glb');
+    const withSlash = assetUrl('/models/sarah-v2-body-slim.glb');
+    const without = assetUrl('models/sarah-v2-body-slim.glb');
     expect(withSlash).toBe(without);
     expect(withSlash).toContain('?r=');
   });
