@@ -141,6 +141,28 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   .zip (the .json and the picture); imported into a fresh browser and loaded in it. No error on the page.
 - After anything changes it: `tests/characterExport.test.ts`, `tests/characterSaves.test.ts`, `tests/sarahLabFabric.test.ts`.
 
+## Six paint layers, and their order
+
+- **SIX LAYERS** (Joshua, 2026-11-19: "we have a 3 layers, and can we actually raise that amount up to 6 layers? Will be
+  better in games to have more layer to make more complex outfits"; `bodyPaint.PAINT_LAYER_COUNT`). Her skin's vertex
+  shader has every attribute a phone gives it (16 of 16, MEASURED in the room), so the six weights ride the one vec3
+  `fabricPaint` the three had, TWO TO A NUMBER in 255ths (`packPaint`; layer c and c + 3), unpacked at each vertex
+  before they are spread over her triangles (`fabricMaterial.ts`). The weights themselves are kept six a vertex on her
+  geometry (`BodyPaint.weights`, `userData.paintWeights`). WHATEVER ELSE READS THE ATTRIBUTE READS IT THROUGH
+  `paintAt` (her opening's area, `vulvaMesh.ts` `samplePaintInto`; the story bake's `paintSplit`; a probe). Her
+  skin's program's texture units, its fragment stage: 10 of a phone's 16 with three layers, 13 with six (MEASURED: its
+  samplers listed at link); a layer not worn is skipped on its uniform. Saves held up to 8 layers already.
+- **THEIR ORDER IS HIS TO SET** (Joshua, 2026-11-19: "make each layer adjustable so you can like place above or below
+  another layer and maybe set layer 1 as way top and 6 as bottom, and then you can drag or press an arrow to move
+  them"). On screen LAYER 1 is the top -- drawn over all the others -- and 6 the bottom (layer index 5 is L1); the
+  pieces are listed top first (`TOP · L3 …`), and a paint piece selected shows `LAYER n of 6 · 1 is on top` with ▲ UP and
+  ▼ DOWN (`fabricPanel` `moveLayer`; `BodyPaint.swapLayers` swaps the two layers' weights and UNDO's steps for them;
+  its template, fabric and detail go with it, and a drawn bottom's band is worked out again). A piece moves into an
+  empty layer as well. Arrows, not dragging: a drag in that row scrolls it on a phone.
+- MEASURED in the room 2026-11-19 (light skin): the pencil skirt's outfit with knee socks, a sports bra and a tank added
+  as layers 4 to 6, each drawn; the tank moved under the crop tee and back by the arrows, drawn so each time.
+- `tests/paintLayers.test.ts`.
+
 ## A painted top, drawn
 
 - **A shirt's cut is DRAWN, not painted per vertex** (Joshua, 2026-11-14: "fix the painted clothes and add smooth edges,
@@ -359,20 +381,35 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 
 ## The skirts (paint and cloth together): the pilot
 
-- **IN PROGRESS ON `claude-work`, NOT ON `main` (which is v0.9.44): NO PAINT UNDER A SKIRT -- THE SHEET IS THE SKIRT, A SHELL
-  ROUND HER** (Joshua, 2026-11-17: "I would do 0% fit for the pencil skirt. Did you remove all the paint under the skirts?
-  That would allow more flexibility for undergarments or none for birth, etc…"; "basically create a shell around the body as
-  the skirt"; "Sounds good and will wait until you're all done with the 7 skirts"; then, short of usage: "will need to stop
-  for now… you can save and resume later"). SAVED UNFINISHED. UNTIL THIS IS FINISHED AND THIS SECTION REWRITTEN, WHAT IS
-  WRITTEN BELOW OF A SKIRT'S PAINTED PART IS v0.9.44's AND NO LONGER SO ON THIS BRANCH ("a short painted on her", "ITS PAINTED
-  PART IS THE UNDER-BELLY LEGGINGS CUT SHORT", "ITS PAINTED PART'S LEGS", `paintedLegs`, `SKIRT_PAINT`, `setDial`,
-  `laySkirtPaint`, `skirtPaint`, `SKIRT_UNDER_LEGS`: all taken out), and "ASKED OF HIM: whether the pencil outfit should
-  come at a FIT under 1" is answered: 0.
-  - WHAT IS IN THE CODE: the seven outfits (`sarahLabTool.ts` `SKIRTS`, `TEE_SKIRTS`) paint nothing under the skirt -- the
-    four skirts wear the grey crop tee alone, the three with the cloth tee paint nothing -- and say the skirt's colour
-    themselves (`BuiltInOutfit.skirtTint`, a tint of the ATHLETIC knit; `syncSkirt`). THE PENCIL IS `fit: 0`. An undergarment
-    is whatever bottom is added in the Outfit tab, or none. `SKIRT_UNDER_BAND` stays as the STYLE whose waistband line a low
-    ring is laid on (`fabricPanel.hoopOn`), worn or not. A look saved in a skirt before keeps the short it was saved with.
+- **NO PAINT UNDER A SKIRT BUT HER UNDERWEAR -- THE SHEET IS THE SKIRT, A SHELL ROUND HER** (Joshua, 2026-11-17: "I would do
+  0% fit for the pencil skirt. Did you remove all the paint under the skirts? That would allow more flexibility for
+  undergarments or none for birth, etc…"; "basically create a shell around the body as the skirt"; 2026-11-19: "maybe for
+  all skirts add the Athletic Bikini 👙 Bottom… so she has underwear but can be removed if wanted later"). WHAT IS
+  WRITTEN BELOW OF A SKIRT'S PAINTED PART ("a short painted on her", "ITS PAINTED PART IS THE UNDER-BELLY LEGGINGS CUT
+  SHORT", "ITS PAINTED PART'S LEGS", `paintedLegs`, `SKIRT_PAINT`, `setDial`, `laySkirtPaint`, `skirtPaint`,
+  `SKIRT_UNDER_LEGS`) IS v0.9.44's AND TAKEN OUT; the pencil's FIT is answered: 0.
+  - THE SEVEN OUTFITS (`sarahLabTool.ts` `SKIRTS`, `TEE_SKIRTS`) wear HER ATHLETIC BIKINI BOTTOM under the skirt
+    (`SKIRT_UNDERWEAR`: its edging and its fill in the bikini's own fabrics, two paint layers a piece in the Outfit tab
+    takes off) -- the four skirts with the grey crop tee over it, the three with the cloth tee nothing else painted -- and
+    say the skirt's colour themselves (`BuiltInOutfit.skirtTint`, a tint of the ATHLETIC knit; `syncSkirt`). THE PENCIL IS
+    `fit: 0`. `SKIRT_UNDER_BAND` stays as the STYLE whose waistband line a low ring is laid on (`fabricPanel.hoopOn`), worn
+    or not. A look saved in a skirt before keeps the short it was saved with.
+  - HER BIKINI BOTTOM'S BACK SQUATTING (his: "the ABB shape changes and has rough edges when sitting or like squatting…
+    Mainly it's the back end that changes and gets jagged edges… front is sides seem to be okay"). A designed bottom is
+    looked up through her slip; in SQUAT and RECLINE her birth poses' smoothing of her skin (`BIRTH_NORMALS_FIELD`) slides
+    her skin's points along her as well, and behind her a garment rode that slide into teeth. Now a garment rides that
+    smoothing IN FRONT of her and takes its slide off BEHIND her (`SarahLabScene.ts` `GROIN_RIDE`: from 3 cm behind the
+    middle of her opening, all of it by 8 cm; the panel's `poseRide` hook) -- taken off everywhere, black spikes stood
+    beside its front panel. MEASURED in the room: SQUAT from her front, back and three-quarter and RECLINE from her front and
+    side, one smooth line round each leg.
+  - IN SQUAT AND RECLINE A SKIRT RIDES UP (his: "recline and squat would naturally make them sit about mid pelvis to just
+    below the belly line because it would ride up the thighs in real life"): it is cut at LENGTH 0, where her legs part
+    (`SKIRT_RIDES_UP`), and cut again as she goes into those poses and out of them (a change of pose that does not cross
+    that line lays it afresh as before). Its settings are not moved: STAND gives back its length. MEASURED in the room
+    (light skin, 1x, 0%): the pencil, the A-line and the maxi a band round her hips in both (hem 80.6 cm from the floor
+    standing up out of it), their lengths again standing. Points under her skin, SQUAT: the pencil 77 (11.2 mm at the
+    most), the A-line 70 (26.4), the maxi 37 (26) -- where her thighs fold up against her belly; RECLINE 0, 1 and 10.
+    Pictured: no patch of her skin through it from her front, back or side.
   - ON HER (FIT 0) HER SKIN IS THE SHEET'S FLOOR AS WELL (`clothSkirt.ts` `outOfHer`, for `only` too: her places' own slots,
     walked again in the same frame). With no paint and no floor, MEASURED in the room in a stride: 157 to 163 of the pencil's
     2,160 points under her skin, 8.8 to 9.3 mm, her thigh through the skirt.
@@ -383,8 +420,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     thirtieth, six moments 0.2 s apart): points under her skin standing none; striding none, one (a point of a span between
     her thighs, row 12 column 70, 35.9 mm), none, none, none, none; seated one, 1.1 mm. NO PATCH OF HER SKIN ENCLOSED BY THE
     SKIRT in any of eighteen pictures (standing from three sides, the six moments from her back and her front, seated from
-    three: `scripts/room/holes.py`). Her skin 3.4 to 7.6 ms a frame, the "cloth" 0.6 to 1.6 (none is stepped). The four
-    skirts standing from her three-quarter and her back, their top edges close: clean with no painted band.
+    three: `scripts/room/holes.py`). Her skin 3.4 to 7.6 ms a frame, the "cloth" 0.6 to 1.6 (none is stepped). The pencil at
+    FIT 0 standing at six LENGTHs from 0 to 1, its hem 80.6 to 6.0 cm from the floor: clean. 2026-11-19, with her bikini
+    bottom under them: the four skirts standing, the three with the cloth tee from her three-quarter and her back, the
+    pencil and the A-line at 100 and 200% from her side and her back: clean.
   - TWO WRONG READINGS OF MINE, EACH CAUGHT BEFORE A CURE WAS BUILT (the lesson a third and fourth time: READ THE POINTS):
     (1) "a band of her skin over the stool, seated, from her back" is the sheet's OWN underside, lit warm by the room's
     `under` light, seen through the gap between the back of her seat and the stool -- drawn flat with the stool hidden (the
@@ -396,13 +435,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     calf), a dent by its hem from her back; and in strides the points at the backs of her knees (row 25, columns 31, 32 and
     40) stand 12 to 22 mm off their four neighbours' mean, where standing none is over 8.4 (`scripts/room/rough.py`).
     PLANNED, NOT WRITTEN: at the end of `outOfHer`, a point further than 12 mm from its neighbours' mean brought back (to
-    12 squared over its distance; the hem by its two side neighbours). (b) THE RING'S TOP EDGE HAS TEETH SEATED, 3 to 8 mm,
-    at the small of her back (its heights there 78.4, 77.9, 78.6, 77.8 cm; standing it is smooth) -- under paint the painted
-    band's edge was the edge seen. PLANNED: the drawn ring evened along itself, shrink-free (two rounds of 0.5 and -0.53).
-    (c) `SHEET_TAUT.most` (3 cm) is reached in two strides of six and seated.
-  - NOT LOOKED AT YET WITHOUT PAINT: the pencil half-way (FIT 0.5) walking; any skirt on her 100 and 200% bellies; the three
-    with the cloth tee; the A-line, the mini and the maxi walking (bare legs under them are meant). NOT DONE: the seven
-    cards baked again (`ONLY=skirt npm run bake:outfits`); this section rewritten; his pictures at a phone's 2x.
+    12 squared over its distance; the hem by its two side neighbours). (b) THE RING'S TOP EDGE WAVERS SEATED, 1 to 8 mm, at
+    the small of her back (its heights there 78.4, 77.9, 78.6, 77.8 cm; standing it is smooth; on her full skin as well, and
+    with each of her pose's fields switched off in turn). PLANNED: the drawn ring evened along itself, shrink-free (two
+    rounds of 0.5 and -0.53). (c) `SHEET_TAUT.most` (3 cm) is reached in two strides of six and seated. (d) A PAINTED TOP TO
+    HER HIPS worn over a skirt: its hem band stands through the skirt in chips at her hips (a painted top's hem is its
+    drape's band, which no skirt is told of). (e) Her shoes through the maxi's hem (below). (f) The points under her skin
+    squatting (above).
+  - NOT LOOKED AT YET WITHOUT PAINT: the pencil half-way (FIT 0.5) walking; the A-line, the mini and the maxi walking.
   - THE LEAD'S ROOM DRIVER AND ITS READERS ARE KEPT IN `scripts/room/` (they were a session's scratch files, and their paths
     are that session's: set `S` and the repo's path): `room.mjs` opens the built room once and runs posted scripts against
     that one page ("One preview, one page"), `pre.js` its helpers, `n3.js` a batch as an example; `inside*.py` a sheet's

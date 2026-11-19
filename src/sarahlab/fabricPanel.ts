@@ -133,6 +133,9 @@ export const FABRIC_ACTION = Object.freeze({
   trimCustom: 'sarahlab:fabric:trim-colour:custom',
   /** UPLOAD IMAGE: a picture of his own for the piece selected (`pictureStore.ts`). */
   image: 'sarahlab:fabric:image',
+  /** A paint layer up (over the one above it) or down. */
+  layerUp: 'sarahlab:fabric:layer-up',
+  layerDown: 'sarahlab:fabric:layer-down',
   trimFamily: (id: FabricFamilyId) => `sarahlab:fabric:trim-family:${id}`,
   trimColour: (i: number) => `sarahlab:fabric:trim-colour:${i}`,
   match: 'sarahlab:fabric:match',
@@ -153,7 +156,7 @@ export const FABRIC_ACTION = Object.freeze({
   detailAuto: (which: 'nipple' | 'navel' | 'vulva') => `sarahlab:fabric:detail-auto:${which}`,
 });
 export const FABRIC_FIELD = Object.freeze({
-  imageFile: 'fabric-image-file', imageNote: 'fabric-image-note',
+  imageFile: 'fabric-image-file', imageNote: 'fabric-image-note', layerOrder: 'fabric-layer-order',
   nippleKeep: 'fabric-nipple-keep', navelKeep: 'fabric-navel-keep', vulvaKeep: 'fabric-vulva-keep', detailInfo: 'fabric-detail-info',
   style: 'fabric-style', styles: 'fabric-styles', stitch: 'fabric-stitch', opacity: 'fabric-opacity', brush: 'fabric-brush', status: 'fabric-status', pieces: 'fabric-pieces',
 });
@@ -635,6 +638,25 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   trimBox.append(trimHeading, matchRow, trimOwn, trimNote);
   const opacity = slider(FABRIC_FIELD.opacity, OPACITY_RANGE, (v) => set({ opacity: v }));
   const stitch = slider(FABRIC_FIELD.stitch, STITCH_RANGE, (v) => set({ stitch: v }));
+  // ITS PLACE AMONG HER LAYERS (Joshua, 2026-11-19: "make each layer adjustable so you can like place above or below
+  // another layer and maybe set layer 1 as way top and 6 as bottom, and then you can drag or press an arrow to move them
+  // between layers"): layer 1 is drawn over all the others, layer 6 under them; ▲ takes the piece up one, over what was
+  // there, ▼ down one -- into an empty layer as well
+  const orderRow = row(), orderNote = el('span', 'font:600 11px system-ui;opacity:.8;align-self:center');
+  orderNote.dataset.field = FABRIC_FIELD.layerOrder;
+  const moveLayer = (by: 1 | -1) => {
+    const p = bodyPaint(), i = layer(), j = i + by;
+    if (!p || i < 0 || j < 0 || j >= PAINT_LAYER_COUNT) return;
+    p.swapLayers(i, j);
+    const sw = <T,>(xs: T[]) => { const t = xs[i]; xs[i] = xs[j]; xs[j] = t; };
+    sw(templates); sw(paintChoices); sw(details);
+    swapLowLayers(i, j);
+    target = { kind: 'layer', index: j };
+    sync(); refreshTargets(); touched(); void apply();
+  };
+  const upButton = button('▲ UP', FABRIC_ACTION.layerUp, () => moveLayer(1));
+  const downButton = button('▼ DOWN', FABRIC_ACTION.layerDown, () => moveLayer(-1));
+  orderRow.append(orderNote, upButton, downButton);
   const removeRow = row();
   removeRow.append(twoTap('REMOVE PIECE', 'REMOVE? TAP AGAIN', FABRIC_ACTION.remove, () => {
     const p = bodyPaint(), i = layer();
@@ -646,7 +668,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   // a set's two halves in one fabric (the header says how): shown on either half of a set she has on
   const setMatchButton = button('TOP + BOTTOM MATCH', FABRIC_ACTION.setMatch, () => { setMatch = !setMatch; if (setMatch) matchSet(target); draw(); void apply(); touched(); });
   const setMatchRow = row(); setMatchRow.append(setMatchButton);
-  designBox.append(styleBox, fabricHeading, setMatchRow, families, colours, imageRow, imageNote, trimBox, opacity.wrap, stitch.wrap, removeRow);
+  designBox.append(orderRow, styleBox, fabricHeading, setMatchRow, families, colours, imageRow, imageNote, trimBox, opacity.wrap, stitch.wrap, removeRow);
 
   // ---- PAINT
   const paintBox = el('div', 'display:flex;flex-direction:column;gap:8px');
@@ -1042,12 +1064,15 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       const k = kindOf(i);
       if (!k) continue;
       const t = templates[i], name = t ? COVERAGE_TEMPLATES.find((x) => x.id === t.id)?.name ?? t.id : 'Hand painted';
-      out.push({ id: `layer:${i}`, kind: k, title: KIND_TITLE[k], name, target: { kind: 'layer', index: i } });
+      out.push({ id: `layer:${i}`, kind: k, title: `${KIND_TITLE[k]} · L${PAINT_LAYER_COUNT - i}`, name, target: { kind: 'layer', index: i } });
     }
     for (const w of hooks.worn()) out.push({ id: `garment:${w.name}`, kind: garmentKind(w.name), title: KIND_TITLE[garmentKind(w.name)], name: w.label, target: { kind: 'garment', name: w.name } });
-    out.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
+    // (her paint layers in the order they lie on her, the top one first -- Joshua, 2026-11-19: "set layer 1 as way top and
+    // 6 as bottom"; the garments she wears after them, as they always were among themselves)
+    const lay = (p: Piece) => (p.target.kind === 'layer' ? PAINT_LAYER_COUNT - p.target.index : PAINT_LAYER_COUNT + 1 + KIND_ORDER.indexOf(p.kind));
+    out.sort((a, b) => lay(a) - lay(b));
     // an empty layer to start a new piece in (the lowest free one)
-    for (let i = 0; i < PAINT_LAYER_COUNT; i++) if (!kindOf(i)) { out.push({ id: 'new', kind: 'new', title: KIND_TITLE.new, name: `paint layer ${i + 1} of ${PAINT_LAYER_COUNT}`, target: { kind: 'layer', index: i } }); break; }
+    for (let i = 0; i < PAINT_LAYER_COUNT; i++) if (!kindOf(i)) { out.push({ id: 'new', kind: 'new', title: KIND_TITLE.new, name: `layer ${PAINT_LAYER_COUNT - i} of ${PAINT_LAYER_COUNT}`, target: { kind: 'layer', index: i } }); break; }
     return out;
   }
   const idOf = (t: Target) => (t.kind === 'layer' ? (kindOf(t.index) ? `layer:${t.index}` : 'new') : `garment:${t.name}`);
@@ -1088,6 +1113,15 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       b.style.background = on ? 'var(--sl-on-soft,#3a2c10)' : 'var(--sl-btn,#151b23)'; b.style.borderColor = on ? GOLD : 'var(--sl-btn-line,#ffffff30)'; b.setAttribute('aria-pressed', String(on));
     }
     for (const [s, b] of spaceButtons) press(b, s === space);
+    {
+      const on = onLayer && i >= 0 && !!kindOf(i);
+      orderRow.style.display = on ? 'flex' : 'none';
+      if (on) {
+        orderNote.textContent = `LAYER ${PAINT_LAYER_COUNT - i} of ${PAINT_LAYER_COUNT} · 1 is on top`;
+        upButton.disabled = i >= PAINT_LAYER_COUNT - 1; downButton.disabled = i <= 0;
+        upButton.style.opacity = upButton.disabled ? '.4' : '1'; downButton.style.opacity = downButton.disabled ? '.4' : '1';
+      }
+    }
     designBox.style.display = space === 'design' ? 'flex' : 'none';
     paintBox.style.display = space === 'paint' ? 'flex' : 'none';
     saveBox.style.display = space === 'save' ? 'flex' : 'none';
@@ -1633,6 +1667,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   const lowInnerSeen: ({ spec: LowSpec; pos: number; push: number; slip: number; weights: number; swing: number; fold: number } | null)[] = Array.from({ length: PAINT_LAYER_COUNT }, () => null);
   let lowBandMs = 0, lowBandTold = 0, lowStretch: Float32Array | null = null;
   const lowMoons: ([FrontMoon, FrontMoon] | null)[] = Array.from({ length: PAINT_LAYER_COUNT }, () => null);
+  /** A drawn bottom's band worked out for layers `a` and `b` let go, to be worked out again where each now is. */
+  function swapLowLayers(a: number, b: number): void {
+    for (const k of [a, b]) { lowSpecs[k] = null; lowSwings[k] = 0; lowInner[k] = null; lowInnerSeen[k] = null; lowMoons[k] = null; lowInnerKept[k] = new Int32Array(0); }
+  }
   function layLowBand(): void {
     const body = hooks.body(), frame = body && lowOf?.mesh === body ? lowOf.frame : null;
     if (!body || !frame) return;

@@ -21,3 +21,28 @@ describe('six paint layers, two to a number', () => {
     expect(out[3]).toBe(128);
   });
 });
+
+import * as THREE from 'three';
+import { BodyPaint, packLayer, PAINT_ATTRIBUTE } from '../src/sarahlab/bodyPaint';
+
+// Joshua, 2026-11-19: "make each layer adjustable so you can like place above or below another layer"
+describe('two layers change places', () => {
+  it('their weights swap, the packed attribute follows, and UNDO brings each back in its new place', () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * 3), 3));
+    g.setIndex([0, 1, 2]);
+    const paint = new BodyPaint(new THREE.Mesh(g) as unknown as THREE.SkinnedMesh);
+    paint.weights.set([1, 0, 0, 0, 0, 0.5, /**/ 1, 0, 0, 0, 0, 0, /**/ 0, 0, 0, 0, 0, 0]);
+    paint.checkpoint(0);
+    paint.weights[0] = 0.2;
+    paint.swapLayers(0, 5);
+    expect(Array.from(packLayer(paint.weights, 5))).toEqual([51, 255, 0]);
+    expect(Array.from(packLayer(paint.weights, 0))).toEqual([128, 0, 0]);
+    const a = g.getAttribute(PAINT_ATTRIBUTE).array as Float32Array;
+    expect(paintAt(a, 0, 5)).toBeCloseTo(0.2, 2);
+    expect(paintAt(a, 0, 0)).toBeCloseTo(0.5, 2);
+    // the step kept for layer 0 is layer 5's now
+    expect(paint.undo()).toBe(5);
+    expect(Array.from(packLayer(paint.weights, 5))).toEqual([255, 255, 0]);
+  });
+});

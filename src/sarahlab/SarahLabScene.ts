@@ -379,6 +379,8 @@ import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
  * her thighs, her hips' and knees' turns and smoothing, her seat. What a designed garment rides as it rides her bones
  * (`fabricPanel.ts`'s `poseFields`); every other field is her own shape, whose slides along her skin are her slip.
  */
+/** The poses a skirt has ridden up her thighs in (`syncSkirt`). */
+const SKIRT_RIDES_UP: ReadonlySet<string> = new Set(['squat', 'recline']);
 const POSE_SHAPE_FIELDS: readonly string[] = Object.freeze([BIRTH_THIGHS_FIELD, BIRTH_GAP_FIELD, BIRTH_SEAT_FIELD, BIRTH_ROOM_FIELD, BIRTH_NORMALS_FIELD, BIRTH_KNEES_FIELD, KNEE_TURN_FIELD, HIP_TURN_FIELD, BIRTH_CONTACT_FIELD]);
 /**
  * WHAT OF HER GROIN'S SMOOTHING A DRAWN GARMENT RIDES (`birthNormals.ts`): in front of her it rides it, as all of her
@@ -3068,7 +3070,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * probe asks for one), taken off with it. A garment of its own, with no paint under it (`sarahLabTool.ts` `SKIRTS`).
    */
   function syncSkirt(): void {
-    const own = OUTFITS[outfit], want = skirtProbe ?? (recovered && own?.skirt ? skirtWorn ?? clampSkirt(own.skirt) : null);
+    const own = OUTFITS[outfit], asWorn = skirtProbe ?? (recovered && own?.skirt ? skirtWorn ?? clampSkirt(own.skirt) : null);
+    // IN SQUAT AND RECLINE IT HAS RIDDEN UP HER THIGHS (Joshua, 2026-11-19: "recline and squat would naturally make them
+    // sit about mid pelvis to just below the belly line because it would ride up the thighs in real life"): drawn at its
+    // shortest, its hem where her legs part, its top where it always is; its own LENGTH is kept and is back when she
+    // stands (`SKIRT_RIDES_UP`)
+    const want = asWorn && SKIRT_RIDES_UP.has(pose) ? { ...asWorn, length: 0 } : asWorn;
     const body = clothBody();
     if (!want || !loaded || !body || !model) { if (skirtRoom) { skirtRoom.dispose(); skirtRoom = null; skirtKey = ''; skirtNavel = null; if (garmentRoom) { garmentRoom.cloth.over = null; garmentRoom.cloth.belt = null; garmentRoom.cloth.hidden = null; } } return; }
     // its colour: the outfit's own skirt's (`BuiltInOutfit.skirtTint`); a probe's skirt over some other outfit takes that outfit's first paint layer's
@@ -9041,7 +9048,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // settling kept and nothing laid afresh: 63.6 and 74.4.) NOT FIXED: a skirt too narrow for her stride begins
           // a walk badly either way. What would mend it is her legs' jump itself, taken over several of the cloth's
           // own steps (or her pose eased into the walk): not tried.
-          if (pose !== skirtPoseKey) { skirtPoseKey = pose; if (!sitMoving) skirtRoom.restart(); }
+          // (into SQUAT or RECLINE, or out of them: cut again on the next frame, ridden up or let down -- `SKIRT_RIDES_UP`)
+          if (pose !== skirtPoseKey) { const rode = SKIRT_RIDES_UP.has(skirtPoseKey); skirtPoseKey = pose; if (rode !== SKIRT_RIDES_UP.has(pose)) { skirtRecut = true; skirtRecutAge = SKIRT_RECUT_AFTER; } else if (!sitMoving) skirtRoom.restart(); }
           // WORN WITH THE CLOTH TEE (`clothLayers.ts`): tucked, the skirt's floors are raised over the tee; untucked, the
           // tee's over the skirt. Each reads the other as it stood a frame ago at the most.
           const tee = garmentRoom?.cloth ?? null, skirt = skirtRoom;

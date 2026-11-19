@@ -256,6 +256,17 @@ export class BodyPaint {
     return step.layer;
   }
 
+  /**
+   * Layers `a` and `b` change places (Joshua, 2026-11-19: "make each layer adjustable so you can like place above or below
+   * another layer"): their weights, and UNDO's and REDO's steps for each go with them.
+   */
+  swapLayers(a: number, b: number): void {
+    if (a === b) return;
+    for (let v = 0; v < this.weights.length; v += PAINT_LAYER_COUNT) { const t = this.weights[v + a]; this.weights[v + a] = this.weights[v + b]; this.weights[v + b] = t; }
+    for (const s of [this.undoStack, this.redoStack]) for (const step of s) step.layer = step.layer === a ? b : step.layer === b ? a : step.layer;
+    this.changed();
+  }
+
   /** The layer becomes `coverage` (a template), with any lone stray vertices along its edges cleaned up. */
   setLayer(layer: number, coverage: Float32Array): void {
     const g = this.mesh.geometry as THREE.BufferGeometry;
