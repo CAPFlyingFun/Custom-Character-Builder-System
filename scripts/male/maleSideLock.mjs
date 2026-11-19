@@ -12,7 +12,7 @@
  * up goes to the bones that already hold the point, in their own proportions. His weights are 32-bit numbers (hers are
  * bytes), so they are scaled as numbers. Nothing else in the file changes.
  *
- * FIRST HIS ARMPITS ARE WEIGHTED AS HERS WERE (`scripts/sarahV2ArmWeights.mjs`, 2026-10-15: the arm's share solved along
+ * FIRST HIS ARMPITS ARE WEIGHTED AS HERS WERE (`scripts/male/maleArmWeights.mjs`, her `sarahV2ArmWeights.mjs` of 2026-10-15 with his own numbers: the arm's share solved along
  * the skin round each shoulder, the shoulder's top kept, and the raised-arm tucks armRaiseL / armRaiseR made): MEASURED in the
  * room with only the lock, his T-POSE still stood in flaps from his back to his arms -- the back of his torso dragged up with
  * the arm, as hers was before that script. Then the lock, which fades the two tucks with his arm's share.
@@ -21,7 +21,7 @@
  */
 import { NodeIO } from '@gltf-transform/core';
 import { sideRegions, fadeOf, SIDE_LOCK, SIDE_LOCK_SHAPES } from '../sarahV2SideLock.mjs';
-import { sarahV2ArmWeights } from '../sarahV2ArmWeights.mjs';
+import { maleArmWeights } from './maleArmWeights.mjs';
 
 export const MALE_SOURCE = 'assets-archive/models/male-base-touched.glb';
 export const MALE_ROOM_FILE = 'public/models/male-base.glb';
@@ -68,7 +68,7 @@ export function lockFloatWeights(weights, joints, isArm, fade) {
 
 export async function maleSideLock(src = MALE_SOURCE, dst = MALE_ROOM_FILE, lock = SIDE_LOCK) {
   const armed = dst.replace(/\.glb$/, '.arms-tmp.glb');
-  await sarahV2ArmWeights(src, armed);
+  await maleArmWeights(src, armed);
   const io = new NodeIO(), doc = await io.read(armed), body = readMale(doc);
   (await import('node:fs')).rmSync(armed);
   if (body.mesh.getExtras()?.sideLock) throw new Error(`${src} already carries the lock`);
