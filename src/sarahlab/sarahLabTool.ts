@@ -49,6 +49,12 @@ export const SARAH_V2_HAIR_MODEL = 'models/sarah-v2-hair.glb';
  * only, so nothing on it is flesh.
  */
 export const SARAH_SKELETON_MODEL = 'models/sarah-skeleton.glb';
+/**
+ * THE MALE BASE MODEL (Joshua, 2026-11-19: "Can we work on the male character now?"; of the two male files, "go with 2"):
+ * `assets-archive/models/male-base-touched.glb`, copied as it is. Meshy's rig, 69 bones -- one more than hers, so every
+ * bone after it is named one further on: the room finds his bones BY ROLE (`measureHuman`), never by her names.
+ */
+export const MALE_BASE_MODEL = 'models/male-base.glb';
 /** A model rigged with its arms level (v1 and the skeleton): T-POSE is its bind, and ARMS has nothing to raise. */
 export function levelArmsModel(modelId: string): boolean {
   return modelId === 'v1' || modelId === 'skeleton';
@@ -82,6 +88,7 @@ export function sarahModelPath(entry: { readonly id: string; readonly path: stri
 export const SARAH_LAB_MODELS = Object.freeze([
   Object.freeze({ id: 'v2-body', path: SARAH_V2_BODY_MODEL }),
   Object.freeze({ id: 'skeleton', path: SARAH_SKELETON_MODEL }),
+  Object.freeze({ id: 'male-base', path: MALE_BASE_MODEL }),
 ]);
 
 /**
@@ -107,7 +114,9 @@ export const SARAH_LAB_MODELS_OFF_MENU: ReadonlySet<string> = new Set(['skeleton
 /** How many models MODEL can step between: the room shows the button only when there is a choice. */
 export const modelsOnMenu = (): number => SARAH_LAB_MODELS.filter((m) => !SARAH_LAB_MODELS_OFF_MENU.has(m.id)).length;
 /** What a model is called on screen. Her approved body is the FEMALE BASE MODEL; the others go by their ids (a probe's). */
-export const MODEL_NAMES: Readonly<Record<string, string>> = Object.freeze({ 'v2-body': 'Female Base Model' });
+export const MODEL_NAMES: Readonly<Record<string, string>> = Object.freeze({ 'v2-body': 'Female Base Model', 'male-base': 'Male Base Model' });
+/** Which base model is male (Joshua, 2026-11-13: "once we add in the Male model, can just add two buttons (Male/Female)"). */
+export const isMaleModel = (id: string): boolean => id === 'male-base';
 export const modelName = (id: string): string => MODEL_NAMES[id] ?? id;
 /** The model MODEL steps to from `index`: the next one on the menu (`all`: the next one, on it or not). */
 export function nextModel(index: number, all = false): number {
@@ -191,6 +200,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   birth: 'sarahlab:birth-',
   outfit: 'sarahlab:outfit',
   model: 'sarahlab:model',
+  /** `${baseModel}female` / `${baseModel}male`: the FEMALE and MALE buttons */
+  baseModel: 'sarahlab:base:',
   refine: 'sarahlab:refine',
   bellyCurve: 'sarahlab:belly-curve',
   armSide: 'sarahlab:armside',

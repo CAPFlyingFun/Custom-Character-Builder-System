@@ -364,7 +364,7 @@ import { LIGHT_BODY_TRIANGLES,
   SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, followingGarment, OUTFITS, outfitLine, modelLine, nextModel, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
   offeredOutfits, outfitThumbPath,
-  type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn, outfitNamed, modelName, modelsOnMenu,
+  type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn, outfitNamed, modelName, modelsOnMenu, isMaleModel,
   BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE, SKIRT_UNDER_BAND,
 } from './sarahLabTool';
 import { blendJointTurns, sitEase, stepSit } from './poseBlend';
@@ -2331,7 +2331,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       buttons.model.textContent = modelLine(modelIndex);
       // one model on the menu is no choice: no button until there is another (Joshua, 2026-11-13: "once we add in the
       // Male model, can just add two buttons (Male/Female)"); a probe still steps through them all
-      buttons.model.style.display = modelsOnMenu() > 1 || new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth' ? '' : 'none';
+      // (the two base models have a button each since the male one came: MODEL stays for a probe)
+      buttons.model.style.display = new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth' ? '' : 'none';
+    }
+    for (const sex of ['female', 'male'] as const) {
+      const b = buttons[`base-${sex}`];
+      if (!b) continue;
+      b.style.display = modelsOnMenu() > 1 ? '' : 'none';
+      lit(b, isMaleModel(SARAH_LAB_MODELS[modelIndex].id) === (sex === 'male'));
     }
     if (buttons.pregnant) { buttons.pregnant.textContent = pregnantLine(pregnancy); lit(buttons.pregnant, pregnant()); }
     if (buttons.opening) { buttons.opening.textContent = openingLine(skeletonOpening); buttons.opening.style.display = v2OrganBones ? '' : 'none'; lit(buttons.opening, skeletonOpening); }
@@ -2852,7 +2859,27 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** The room is usable once the GPU has her: compile what is new, then two frames drawn, then the card goes. */
   function settle(): void {
     const b = batch;
-    void ctx.renderer.gl.compileAsync(three, camera).catch(() => {}).then(() => { if (b === batch) { readyBatch = b; readyIn = 2; } });
+    void compileSafely().then(() => { if (b === batch) { readyBatch = b; readyIn = 2; } });
+  }
+  /**
+   * The renderer's `compileAsync`, but a material let go while it waits is left out (a fault found switching to the male
+   * base model, 2026-11-19: three's own polls a program the material no longer has, and throws in a timer -- "Cannot read
+   * properties of undefined (reading 'isReady')" -- as the body before is disposed under it).
+   */
+  function compileSafely(): Promise<void> {
+    const gl = ctx.renderer.gl;
+    let waiting: Set<THREE.Material>;
+    try { waiting = gl.compile(three, camera) as Set<THREE.Material>; } catch { return Promise.resolve(); }
+    return new Promise((resolve) => {
+      const check = () => {
+        for (const m of waiting) {
+          const program = (gl.properties.get(m) as { currentProgram?: { isReady?: () => boolean } }).currentProgram;
+          if (!program?.isReady || program.isReady()) waiting.delete(m);
+        }
+        if (waiting.size === 0 || disposed) resolve(); else setTimeout(check, 10);
+      };
+      check();
+    });
   }
 
   const offline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -3623,6 +3650,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       armsOverride = pose === 'tpose';
       loadSarah();
     });
+    // FEMALE · MALE (Joshua, 2026-11-13: "once we add in the Male model, can just add two buttons (Male/Female) model")
+    for (const sex of ['female', 'male'] as const) {
+      buttons[`base-${sex}`] = btn(sex === 'male' ? 'MALE' : 'FEMALE', `${SARAH_LAB_ACTION.baseModel}${sex}`, () => {
+        const k = SARAH_LAB_MODELS.findIndex((m) => m.id === (sex === 'male' ? 'male-base' : 'v2-body'));
+        if (k < 0 || k === modelIndex) return;
+        modelIndex = k;
+        armsDeg = levelArmsModel(SARAH_LAB_MODELS[modelIndex].id) || pose === 'tpose' ? 90 : 0;
+        armsOverride = pose === 'tpose';
+        loadSarah();
+      });
+    }
     buttons.refine = btn(refineLine(refine), SARAH_LAB_ACTION.refine, () => { refine = !refine; applyLook(); refresh(); });
     // the belly curve experiment (Joshua, 2026-10-22): CURRENT is the approved slider; the others are for comparing
     const curveLabel = () => `BELLY CURVE · ${BELLY_CURVE_NAMES[bellyCurve]}${bellyCurve === DEFAULT_BELLY_CURVE ? '' : bellyCurve === 'approved' ? ' (backup)' : ' (experiment)'}`;
@@ -3646,8 +3684,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     buttons.babyLie = btn('LIE · AUTO', SARAH_LAB_ACTION.babyLie, () => { babyLie = LIE_MODES[(LIE_MODES.indexOf(babyLie) + 1) % LIE_MODES.length]; if (babyLie === 'random') babyLieSeed = Math.floor(Math.random() * 1e6) + 1; babyDirty = true; babyFitAt = -Infinity; refresh(); });
     // KICK: one of them kicks now (as BABY KICKS makes them on their own)
     buttons.babyKick = btn('KICK', SARAH_LAB_ACTION.babyKick, () => { const roots = babyRoots(); if (!roots.length) return; const i = Math.floor(Math.random() * roots.length); startMove(babyMoveOf(i, roots[i]), 'kick'); });
-    for (const b of [buttons.model, buttons.refine, buttons.bellyCurve, buttons.outfit, buttons.armSide, buttons.bounce, buttons.pregnant, buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) { b.style.padding = '8px 10px'; b.style.fontSize = '12px'; row.appendChild(b); }
-    for (const [b, tab] of [[buttons.model, 'body'], [buttons.refine, 'body'], [buttons.bellyCurve, 'body'], [buttons.outfit, 'outfit'], [buttons.armSide, 'pose'], [buttons.bounce, 'pose'], [buttons.pregnant, 'body'], [buttons.baby, 'body'], [buttons.babies, 'body'], [buttons.babyLie, 'body'], [buttons.babyKick, 'body']] as const) b.dataset.tab = tab;
+    for (const b of [buttons['base-female'], buttons['base-male'], buttons.model, buttons.refine, buttons.bellyCurve, buttons.outfit, buttons.armSide, buttons.bounce, buttons.pregnant, buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) { b.style.padding = '8px 10px'; b.style.fontSize = '12px'; row.appendChild(b); }
+    for (const [b, tab] of [[buttons['base-female'], 'body'], [buttons['base-male'], 'body'], [buttons.model, 'body'], [buttons.refine, 'body'], [buttons.bellyCurve, 'body'], [buttons.outfit, 'outfit'], [buttons.armSide, 'pose'], [buttons.bounce, 'pose'], [buttons.pregnant, 'body'], [buttons.baby, 'body'], [buttons.babies, 'body'], [buttons.babyLie, 'body'], [buttons.babyKick, 'body']] as const) b.dataset.tab = tab;
     right.appendChild(row);
     // the baby's week, length and weight, while it is shown
     babyNote = document.createElement('div');
@@ -6333,7 +6371,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function armShareOf(mesh: THREE.SkinnedMesh): Float32Array {
     if (breathArm?.mesh === mesh) return breathArm.share;
     const bones = mesh.skeleton.bones, arm = new Uint8Array(bones.length);
-    bones.forEach((b, k) => { for (let q: THREE.Object3D | null = b; q; q = q.parent) if (q.name === 'Bone_021' || q.name === 'Bone_026') { arm[k] = 1; break; } });
+    // (by role, not by her names: his rig has a bone more than hers, and every name after it is one on)
+    const upper = new Set(measure ? [bones[measure.joints.shoulderL], bones[measure.joints.shoulderR]].filter(Boolean).map((b) => b.name) : ['Bone_021', 'Bone_026']);
+    bones.forEach((b, k) => { for (let q: THREE.Object3D | null = b; q; q = q.parent) if (upper.has(q.name)) { arm[k] = 1; break; } });
     const g = mesh.geometry, SI = g.getAttribute('skinIndex'), SW = g.getAttribute('skinWeight'), n = g.getAttribute('position').count, share = new Float32Array(n);
     if (SI && SW) for (let i = 0; i < n; i++) { let a = 0; for (let c = 0; c < 4; c++) a += arm[SI.getComponent(i, c)] ? SW.getComponent(i, c) : 0; share[i] = a; }
     breathArm = { mesh, share };
