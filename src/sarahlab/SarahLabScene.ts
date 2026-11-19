@@ -142,7 +142,7 @@ import { StepWatch, TileSteps } from './footsteps';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
-import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape, footOffDeg } from './baby';
+import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, kickStage, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape, footOffDeg } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { JIGGLE_ATTRIBUTE, PUBIC_PRESS, PUSH_ATTRIBUTE, pubicPressWant, setPush, jiggleAt, jiggleOf as jiggleOfMesh, legWeight, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type Jiggle, type SoftBellyWant } from './softBody';
 import { createVulvaPatch, VULVA_OPEN, VULVA_TRY, type VulvaPatch } from './vulvaMesh';
@@ -1137,6 +1137,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   interface BabyMove { kind: MoveKind; side: 'left' | 'right'; t: number; next: number; pending: MoveKind; rnd: () => number; bones: Map<string, THREE.Bone>; rest: Map<string, THREE.Quaternion>; posed: boolean }
   let babyMoves: BabyMove[] = [], babyCurlRest: Map<string, THREE.Quaternion> | null = null;
+  /** How often they move and how big a kick shows on her belly, at her week (baby.ts `kickStage`, `KICK_WEEKS`): worked out each step. */
+  let kickNow = { often: 1, seen: 1 };
   /**
    * THE CORD AND THE PLACENTA (baby.ts): its navel (the trunk bone it rides, where on it, and where it is in the curl,
    * model units), each baby's placenta and cord, and what draws them (SEE BABY only: nothing of it shows from outside).
@@ -6531,15 +6533,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const vRel = (A.vx - B.vx) * moveAxis.x + (A.vy - B.vy) * moveAxis.y + (A.vz - B.vz) * moveAxis.z;
       if (vRel > 0) { const h = vRel / 2; A.vx -= moveAxis.x * h; A.vy -= moveAxis.y * h; A.vz -= moveAxis.z * h; B.vx += moveAxis.x * h; B.vy += moveAxis.y * h; B.vz += moveAxis.z * h; }
     }
-    // their moves: each baby's under way runs on; its next comes when it is due (BABY KICKS: how often)
+    // their moves: each baby's under way runs on; its next comes when it is due (BABY KICKS: how often -- of how often
+    // they move at her week, none before it: `kickStage`)
+    kickNow = carrying() ? kickStage(herWeek(sized(), babyCount, pregnancy), herChart(babyCount, pregnancy).deliveryWeek) : { often: 1, seen: 1 };
+    const kicks = body.babyKicks * kickNow.often;
     roots.forEach((r, i) => {
       const m = babyMoveOf(i, r);
       if (m.t >= 0) {
         m.t += dt;
-        if (m.t > moveLength(m.kind)) { m.t = -1; const n = nextMove(m.rnd, body.babyKicks, m.kind); m.next = n.inS; m.pending = n.kind; }
-      } else if (!(kicksShare(body.babyKicks) > 0)) m.next = Infinity;
+        if (m.t > moveLength(m.kind)) { m.t = -1; const n = nextMove(m.rnd, kicks, m.kind); m.next = n.inS; m.pending = n.kind; }
+      } else if (!(kicksShare(kicks) > 0)) m.next = Infinity;
       else {
-        if (!Number.isFinite(m.next)) { const n = nextMove(m.rnd, body.babyKicks); m.next = n.inS; m.pending = n.kind; }
+        if (!Number.isFinite(m.next)) { const n = nextMove(m.rnd, kicks); m.next = n.inS; m.pending = n.kind; }
         m.next -= dt;
         if (m.next <= 0) startMove(m, m.pending);
       }
@@ -7048,7 +7053,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (!tip || !babyWomb) return;
       // where the tip is in her rest frame, her womb's own place (the belly's swing taken off)
       restOf(tip, moveTip);
-      const amp = kickOnSkin(babyWomb, moveTip, 0.012 * (r.scale.x / 0.33), moveAt, moveOut);
+      // (how big it shows on her belly at her week: none before `KICK_WEEKS.seen`)
+      const amp = kickNow.seen * kickOnSkin(babyWomb, moveTip, 0.012 * (r.scale.x / 0.33), moveAt, moveOut);
       if (amp > 0 && i < K.length) { K[i].set(moveAt.x, moveAt.y, moveAt.z, amp); D[i].set(moveOut.x, moveOut.y, moveOut.z, KICK_WIDE_M * Math.min(1.2, Math.max(0.6, r.scale.x / 0.33))); }
       // into another baby: it is nudged away, and the fluid takes it up
       if (babySolidOf) roots.forEach((o, j) => {

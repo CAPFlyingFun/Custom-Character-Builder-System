@@ -1515,6 +1515,23 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   same either way -- 51.0 cm, 3.46 kg, 1% smaller to fit -- on the chart at her 100% and by the rule at her 120%.
 - After anything changes the rule, her chart or the panel: `tests/pregnancyRule.test.ts`, `tests/pregnantToggle.test.ts`.
 
+## Her baby's kicks by her week
+
+- **They follow her week, as a real pregnancy's do** (Joshua, 2026-11-19: "Baby kicks should follow her pregnancy week…
+  Right now the baby moves and kicks show on her belly at any week"). `baby.ts` `kickStage(week, deliveryWeek)`,
+  `KICK_WEEKS`; the room works it out each step from her chart (`herWeek`, `herChart().deliveryWeek`: a typed week, her
+  START, BIGGEST and delivery week) and scales how often her babies move (`often`, times BABY KICKS) and how big a kick
+  shows on her belly (`seen`): none before week 16; felt, rare, and nothing on her belly to week 22, `firstFelt` (19, HIS
+  TUNING NUMBER: a first pregnancy's average) the week they reach `felt` of their most; from 22 they show, a quarter size
+  at first, both growing to their most by 28; their most to 36, or to 4 weeks before her delivery week (twins 37,
+  triplets 34) if sooner, then down to 0.8 at it. Twins and triplets the same weeks. BABY KICKS still scales how often,
+  0 none. The KICK button still starts a kick at any week; her belly shows it as her week does.
+- Its sources are in `KICK_WEEKS`' comment: MKUH NHS "Fetal movements in pregnancy" (18 to 20 weeks most; 16 for a woman
+  who has been pregnant before; after 20 for a first; rising to 32 weeks, then level -- NOT less toward the end, so his
+  "a little less" is kept to 0.8), Cleveland Clinic "Quickening", the American Pregnancy Association. Week 22 for a kick
+  seen from outside is his (GAME TUNING): none of them says.
+- `tests/kickWeeks.test.ts`.
+
 ## Her baby's birth
 
 - **While she is pregnant, from RECLINE or SQUAT; no size of belly is asked** (Joshua, 2026-11-02, the two positions;

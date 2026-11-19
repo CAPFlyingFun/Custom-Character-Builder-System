@@ -1395,6 +1395,48 @@ export function moveEnvelope(kind: MoveKind, t: number): number {
 }
 export const moveLength = (kind: MoveKind): number => MOVES[kind].rise + MOVES[kind].hold + MOVES[kind].fall;
 
+/**
+ * KICKS BY HER WEEK (Joshua, 2026-11-19: "Baby kicks should follow her pregnancy week, the way a real pregnancy does";
+ * "No movement at all before about week 16"; "Make 19 weeks the average week the first movement is felt (a first
+ * pregnancy), and keep it in one tuning number I can change"; "From about week 22, kicks can show on the outside of her
+ * belly, small at first, getting stronger and more often… up to the strongest around weeks 28 to 36, then a little less
+ * room and a little less often near her delivery week"; "Twins and triplets follow the same weeks").
+ * - `firstMove` 16: none before. BIOLOGICAL SHAPE: felt "from 16 weeks" by a woman who has been pregnant before (MKUH NHS,
+ *   "Fetal movements in pregnancy"; Cleveland Clinic, "Quickening": "by about 16 weeks in pregnancy").
+ * - `firstFelt` 19: the week a first pregnancy's first movement is felt on average -- HIS TUNING NUMBER. BIOLOGICAL SHAPE:
+ *   "most women first notice movement at 18-20 weeks", a first-time mother "after 20 weeks" (MKUH NHS); "common not to
+ *   feel movement until 20 weeks" (Cleveland Clinic); a first-time mother "around 18-20 weeks" (American Pregnancy
+ *   Association). Between `firstMove` and `seen` she feels them and nothing shows on her belly (`seen` 0).
+ * - `seen` 22: kicks show on her belly from here, `seenFrom` of their full size at first. GAME TUNING (his week; the
+ *   sources above do not say when a kick can be seen from outside).
+ * - `full` 28 to `crowdFrom` 36: at their strongest and most often. BIOLOGICAL SHAPE: "the number of movements tends to
+ *   increase until 32 weeks", then "stays roughly the same" (MKUH NHS) -- his 28 to 36 round that.
+ * - from `crowd` weeks before her delivery week (her chart's: 40, twins 37, triplets 34, or typed) to it, `late` of the
+ *   strongest, how often and how big. GAME TUNING, his "a little less room": the NHS says movements do NOT lessen before
+ *   labour, only their kind changes -- so it is a little (0.8), and never none.
+ * - `felt`: how often at `firstFelt` (rare), `beforeSeen` at `seen`, each of the strongest. GAME TUNING.
+ */
+export const KICK_WEEKS = Object.freeze({ firstMove: 16, firstFelt: 19, seen: 22, full: 28, crowdFrom: 36, crowd: 4, felt: 0.15, beforeSeen: 0.35, seenFrom: 0.25, late: 0.8 });
+
+/**
+ * At her week (her chart's: `herWeek`) with her delivery week: `often`, how often they move (of BABY KICKS' own; 0 none),
+ * and `seen`, how big a kick shows on her belly (of `KICK_MOST_M`'s; 0 nothing). Twins and triplets the same weeks.
+ */
+export function kickStage(week: number, deliveryWeek = 40, k: Readonly<Record<keyof typeof KICK_WEEKS, number>> = KICK_WEEKS): { often: number; seen: number } {
+  if (!(week >= k.firstMove)) return { often: 0, seen: 0 };
+  const ramp = (w: number, w0: number, w1: number, a: number, b: number) => (w1 > w0 ? a + (b - a) * Math.min(1, Math.max(0, (w - w0) / (w1 - w0))) : b);
+  const felt = Math.max(k.firstMove, Math.min(k.firstFelt, k.seen));
+  // (crowded from `crowd` weeks before her delivery, never before her strongest weeks begin and never after `crowdFrom`)
+  const deliver = Number.isFinite(deliveryWeek) ? deliveryWeek : 40, from = Math.max(k.full, Math.min(k.crowdFrom, deliver - k.crowd)), to = Math.max(from, deliver);
+  let often: number, seen: number;
+  if (week < felt) { often = ramp(week, k.firstMove, felt, 0, k.felt); seen = 0; }
+  else if (week < k.seen) { often = ramp(week, felt, k.seen, k.felt, k.beforeSeen); seen = 0; }
+  else if (week < k.full) { often = ramp(week, k.seen, k.full, k.beforeSeen, 1); seen = ramp(week, k.seen, k.full, k.seenFrom, 1); }
+  else { often = seen = ramp(week, from, to, 1, k.late); }
+  // (a move begins once anything is due: at `firstMove` itself, the first of them)
+  return { often: Math.max(often, 0.02), seen };
+}
+
 /** BABY KICKS (0..200%) as a share of how often: 0 never, 1 as tuned, 2 twice as often. */
 export const kicksShare = (kicks: number): number => Math.min(200, Math.max(0, Number.isFinite(kicks) ? kicks : 100)) / 100;
 
