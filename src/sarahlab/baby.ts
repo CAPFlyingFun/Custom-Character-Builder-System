@@ -139,7 +139,13 @@ export function herChart(babies: number, p: PregnancyNumbers): HerChart {
   const start = p.firstWeekBump ?? (births ? ruleStart(births) : 0), grown = births ? ruleFirst(n) : dChart;
   let first = start, delivery = p.deliveryBump ?? (births ? ruleBiggest(births, n) : dChart);
   let pin: [number, number] | null = null;
-  if (p.week !== null && p.weekAtBump !== null) {
+  if (p.week !== null && p.weekAtBump !== null && bumpForWeek(p.week, n) <= 0) {
+    // AN EARLY WEEK (12 or under, before her belly shows: Joshua, 2026-11-19, "I want one character to have a 10% starting
+    // belly… But it kept saying she was 12 weeks at 10%"): it is a week of her START, and draws nothing of her chart -- her
+    // START is its belly when that is not typed; one typed above her START is not used
+    if (p.firstWeekBump === null) first = p.weekAtBump;
+    else if (!(p.weekAtBump <= first + 0.5)) unused.push('week');
+  } else if (p.week !== null && p.weekAtBump !== null) {
     const c = bumpForWeek(p.week, n), at = p.weekAtBump;
     let ok = c > 0;
     // (her first week's belly below it, as typed, or moved down out of its way)
@@ -166,10 +172,19 @@ export function chartBump(bumpPercent: number, babies: number, p: PregnancyNumbe
   return cl + (b - hl);
 }
 
-/** The week her belly stands for, off her chart. */
+/**
+ * The week her belly stands for, off her chart. At her START belly that is any week to 12 (her belly does not show before
+ * it: `EARLY_WEEK`), and her chart says the last of them -- unless a week to 12 is typed for that belly, which it says.
+ */
 export function herWeek(bumpPercent: number, babies: number, p: PregnancyNumbers): number {
-  return weekForBump(chartBump(bumpPercent, babies, p), babies);
+  const w = weekForBump(chartBump(bumpPercent, babies, p), babies);
+  if (p.week !== null && p.weekAtBump !== null && p.week < w && bumpForWeek(p.week, babies) <= 0 && Math.round(p.weekAtBump) === Math.round(bumpPercent) && herChart(babies, p).unused.length === 0) return Math.max(1, p.week);
+  return w;
 }
+/** Her belly shows from the week after this: at her START she is anywhere from week 1 to it (the chart's own: BIOLOGICAL SHAPE). */
+export const EARLY_WEEK = 12;
+/** True while her belly is at or under her START: her week is one of 1 to `EARLY_WEEK`, not to be told by her belly. */
+export const atHerStart = (bumpPercent: number, babies: number, p: PregnancyNumbers): boolean => chartBump(bumpPercent, babies, p) <= 0;
 
 export interface BabySize {
   readonly week: number;

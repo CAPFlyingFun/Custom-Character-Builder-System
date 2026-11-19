@@ -1513,7 +1513,13 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   rule reaches a week at a bigger belly. With no count her 60% is week 28.8, and clear. Her baby is never bigger for
   her belly by the rule than on the chart (the chart's % is at most her own: tested), and at full term it is drawn the
   same either way -- 51.0 cm, 3.46 kg, 1% smaller to fit -- on the chart at her 100% and by the rule at her 120%.
-- After anything changes the rule, her chart or the panel: `tests/pregnancyRule.test.ts`, `tests/pregnantToggle.test.ts`.
+- **AT HER START SHE IS WEEKS 1 TO 12** (Joshua, 2026-11-19: "I want one character to have a 10% starting belly, be at
+  150% at 42 weeks, and end up with a belly size of 30%… But it kept saying she was 12 weeks at 10%"). Her belly does not
+  show before week 12 (`EARLY_WEEK`), so her START belly is every week to 12: the panel says `1–12` there, not 12
+  (`atHerStart`). A week to 12 typed at that belly is kept as her week (`herWeek`), and with no START typed that belly IS
+  her START; one typed over a START typed under it is not used, and says so. Her chart past it is as it was.
+  `tests/earlyWeek.test.ts`.
+- After anything changes the rule, her chart or the panel: `tests/pregnancyRule.test.ts`, `tests/pregnantToggle.test.ts`, `tests/earlyWeek.test.ts`.
 
 ## Her baby's kicks by her week
 

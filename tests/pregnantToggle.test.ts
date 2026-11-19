@@ -69,8 +69,10 @@ describe('her weeks: her own chart', () => {
     expect(herWeek(chart.deliveryBump, 1, big)).toBeCloseTo(40, 9);
   });
   it('a typed number that cannot be on one chart with the others is not used, and says so', () => {
-    expect(herChart(1, typeWeek(PREGNANCY_DEFAULT, 10, 20)).unused).toEqual(['week']);
-    expect(herWeek(20, 1, typeWeek(PREGNANCY_DEFAULT, 10, 20))).toBe(weekForBump(20));
+    // (a week before her belly shows typed over a START typed under it: Joshua, 2026-11-19 -- with no START typed, that
+    //  belly is her START, tests/earlyWeek.test.ts)
+    expect(herChart(1, { ...typeWeek(PREGNANCY_DEFAULT, 10, 20), firstWeekBump: 5 }).unused).toEqual(['week']);
+    expect(herWeek(20, 1, { ...typeWeek(PREGNANCY_DEFAULT, 10, 20), firstWeekBump: 5 })).toBe(herWeek(20, 1, { ...PREGNANCY_DEFAULT, firstWeekBump: 5 }));
     expect(herChart(1, { ...typeWeek(PREGNANCY_DEFAULT, 30, 40), firstWeekBump: 50 }).unused).toEqual(['week']);
     expect(herChart(1, typed({ firstWeekBump: 60, deliveryBump: 50 })).unused).toEqual(['delivery']);
   });

@@ -142,7 +142,7 @@ import { StepWatch, TileSteps } from './footsteps';
 import { dropIdleMorphs } from '../view/morphPrune';
 import { BIRTH_CLEFT_FIELD, BIRTH_LIPS_FIELD, birthAreaCentre, birthAreaFields, LIPS_COVERED, patchBirthShade } from './birthArea';
 import { BIRTH_POSES, FLOOR_SIT, blendBirthSpec, poseBirth, type BirthSpec } from '../actor/humanBirth';
-import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, kickStage, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape, footOffDeg } from './baby';
+import { AUTO_LIES, BABIES_NAME, BABY_MODEL, BABY_MODEL_LENGTH, babiesInHer, babiesPast, babySize, growSac, packBabies, type BabyFit, babyLine, babySolid, carriedShare, weekForBump, chartBump, herChart, herWeek, atHerStart, EARLY_WEEK, Cord, cordLength, cordTube, layCordTube, layPlacenta, placentaGeometry, placentaOpen, placentaSpots, curlFrame, floatDrift, floatRoom, floatTune, kickOnSkin, kickStage, KICK_FELT_M, KICK_MOST_M, KICK_WIDE_M, liningPast, kicksShare, moveEnvelope, moveLength, nextMove, poseMove, poseOnHer, poseDescent, poseAlong, poseCradle, BABY_BONES, BABY_NAVEL, BABY_STRAIGHT_MODEL, CORD_CUT, ROLL_RAD, solidDeep, type MoveKind, type CordBody, type PlacentaSpot, LIE_NAME, pushAt, sacAround, sacRadius, WOMB_WALL_M, wombFromSkin, type BabySolid, type BellyPush, type CurlFrame, type Lie, type WombShape, footOffDeg } from './baby';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { JIGGLE_ATTRIBUTE, PUBIC_PRESS, PUSH_ATTRIBUTE, pubicPressWant, setPush, jiggleAt, jiggleOf as jiggleOfMesh, legWeight, navelAfterBirth, navelPressure, restingSoftBelly, softAt, softBellyWant, stepSoftBelly, type Jiggle, type SoftBellyWant } from './softBody';
 import { createVulvaPatch, VULVA_OPEN, VULVA_TRY, type VulvaPatch } from './vulvaMesh';
@@ -2157,7 +2157,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       i.placeholder = inForce; i.disabled = !on; i.style.opacity = on ? '1' : '.4';
     };
     if (weekLabel) weekLabel.textContent = `WEEK AT ${Math.round(size)}%`;
-    put(SARAH_LAB_FIELD.pregnancyWeek, mine ? pregnancy.week : null, pregnant() ? weekText(here) : '–', pregnant());
+    // (at her START her belly does not tell weeks 1 to 12 apart: the box says so, and takes one typed)
+    const early = atHerStart(size, babyCount, pregnancy) && !(mine && chart.unused.length === 0), hereText = early ? `1–${EARLY_WEEK}` : weekText(here);
+    put(SARAH_LAB_FIELD.pregnancyWeek, mine ? pregnancy.week : null, pregnant() ? hereText : '–', pregnant());
     for (const [k, on] of [['week', pregnant() && pregnancy.week !== null], ['first', pregnancy.firstWeekBump !== null], ['delivery', pregnancy.deliveryBump !== null], ['deliveryWeek', pregnancy.deliveryWeek !== null], ['after', pregnancy.afterBump !== null], ['births', pregnancy.births !== null]] as const) {
       const b = buttons[`${SARAH_LAB_ACTION.pregnancyClear}${k}`];
       if (b) { b.disabled = !on; b.style.opacity = on ? '1' : '.4'; }
@@ -2176,8 +2178,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const forBabies = BABIES_NAME[babyCount] === 'ONE' ? 'one baby' : BABIES_NAME[babyCount].toLowerCase();
     const from = mine ? 'as typed' : nothingTyped(pregnancy) ? (chart.ruled ? `by her baby counter, for ${forBabies}` : `the chart's for ${forBabies}`) : 'off her chart';
     const pinned = pregnancy.week !== null && !mine && pregnancy.weekAtBump !== null ? ` · ${weekText(pregnancy.week)} wk typed for ${Math.round(pregnancy.weekAtBump)}%` : '';
-    const unused = chart.unused.map((u) => u === 'week' ? ' · the typed week is not used: it must be past week 12 and its belly % between her START and her BIGGEST' : ' · her BIGGEST is not used: it must be above her START').join('');
-    line.textContent = `her week now ${weekText(here)} (${from})${pinned}${unused}`;
+    const unused = chart.unused.map((u) => u === 'week' ? ` · the typed week is not used: a week to ${EARLY_WEEK} is for her START belly, a later one's belly % between her START and her BIGGEST` : ' · her BIGGEST is not used: it must be above her START').join('');
+    line.textContent = early ? `her week now 1–${EARLY_WEEK}: at her START her belly does not show yet (type her week to say which)${pinned}${unused}` : `her week now ${weekText(here)} (${from})${pinned}${unused}`;
   }
   /** The Library's line of what is kept on this device, and the notice over the stage (there only when it says something). */
   function refreshDevice(): void {
