@@ -119,6 +119,28 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - A drawing sheet's marks are carried back to her skin by its corner squares and `sheets.json` (the sheets' script),
   each to its pixel's own place on her legs-apart skin, as the room looks that pixel up.
 
+## A picture of his own on a piece, and exporting characters
+
+- **UPLOAD IMAGE is in the fabric section of the piece selected** (Joshua, 2026-11-19: "why I can't upload my own textures
+  to replace the default textures/solid color? It asks where the texture goes, but it should be for that top/bottom,
+  etc… and what's selected"; "I tried loading and nothing happens"). The old TEXTURE · custom image panel
+  (`garmentTexturePanel.ts`, taken out) chose among the old modelled garments by name: nothing she wears now is one, so
+  an upload found nothing, and choosing in it could put an old modelled outfit on her. Now a picture is a FABRIC CHOICE
+  of the selected piece (`FabricPick.image`, its family FLAT): painted tops and bottoms and the cloth tee wear it, tiled
+  `IMAGE_TILE_CM` (25 cm, GAME TUNING) at STITCH 1; a family, a swatch or a colour picked after puts it back. Skirts are
+  one flat colour still and do not wear it ("The skirts": NOT DONE).
+- **It is kept on the device** (Joshua: "Kept with you save a character (held locally in the PWA)"): `pictureStore.ts`,
+  the browser's own database, by an id made from the picture's bytes (made no larger than 1024 a side first). A save
+  holds the id alone.
+- **EXPORT… chooses one, several or all characters** (Joshua: "you can select 1, multiple, or all"; "modify the output to
+  a zip with JSON + image if a custom image was used"): `characterExport.ts`. The shared outfits a chosen character's
+  clothes are based on go with her, or every shared outfit; with no picture of his own it is the .json it always was,
+  with one a .zip of `characters.json` and `pictures/<id>.<ext>`. IMPORT takes either.
+- MEASURED in the room 2026-11-19 (light skin, a phone 430 x 932 at 2x, touch): a picture put on the cloth tee and on the
+  painted leggings by UPLOAD IMAGE; the character saved, the page loaded again and she loaded back in it; exported as a
+  .zip (the .json and the picture); imported into a fresh browser and loaded in it. No error on the page.
+- After anything changes it: `tests/characterExport.test.ts`, `tests/characterSaves.test.ts`, `tests/sarahLabFabric.test.ts`.
+
 ## A painted top, drawn
 
 - **A shirt's cut is DRAWN, not painted per vertex** (Joshua, 2026-11-14: "fix the painted clothes and add smooth edges,

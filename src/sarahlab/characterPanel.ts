@@ -10,19 +10,28 @@
 import { outfitCards } from './outfitCards';
 import {
   type CharacterBook, type OutfitRef, type SaveScope, type SavedBody, type SavedClothes,
-  clothesFor, exportBook, holds, importBook, mergeBooks, removeFrom, resolveClothes, saveInto,
+  clothesFor, holds, importBook, mergeBooks, removeFrom, resolveClothes, saveInto,
 } from './characterSaves';
+import { bookFor, packExport, picturesUsed, unpackImport, type PackedPicture } from './characterExport';
 
 export const CHARACTER_FIELD = Object.freeze({
   name: 'sarahlab-character-name',
   status: 'sarahlab-character-status',
   list: 'sarahlab-character-list',
+  exportChooser: 'sarahlab-character-export',
 });
 export const CHARACTER_ACTION = Object.freeze({
   save: (scope: SaveScope) => `sarahlab:character:save:${scope}`,
   load: (name: string) => `sarahlab:character:load:${name}`,
   remove: (name: string) => `sarahlab:character:delete:${name}`,
   export: 'sarahlab:character:export',
+  /** EXPORT's chooser: a character in or out, ALL, NONE, the shared outfits, and the file itself. */
+  exportPick: (name: string) => `sarahlab:character:export-pick:${name}`,
+  exportAll: 'sarahlab:character:export-all',
+  exportNone: 'sarahlab:character:export-none',
+  exportOutfits: 'sarahlab:character:export-outfits',
+  exportGo: 'sarahlab:character:export-go',
+  exportCancel: 'sarahlab:character:export-cancel',
   import: 'sarahlab:character:import',
 });
 
@@ -37,8 +46,12 @@ export interface CharacterPanelHooks {
   putOnBody(body: SavedBody): void;
   /** `from`: the shared outfit these clothes come from, if any; `character`: whose clothes they are. */
   putOnClothes(clothes: SavedClothes, from: string | null, character: string): void;
-  /** Hand the user a file (EXPORT). */
-  download(name: string, text: string): void;
+  /** Hand the user a file (EXPORT): JSON text, or a zip's bytes. */
+  download(name: string, type: string, data: string | Uint8Array): void;
+  /** His own pictures by id, as kept on this device (those it has not got are left out). */
+  pictures(ids: readonly string[]): Promise<PackedPicture[]>;
+  /** Keep an imported file's pictures on this device. */
+  keepPictures(pictures: readonly { type: string; bytes: Uint8Array }[]): Promise<void>;
   /** A picture of her as she is now, for her card (null when one cannot be taken). */
   thumbnail?(): string | null;
 }
@@ -126,18 +139,71 @@ export function characterPanel(hooks: CharacterPanelHooks): CharacterPanel {
 
   // ---------------------------------------------------------------- the file
   const file = document.createElement('input');
-  file.type = 'file'; file.accept = '.json,application/json'; file.style.display = 'none';
+  file.type = 'file'; file.accept = '.json,.zip,application/json,application/zip'; file.style.display = 'none';
   file.addEventListener('change', () => {
     const f = file.files?.[0];
     if (!f) return;
-    void f.text().then((text) => {
-      const book = importBook(text);
-      if (!book) { say(`${f.name} is not a character file.`); return; }
+    void f.arrayBuffer().then(async (buffer) => {
+      const got = unpackImport(new Uint8Array(buffer));
+      const book = got ? importBook(got.text) : null;
+      if (!got || !book) { say(`${f.name} is not a character file.`); return; }
+      if (got.pictures.length) await hooks.keepPictures(got.pictures);
       hooks.write(mergeBooks(hooks.read(), book));
-      say(`Imported ${book.characters.length} character${book.characters.length === 1 ? '' : 's'} and ${book.outfits.length} outfit${book.outfits.length === 1 ? '' : 's'} from ${f.name}. Same names were replaced.`);
+      const pics = got.pictures.length ? ` and ${got.pictures.length} picture${got.pictures.length === 1 ? '' : 's'}` : '';
+      say(`Imported ${book.characters.length} character${book.characters.length === 1 ? '' : 's'}, ${book.outfits.length} outfit${book.outfits.length === 1 ? '' : 's'}${pics} from ${f.name}. Same names were replaced.`);
       refresh();
     }).finally(() => { file.value = ''; });
   });
+
+  // ---------------------------------------------------------------- EXPORT: one, some or all
+  const chooser = document.createElement('div');
+  chooser.dataset.field = CHARACTER_FIELD.exportChooser;
+  chooser.style.cssText = 'display:none;flex-direction:column;gap:6px;margin-top:6px;padding:8px;border:1px solid var(--sl-btn-line,#ffffff30);border-radius:10px';
+  const picked = new Set<string>();
+  let withOutfits = true;
+  const chips = document.createElement('div'); chips.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+  const press = (b: HTMLButtonElement, on: boolean) => { b.setAttribute('aria-pressed', String(on)); b.style.background = on ? 'var(--sl-on,#806020)' : 'var(--sl-btn,#151b23)'; };
+  const outfitsButton = button('+ EVERY SHARED OUTFIT', CHARACTER_ACTION.exportOutfits, () => { withOutfits = !withOutfits; drawChooser(); });
+  const go = button('EXPORT', CHARACTER_ACTION.exportGo, () => { void exportChosen(); });
+  const chooserNote = document.createElement('div'); chooserNote.style.cssText = 'font-size:11px;opacity:.75;line-height:1.4';
+  function drawChooser(): void {
+    const book = hooks.read();
+    for (const n of [...picked]) if (!book.characters.some((c) => c.name === n)) picked.delete(n);
+    chips.replaceChildren(...book.characters.map((c) => {
+      const b = button(c.name, CHARACTER_ACTION.exportPick(c.name), () => { if (picked.has(c.name)) picked.delete(c.name); else picked.add(c.name); drawChooser(); });
+      b.style.minHeight = '36px'; press(b, picked.has(c.name)); return b;
+    }));
+    press(outfitsButton, withOutfits);
+    const chosen = bookFor(book, [...picked], withOutfits), pics = picturesUsed(chosen).length;
+    const n = chosen.characters.length;
+    go.textContent = n || chosen.outfits.length ? `EXPORT ${n} CHARACTER${n === 1 ? '' : 'S'}` : 'EXPORT';
+    go.disabled = !n && !chosen.outfits.length; go.style.opacity = go.disabled ? '.45' : '1';
+    chooserNote.textContent = `${chosen.outfits.length} shared outfit${chosen.outfits.length === 1 ? '' : 's'} go with ${n === 1 ? 'her' : 'them'}`
+      + (withOutfits ? '' : ' (the ones their clothes are based on)')
+      + (pics ? ` · ${pics} picture${pics === 1 ? '' : 's'} of your own: a .zip with the .json and the pictures` : ' · a .json file');
+  }
+  async function exportChosen(): Promise<void> {
+    const chosen = bookFor(hooks.read(), [...picked], withOutfits), ids = picturesUsed(chosen);
+    const pictures = ids.length ? await hooks.pictures(ids) : [];
+    const stem = chosen.characters.length === 1 ? `character-${chosen.characters[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'character'}` : 'characters';
+    const out = packExport(chosen, pictures, stem);
+    hooks.download(out.name, out.type, out.data);
+    const missing = ids.length - pictures.length;
+    say(`Exported ${chosen.characters.length} character${chosen.characters.length === 1 ? '' : 's'} and ${chosen.outfits.length} outfit${chosen.outfits.length === 1 ? '' : 's'} as ${out.name}.`
+      + (missing ? ` ${missing} picture${missing === 1 ? ' is' : 's are'} not on this device and ${missing === 1 ? 'was' : 'were'} left out.` : ''));
+    chooser.style.display = 'none';
+  }
+  chooser.append(
+    row(button('ALL', CHARACTER_ACTION.exportAll, () => { for (const c of hooks.read().characters) picked.add(c.name); withOutfits = true; drawChooser(); }),
+      button('NONE', CHARACTER_ACTION.exportNone, () => { picked.clear(); drawChooser(); }), outfitsButton),
+    chips, chooserNote, row(go, button('CANCEL', CHARACTER_ACTION.exportCancel, () => { chooser.style.display = 'none'; })),
+  );
+  const openChooser = () => {
+    if (chooser.style.display !== 'none') { chooser.style.display = 'none'; return; }
+    // (it opens on every character, as EXPORT always was: tap one to leave her out, or NONE and then the ones wanted)
+    picked.clear(); for (const c of hooks.read().characters) picked.add(c.name); withOutfits = true;
+    chooser.style.display = 'flex'; drawChooser();
+  };
 
   panel.append(
     heading('CHARACTER'),
@@ -147,9 +213,10 @@ export function characterPanel(hooks: CharacterPanelHooks): CharacterPanel {
     list,
     empty,
     heading('SHARED OUTFITS are saved and worn in OUTFIT'),
-    heading('FILE · every character and shared outfit'),
-    row(button('EXPORT', CHARACTER_ACTION.export, () => { hooks.download('traddomium-characters.json', exportBook(hooks.read())); say('Exported every character and outfit.'); }),
+    heading('FILE · characters and shared outfits (.json, or .zip with your pictures)'),
+    row(button('EXPORT…', CHARACTER_ACTION.export, openChooser),
       button('IMPORT', CHARACTER_ACTION.import, () => file.click())),
+    chooser,
     file,
     status,
   );
