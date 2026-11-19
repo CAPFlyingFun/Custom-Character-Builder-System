@@ -48,9 +48,9 @@ export const NOT_AHEAD: readonly RegExp[] = Object.freeze([
   /sarah-v2-body-light\.bin$/,
   // her bake for the story player: TMB-Story's, never the room's
   /^models\/sarah-v2-story\.glb$/,
-  // the bodies her approved one was built from, off the MODEL button since 2026-11-13 ("disable all other models"):
-  // only a probe steps to them now. And two files no part of the room asks for (the first Sarah, a badge)
-  /^models\/sarah-base\.glb$/, /^models\/sarah-v2\.glb$/, /^models\/sarah-v2-arms\.glb$/, /^models\/sarah\.glb$/, /^models\/badge\.glb$/,
+  // a file no part of the room asks for (a badge). (The bodies her approved one was built from were here until
+  // 2026-11-19, when they were taken out of the site: "delete all the other female models".)
+  /^models\/badge\.glb$/,
   // each hairstyle's LIGHT twin, for a game with many characters: the room wears the full file. And the file her first
   // hairstyle was baked from, which only the story's bake reads now (`hairStyles.ts`: the room wears the toolkit's)
   /^models\/hair\/[a-z0-9-]+-light\.glb$/, /^models\/sarah-v2-hair\.glb$/,

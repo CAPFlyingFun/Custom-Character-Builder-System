@@ -81,8 +81,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   "probably should set at 0% by default"). The room opens on the FEMALE BASE MODEL: her approved body at 0%, not
   pregnant, in the room's first outfit, with no character named (`sarahLook.ts` `lookOpenedOn`, `PREGNANCY_OPENING`).
   MODEL is not shown while there is one model to choose (`sarahLabTool.ts` `SARAH_LAB_MODELS_OFF_MENU`, `modelsOnMenu`;
-  `MODEL_NAMES` is what a model is called on screen): the bodies hers was built from stay in the list for a saved look
-  made on one and for a probe (`?probe=cloth` steps to them), and are not fetched ahead (`NOT_AHEAD`). Names in the code
+  `MODEL_NAMES` is what a model is called on screen). THE BODIES HERS WAS BUILT FROM ARE GONE (Joshua, 2026-11-19:
+  "delete all the other female models we aren't using so in the end should be x1 (skeleton, male, female) model with the
+  skeleton being used in both"): v1, v2, v2-arms, the first `sarah.glb`, the non-pregnant Meshy female and Meshy's male
+  original are out of the site and the archive (git has them); a save made on one opens on her body. What stays: her
+  approved archive `sarah-v2-body.glb` (byte for byte, below), the room's body made from it with its parts (its shape
+  files, its light skin, its KTX2 pilot for a phone), her bare skeleton (`sarah-skeleton.glb`, the ONE skeleton, from
+  `meshy-female-skeleton.glb`), the story's bake, and THE MALE BASE MODEL's file, `male-base-touched.glb` (his touched
+  one, "2", chosen over Meshy's original). Names in the code
   and of files stay as they are (`sarahlab/`, `sarah-v2-body.glb`): it is what the room SHOWS that is generic.
   - A probe (`?probe=`), the story's bake (`?bake=story`) and `?look=sarah` still open on Sarah as he set her
     (`SARAH_LOOK`: 73%, pregnant, her red spandex tee): what was measured in the room was measured on her, and the

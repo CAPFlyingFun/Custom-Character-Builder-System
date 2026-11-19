@@ -39,11 +39,11 @@ function revisions(): Record<string, string> {
 
 describe('assetUrl carries a content revision', () => {
   it('stamps a real public file with its own content hash', () => {
-    const path = 'models/sarah-v2.glb';
+    const path = 'models/sarah-v2-body-slim.glb';
     const rev = revisions()[path];
     // The map is built from `public/`, which is present in a checkout. If
     // it ever is not, say so rather than passing vacuously.
-    expect(existsSync(`public/${path}`), 'public/models/sarah-v2.glb is in the repository').toBe(true);
+    expect(existsSync(`public/${path}`), 'public/models/sarah-v2-body-slim.glb is in the repository').toBe(true);
     expect(typeof rev, `${path} has a revision`).toBe('string');
 
     const expected = createHash('sha1').update(readFileSync(`public/${path}`)).digest('hex').slice(0, 8);
@@ -62,7 +62,7 @@ describe('assetUrl carries a content revision', () => {
     // Two files with the same bytes SHOULD share a revision — that is a
     // content hash working, not a collision — so this asserts the useful
     // property instead: the models, which are what changed, differ.
-    expect(map['models/sarah-v2.glb']).not.toBe(map['models/sarah.glb']);
+    expect(map['models/sarah-v2-body-slim.glb']).not.toBe(map['models/sarah-skeleton.glb']);
   });
 
   it('leaves an unknown path alone rather than inventing a revision', () => {

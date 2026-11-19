@@ -11,15 +11,8 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import * as labTool from '../src/sarahlab/sarahLabTool';
-import { BELLY_KEYS, BELLY_MOTION, BELLY_SPRING, BELLY_TARGET, bellyMotionWeights, breastBobWeight, breastWeights, BREAST_SPRING, stepBreastSpring, fingerBend, FINGER_LIMITS_DEG, restingBellySpring, stepBellySpring, walkBounceAccel, GARMENTS, SARAH_BASE_MODEL, bellyWeights, bumpLine, fingersLine, sarahLabTool, statusLine, modelLine, SARAH_LAB_MODELS } from '../src/sarahlab/sarahLabTool';
+import { BELLY_KEYS, BELLY_MOTION, BELLY_SPRING, bellyMotionWeights, breastBobWeight, breastWeights, BREAST_SPRING, stepBreastSpring, fingerBend, FINGER_LIMITS_DEG, restingBellySpring, stepBellySpring, walkBounceAccel, bellyWeights, bumpLine, fingersLine, sarahLabTool, statusLine, modelLine, SARAH_LAB_MODELS } from '../src/sarahlab/sarahLabTool';
 
-async function load() {
-  await MeshoptDecoder.ready;
-  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-  const doc = await io.read(`public/${SARAH_BASE_MODEL}`);
-  const mesh = doc.getRoot().listMeshes()[0];
-  return { doc, mesh };
-}
 
 describe('the base mannequin (public/models/sarah-base.glb)', () => {
   it('adds 0.075 mm of navel projection per percent and caps at 140%', () => {
@@ -51,147 +44,9 @@ describe('the base mannequin (public/models/sarah-base.glb)', () => {
     expect(labTool.seatCorrectiveV2Weight(1, 200)).toBe(2);
     for (let p = 50; p < 200; p += 1) expect(labTool.seatCorrectiveV2Weight(1, p + 1)).toBeGreaterThanOrEqual(labTool.seatCorrectiveV2Weight(1, p));
   });
-  it('carries a sewn hem band on the shirt and a real projecting navel on the body', async () => {
-    const {mesh}=await load();
-    const shirt=mesh.listPrimitives().find(p=>p.getMaterial()?.getName()==='shirt')!;
-    const colour=shirt.getAttribute('COLOR_0')!, rgb:number[]=[];let low=1,high=0;
-    for(let i=0;i<colour.getCount();i++){colour.getElement(i,rgb);low=Math.min(low,...rgb);high=Math.max(high,...rgb);}
-    expect(low).toBeLessThan(.85);
-    expect(high).toBeCloseTo(1);
-    const body=mesh.listPrimitives().find(p=>p.getMaterial()?.getName()==='Material_0')!;
-    const names=(mesh.getExtras() as {targetNames:string[]}).targetNames;
-    const out=body.listTargets()[names.indexOf('navelOut')].getAttribute('POSITION')!.getArray()!;
-    let projection=0;
-    for(const value of out) projection=Math.max(projection,value);
-    expect(projection).toBeGreaterThan(.002);
-  });
-  it('keeps sewn UV copies attached to the same skin when the body moves', async () => {
-    const {mesh}=await load(),shirt=mesh.listPrimitives().find(p=>p.getMaterial()?.getName()==='shirt')!;
-    const P=shirt.getAttribute('POSITION')!,J=shirt.getAttribute('JOINTS_0')!,W=shirt.getAttribute('WEIGHTS_0')!;
-    const positions:number[]=[],ids:number[]=[],weights:number[]=[],seen=new Map<string,Map<number,number>>();let copies=0;
-    for(let i=0;i<P.getCount();i++){
-      P.getElement(i,positions);J.getElement(i,ids);W.getElement(i,weights);
-      expect(weights.reduce((s,w)=>s+w,0)).toBeCloseTo(1,3);
-      const key=positions.map(v=>v.toFixed(7)).join(','),effective=new Map<number,number>();
-      ids.forEach((j,k)=>effective.set(j,(effective.get(j)||0)+weights[k]));
-      const previous=seen.get(key);
-      if(previous){for(const j of new Set([...previous.keys(),...effective.keys()]))expect(effective.get(j)||0).toBeCloseTo(previous.get(j)||0,3);copies++;}
-      else seen.set(key,effective);
-    }
-    expect(copies).toBeGreaterThan(10);
-  });
-  it('bakes a normal bust at zero and rounded growth without stretching the lower bust, on body and garments', async () => {
-    const { mesh } = await load();
-    const names = (mesh.getExtras() as { targetNames: string[] }).targetNames;
-    const body = mesh.listPrimitives().find((p) => !GARMENTS.includes(p.getMaterial()?.getName() as typeof GARMENTS[number]))!;
-    const normal = body.listTargets()[names.indexOf('breast0')].getAttribute('POSITION')!;
-    const grown = body.listTargets()[names.indexOf('breast100')].getAttribute('POSITION')!;
-    const v = [0, 0, 0];
-    let shrink = 0, depth = 0, drop = 0, width = 0;
-    for (let i = 0; i < normal.getCount(); i += 1) {
-      normal.getElement(i, v); shrink = Math.max(shrink, Math.hypot(...v));
-      grown.getElement(i, v); depth = Math.max(depth, v[2]); drop = Math.max(drop, -v[1]); width = Math.max(width, Math.abs(v[0]));
-    }
-    expect(shrink).toBeLessThan(0.0002);
-    expect(depth).toBeGreaterThan(0.015);
-    expect(depth).toBeLessThan(0.04);
-    // Limit the absolute drop; the forward increase is now much smaller.
-    expect(drop).toBeLessThan(0.015);
-    expect(width).toBeLessThan(0.012);
-    for (const p of mesh.listPrimitives().filter((p) => ['shirt', 'swimsuit'].includes(p.getMaterial()?.getName() ?? ''))) {
-      const t = p.listTargets()[names.indexOf('breast100')].getAttribute('POSITION')!;
-      let most = 0;
-      for (let i = 0; i < t.getCount(); i += 1) { t.getElement(i, v); most = Math.max(most, v[2]); }
-      expect(most).toBeGreaterThan(0.01);
-    }
-  }, 60000);
-  it('carries the belly target on every primitive, and a shirt and leggings by material', async () => {
-    const { mesh } = await load();
-    const names0 = (mesh.getExtras() as { targetNames?: string[] }).targetNames ?? [];
-    for (const [, name] of BELLY_KEYS) if (name) expect(names0).toContain(name);
-    expect(names0).toContain(BELLY_TARGET);
-    const names = mesh.listPrimitives().map((p) => p.getMaterial()?.getName());
-    // v1 carries every garment but the under-the-belly leggings, which are v2's (scripts/sarahV2Outfit)
-    const V1_GARMENTS = GARMENTS.filter((g) => g !== 'leggingsLow');
-    for (const g of V1_GARMENTS) expect(names).toContain(g);
-    const body = mesh.listPrimitives().find((p) => p.getMaterial()?.getName() === 'Material_0')!;
-    const cover = body.getAttribute('_CLOTH_COVER')!;
-    expect(cover.getCount()).toBe(body.getAttribute('POSITION')!.getCount());
-    const bits = [...cover.getArray()!];
-    for (const g of V1_GARMENTS) expect(bits.some((b) => b & (1 << GARMENTS.indexOf(g)))).toBe(true);
-    expect(bits.some((b) => b === 0)).toBe(true);
-    for (const name of [BELLY_MOTION.tilt, BELLY_MOTION.bob, BELLY_MOTION.sway]) expect(names0).toContain(name);
-    // the four sizes and the three motions, on every primitive, so the clothes move with her
-    for (const name of ['breast0', 'breast100', 'breastBob', 'navelIn', 'navelOut']) expect(names0).toContain(name);
-    // the six sizes, the three motions, the two breast ends and the breasts' bounce, the
-    // navel pair and the seated corrective, on every primitive, so the clothes move with her
-    for (const p of mesh.listPrimitives()) expect(p.listTargets().length).toBe(BELLY_KEYS.length - 1 + 3 + 3 + 2 + 1);
-  }, 60000);
 
-  it('the flat key narrows the waist while preserving back depth, bust and legs', async () => {
-    const { doc, mesh } = await load();
-    const body = mesh.listPrimitives().reduce((a, p) => (p.getAttribute('POSITION')!.getCount() > a.getAttribute('POSITION')!.getCount() ? p : a));
-    // by name: the targets are stored 75%, 50%, 25%, flat, and [0] is the 75% one
-    const flatAt = ((mesh.getExtras() as { targetNames?: string[] }).targetNames ?? []).indexOf(BELLY_TARGET);
-    const P = body.getAttribute('POSITION')!, T = body.listTargets()[flatAt].getAttribute('POSITION')!;
-    // the mesh node may carry quantization's scale: read sizes through it
-    const node = doc.getRoot().listNodes().find((n) => n.getMesh() === mesh)!;
-    const s = node.getWorldMatrix()[5];
-    let lo = Infinity, hi = -Infinity;
-    const v = [0, 0, 0], d = [0, 0, 0];
-    for (let i = 0; i < P.getCount(); i += 1) { P.getElement(i, v); lo = Math.min(lo, v[1]); hi = Math.max(hi, v[1]); }
-    const metres = 1.7 / ((hi - lo) * s);
-    let deepest = 0, backMoved = 0, highMoved = 0, lowMoved = 0;
-    for (let i = 0; i < P.getCount(); i += 1) {
-      P.getElement(i, v); T.getElement(i, d);
-      const dz = -Math.hypot(d[0], d[2]) * s * metres, moved = Math.hypot(...d) * s * metres;
-      const y = (v[1] - lo) * s * metres; // height off the floor, metres
-      deepest = Math.min(deepest, dz);
-      if (moved > 0.002) {
-        // The front-view waist refinement changes X around the torso, including
-        // its rear half. Back depth and height still hold, so side views do not
-        // change while the front silhouette narrows.
-        if (v[2] * s * metres < -0.08 && Math.hypot(d[1], d[2]) * s * metres > .002) backMoved += 1;
-        if (y > 1.3) highMoved += 1; // the bust and up
-        if (y < 0.7) lowMoved += 1; // the legs
-      }
-    }
-    expect(deepest).toBeLessThan(-0.05);
-    expect(backMoved).toBe(0);
-    expect(highMoved).toBe(0);
-    expect(lowMoved).toBe(0);
-  }, 60000);
 });
 
-describe("the bump's weight (motion targets)", () => {
-  it('tilts, bobs and sways the bump alone: the back, the bust and the legs hold still', async () => {
-    const { doc, mesh } = await load();
-    const body = mesh.listPrimitives().reduce((a, p) => (p.getAttribute('POSITION')!.getCount() > a.getAttribute('POSITION')!.getCount() ? p : a));
-    const names = (mesh.getExtras() as { targetNames?: string[] }).targetNames ?? [];
-    const P = body.getAttribute('POSITION')!;
-    const s = doc.getRoot().listNodes().find((n) => n.getMesh() === mesh)!.getWorldMatrix()[5];
-    let lo = Infinity, hi = -Infinity;
-    const v = [0, 0, 0], d = [0, 0, 0];
-    for (let i = 0; i < P.getCount(); i += 1) { P.getElement(i, v); lo = Math.min(lo, v[1]); hi = Math.max(hi, v[1]); }
-    const metres = 1.7 / ((hi - lo) * s);
-    for (const name of [BELLY_MOTION.tilt, BELLY_MOTION.bob, BELLY_MOTION.sway]) {
-      const T = body.listTargets()[names.indexOf(name)].getAttribute('POSITION')!;
-      let most = 0, stray = 0;
-      for (let i = 0; i < P.getCount(); i += 1) {
-        P.getElement(i, v); T.getElement(i, d);
-        const moved = Math.hypot(...d) * s * metres, y = (v[1] - lo) * s * metres;
-        most = Math.max(most, moved);
-        if (moved > 0.001 && (v[2] * s * metres < -0.08 || y > 1.3 || y < 0.7)) stray += 1;
-      }
-      expect(most, name).toBeGreaterThan(0.005);
-      // a bounce or a sway is a centimetre; the tilt is a true 20° turn of the whole bump
-      expect(most, name).toBeLessThan(name === BELLY_MOTION.tilt ? 0.12 : 0.04);
-      expect(stray, name).toBe(0);
-      // the lab reads the bake's sizes from BELLY_MOTION: they must be the same numbers
-      if (name !== BELLY_MOTION.tilt) expect(most, name).toBeCloseTo(BELLY_MOTION.bobM, 3);
-    }
-  }, 60000);
-});
 
 describe('the bump\'s spring', () => {
   it('lags a jolt and settles like a weight, not a jelly: the second swing is a fraction of the first', () => {
@@ -285,30 +140,6 @@ describe("Sarah's fingers in the lab", () => {
   });
 });
 
-describe('every belly size (no spikes)', () => {
-  it('stretches no edge of the skin at any key: a vertex left behind draws a spike', async () => {
-    const { mesh } = await load();
-    const body = mesh.listPrimitives().reduce((a, p) => (p.getAttribute('POSITION')!.getCount() > a.getAttribute('POSITION')!.getCount() ? p : a));
-    const P = body.getAttribute('POSITION')!, I = body.getIndices()!.getArray()!;
-    const n = P.getCount(), v = [0, 0, 0];
-    const base = new Float32Array(n * 3);
-    for (let i = 0; i < n; i += 1) { P.getElement(i, v); base.set(v, i * 3); }
-    for (const t of body.listTargets()) {
-      const T = t.getAttribute('POSITION')!;
-      const fin = new Float32Array(n * 3);
-      for (let i = 0; i < n; i += 1) { T.getElement(i, v); for (let k = 0; k < 3; k += 1) fin[i * 3 + k] = base[i * 3 + k] + v[k]; }
-      const len = (a: Float32Array, i: number, j: number) => Math.hypot(a[i * 3] - a[j * 3], a[i * 3 + 1] - a[j * 3 + 1], a[i * 3 + 2] - a[j * 3 + 2]);
-      let stretched = 0;
-      for (let f = 0; f < I.length; f += 3) {
-        for (const [i, j] of [[I[f], I[f + 1]], [I[f + 1], I[f + 2]], [I[f + 2], I[f]]]) {
-          // 0.04 bake units is about 3.4 cm on her
-          if (len(fin, i, j) > 0.04 && len(fin, i, j) > 4 * len(base, i, j)) stretched += 1;
-        }
-      }
-      expect(stretched, t.getName()).toBe(0);
-    }
-  }, 60000);
-});
 
 describe('the Sarah Lab', () => {
   it('hides only triangles fully inside a visible garment and restores all skin when undressed', () => {
@@ -323,7 +154,6 @@ describe('the Sarah Lab', () => {
   });
   it('is a dev tool of its own, reading only the base model', () => {
     expect(sarahLabTool.sceneId).toBe('lab:sarah');
-    expect(SARAH_BASE_MODEL).toBe('models/sarah-base.glb');
   });
   it('reads the bump slider as how much bump there is', () => {
     const sum = (w: Record<string, number>) => Object.values(w).reduce((a, b) => a + b, 0);
@@ -361,11 +191,8 @@ describe('the Sarah Lab', () => {
     expect(bumpLine(100)).toMatch(/as modelled/);
     expect(bumpLine(0)).toMatch(/nearly flat/);
     expect(fingersLine(100)).toMatch(/fist/);
-    expect(statusLine(true, false, ['shirt', 'leggings'], true)).toBe('base model · belly slider · 2 garments');
     expect(statusLine(false, true, [], false)).toMatch(/did not load/);
-    expect(statusLine(true, false, [], true, 1)).toBe('model v2 · belly slider · no clothes in this file yet');
-    expect(modelLine(0)).toBe('MODEL · v1');
-    expect(modelLine(1)).toBe('MODEL · v2');
+    expect(statusLine(true, false, [], true, SARAH_LAB_MODELS.findIndex((m) => m.id === 'skeleton'))).toBe('model skeleton · belly slider · no clothes in this file yet');
     // (Joshua, 2026-11-13: "disable all other models and call it like it's supposed to 'Female Base Model'"; "let's
     // remove the word Sarah and keep everything generic")
     const { modelsOnMenu, nextModel, modelName } = labTool;
@@ -380,34 +207,16 @@ describe('the Sarah Lab', () => {
     expect(modelsOnMenu()).toBe(1);
     for (let i = 0; i < SARAH_LAB_MODELS.length; i++) expect(nextModel(i)).toBe(base);
     expect(modelName('v2-body')).toBe('Female Base Model'); expect(modelName('skeleton')).toBe('skeleton');
-    expect(SARAH_LAB_MODELS.map((m) => m.path)).toEqual(['models/sarah-base.glb', 'models/sarah-v2.glb', 'models/sarah-v2-arms.glb', 'models/sarah-v2-body-slim.glb', 'models/sarah-skeleton.glb']);
+    expect(SARAH_LAB_MODELS.map((m) => m.path)).toEqual(['models/sarah-v2-body-slim.glb', 'models/sarah-skeleton.glb']);
   });
 });
 
-describe('the pregnant sit lays the hands palm-down on any rig', () => {
-  it("reads each rig's own palms: the toon's face forward (no turn), the mannequin's face down (a quarter turn)", async () => {
-    const { bindPalmRoll } = await import('../src/actor/humanSeated');
-    const { measureHuman } = await import('../src/actor/humanSkeleton');
-    await MeshoptDecoder.ready;
-    const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-    const roll = async (file: string) => {
-      const doc = await io.read(file);
-      const joints = doc.getRoot().listSkins()[0].listJoints();
-      const bind = joints.map((j) => { const m = j.getWorldMatrix(); const p = j.getParentNode(); return { x: m[12], y: m[13], z: m[14], parent: p ? joints.indexOf(p as never) : -1 }; });
-      const me = measureHuman(bind as never);
-      return [me.joints.wristL, me.joints.wristR].map((w) => (bindPalmRoll(bind as never, w) * 180) / Math.PI);
-    };
-    // Joshua, 2026-10-08: "the palms and hands are facing outwards, not inwards like normal"
-    for (const d of await roll('public/models/sarah.glb')) expect(Math.abs(d)).toBeLessThan(10);
-    for (const d of await roll(`public/${SARAH_BASE_MODEL}`)) expect(Math.abs(d - 90)).toBeLessThan(15);
-  }, 60000);
-});
 
 describe("Sarah v2's own belly (public/models/sarah-v2.glb; scripts/bellyV2.mjs)", () => {
   it('steps through the same keys as v1, carries the switchable curve, and moves no breast with the belly', async () => {
     await MeshoptDecoder.ready;
     const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-    const doc = await io.read(`public/${labTool.SARAH_V2_MODEL}`);
+    const doc = await io.read(`public/${labTool.SARAH_V2_BODY_MODEL}`);
     const names: string[] = doc.getRoot().listMeshes()[0].getExtras().targetNames as string[];
     // every stop of the slider has its own key (a missing 30% or 60% showed 100%)
     for (const [, name] of BELLY_KEYS) if (name) expect(names).toContain(name);
@@ -426,27 +235,6 @@ describe("Sarah v2's own belly (public/models/sarah-v2.glb; scripts/bellyV2.mjs)
 });
 
 describe('the athletic-fit tee (scripts/fitAthleticTee.mjs)', () => {
-  it('ships in v1 with every shape, is the tee every outfit wears, and masks the skin under it', async () => {
-    await MeshoptDecoder.ready;
-    const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-    const doc = await io.read(`public/${SARAH_BASE_MODEL}`);
-    const mesh = doc.getRoot().listMeshes()[0], names = (mesh.getExtras() as { targetNames: string[] }).targetNames;
-    const byName = (n: string) => mesh.listPrimitives().find((p) => p.getMaterial()?.getName() === n);
-    const relaxed = byName('shirt')!, athletic = byName('shirtAthletic')!;
-    expect(athletic).toBeTruthy();
-    expect(athletic.listTargets().length).toBe(names.length);
-    expect((relaxed.getExtras() as { fit?: string }).fit).toBe('relaxed');
-    expect((athletic.getExtras() as { fit?: string }).fit).toBe('athletic');
-    expect(labTool.OUTFITS[0].garments).toEqual(['shirtAthletic', 'leggings']);
-    expect(labTool.OUTFITS.some((o) => o.garments.includes('shirt'))).toBe(false);
-    expect(labTool.wornGarments(0, ['shirtAthletic', 'shirt', 'leggings'])).toEqual(['shirtAthletic', 'leggings']);
-    // a model with no athletic tee (v2) wears the grown one in its place
-    expect(labTool.wornGarments(0, ['shirt', 'leggings'])).toEqual(['shirt', 'leggings']);
-    // the skin under a worn tee and leggings is masked; the modelled bikini masks nothing
-    expect(labTool.coverMask(['shirtAthletic', 'leggings'])).toBe((1 << 4) | (1 << 1));
-    expect(labTool.coverMask(['bikini'])).toBe(0);
-  }, 60000);
-
   it('offers the under-the-belly leggings only to a model that carries them, with their trims', () => {
     const v2 = ['shirt', 'leggings', 'leggingsLow', 'bikini'] as const, v1 = ['shirtAthletic', 'shirt', 'leggings', 'bikini', 'swimsuit'] as const;
     const low = labTool.OUTFITS.findIndex((o) => o.garments.includes('leggingsLow'));
@@ -464,16 +252,6 @@ describe('the athletic-fit tee (scripts/fitAthleticTee.mjs)', () => {
 });
 
 describe('the seated corrective (scripts/addSeatCorrective.mjs)', () => {
-  it('is carried by every primitive of v1 and is nothing standing', async () => {
-    await MeshoptDecoder.ready;
-    const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-    const doc = await io.read(`public/${SARAH_BASE_MODEL}`);
-    const mesh = doc.getRoot().listMeshes()[0];
-    const names = (mesh.getExtras() as { targetNames: string[] }).targetNames;
-    expect(names).toContain(labTool.SEAT_TARGET);
-    for (const prim of mesh.listPrimitives()) expect(prim.listTargets().length).toBe(names.length);
-  }, 60000);
-
   it('is on only while she sits, around 100%, fading out by 50% and by 150%', () => {
     expect(labTool.seatCorrectiveWeight(0, 100)).toBe(0);
     expect(labTool.seatCorrectiveWeight(0, 200)).toBe(0);
@@ -492,7 +270,7 @@ describe('the pregnant sit opens for a bigger belly', () => {
     const { measureHuman } = await import('../src/actor/humanSkeleton');
     await MeshoptDecoder.ready;
     const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-    const doc = await io.read(`public/${SARAH_BASE_MODEL}`);
+    const doc = await io.read(`public/${labTool.SARAH_V2_BODY_MODEL}`);
     const joints = doc.getRoot().listSkins()[0].listJoints();
     const bind = joints.map((j) => { const m = j.getWorldMatrix(); const p = j.getParentNode(); return { x: m[12], y: m[13], z: m[14], parent: p ? joints.indexOf(p as never) : -1 }; });
     const me = measureHuman(bind as never);
@@ -507,14 +285,11 @@ describe("Sarah v2's refinement (scripts/sarahV2Refine.mjs, 2026-10-15)", () => 
   it('carries the upper-belly and breast-growth shapes, and the Lab weighs the upper belly by the ratios stamped in the file', async () => {
     await MeshoptDecoder.ready;
     const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-    const doc = await io.read(`public/${labTool.SARAH_V2_ARMS_MODEL}`);
+    const doc = await io.read(`public/${labTool.SARAH_V2_BODY_MODEL}`);
     const extras = doc.getRoot().listMeshes()[0].getExtras() as { targetNames: string[]; bellyUpperScale: [number, number][] };
     expect(extras.targetNames).toContain(labTool.BELLY_UPPER_TARGET);
     expect(extras.targetNames).toContain(labTool.BREAST_GROW_TARGET);
     expect(extras.bellyUpperScale).toEqual(labTool.BELLY_UPPER_SCALE.map(([s, r]) => [s, r]));
-    // the approved v2 itself is untouched
-    const approved = await io.read(`public/${labTool.SARAH_V2_MODEL}`);
-    expect((approved.getRoot().listMeshes()[0].getExtras() as { targetNames: string[] }).targetNames).not.toContain(labTool.BREAST_GROW_TARGET);
   }, 60000);
 
   it('grows the upper belly with each size: nothing flat, all of it at 100%, more past it', () => {
@@ -551,7 +326,7 @@ describe('the settled pregnant sit (Sarah v2)', () => {
     const { measureHuman } = await import('../src/actor/humanSkeleton');
     await MeshoptDecoder.ready;
     const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-    const doc = await io.read(`public/${labTool.SARAH_V2_ARMS_MODEL}`);
+    const doc = await io.read(`public/${labTool.SARAH_V2_BODY_MODEL}`);
     const joints = doc.getRoot().listSkins()[0].listJoints();
     const bind = joints.map((j) => { const m = j.getWorldMatrix(); const p = j.getParentNode(); return { x: m[12], y: m[13], z: m[14], parent: p ? joints.indexOf(p as never) : -1 }; });
     const me = measureHuman(bind as never), J = me.joints;

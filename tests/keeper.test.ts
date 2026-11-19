@@ -267,8 +267,8 @@ describe('the site\'s own files', () => {
     for (const h of HAIR_STYLES) { expect(files).toContain(h.file); expect(fetchedAhead(h.file), h.id).toBe(true); expect(files).toContain(h.lightFile); expect(fetchedAhead(h.lightFile), h.id).toBe(false); }
     expect(files).toContain('models/sarah-v2-hair.glb'); expect(fetchedAhead('models/sarah-v2-hair.glb')).toBe(false);
     expect(fetchedAhead('models/sarah-v2-body-slim-ktx2.glb')).toBe(false);
-    // the bodies no longer on the MODEL button (Joshua, 2026-11-13: "disable all other models") are not: 32 MB a phone need not hold
-    for (const f of ['models/sarah-base.glb', 'models/sarah-v2.glb', 'models/sarah-v2-arms.glb']) { expect(files).toContain(f); expect(fetchedAhead(f), f).toBe(false); }
+    // (the bodies hers was built from are gone from the site: Joshua, 2026-11-19, "delete all the other female models")
+    for (const f of ['models/sarah-base.glb', 'models/sarah-v2.glb', 'models/sarah-v2-arms.glb', 'models/sarah.glb']) expect(files).not.toContain(f);
     // ...and every model MODEL can step to is
     for (const m of SARAH_LAB_MODELS) expect(fetchedAhead(m.path), m.id).toBe(!SARAH_LAB_MODELS_OFF_MENU.has(m.id) || m.id === 'skeleton');
     // a file nobody has thought about is held by default
