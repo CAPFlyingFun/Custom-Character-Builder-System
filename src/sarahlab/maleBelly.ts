@@ -8,8 +8,8 @@
  * front and onto his sides, none at his back. A field smooth in space carries his navel's hollow out whole
  * (moved along each point's own normal, the walls of the hollow would be pushed apart and it would open up).
  *
- * It moves only what his trunk carries: a point his arm's or his thigh's bones carry is moved by what his trunk carries
- * of it (his hands hang beside his belly and his thighs meet it at his groin).
+ * It does not move what his arms carry (his hands hang beside his belly), nor his thighs out at his hips (`trunk`, worked
+ * out by the room: the skin low on his belly, half his thighs' in his file, moves whole).
  *
  * THE NAVEL, OPTIONAL (`outie`, 0..1): an innie by default. Pushed out, the floor of his navel's hollow rises to his
  * belly's skin and a little past it -- the most a rare adult outie is (an outie in a grown man is mostly a small
@@ -34,8 +34,10 @@ export const MALE_BELLY = Object.freeze({
    */
   pubisY: 0.825,
   ribsY: 1.194,
-  /** GAME TUNING: how far his belly stands forward at 100%, metres (MEASURED off his own side profile, below: 6.9 cm past the line from under his chest to his pubic bone; 200% is twice it -- Joshua: "200% will be just doubled the size"). */
-  most: 0.069,
+  /** GAME TUNING: how its bottom edge rises toward his sides (metres up per metre out, squared: 6 cm at 12 cm out). */
+  groinRise: 4,
+  /** GAME TUNING: how far his belly stands forward at 100%, metres (his drawing, below: 13.5 cm at 200%, half that at 100%; his photograph's own was 6.9 cm; 200% is twice it -- Joshua: "200% will be just doubled the size"). */
+  most: 0.0675,
   /** GAME TUNING: how much his sides fill with it (0 front only, 1 as much as his front), and his back (none). */
   sides: 0.45,
   /** GAME TUNING: how far his navel's floor comes out at OUTIE 1, metres past where it would sit flush (a few mm). */
@@ -47,22 +49,24 @@ export const MALE_BELLY = Object.freeze({
 
 /**
  * HIS BELLY'S SIDE PROFILE: how far forward it stands at 21 heights from the bottom of his pubic bone (0) to his
- * breastbone's tip (1), its most 1. MEASURED off Joshua's own side photograph (2026-11-19: "my belly starts (blends) at the
- * bottom of my pubic bone… below belly button, has more of that pregnancy belly look, above the bellybutton, extends about
- * the same"; the photograph is not kept): his skin's edge traced against the wall, less a straight line from under his chest
- * to his pubic bone, evened twice over three samples. Fullest at 0.40 to 0.50 -- a little under his navel; it rises
- * steeply from his pubic bone (the round, low curve) and eases off slowly to his ribs. Set beside hers (the female base
- * model's front, measured in the room standing, between the same two bones): its shape is nearest her belly at 40%
- * (0.116 apart, root mean square of the two curves each at its most 1; 0.129 at 60%, 0.199 at 20%), and its size her 45%
- * (her 40% stands 6.3 cm out, his 6.9 cm).
+ * breastbone's tip (1), its most 1. HIS DRAWING (Joshua, 2026-11-19, a red curve drawn with his finger over the chart of
+ * profiles at 200%: "Try making the curve a little bit more like this… I didn't draw it smooth around the top and bottom"),
+ * read off the chart row by row and its two ends rounded: full and round underneath -- most of it already within a
+ * twentieth of his pubic bone, his "rounded sitting curve", where the curve traced off his photograph ran in a slope and
+ * the bottom of his belly drew squashed ("It's still squished at the bottom") -- fullest from 0.40 to 0.50, and easing off
+ * to his breastbone. The first, traced off his own side photograph (not kept), is in git (62f1fcd); set beside hers it was
+ * nearest her belly at 40% in shape and 45% in size.
  */
-export const MALE_BELLY_PROFILE: readonly number[] = Object.freeze([0, 0.231, 0.397, 0.545, 0.681, 0.808, 0.909, 0.973, 0.999, 1, 0.99, 0.956, 0.883, 0.794, 0.712, 0.623, 0.511, 0.376, 0.235, 0.113, 0]);
+export const MALE_BELLY_PROFILE: readonly number[] = Object.freeze([0, 0.6, 0.77, 0.85, 0.9, 0.93, 0.96, 0.99, 1, 1, 1, 0.97, 0.9, 0.84, 0.77, 0.69, 0.61, 0.51, 0.39, 0.23, 0]);
 
 const smoothstep = (a: number, b: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** How much of the bell a point at height `y` takes (his side profile: 1 at its fullest, none past his pubic bone's bottom or his breastbone's tip). */
-export function bellyBell(y: number, m = MALE_BELLY): number {
-  const t = (y - m.pubisY) / (m.ribsY - m.pubisY);
+export function bellyBell(y: number, m = MALE_BELLY, x: number = m.midX): number {
+  // (its bottom edge rises toward his sides along his groin's line, as a U: level all the way across, the full underside of
+  // his drawing drew a straight crease from hip to hip from his front)
+  const dx = x - m.midX, bottom = m.pubisY + m.groinRise * dx * dx;
+  const t = (y - bottom) / (m.ribsY - bottom);
   if (!(t > 0 && t < 1)) return 0;
   const k = t * (MALE_BELLY_PROFILE.length - 1), i = Math.min(MALE_BELLY_PROFILE.length - 2, Math.floor(k)), f = k - i;
   return MALE_BELLY_PROFILE[i] * (1 - f) + MALE_BELLY_PROFILE[i + 1] * f;
@@ -85,7 +89,7 @@ export function maleBellyField(rest: Float32Array | Float64Array, trunk: Float32
   for (let i = 0; i < n; i++) {
     const t = trunk[i]; if (!(t > 0)) continue;
     const x = rest[i * 3], y = rest[i * 3 + 1], z = rest[i * 3 + 2];
-    const w = bellyBell(y, m) * bellyRound(x, z, m) * t;
+    const w = bellyBell(y, m, x) * bellyRound(x, z, m) * t;
     if (!(w > 0)) continue;
     // straight out from his middle at this height: forward ahead, out at his sides
     const dx = x - m.midX, dz = z - m.middleZ, r = Math.hypot(dx, dz), a = m.most * w;

@@ -11,6 +11,8 @@ describe('his belly', () => {
     expect(bellyBell(M.pubisY)).toBe(0); expect(bellyBell(M.ribsY)).toBe(0);
     expect(bellyBell(at(0.1))).toBeGreaterThan(bellyBell(at(0.9)));
     expect(bellyBell(M.navelY)).toBeGreaterThan(0.85);
+    // (its bottom edge a U: at his side it begins higher)
+    expect(bellyBell(at(0.05), M, M.midX + 0.12)).toBe(0); expect(bellyBell(at(0.05))).toBeGreaterThan(0.5);
   });
   it('is all of it ahead of him, some at his sides, none behind', () => {
     expect(bellyRound(M.midX, M.middleZ + 0.1)).toBeCloseTo(1);

@@ -6905,12 +6905,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const toRest = restOfMesh(mesh, root), fromRest = new THREE.Matrix3().setFromMatrix4(toRest).invert();
     const rest = new Float32Array(n * 3), v = new THREE.Vector3();
     for (let i = 0; i < n; i++) { v.fromArray(fields.basePos, i * 3).applyMatrix4(toRest); v.toArray(rest, i * 3); }
-    // how much of each point his trunk carries: all but his arms' and his thighs' shares
-    const bones = mesh.skeleton.bones, limb = new Uint8Array(bones.length), j = measure.joints;
-    const tops = new Set([j.shoulderL, j.shoulderR, j.hipL, j.hipR].map((k) => bones[k]).filter(Boolean));
-    bones.forEach((b, k) => { for (let q: THREE.Object3D | null = b; q; q = q.parent) if (tops.has(q as THREE.Bone)) { limb[k] = 1; break; } });
+    // how much of each point the belly may move: none of what his ARMS carry (his hands hang beside it); of what his THIGHS
+    // carry, none out at his hips and legs but all of it within 7 cm of his midline -- the skin over his pubic bone, low on
+    // his belly, is half his thighs' in his file, and moved by what his trunk alone carried the bottom of his belly was
+    // squashed flat (Joshua, 2026-11-19, circled from his side: "It's still squished at the bottom")
+    const bones = mesh.skeleton.bones, j = measure.joints, armBone = new Uint8Array(bones.length), legBone = new Uint8Array(bones.length);
+    const under = (tops: (number | undefined)[], into: Uint8Array) => { const set = new Set(tops.map((k) => (k === undefined ? undefined : bones[k])).filter(Boolean)); bones.forEach((b, k) => { for (let q: THREE.Object3D | null = b; q; q = q.parent) if (set.has(q as THREE.Bone)) { into[k] = 1; break; } }); };
+    under([j.shoulderL, j.shoulderR], armBone); under([j.hipL, j.hipR], legBone);
     const SI = g.getAttribute('skinIndex'), SW = g.getAttribute('skinWeight'), trunk = new Float32Array(n);
-    for (let i = 0; i < n; i++) { let t = 0, all = 0; for (let c = 0; c < 4; c++) { const w = SW.getComponent(i, c); all += w; if (!limb[SI.getComponent(i, c)]) t += w; } trunk[i] = all > 0 ? t / all : 0; }
+    const ease = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    for (let i = 0; i < n; i++) {
+      let arm = 0, leg = 0, all = 0;
+      for (let c = 0; c < 4; c++) { const w = SW.getComponent(i, c), k = SI.getComponent(i, c); all += w; if (armBone[k]) arm += w; else if (legBone[k]) leg += w; }
+      if (!(all > 0)) continue;
+      trunk[i] = (1 - arm / all) * (1 - (leg / all) * ease(0.07, 0.13, Math.abs(rest[i * 3] - MALE_BELLY.midX)));
+    }
     // his skin's front at his navel's height (where an outie's floor would sit flush): the most forward of his midline there
     let front = -Infinity;
     for (let i = 0; i < n; i++) if (Math.abs(rest[i * 3] - MALE_BELLY.midX) < 0.02 && Math.abs(rest[i * 3 + 1] - MALE_BELLY.navelY) < 0.03) front = Math.max(front, rest[i * 3 + 2]);
