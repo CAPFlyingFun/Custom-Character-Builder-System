@@ -4,8 +4,8 @@
  *
  * His file has no belly shapes (hers were baked from her own growth: `belly25` … `belly200`). So his is one SMOOTH FIELD
  * IN SPACE laid on his rest shape: each point of his trunk moved straight out from his body's middle at its own height,
- * by a bell over his belly -- fullest a little under his navel, less up to his ribs, less again down to his pubic bone,
- * all round his front and onto his sides, none at his back. A field smooth in space carries his navel's hollow out whole
+ * by one round arch from his pubic bone to his breastbone's tip, fullest at his navel or just under it, all round his
+ * front and onto his sides, none at his back. A field smooth in space carries his navel's hollow out whole
  * (moved along each point's own normal, the walls of the hollow would be pushed apart and it would open up).
  *
  * It moves only what his trunk carries: a point his arm's or his thigh's bones carry is moved by what his trunk carries
@@ -25,15 +25,24 @@ export const MALE_BELLY = Object.freeze({
   middleZ: 0.025,
   /** MEASURED: his midline (his spine's root bone). */
   midX: 0.00996,
-  /** MEASURED: the top of his pubic bone, where the bell ends under it, and his lowest ribs' front, where it eases off above. */
-  pubisY: 0.89,
-  ribsY: 1.2,
-  /** GAME TUNING: how far over his lowest ribs it eases off (up under his chest: ended at his ribs, his belly stood as a ball under a ledge from his side). */
-  over: 0.2,
-  /** BIOLOGICAL SHAPE (a man's belly is fullest at or just under his navel, and carried low): the bell's middle. */
-  fullestY: 1.03,
-  /** GAME TUNING: how far his belly stands forward at 100%, metres (a big belly: 13 cm; at 16 it stood as a ball under his chest). */
-  most: 0.13,
+  /**
+   * MEASURED on the skeleton as it is laid in him (2026-11-19, `skeletonLandmarks`): the top of his pubic symphysis and the
+   * tip of his breastbone (xiphoid). His belly lies between them: under his ribs, down into his pelvis (Joshua, 2026-11-19:
+   * "it should sit below the ribs, you have his in his chest basically"). A first try with a guess at his ribs (1.2, and
+   * eased off 20 cm over them) sat his belly up in his chest and flat.
+   */
+  pubisY: 0.85,
+  ribsY: 1.194,
+  /**
+   * BIOLOGICAL SHAPE, off his own side profile (Joshua's photographs, 2026-11-19: "you can use my actual belly profile to help
+   * set the shape and curve"; not kept in the repo): one round curve from under his breastbone to his pubic bone, fullest at
+   * his navel or just under it (half way between the two, here 1.022 -- his navel is at 1.047), as round under as over, the
+   * lower curve turning in to his pubic line rather than ending in a ledge. `round` is how full the curve is between its
+   * ends (1 a sine's arch; under 1 fuller, a rounder side profile).
+   */
+  round: 0.7,
+  /** GAME TUNING: how far his belly stands forward at 100%, metres (a big belly: 12 cm). */
+  most: 0.12,
   /** GAME TUNING: how much his sides fill with it (0 front only, 1 as much as his front), and his back (none). */
   sides: 0.45,
   /** GAME TUNING: how far his navel's floor comes out at OUTIE 1, metres past where it would sit flush (a few mm). */
@@ -45,11 +54,11 @@ export const MALE_BELLY = Object.freeze({
 
 const smoothstep = (a: number, b: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-/** How much of the bell a point at height `y` takes (1 at its fullest, none under his pubic bone or over his ribs). */
+/** How much of the bell a point at height `y` takes (1 at its fullest, half way between his pubic bone and his breastbone's tip; none past either). */
 export function bellyBell(y: number, m = MALE_BELLY): number {
-  if (y <= m.pubisY || y >= m.ribsY + m.over) return 0;
-  if (y < m.fullestY) return smoothstep(m.pubisY, m.fullestY, y) ** 0.8;
-  return 1 - smoothstep(m.fullestY, m.ribsY + m.over, y);
+  const t = (y - m.pubisY) / (m.ribsY - m.pubisY);
+  if (!(t > 0 && t < 1)) return 0;
+  return Math.sin(Math.PI * t) ** m.round;
 }
 
 /** How much of it a point takes round him: 1 straight ahead, `sides` at his sides, none behind his middle. */
