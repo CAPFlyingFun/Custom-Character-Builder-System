@@ -351,6 +351,15 @@ import { hisBone, herBone } from './maleRig';
 import { MALE_BELLY, maleBellyField, maleOutieField, vertexNormals } from './maleBelly';
 /** His belly's and his navel's shape fields (the male base model's: maleBelly.ts). */
 const MALE_BELLY_FIELD = 'shape:maleBelly', MALE_OUTIE_FIELD = 'shape:maleOutie';
+/**
+ * HIS RIB CAGE, hers laid in him and made his size (skeletonInV2.ts `trunkShape`). MEASURED on him with hers as laid
+ * (2026-11-19, the skeleton's chest pieces against his skin, his rest frame): the back of her ribs lies 0.9 cm inside his
+ * back, their front 6 to 8 cm behind his skin at his midline, their width 0.29 m against his trunk's 0.34. GAME TUNING to
+ * that: deepened 1.35 times forward from the back of her ribs (z -0.13) -- her breastbone then 2 to 3 cm under his skin --
+ * and widened 1.07 times; wholly from 1.10 to 1.36 m, eased to nothing by 1.02 (his lowest ribs, over his pelvis) and
+ * 1.44 (the base of his neck).
+ */
+const MALE_TRUNK_SHAPE_OF = (skip: ReadonlySet<string>) => ({ pivot: [MALE_BELLY.midX, 0, -0.13] as const, scale: [1.07, 1.35] as const, from: [1.02, 1.1] as const, to: [1.36, 1.44] as const, skip });
 import { BIRTH_NEEDS, birthAt, birthBeginsAt, birthLength, birthLine, birthNeeds, pregnantAt, REALISTIC_STRETCH, type BirthMoment, type BirthPace, type BirthTurn } from './birthSequence';
 import { easeLegsOpen, legSpreadDeg, legsOpen } from './legsOpen';
 /** GAME TUNING: all of it within `near` of a knee, none past `far` (metres); `passes` of `lambda` each */
@@ -8752,6 +8761,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                 set: jt ? [jt.ankleL, jt.ankleR].map((a) => ({ names: under(a), pivot: nameOf(a), pitchDeg: FOOT_SET.pitchDeg, shift: FOOT_SET.shift })) : [],
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
                 bodyName: bodyBone,
+                // (his rib cage to him: MEASURED with hers as laid, his breastbone stood 5 to 8 cm behind his skin at his
+                // midline -- a man's lies 1.5 to 2.5 cm under it -- and her ribs 2.5 to 4.5 cm inside his sides)
+                ...(maleNow ? { trunkShape: MALE_TRUNK_SHAPE_OF(new Set(skull)) } : {}),
                 v2Joint: (name) => { const k = bodyBones.get(bodyBone(name)); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });
               // (her skull at its real size, only slid in: it fits her head so, back and up a little -- the head-size renders,
@@ -10748,7 +10760,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { size: a.itemSize, count: a.count, data: btoa(s) };
         },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
-          const b = bodyOf()?.mesh; if (!b) return null;
+          const b = bodyOf()?.mesh ?? (isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? herSkinned() : null); if (!b) return null;
           const g = b.geometry, n = g.getAttribute('position').count, out = new Float32Array(n * 3), v = new THREE.Vector3();
           if (kind === 'posed') { b.updateMatrixWorld(true); b.skeleton?.update(); for (let i = 0; i < n; i++) { b.getVertexPosition(i, v); b.localToWorld(v); out[i * 3] = v.x / M; out[i * 3 + 1] = v.y / M; out[i * 3 + 2] = v.z / M; } }
           // ('shaped': her shapes and her morphs, before her bones move her -- model units)
