@@ -347,6 +347,9 @@ const AFTERBIRTH = Object.freeze({
 import { BIRTH_CONTACT_FIELD, createBirthContact, type BirthContact } from './birthContact';
 import { KNEE_TURN_FIELD, createKneeTurn, type KneeTurn } from './kneeTurn';
 import { HIP_TURN_FIELD, bellyHold, createHipTurn, type HipTurn } from './hipTurn';
+import { MALE_BELLY, maleBellyField, maleOutieField, vertexNormals } from './maleBelly';
+/** His belly's and his navel's shape fields (the male base model's: maleBelly.ts). */
+const MALE_BELLY_FIELD = 'shape:maleBelly', MALE_OUTIE_FIELD = 'shape:maleOutie';
 import { BIRTH_NEEDS, birthAt, birthBeginsAt, birthLength, birthLine, birthNeeds, pregnantAt, REALISTIC_STRETCH, type BirthMoment, type BirthPace, type BirthTurn } from './birthSequence';
 import { easeLegsOpen, legSpreadDeg, legsOpen } from './legsOpen';
 /** GAME TUNING: all of it within `near` of a knee, none past `far` (metres); `passes` of `lambda` each */
@@ -645,6 +648,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let skinned: THREE.SkinnedMesh[] = [];
   let garments: Garment[] = [];
   let hasBelly = false;
+  /** HIS NAVEL (maleBelly.ts): 0 an innie, as he is modelled, to 1 pushed out (NAVEL · OUTIE). */
+  let maleOutie = 0;
   let recovered = false;
   /** her light skin's triangles while it is on (`hooks.lightBody`), else nothing */
   let lightBodyOn = 0;
@@ -2334,6 +2339,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // (the two base models have a button each since the male one came: MODEL stays for a probe)
       buttons.model.style.display = new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth' ? '' : 'none';
     }
+    if (buttons.maleNavel) buttons.maleNavel.style.display = isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? '' : 'none';
     for (const sex of ['female', 'male'] as const) {
       const b = buttons[`base-${sex}`];
       if (!b) continue;
@@ -2516,6 +2522,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** Her shape fields' weights at a belly size: her controls', and her refined 0% shape fading out (zeroRefine.ts: by 200% on HYBRID, 80% on the others). */
   function fieldWeightsAt(b: number): Record<string, number> {
     const out: Record<string, number> = { ...bodyShapeFieldWeights(body, b, bellyCurve), [ZERO_FIELD]: zeroRefineWeight(b, bellyCurve) };
+    // HIS belly (maleBelly.ts): his belly slider's 0 to 100% (Joshua, 2026-11-19: "maybe a max 100%"), and his navel
+    out[MALE_BELLY_FIELD] = Math.min(1, Math.max(0, b / 100));
+    out[MALE_OUTIE_FIELD] = maleOutie;
     // her birth area, shaped the same at every size (birthArea.ts)
     // (its folds fuller only while nothing is worn over them: a fitted bottom is a few millimetres off her skin)
     out[BIRTH_CLEFT_FIELD] = birthAreaShown ? 1 : 0;
@@ -3661,6 +3670,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         loadSarah();
       });
     }
+    // HIS NAVEL (Joshua, 2026-11-19: "probably not [an outie] but maybe in some rare occasions"): an innie unless chosen
+    const outieLine = () => `NAVEL · ${maleOutie === 0 ? 'INNIE' : maleOutie < 1 ? 'HALF OUT' : 'OUTIE'}`;
+    buttons.maleNavel = btn(outieLine(), SARAH_LAB_ACTION.maleNavel, () => { maleOutie = maleOutie === 0 ? 0.5 : maleOutie < 1 ? 1 : 0; buttons.maleNavel.textContent = outieLine(); applyLook(); refresh(); });
     buttons.refine = btn(refineLine(refine), SARAH_LAB_ACTION.refine, () => { refine = !refine; applyLook(); refresh(); });
     // the belly curve experiment (Joshua, 2026-10-22): CURRENT is the approved slider; the others are for comparing
     const curveLabel = () => `BELLY CURVE · ${BELLY_CURVE_NAMES[bellyCurve]}${bellyCurve === DEFAULT_BELLY_CURVE ? '' : bellyCurve === 'approved' ? ' (backup)' : ' (experiment)'}`;
@@ -3684,8 +3696,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     buttons.babyLie = btn('LIE · AUTO', SARAH_LAB_ACTION.babyLie, () => { babyLie = LIE_MODES[(LIE_MODES.indexOf(babyLie) + 1) % LIE_MODES.length]; if (babyLie === 'random') babyLieSeed = Math.floor(Math.random() * 1e6) + 1; babyDirty = true; babyFitAt = -Infinity; refresh(); });
     // KICK: one of them kicks now (as BABY KICKS makes them on their own)
     buttons.babyKick = btn('KICK', SARAH_LAB_ACTION.babyKick, () => { const roots = babyRoots(); if (!roots.length) return; const i = Math.floor(Math.random() * roots.length); startMove(babyMoveOf(i, roots[i]), 'kick'); });
-    for (const b of [buttons['base-female'], buttons['base-male'], buttons.model, buttons.refine, buttons.bellyCurve, buttons.outfit, buttons.armSide, buttons.bounce, buttons.pregnant, buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) { b.style.padding = '8px 10px'; b.style.fontSize = '12px'; row.appendChild(b); }
-    for (const [b, tab] of [[buttons['base-female'], 'body'], [buttons['base-male'], 'body'], [buttons.model, 'body'], [buttons.refine, 'body'], [buttons.bellyCurve, 'body'], [buttons.outfit, 'outfit'], [buttons.armSide, 'pose'], [buttons.bounce, 'pose'], [buttons.pregnant, 'body'], [buttons.baby, 'body'], [buttons.babies, 'body'], [buttons.babyLie, 'body'], [buttons.babyKick, 'body']] as const) b.dataset.tab = tab;
+    for (const b of [buttons['base-female'], buttons['base-male'], buttons.maleNavel, buttons.model, buttons.refine, buttons.bellyCurve, buttons.outfit, buttons.armSide, buttons.bounce, buttons.pregnant, buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) { b.style.padding = '8px 10px'; b.style.fontSize = '12px'; row.appendChild(b); }
+    for (const [b, tab] of [[buttons['base-female'], 'body'], [buttons['base-male'], 'body'], [buttons.maleNavel, 'body'], [buttons.model, 'body'], [buttons.refine, 'body'], [buttons.bellyCurve, 'body'], [buttons.outfit, 'outfit'], [buttons.armSide, 'pose'], [buttons.bounce, 'pose'], [buttons.pregnant, 'body'], [buttons.baby, 'body'], [buttons.babies, 'body'], [buttons.babyLie, 'body'], [buttons.babyKick, 'body']] as const) b.dataset.tab = tab;
     right.appendChild(row);
     // the baby's week, length and weight, while it is shown
     babyNote = document.createElement('div');
@@ -6875,6 +6887,49 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     applyLook();
   }
 
+  /**
+   * HIS BELLY AND HIS NAVEL as shape fields on his body (maleBelly.ts), laid once as he loads: each worked out in his rest
+   * metres and taken back into his mesh's own units, with the normals his skin has once moved.
+   */
+  function layMaleBelly(root: THREE.Object3D): void {
+    const mesh = findSkinnedMesh(root);
+    if (!mesh || !measure) return;
+    root.updateMatrixWorld(true);
+    const fields = baseShapeFields(mesh);
+    shaped.push({ mesh, fields });
+    const g = mesh.geometry, idx = g.getIndex(), n = fields.basePos.length / 3;
+    if (!idx) return;
+    // his rest metres, and back
+    const toRest = restOfMesh(mesh, root), fromRest = new THREE.Matrix3().setFromMatrix4(toRest).invert();
+    const rest = new Float32Array(n * 3), v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) { v.fromArray(fields.basePos, i * 3).applyMatrix4(toRest); v.toArray(rest, i * 3); }
+    // how much of each point his trunk carries: all but his arms' and his thighs' shares
+    const bones = mesh.skeleton.bones, limb = new Uint8Array(bones.length), j = measure.joints;
+    const tops = new Set([j.shoulderL, j.shoulderR, j.hipL, j.hipR].map((k) => bones[k]).filter(Boolean));
+    bones.forEach((b, k) => { for (let q: THREE.Object3D | null = b; q; q = q.parent) if (tops.has(q as THREE.Bone)) { limb[k] = 1; break; } });
+    const SI = g.getAttribute('skinIndex'), SW = g.getAttribute('skinWeight'), trunk = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let t = 0, all = 0; for (let c = 0; c < 4; c++) { const w = SW.getComponent(i, c); all += w; if (!limb[SI.getComponent(i, c)]) t += w; } trunk[i] = all > 0 ? t / all : 0; }
+    // his skin's front at his navel's height (where an outie's floor would sit flush): the most forward of his midline there
+    let front = -Infinity;
+    for (let i = 0; i < n; i++) if (Math.abs(rest[i * 3] - MALE_BELLY.midX) < 0.02 && Math.abs(rest[i * 3 + 1] - MALE_BELLY.navelY) < 0.03) front = Math.max(front, rest[i * 3 + 2]);
+    const lay = (name: string, move: Float32Array) => {
+      const index: number[] = [], pos: number[] = [], moved = Float32Array.from(fields.basePos), d = new THREE.Vector3();
+      for (let i = 0; i < n; i++) {
+        if (move[i * 3] === 0 && move[i * 3 + 1] === 0 && move[i * 3 + 2] === 0) continue;
+        d.fromArray(move, i * 3).applyMatrix3(fromRest);
+        index.push(i); pos.push(d.x, d.y, d.z);
+        moved[i * 3] += d.x; moved[i * 3 + 1] += d.y; moved[i * 3 + 2] += d.z;
+      }
+      // (the change in his normals, worked out the same way before and after: added to his file's own)
+      const n0 = vertexNormals(fields.basePos, idx.array, fields.basePos), n1 = vertexNormals(moved, idx.array, fields.basePos);
+      const nrm = index.flatMap((i) => [n1[i * 3] - n0[i * 3], n1[i * 3 + 1] - n0[i * 3 + 1], n1[i * 3 + 2] - n0[i * 3 + 2]]);
+      addShapeField(fields, name, { index: Uint32Array.from(index), pos: Float32Array.from(pos), nrm: Float32Array.from(nrm) });
+    };
+    lay(MALE_BELLY_FIELD, maleBellyField(rest, trunk));
+    if (Number.isFinite(front)) lay(MALE_OUTIE_FIELD, maleOutieField(rest, front));
+    hasBelly = true;
+  }
+
   function restOfMesh(mesh: THREE.SkinnedMesh, root: THREE.Object3D): THREE.Matrix4 {
     const sk = mesh.skeleton, bone = sk.bones[0];
     const skin = new THREE.Matrix4().copy(mesh.bindMatrixInverse).multiply(bone.matrixWorld).multiply(sk.boneInverses[0]).multiply(mesh.bindMatrix);
@@ -8544,6 +8599,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         try { buildRig = b && s ? prepareBuildRig(b.mesh, s.fields.basePos, measure.joints, FACE_REST_SCALE) : null; } catch (error) { console.error('[sarahlab] her build could not be measured; BUILD is off', error); buildRig = null; }
       }
       if (!recovered && outfit >= 5) outfit = 0;
+      // THE MALE BASE MODEL's belly and navel (maleBelly.ts): two fields laid on his rest shape, his belly slider's
+      if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) { try { layMaleBelly(loadedModel); } catch (error) { console.error('[sarahlab] his belly could not be laid; he is as modelled', error); } }
       model = loadedModel;
       // her refined 0% shape and her navel as its own piece (zeroRefine.ts), put on her approved body when the file is
       // in -- fetched beside her body file and almost always there first; it never holds up her loading

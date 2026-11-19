@@ -202,6 +202,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   model: 'sarahlab:model',
   /** `${baseModel}female` / `${baseModel}male`: the FEMALE and MALE buttons */
   baseModel: 'sarahlab:base:',
+  /** HIS NAVEL: innie, half out, outie (the male base model's) */
+  maleNavel: 'sarahlab:male-navel',
   refine: 'sarahlab:refine',
   bellyCurve: 'sarahlab:belly-curve',
   armSide: 'sarahlab:armside',
