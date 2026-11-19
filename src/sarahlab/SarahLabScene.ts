@@ -61,7 +61,7 @@ import { FACE_FIELD_PREFIX, faceFieldOn, faceFieldWeights, faceSlidersMoved, hea
 import { HeadPanel } from './headPanel';
 import { STYLE_FRAME, picturedStyles, stylePictureLayers, styleThumbPath } from './stylePictures';
 import type { PieceKind } from './paintTemplates';
-import { PAINT_LAYER_COUNT } from './bodyPaint';
+import { PAINT_LAYER_COUNT, paintAt } from './bodyPaint';
 import { lookOpenedOn } from './sarahLook';
 import { BIRTH_KINDS, PREGNANCY_OPENING, PREGNANCY_RANGE, PREGNANCY_RULE, bellySize, numbersLine, pregnancyOf, pregnantLine, typeBirths, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
@@ -380,6 +380,17 @@ import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
  * (`fabricPanel.ts`'s `poseFields`); every other field is her own shape, whose slides along her skin are her slip.
  */
 const POSE_SHAPE_FIELDS: readonly string[] = Object.freeze([BIRTH_THIGHS_FIELD, BIRTH_GAP_FIELD, BIRTH_SEAT_FIELD, BIRTH_ROOM_FIELD, BIRTH_NORMALS_FIELD, BIRTH_KNEES_FIELD, KNEE_TURN_FIELD, HIP_TURN_FIELD, BIRTH_CONTACT_FIELD]);
+/**
+ * WHAT OF HER GROIN'S SMOOTHING A DRAWN GARMENT RIDES (`birthNormals.ts`): in front of her it rides it, as all of her
+ * pose; BEHIND HER it does not -- there the smoothing irons her posed skin by sliding its points along it, each its own
+ * way, and a garment riding those slides drew its edge in teeth (Joshua, 2026-11-19, of her athletic bikini bottom
+ * squatting: "Mainly it's the back end that changes and gets jagged edges… front is sides seem to be okay"). MEASURED in
+ * the room the same morning, SQUAT: from her back its edge ragged as ridden, one smooth line with the slides taken off;
+ * taken off in front as well, black spikes beside its front panel in SQUAT and in RECLINE. So a point rides all of it
+ * `GROIN_RIDE.from` behind the middle of her opening and nearer, none of it `to` behind and further (metres of her rest
+ * shape; GAME TUNING), and the rest of its slide is taken off the garment's look-up as her own shapes' is (`skinSlip.ts`).
+ */
+const GROIN_RIDE = Object.freeze({ from: 0.03, to: 0.08 });
 
 /**
  * Whether a part of a modelled garment is a CORD: a closed tube, every edge of it shared by two of its triangles, where
@@ -3819,6 +3830,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     fields[SARAH_LAB_FIELD.bodyNote] = note;
     right.appendChild(note);
     const scaleOf = new THREE.Vector3();
+    let groinRideOf: { rest: unknown; share: Float32Array } | null = null;
+    const groinRide = (): Float32Array | null => {
+      const b = bodyOf(); const rest = b?.mesh.geometry.getAttribute('fabricRest') as THREE.BufferAttribute | undefined;
+      if (!rest) return null;
+      if (groinRideOf?.rest === rest.array) return groinRideOf.share;
+      const c = birthAreaCentre(rest.array as ArrayLike<number>);
+      if (!c) return null;
+      const n = rest.count, share = new Float32Array(n), a = rest.array as ArrayLike<number>;
+      for (let v = 0; v < n; v++) { const behind = c.z - a[v * 3 + 2], t = Math.min(1, Math.max(0, (behind - GROIN_RIDE.from) / (GROIN_RIDE.to - GROIN_RIDE.from))); share[v] = 1 - t * t * (3 - 2 * t); }
+      groinRideOf = { rest: rest.array, share };
+      return share;
+    };
     fabric = fabricPanel({
       meshes: () => skinned,
       body: () => skinned.find(m => !!m.geometry.getAttribute('_cloth_cover')) ?? null,
@@ -3853,6 +3876,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       clothOver: () => (clothWorn() ? { name: 'shirtSpandexLite', label: 'cloth tee' } : fittedTee() ? { name: 'shirtSpandexLite', label: 'spandex tee' } : null),
       // what of her shape is her pose's: a designed garment rides it (fabricPanel.ts)
       poseFields: () => POSE_SHAPE_FIELDS,
+      // (her groin's smoothing ridden in front of her and not behind: `GROIN_RIDE`)
+      poseRide: (name) => (name === BIRTH_NORMALS_FIELD ? groinRide() : null),
       // all of her skin's triangles, each once: her opening's area is drawn by its own patch, its triangles hers all the
       // same (her own list has them again when the patch is not shown)
       skinTriangles: (mesh) => skinTrianglesOf(mesh),
@@ -10644,8 +10669,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const A = b.geometry.getAttribute('fabricPaint') as THREE.BufferAttribute | undefined, f = bikiniBottomField(b.geometry.getAttribute('position').count);
           if (!A || !f) return { attr: !!A, field: !!f };
           const bins: Record<string, [number, number]> = {};
-          for (let v = 0; v < f.length; v++) { const k = f[v] <= -0.0299 ? 'unstored' : (Math.floor(f[v] * 200) / 2).toFixed(1); const e = bins[k] ?? (bins[k] = [0, 0]); e[0]++; e[1] += A.getX(v); }
-          let painted = 0, paintedOut = 0; for (let v = 0; v < f.length; v++) if (A.getX(v) >= 0.5) { painted++; if (f[v] < 0) paintedOut++; }
+          for (let v = 0; v < f.length; v++) { const k = f[v] <= -0.0299 ? 'unstored' : (Math.floor(f[v] * 200) / 2).toFixed(1); const e = bins[k] ?? (bins[k] = [0, 0]); e[0]++; e[1] += paintAt(A.array, v, 0); }
+          let painted = 0, paintedOut = 0; for (let v = 0; v < f.length; v++) if (paintAt(A.array, v, 0) >= 0.5) { painted++; if (f[v] < 0) paintedOut++; }
           bins['painted>=0.5'] = [1, painted]; bins['ofThemOutside'] = [1, paintedOut]; bins['itemSize'] = [1, A.itemSize];
           return Object.fromEntries(Object.entries(bins).map(([k, [n, s]]) => [k, +(s / n).toFixed(3)]));
         },

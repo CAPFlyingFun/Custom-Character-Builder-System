@@ -4,6 +4,7 @@
  * skeleton, her motion shapes, every point sampled from her skin where it lies. Her shape as it stands now (every field,
  * her build) is read back from her body each time it changes, so at rest the area is exactly her skin, only finer.
  */
+import { PAINT_ATTRIBUTE, PAINT_LAYER_COUNT, PAINT_PACKED, packPaint, paintAt } from './bodyPaint';
 import * as THREE from 'three';
 import { bakeVulva, edgeShare, type VulvaBake } from './vulvaPatch';
 import { JIGGLE_ATTRIBUTE, PUSH_ATTRIBUTE, SOFT_REF_ATTRIBUTE, UNITS_PER_METRE, blendLegs, patchJiggle, patchWombSoft, setPushExtra, shareLegs } from './softBody';
@@ -358,6 +359,15 @@ function sampleInto(out: Float32Array, from: ArrayLike<number>, size: number, sr
     for (let k = 0; k < size; k++) out[p * size + k] = wa * from[a + k] + wb * from[b + k] + wc * from[c + k];
   }
 }
+/** Her paint (two layers to a number, `bodyPaint.PAINT_PACK`) read the same way: each layer spread, then packed again. */
+function samplePaintInto(out: Float32Array, from: ArrayLike<number>, src: Uint32Array, bary: Float32Array, n: number): void {
+  const w = new Float32Array(PAINT_LAYER_COUNT);
+  for (let p = 0; p < n; p++) {
+    const a = src[p * 3], b = src[p * 3 + 1], c = src[p * 3 + 2], wa = bary[p * 3], wb = bary[p * 3 + 1], wc = bary[p * 3 + 2];
+    for (let l = 0; l < PAINT_LAYER_COUNT; l++) w[l] = wa * paintAt(from, a, l) + wb * paintAt(from, b, l) + wc * paintAt(from, c, l);
+    packPaint(w, out.subarray(p * PAINT_PACKED, (p + 1) * PAINT_PACKED));
+  }
+}
 /** An attribute as plain floats, one entry a vertex (a quantized or interleaved one read through getX..getW). */
 function floatsOf(attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): Float32Array {
   const n = attr.count, s = attr.itemSize, out = new Float32Array(n * s);
@@ -464,7 +474,8 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       const version = (a as THREE.BufferAttribute).version ?? 0;
       if (e && e.from === a && e.version === version) continue;
       const out = new Float32Array(P * a.itemSize);
-      if (IN_HER_TRIANGLE.has(name)) sampleInto(out, floatsOf(a), a.itemSize, bake.src, bake.bary, P); else sampleInto(out, floatsOf(a), a.itemSize, bake.uvSrc, bake.uvBary, P);
+      if (name === PAINT_ATTRIBUTE) samplePaintInto(out, floatsOf(a), bake.uvSrc, bake.uvBary, P);
+      else if (IN_HER_TRIANGLE.has(name)) sampleInto(out, floatsOf(a), a.itemSize, bake.src, bake.bary, P); else sampleInto(out, floatsOf(a), a.itemSize, bake.uvSrc, bake.uvBary, P);
       geom.setAttribute(name, new THREE.BufferAttribute(out, a.itemSize));
       if (!e) { e = { name, from: a, version }; extras.push(e); } else { e.from = a; e.version = version; }
       changed = true;

@@ -235,7 +235,8 @@ describe('a top\'s details in the shader', () => {
     // (...and before a top's own hem was level on her as she is shaped: d27c39a7… and 23dfa6e1…)
     // (...and before which of her skin a pixel is was read inside the triangle the pixel is drawn for: 04c1d084… her
     // skin's; a sheet does not ask)
-    expect(compiled(true, 3, null).hash).toBe('276feab9d4c182c65e6d3bfe8747f76d252597b577cc696a636aaeefbe64cb62');
+    // (2026-11-19: her paint unpacked two layers to a number, `bodyPaint.PAINT_PACK`, for six layers)
+    expect(compiled(true, 3, null).hash).toBe('60f831b4ca8a567a0aa1b1c282665f5df1528a66473d1d20945ce0fd739807c0');
     expect(compiled(false, 1, null).hash).toBe('3fac908ee59b894ad4cb7ae0f0ab5d217cc4f17ad16bccba7bce24f571e8b005');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her

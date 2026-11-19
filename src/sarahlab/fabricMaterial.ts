@@ -236,7 +236,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       // (`FABRIC_REST_DEFINE`: whatever else is laid on this material can tell that `fabricRest` is here to read)
       `#define ${FABRIC_REST_DEFINE} 1`,
       'attribute vec3 fabricRest;', 'attribute vec3 fabricRestNormal;', 'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;',
-      ...(masked ? ['attribute vec3 fabricPaint;', 'attribute vec4 fabricRegionTint;', 'varying vec3 vFabricMask;', 'varying vec4 vFabricTint;',
+      ...(masked ? ['attribute vec3 fabricPaint;', 'attribute vec4 fabricRegionTint;', 'varying vec3 vFabricMask;', ...(layers > 3 ? ['varying vec3 vFabricMask2;'] : []), 'varying vec4 vFabricTint;',
         // where a shirt's drape hangs clear of her (tunicDrape.ts), that shirt's paint comes off the skin under it (x);
         // where her top's cleavage bridge spans her (cleavageBridge.ts), that top's paint comes off the skin behind it
         // (y); and whether the skin is her arm's, for a top's cut (z): one attribute (AUX_ATTRIBUTE says why)
@@ -277,12 +277,16 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       ...(masked && entry.low ? ['uniform vec4 fabricLowLegL[3];', 'uniform vec4 fabricLowLegR[3];', 'uniform vec4 fabricLowAxis;', 'varying vec4 vFabricLow;'] : []),
       shader.vertexShader,
     ].join('\n');
-    const mask = masked ? `\nvFabricMask = fabricPaint;\nvFabricTint = fabricRegionTint;\nvFabricAux = ${AUX_ATTRIBUTE};\nvFabricLimb = ${AUX_ATTRIBUTE}.z;\nvFabricSlip = fabricSlip;` : '';
+    // (her paint comes two layers to a number, `bodyPaint.PAINT_PACK`: unpacked here, at each vertex, before it is spread
+    // across her triangles -- a packed number spread so would be nonsense)
+    const unpack = 'vec3 fpHi = floor((fabricPaint + 0.5) / 256.0); vec3 fpLo = fabricPaint - fpHi * 256.0;';
+    const mask = masked ? `\n{ ${unpack} vFabricMask = fpLo / 255.0;${layers > 3 ? ' vFabricMask2 = fpHi / 255.0;' : ''} }\nvFabricTint = fabricRegionTint;\nvFabricAux = ${AUX_ATTRIBUTE};\nvFabricLimb = ${AUX_ATTRIBUTE}.z;\nvFabricSlip = fabricSlip;` : '';
     // each layer keeps its own share of her detail (detailMaterials.ts): where layers overlap, the one that hides most
     // decides, and every share is scaled by how much of that layer covers the vertex
     const fmax = (xs: string[]) => xs.reduce((a, b) => `max(${a}, ${b})`);
     const soften = masked ? `
-      ${idx.map((i) => `float fabricC${i} = clamp(fabricPaint[${i}] * fabricOn${i} * 1.4, 0.0, 1.0);`).join('\n      ')}
+      ${unpack}
+      ${idx.map((i) => `float fabricC${i} = clamp(${i < 3 ? `fpLo[${i}]` : `fpHi[${i - 3}]`} / 255.0 * fabricOn${i} * 1.4, 0.0, 1.0);`).join('\n      ')}
       float fabricCovered = ${fmax(idx.map((i) => `fabricC${i}`))};
       float fabricHideNipple = ${fmax(idx.map((i) => `fabricC${i} * (1.0 - fabricNippleKeep${i})`))};
       float fabricHideNavel = ${fmax(idx.map((i) => `fabricC${i} * (1.0 - fabricNavelKeep${i})`))};
@@ -453,7 +457,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           // slope -- put a third of the cloth on the first pixel of it, on skin both edges have bare. MEASURED
           // 2026-11-15 in the room, the tank: a dotted hairline in the top's shade down the front of each shoulder,
           // stepped as her triangles are)
-          ? `float fm${i} = fabricFieldOn${i} > 0.5 ? fabricFieldValue + 0.5 - fabricFieldLevel${i} : vFabricMask[${i}];
+          ? `float fm${i} = fabricFieldOn${i} > 0.5 ? fabricFieldValue + 0.5 - fabricFieldLevel${i} : ${i < 3 ? `vFabricMask[${i}]` : `vFabricMask2[${i - 3}]`};
         float fe${i} = -1.0;
         if (fabricCutOn${i} > 0.5) {${cutLine(i, false)}
           fm${i} = 0.5 + fd / (2.0 * fabricCutDepth.w);
@@ -473,7 +477,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         if (fabricRough${i} >= 0.0) { fabricMatte = max(fabricMatte, fk); fabricRoughness = fabricRough${i}; }
       }`;
     shader.fragmentShader = [
-      'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;', ...(masked ? ['varying vec3 vFabricMask;', 'varying vec4 vFabricTint;', 'uniform float fabricShowRegions;', 'varying float vFabricDetailKeep;', 'varying vec3 vFabricAux;', 'centroid varying float vFabricLimb;', 'varying float vFabricAlong;', 'uniform float fabricHangLayer;', 'uniform float fabricUnderLayer;',
+      'varying vec3 vFabricPos;', 'varying vec3 vFabricNrm;', ...(masked ? ['varying vec3 vFabricMask;', ...(layers > 3 ? ['varying vec3 vFabricMask2;'] : []), 'varying vec4 vFabricTint;', 'uniform float fabricShowRegions;', 'varying float vFabricDetailKeep;', 'varying vec3 vFabricAux;', 'centroid varying float vFabricLimb;', 'varying float vFabricAlong;', 'uniform float fabricHangLayer;', 'uniform float fabricUnderLayer;',
         'varying vec3 vFabricSlip;', 'uniform highp sampler3D fabricFieldMap;', 'uniform vec3 fabricFieldScale;', 'uniform vec3 fabricFieldOffset;', 'uniform float fabricFieldOpen;', ...idx.flatMap((i) => [`uniform float fabricFieldOn${i};`, `uniform float fabricFieldLevel${i};`]),
         // a designed garment's field at this pixel's own place on her skin (where the garment was designed: her rest
         // place, her points' slip taken off and their carry to the garment's pose added); nothing outside its block

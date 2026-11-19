@@ -246,6 +246,8 @@ export interface FabricHooks {
    * rides her bones; her slip (`skinSlip.ts`) is her own shapes' alone.
    */
   poseFields?(): readonly string[];
+  /** How much of pose field `name` a garment rides at each of her vertices (0 to 1; null: all of it everywhere). */
+  poseRide?(name: string): Float32Array | null;
 }
 
 export interface FabricPanel {
@@ -1330,7 +1332,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const laid = new Float32Array(pos.count * 3);
     const beside = (): Float32Array | null => {
       const push = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined, fields = hooks.rest(body);
-      const posed = (hooks.poseFields?.() ?? []).flatMap((name) => { const f = fields?.fields.get(name), weight = fields?.laid?.get(name) ?? 0; return f && weight ? [{ index: f.index, pos: f.pos, weight }] : []; });
+      const posed = posedFields(fields);
       return besideShapes(laid, push && push.array instanceof Float32Array && push.count === pos.count ? push.array : null, posed);
     };
     let besideNow: Float32Array | null = null, besideAt = NaN;
@@ -1529,7 +1531,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const laid = new Float32Array(pos.count * 3);
     const beside = (): Float32Array | null => {
       const push = g.getAttribute(PUSH_ATTRIBUTE) as THREE.BufferAttribute | undefined, fields = hooks.rest(body);
-      const posed = (hooks.poseFields?.() ?? []).flatMap((name) => { const f = fields?.fields.get(name), weight = fields?.laid?.get(name) ?? 0; return f && weight ? [{ index: f.index, pos: f.pos, weight }] : []; });
+      const posed = posedFields(fields);
       return besideShapes(laid, push && push.array instanceof Float32Array && push.count === pos.count ? push.array : null, posed);
     };
     let besideNow: Float32Array | null = null, besideAt = NaN;
@@ -1693,6 +1695,19 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     return { texture, tile: pick.image ? IMAGE_TILE_CM * c.stitch * hooks.unitsPerCm(mesh) : tileUnits(fam, c.stitch, hooks.unitsPerCm(mesh)), opacity: opacityOf(c), roughness: fam.roughness };
   }
 
+  /** Her pose's fields as a garment rides them (`hooks.poseRide`: a share of one at each vertex). */
+  function posedFields(fields: ReturnType<FabricHooks['rest']>): { index: ArrayLike<number>; pos: ArrayLike<number>; weight: number }[] {
+    return (hooks.poseFields?.() ?? []).flatMap((name) => {
+      const f = fields?.fields.get(name), weight = fields?.laid?.get(name) ?? 0;
+      if (!f || !weight) return [];
+      const share = hooks.poseRide?.(name) ?? null;
+      if (!share) return [{ index: f.index, pos: f.pos, weight }];
+      // (worked out afresh each time: a field may be laid again in place)
+      const out = new Float32Array(f.pos.length);
+      for (let k = 0; k < f.index.length; k++) { const s = share[f.index[k]] ?? 1; out[k * 3] = f.pos[k * 3] * s; out[k * 3 + 1] = f.pos[k * 3 + 1] * s; out[k * 3 + 2] = f.pos[k * 3 + 2] * s; }
+      return [{ index: f.index, pos: out, weight }];
+    });
+  }
   function sync(): void {
     if (disposed) return;
     const body = hooks.body();

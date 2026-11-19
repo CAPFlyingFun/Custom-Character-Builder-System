@@ -2,6 +2,7 @@
  * A skirt's draft (`src/sarahlab/skirt/skirtDraft.ts`): its three numbers, its ring's heights, how far an outline
  * reaches, and the outfits that wear one.
  */
+import { SKIRT_UNDERWEAR } from '../src/sarahlab/sarahLabTool';
 import { describe, expect, it } from 'vitest';
 import { ALL_ANCHORS, SKIRT_CUT, SKIRT_DEFAULTS, SKIRT_TOPS, anchorShare, anchorsOf, clampSkirt, fitOf, hemOf, reachOf, ringShare } from '../src/sarahlab/skirt/skirtDraft';
 import { OUTFITS, SKIRTS, SKIRT_OVER_BAND, SKIRT_UNDER_BAND } from '../src/sarahlab/sarahLabTool';
@@ -46,13 +47,15 @@ describe('a skirt, drafted', () => {
     expect(worn.map((o) => o.name)).toEqual(SKIRTS.map(([name]) => name));
     for (const o of worn) {
       expect(o.skirt).toEqual(clampSkirt(o.skirt!));
-      // nothing painted but the crop tee over it: no short, no waistband of the leggings whose line its ring is laid on
-      expect(o.paint?.map((l) => l.template), o.name).toEqual(['cropTee']);
+      // her athletic bikini bottom under it and the crop tee over it (Joshua, 2026-11-19: "for all skirts add the Athletic
+      // Bikini Bottom… so she has underwear"): no short, no waistband of the leggings whose line its ring is laid on
+      expect(o.paint?.map((l) => l.template), o.name).toEqual(['athleticBottomEdge', 'athleticBottom', 'cropTee']);
       expect(o.skirtTint, o.name).toBe(SKIRTS.find(([name]) => name === o.name)![1]);
     }
     for (const o of OUTFITS.filter((x) => x.skirt)) {
       expect((o.paint ?? []).some((l) => l.template === SKIRT_UNDER_BAND || l.template === 'shortsAthletic'), o.name).toBe(false);
       expect(o.skirtTint, o.name).toMatch(/^#[0-9a-f]{6}$/);
+      expect((o.paint ?? []).slice(0, 2), o.name).toEqual(SKIRT_UNDERWEAR);
     }
     expect(new Set(SKIRTS.map(([, , s]) => s.top))).toEqual(new Set(['under']));
   });

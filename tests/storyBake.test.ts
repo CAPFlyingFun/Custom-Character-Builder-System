@@ -102,8 +102,9 @@ describe('uvIslands and paintSplit: her islands, and which of them the paint is 
   it('puts an island with the paint when most of its vertices are painted, whole', () => {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(7 * 3), 3));
-    // the quad: three of four corners painted (in the second layer); the triangle: one corner in three
-    g.setAttribute('fabricPaint', new THREE.BufferAttribute(new Float32Array([0, 1, 0, 0, 0.9, 0, 0, 0.6, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]), 3));
+    // the quad: three of four corners painted (in the second layer, and one in the fourth: two layers to a number,
+    // `bodyPaint.PAINT_PACK`, in 255ths); the triangle: one corner in three
+    g.setAttribute('fabricPaint', new THREE.BufferAttribute(new Float32Array([0, 255, 0, 0, 230, 0, 255 * 256, 153, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0]), 3));
     const split = paintSplit(new THREE.Mesh(g), index)!;
     expect(Array.from(split.paint)).toEqual([0, 1, 2, 0, 2, 3]);
     expect(Array.from(split.skin)).toEqual([4, 5, 6]);
@@ -113,7 +114,7 @@ describe('uvIslands and paintSplit: her islands, and which of them the paint is 
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(7 * 3), 3));
     expect(paintSplit(new THREE.Mesh(g), index)).toBeNull();
-    g.setAttribute('fabricPaint', new THREE.BufferAttribute(new Float32Array(7 * 3).fill(1), 3));
+    g.setAttribute('fabricPaint', new THREE.BufferAttribute(new Float32Array(7 * 3).fill(255), 3));
     expect(paintSplit(new THREE.Mesh(g), index)).toBeNull();
   });
 });

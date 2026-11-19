@@ -31,8 +31,34 @@ import { TriangleGrid, standingSourceOf, type PosedShapes } from './skinPaint';
 import { LINE_REACH_M, LevelMesh, LevelStroke, standingShape, type LevelHost, type LevelView, type LineMode } from './levelLine';
 
 export const PAINT_ATTRIBUTE = 'fabricPaint';
-/** Layers held per vertex (one vec3 attribute). */
-export const PAINT_LAYER_COUNT = 3;
+/**
+ * SIX LAYERS (Joshua, 2026-11-19: "we have a 3 layers, and can we actually raise that amount up to 6 layers? Will be
+ * better in games to have more layer to make more complex outfits"). They are kept per vertex as numbers 0 to 1
+ * (`BodyPaint.weights`, six a vertex) and handed to her shader PACKED, two to a number, in the one vec3 attribute the
+ * three always had: her skin's vertex shader has every attribute a phone gives it (sixteen, MEASURED 2026-11-19 in the
+ * room: 16 of 16), so there is no room for a second. A number is a layer's weight in 255ths, layer `c` and layer
+ * `c + 3` (`PAINT_PACK`), whole numbers to 65 535: exact in a float. The shader unpacks each vertex's before they are
+ * spread across its triangles (`fabricMaterial.ts`); whatever else reads the attribute reads it through `paintAt`.
+ */
+export const PAINT_LAYER_COUNT = 6;
+/** The attribute's numbers a vertex, each holding two layers. */
+export const PAINT_PACKED = 3;
+export const PAINT_PACK = 256;
+/** Pack six weights a vertex into the attribute's three. */
+export function packPaint(weights: ArrayLike<number>, out: Float32Array): void {
+  const n = out.length / PAINT_PACKED;
+  for (let v = 0; v < n; v++) for (let c = 0; c < PAINT_PACKED; c++) {
+    const lo = Math.round(Math.min(1, Math.max(0, weights[v * PAINT_LAYER_COUNT + c])) * 255);
+    const hi = Math.round(Math.min(1, Math.max(0, weights[v * PAINT_LAYER_COUNT + c + PAINT_PACKED])) * 255);
+    out[v * PAINT_PACKED + c] = lo + PAINT_PACK * hi;
+  }
+}
+/** Layer `layer`'s weight at vertex `v` of a packed attribute's numbers (`array`, three a vertex). */
+export function paintAt(array: ArrayLike<number>, v: number, layer: number): number {
+  const x = array[v * PAINT_PACKED + (layer % PAINT_PACKED)];
+  const hi = Math.floor(x / PAINT_PACK);
+  return (layer < PAINT_PACKED ? x - hi * PAINT_PACK : hi) / 255;
+}
 export const BRUSH_RANGE_CM = Object.freeze({ min: 1, max: 20, step: 0.5, initial: 5 });
 /** A point of a level line this much further from the eye than her skin drawn at that place is behind something of her, metres (as `skinPaint.ts`). */
 const HIDDEN_BEHIND_M = 0.06;
@@ -193,13 +219,17 @@ export class BodyPaint {
     this.pose = new SkinPose(mesh);
     const g = mesh.geometry as THREE.BufferGeometry;
     const have = g.getAttribute(PAINT_ATTRIBUTE) as THREE.BufferAttribute | undefined;
-    if (have) { this.attribute = have; this.weights = have.array as Float32Array; return; }
-    this.weights = new Float32Array(g.getAttribute('position').count * PAINT_LAYER_COUNT);
-    this.attribute = new THREE.BufferAttribute(this.weights, PAINT_LAYER_COUNT);
+    // (the weights are kept with her geometry, so a second painter on her finds the same ones)
+    const kept = g.userData.paintWeights as Float32Array | undefined;
+    if (have && kept) { this.attribute = have; this.weights = kept; return; }
+    const n = g.getAttribute('position').count;
+    this.weights = new Float32Array(n * PAINT_LAYER_COUNT);
+    g.userData.paintWeights = this.weights;
+    this.attribute = new THREE.BufferAttribute(new Float32Array(n * PAINT_PACKED), PAINT_PACKED);
     g.setAttribute(PAINT_ATTRIBUTE, this.attribute);
   }
 
-  private changed(): void { this.attribute.needsUpdate = true; }
+  private changed(): void { packPaint(this.weights, this.attribute.array as Float32Array); this.attribute.needsUpdate = true; }
   /** Her vertices' places, for finding the copies split along a texture seam (any one shape of her will do). */
   private restPositions(): ArrayLike<number> | undefined {
     const g = this.mesh.geometry as THREE.BufferGeometry, p = g.getAttribute('position');

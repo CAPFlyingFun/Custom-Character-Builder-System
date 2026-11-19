@@ -41,6 +41,7 @@
  * (`scripts/sarahV2Recovery/story-sarah.mjs`), which writes the file. The room decides what she looks like when it is
  * called; nothing here changes her.
  */
+import { PAINT_LAYER_COUNT, paintAt } from './bodyPaint';
 import * as THREE from 'three';
 import { fabricOn } from './fabricMaterial';
 
@@ -214,7 +215,9 @@ export function paintSplit(mesh: THREE.Mesh, triangles: ArrayLike<number>): { re
   const count = mesh.geometry.getAttribute('position').count;
   const islands = uvIslands(triangles, count), n = islands.reduce((m, x) => Math.max(m, x + 1), 0);
   const painted = new Float64Array(n), seen = new Float64Array(n);
-  const isPainted = (v: number) => { for (let c = 0; c < paint.itemSize; c++) if (paint.getComponent(v, c) > 0.5) return true; return false; };
+  const pa = paint.array as ArrayLike<number>;
+  // (two layers to a number: `bodyPaint.paintAt`)
+  const isPainted = (v: number) => { for (let l = 0; l < PAINT_LAYER_COUNT; l++) if (paintAt(pa, v, l) > 0.5) return true; return false; };
   for (let t = 0; t < islands.length; t++) for (let k = 0; k < 3; k++) { const v = triangles[t * 3 + k]; seen[islands[t]]++; if (isPainted(v)) painted[islands[t]]++; }
   const skin: number[] = [], paintTriangles: number[] = [];
   for (let t = 0; t < islands.length; t++) (painted[islands[t]] > 0.5 * seen[islands[t]] ? paintTriangles : skin).push(triangles[t * 3], triangles[t * 3 + 1], triangles[t * 3 + 2]);

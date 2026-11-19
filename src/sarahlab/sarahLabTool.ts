@@ -750,6 +750,15 @@ export const TEE_SKIRTS: readonly (readonly [string, string, SkirtSettings, Part
  * modelled garment's edging in a fabric of its own, where it has an edging (`<garment>Trim`); without one its edging
  * follows its fabric (the editor's MATCH).
  */
+/**
+ * WHAT SHE WEARS UNDER A SKIRT (Joshua, 2026-11-19: "for all skirts add the Athletic Bikini 👙 Bottom… so she has underwear
+ * but can be removed if wanted later"): her athletic bikini bottom, its edging under its fill, in her bikini's own red and
+ * black -- two paint layers of six, each a piece the editor's REMOVE PIECE takes off.
+ */
+export const SKIRT_UNDERWEAR: readonly PaintedLayer[] = Object.freeze([
+  { template: 'athleticBottomEdge', fabric: BIKINI_EDGING_FABRIC },
+  { template: 'athleticBottom', fabric: BIKINI_FABRIC },
+]);
 export interface BuiltInOutfit { readonly name: string; readonly garments: readonly Garment[]; readonly paint?: readonly PaintedLayer[]; readonly fabrics?: Partial<Record<Garment, OutfitFabric>>; readonly trims?: Partial<Record<Garment, OutfitFabric>>; readonly procedural?: 'raglan' | 'setIn';
   /** A procedural tee's own settings where they are not the approved tee's (`garment/settings.ts`): its neckline, its sleeves, its length. */
   readonly cut?: Partial<GarmentSettings>;
@@ -837,13 +846,14 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ...SKIRTS.map(([name, tint, skirt]): BuiltInOutfit => ({
     name, garments: [], skirt, skirtTint: tint,
     paint: [
+      ...SKIRT_UNDERWEAR,
       { template: 'cropTee', fabric: { family: 'jersey', colour: 0, tint: SHEET_BOTTOMS.tee }, dials: { hem: skirt.top === 'under' ? SHEET_BOTTOMS_TEE_HEM : SKIRT_OVER_BAND - 0.03 } },
     ],
   })),
   // ...AND WITH THE CLOTH TEE (`TEE_SKIRTS`): the new tee over or under the skirt, the skirt's painted short under both.
   ...TEE_SKIRTS.map(([name, tint, skirt, cut]): BuiltInOutfit => ({
     name, garments: ['shirtSpandexLite'], skirt, skirtTint: tint, procedural: 'raglan', cut,
-    fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } },
+    fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } }, paint: SKIRT_UNDERWEAR,
   })),
 ];
 /**

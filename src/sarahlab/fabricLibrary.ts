@@ -199,7 +199,7 @@ export const PAINT_FILLS: readonly PaintFill[] = Object.freeze([
   { id: 'leggings', name: 'HIGH LEGGINGS', bits: 1 << 1 },
   { id: 'leggingsLow', name: 'LOW LEGGINGS', bits: 1 << 5 },
 ].map((a) => Object.freeze(a)));
-export const PAINT_LAYER_NAMES = Object.freeze(['Paint layer 1', 'Paint layer 2', 'Paint layer 3']);
+export const PAINT_LAYER_NAMES = Object.freeze(['Paint layer 1', 'Paint layer 2', 'Paint layer 3', 'Paint layer 4', 'Paint layer 5', 'Paint layer 6']);
 
 export type FabricMode = 'garment' | 'paint';
 export type PaintTool = 'brush' | 'erase' | 'region' | 'orbit';
