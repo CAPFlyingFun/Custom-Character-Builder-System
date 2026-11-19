@@ -34,12 +34,19 @@ export const MALE_BELLY = Object.freeze({
    */
   pubisY: 0.825,
   ribsY: 1.194,
-  /** GAME TUNING: how its bottom edge rises toward his sides (metres up per metre out, squared: 6 cm at 12 cm out). */
-  groinRise: 4,
+  /** GAME TUNING: how its bottom edge rises toward his sides (metres up per metre out, squared: 3 cm at 12 cm out). */
+  groinRise: 2,
   /** GAME TUNING: how far his belly stands forward at 100%, metres (his drawing, below: 13.5 cm at 200%, half that at 100%; his photograph's own was 6.9 cm; 200% is twice it -- Joshua: "200% will be just doubled the size"). */
   most: 0.0675,
-  /** GAME TUNING: how much his sides fill with it (0 front only, 1 as much as his front), and his back (none). */
-  sides: 0.45,
+  /** GAME TUNING: how much his sides fill with it, past his egg (0 none, 1 as much as his front), and his back (none). */
+  sides: 0.2,
+  /** GAME TUNING (his egg, from his front): its half width at his pubic bone, metres, and how much narrower at his breastbone (0.35: a third). */
+  eggWide: 0.15,
+  eggTaper: 0.35,
+  /** GAME TUNING (his egg, from his side): where it is fullest (of the way up), how full its middle (2.2), how softly it meets his skin (1.4). */
+  eggMiddle: 0.42,
+  eggFull: 2.2,
+  eggBlend: 1.4,
   /** GAME TUNING: how far his navel's floor comes out at OUTIE 1, metres past where it would sit flush (a few mm). */
   outiePast: 0.004,
   /** MEASURED: his navel's hollow is 8 mm deep and about 2 cm across. */
@@ -57,6 +64,7 @@ export const MALE_BELLY = Object.freeze({
  * to his breastbone. The first, traced off his own side photograph (not kept), is in git (62f1fcd); set beside hers it was
  * nearest her belly at 40% in shape and 45% in size.
  */
+/** (his drawing as read, kept for reference: the egg is what is drawn) */
 export const MALE_BELLY_PROFILE: readonly number[] = Object.freeze([0, 0.6, 0.77, 0.85, 0.9, 0.93, 0.96, 0.99, 1, 1, 1, 0.97, 0.9, 0.84, 0.77, 0.69, 0.61, 0.51, 0.39, 0.23, 0]);
 
 const smoothstep = (a: number, b: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -68,16 +76,31 @@ export function bellyBell(y: number, m = MALE_BELLY, x: number = m.midX): number
   const dx = x - m.midX, bottom = m.pubisY + m.groinRise * dx * dx;
   const t = (y - bottom) / (m.ribsY - bottom);
   if (!(t > 0 && t < 1)) return 0;
-  const k = t * (MALE_BELLY_PROFILE.length - 1), i = Math.min(MALE_BELLY_PROFILE.length - 2, Math.floor(k)), f = k - i;
-  return MALE_BELLY_PROFILE[i] * (1 - f) + MALE_BELLY_PROFILE[i + 1] * f;
+  return bellyEgg(t, m);
 }
 
-/** How much of it a point takes round him: 1 straight ahead, `sides` at his sides, none behind his middle. */
-export function bellyRound(x: number, z: number, m = MALE_BELLY): number {
+/**
+ * HIS BELLY AS AN EGG (Joshua, 2026-11-19, of his drawn curve on him: "the side profile looks good, but too boxy. Front
+ * profile, make it like mine which is more of an egg / oval shape, bottom a little bigger then the top"; and "blend all
+ * around the belly into the surrounding skin (chest, sides, pubic area, etc)"). From his side: fullest at `eggMiddle` of
+ * the way up from his pubic bone (his drawing's 0.40 to 0.50), a shorter, rounder lower half and a longer upper one, and
+ * flat to his skin at both ends -- `(1 - |u|^eggFull)^eggBlend`, u running -1 to 1 over each half. His drawing's table, flat
+ * across its middle and steep at its ends, drew him boxy and edged.
+ */
+export function bellyEgg(t: number, m = MALE_BELLY): number {
+  if (!(t > 0 && t < 1)) return 0;
+  const u = t < m.eggMiddle ? (m.eggMiddle - t) / m.eggMiddle : (t - m.eggMiddle) / (1 - m.eggMiddle);
+  return Math.max(0, 1 - u ** m.eggFull) ** m.eggBlend;
+}
+
+/** How much of it a point takes round him: an egg from his front (wider low than high), eased into his sides; none behind. */
+export function bellyRound(x: number, z: number, m = MALE_BELLY, y: number = m.navelY): number {
   const dx = x - m.midX, dz = z - m.middleZ, r = Math.hypot(dx, dz);
   if (r < 1e-6) return 0;
   const c = dz / r; // 1 ahead, 0 at his side, -1 behind
-  return c >= 0 ? m.sides + (1 - m.sides) * smoothstep(0, 1, c) ** 1.2 : m.sides * smoothstep(-0.35, 0, c);
+  const t = Math.min(1, Math.max(0, (y - m.pubisY) / (m.ribsY - m.pubisY)));
+  const half = m.eggWide * (1 - m.eggTaper * t), across = Math.exp(-((dx / half) ** 2));
+  return (m.sides + (1 - m.sides) * across) * smoothstep(-0.25, 0.55, c);
 }
 
 /**
@@ -89,7 +112,7 @@ export function maleBellyField(rest: Float32Array | Float64Array, trunk: Float32
   for (let i = 0; i < n; i++) {
     const t = trunk[i]; if (!(t > 0)) continue;
     const x = rest[i * 3], y = rest[i * 3 + 1], z = rest[i * 3 + 2];
-    const w = bellyBell(y, m, x) * bellyRound(x, z, m) * t;
+    const w = bellyBell(y, m, x) * bellyRound(x, z, m, y) * t;
     if (!(w > 0)) continue;
     // straight out from his middle at this height: forward ahead, out at his sides
     const dx = x - m.midX, dz = z - m.middleZ, r = Math.hypot(dx, dz), a = m.most * w;
