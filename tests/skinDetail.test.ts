@@ -35,3 +35,16 @@ describe('her strands depth', () => {
     expect(m.normalMap).toBeNull();
   });
 });
+
+describe('her even roughness (skinChoices.ts SKIN_EVEN_ROUGHNESS)', () => {
+  it('is one roughness over her skin: no bikini baked in', async () => {
+    const sharp = (await import('sharp')).default;
+    const { SKIN_EVEN_ROUGHNESS } = await import('../src/sarahlab/skinChoices');
+    const { data, info } = await sharp(`public/${SKIN_EVEN_ROUGHNESS}`).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const g: number[] = []; for (let i = 0; i < info.width * info.height; i += 97) g.push(data[i * 3 + 1]);
+    g.sort((a, b) => a - b); const at = (f: number) => g[Math.floor(f * (g.length - 1))];
+    // (her file's own: 93 to 125 from 5% to 95% of it; evened, her details alone stand off her skin's 106)
+    expect(at(0.95) - at(0.05)).toBeLessThanOrEqual(4);
+    expect(Math.abs(at(0.5) - 106)).toBeLessThanOrEqual(2);
+  });
+});

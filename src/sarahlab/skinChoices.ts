@@ -68,6 +68,16 @@ export const EVEN_SKIN_COLOUR = '#e4b5a5';
  */
 export const SKIN_ORIGINAL_IMAGE = 'models/skins/sarah-v2-skin-original-2048.webp';
 
+/**
+ * HER ROUGHNESS MADE EVEN, worn with every skin but ORIGINAL (Joshua, 2026-11-19: "the pelvis wasn't the same texture and
+ * looks weird like wearing a bikini seeing different textures around that area"). Her file's roughness map was baked
+ * with a bikini on her -- MEASURED at her vertices: from her navel to her crotch 127.5 of 255, her thighs 97.7, matte in
+ * a bikini's shape -- and the light on her showed it once her colour was even. `node scripts/evenSkin.mjs --rough <out>`
+ * makes it as her EVEN colour is made: one roughness for her skin (106.5, her skin's own mean), her details' own steps
+ * kept. Green is roughness; red and blue are her file's.
+ */
+export const SKIN_EVEN_ROUGHNESS = 'models/skins/sarah-v2-skin-rough-2048.webp';
+
 /** The choice after `id`; UPLOAD is in the cycle only once there is an upload. */
 export function nextSkin(id: SkinId, hasUpload: boolean): SkinId {
   const order: SkinId[] = [...SKIN_CHOICES.map((c) => c.id), ...(hasUpload ? (['upload'] as const) : [])];

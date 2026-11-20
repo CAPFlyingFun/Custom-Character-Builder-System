@@ -201,6 +201,52 @@ for (let t = 0; t < I.length; t += 3) {
 let covered = 0; for (let i = 0; i < W * H; i += 1) if (best[i] < Infinity) covered += 1;
 console.log(`[even] ${((covered / (W * H)) * 100).toFixed(1)}% of her image is her skin's; the rest is the plain skin colour`);
 const save = (buf, file) => { const s = sharp(buf, { raw: { width: W, height: H, channels: 3 } }); return (file.endsWith('.webp') ? s.webp({ quality: 92 }) : s.png()).toFile(file); };
-await save(out, OUT); console.log('[even] wrote', path.relative(ROOT, OUT));
+const ROUGH = arg('rough', null);
+if (!ROUGH) { await save(out, OUT); console.log('[even] wrote', path.relative(ROOT, OUT)); }
+else {
+  // HER ROUGHNESS MADE EVEN THE SAME WAY (Joshua, 2026-11-19: "the pelvis wasn't the same texture and looks weird like
+  // wearing a bikini seeing different textures around that area"). Her file's roughness map was baked with a bikini on
+  // her: MEASURED at her vertices, her skin from her navel down to her crotch reads 127.5 (of 255) where her thighs read
+  // 97.7 -- matte in a bikini's shape, the rest of her glossier. Laid as her colour is: her skin one roughness (its mean
+  // over her skin by area, her details left out), each DETAIL (by the same marks as her colour's: her lips, her areolas,
+  // an eye...) keeping its own step from the skin round it. Green is roughness; red and blue are kept as they were.
+  //   node scripts/evenSkin.mjs --rough public/models/skins/sarah-v2-skin-rough-2048.webp
+  const mrImage = prim.getMaterial().getMetallicRoughnessTexture()?.getImage();
+  if (!mrImage) throw new Error('her skin has no roughness map');
+  const { data: mr, info: mi } = await sharp(Buffer.from(mrImage)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const MW = mi.width, MH = mi.height;
+  const rAt = (u, v) => { const x = Math.min(MW - 1, Math.max(0, Math.round(u * MW - 0.5))), y = Math.min(MH - 1, Math.max(0, Math.round(v * MH - 0.5))); return mr[(y * MW + x) * 3 + 1] / 255; };
+  // each vertex's roughness, as its colour was taken; then her tone of it, her details still left out
+  col.fill(0); const rw = new Float32Array(N);
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t], b = I[t + 1], c = I[t + 2], mu = (UV[a * 2] + UV[b * 2] + UV[c * 2]) / 3, mv = (UV[a * 2 + 1] + UV[b * 2 + 1] + UV[c * 2 + 1]) / 3;
+    for (const i of [a, b, c]) { const r = rAt(UV[i * 2] * 0.8 + mu * 0.2, UV[i * 2 + 1] * 0.8 + mv * 0.2); col[i * 3] += r; col[i * 3 + 1] += r; col[i * 3 + 2] += r; rw[i] += 1; }
+  }
+  for (let i = 0; i < N; i += 1) if (rw[i] > 0) for (let k = 0; k < 3; k += 1) col[i * 3 + k] /= rw[i];
+  even();
+  let sr = 0, sw = 0; for (let i = 0; i < N; i += 1) if (wsum[i] > 0 && !detail[i]) { sr += col[i * 3] * wsum[i]; sw += wsum[i]; }
+  const SKIN_R = sr / sw;
+  console.log(`[even] her skin's roughness: ${(SKIN_R * 255).toFixed(1)} of 255 (her details keep their own step from it)`);
+  const rough = Buffer.from(mr), rbest = new Float32Array(MW * MH).fill(Infinity);
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t], b = I[t + 1], c = I[t + 2];
+    const ax = UV[a * 2] * MW - 0.5, ay = UV[a * 2 + 1] * MH - 0.5, bx = UV[b * 2] * MW - 0.5, by = UV[b * 2 + 1] * MH - 0.5, cx = UV[c * 2] * MW - 0.5, cy = UV[c * 2 + 1] * MH - 0.5;
+    const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy); if (Math.abs(den) < 1e-9) continue;
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx) - PAD)), x1 = Math.min(MW - 1, Math.ceil(Math.max(ax, bx, cx) + PAD)), y0 = Math.max(0, Math.floor(Math.min(ay, by, cy) - PAD)), y1 = Math.min(MH - 1, Math.ceil(Math.max(ay, by, cy) + PAD));
+    for (let y = y0; y <= y1; y += 1) for (let x = x0; x <= x1; x += 1) {
+      let l0 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den, l1 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den, l2 = 1 - l0 - l1;
+      const outside = Math.max(0, -Math.min(l0, l1, l2)) * Math.sqrt(Math.abs(den));
+      if (outside > PAD || outside >= rbest[y * MW + x]) continue;
+      rbest[y * MW + x] = outside;
+      if (outside > 0) { l0 = Math.max(0, l0); l1 = Math.max(0, l1); l2 = Math.max(0, l2); const s2 = l0 + l1 + l2; l0 /= s2; l1 /= s2; l2 /= s2; }
+      const o = (y * MW + x) * 3, mk = detail[a] * l0 + detail[b] * l1 + detail[c] * l2, tn = tone[a * 3] * l0 + tone[b * 3] * l1 + tone[c * 3] * l2;
+      const own = tn > 1e-4 ? SKIN_R * (mr[o + 1] / 255) / tn : SKIN_R;
+      rough[o + 1] = Math.round(Math.min(1, Math.max(0, SKIN_R + (own - SKIN_R) * Math.min(1, mk))) * 255);
+    }
+  }
+    // (what is no skin of hers -- the padding between islands -- her skin's own roughness, so a sampler blending in sees it)
+  for (let i = 0; i < MW * MH; i += 1) if (rbest[i] === Infinity) rough[i * 3 + 1] = Math.round(SKIN_R * 255);
+await sharp(rough, { raw: { width: MW, height: MH, channels: 3 } }).webp({ quality: 92 }).toFile(path.resolve(ROOT, ROUGH)); console.log('[even] wrote', ROUGH);
+}
 if (arg('tone', null)) await save(toneOut, path.resolve(arg('tone', '')));
 if (arg('marks', null)) await save(markOut, path.resolve(arg('marks', '')));

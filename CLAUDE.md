@@ -1923,6 +1923,15 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   HALF OF IT ON A FACE (`SKIN_DETAIL.face` 0.5, eased in between 0.83 and 0.87 of the body's height in its rest place --
   BIOLOGICAL SHAPE: the base of the neck to the chin): close on her face both depths read as orange peel (pictured
   2026-11-19, Joshua: "Haha, yeah…"). MEASURED in the room after: her face and his close, her belly as it was.
+- **HER ROUGHNESS EVEN, AND HER OPENING'S AREA GIVEN THE RELIEF** (Joshua, 2026-11-19: "the pelvis wasn't the same texture
+  and looks weird like wearing a bikini seeing different textures around that area"). Her file's roughness map was baked
+  with a bikini on her: MEASURED at her vertices, from her navel to her crotch 127.5 of 255, her thighs 97.7 (her colour
+  map has the same tan line, which EVEN took out; her normal map is flat there as everywhere). `node scripts/evenSkin.mjs
+  --rough public/models/skins/sarah-v2-skin-rough-2048.webp` evens it as her colour is (her skin 106.5, her details'
+  steps kept), worn with every skin but ORIGINAL (`skinChoices.ts` `SKIN_EVEN_ROUGHNESS`, `applyRoughness`; the probe's
+  `evenRough(on)`). And her opening's area and her skin drawn behind it (`vulvaMesh.ts`), which are her material without
+  her skin's program, take the relief too (`setSkinDetail`). PICTURED in the room: before, her belly glossy over a matte
+  groin; after, one sheen. `tests/skinDetail.test.ts`.
 - His organs (a prostate, no womb or ovaries), the pregnancy controls hidden for him, and his EVEN skin are done.
 - **HIS BUILD** (Joshua, 2026-11-19: "get the sliders to work… minus the breasts"): HEIGHT & PROPORTIONS work on him as on her
   (`prepareBuildRig` on his rest, his bones by role, his geometry's units told by his rest frame: `metresPerUnitOf` --

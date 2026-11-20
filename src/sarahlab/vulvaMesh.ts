@@ -217,6 +217,13 @@ export interface VulvaPatch {
   /** worn over (her clothes, modelled or painted on her): drawn with her own material exactly, her painted clothes and
    * all, its lips lying as her skin does and closed; bare, its own colours and shape */
   setDressed(on: boolean): void;
+  /**
+   * HER SKIN'S FINE RELIEF ON THE AREA AS ON THE REST OF HER (skinDetail.ts; Joshua, 2026-11-19: "the pelvis wasn't the
+   * same texture and looks weird like wearing a bikini seeing different textures around that area"). The area's bare
+   * look, and her own skin drawn behind it, are her material without her skin's program, so the relief laid on her
+   * never reached them: given here, the same uniforms, laid on the area's own rest place (its points are hers).
+   */
+  setSkinDetail(apply: (material: THREE.MeshStandardMaterial) => void): void;
   /** dressed: how much of its lips' shape shows through (0 her own skin's shape .. 1 all of it; VULVA DETAIL) */
   setDressedLips(keep: number): void;
   /**
@@ -3182,6 +3189,9 @@ void main() {
       if (Math.abs(k - dressedLips) < 1e-3) return;
       dressedLips = k;
       if (dressed) { openApplied = -1; sync(); }
+    },
+    setSkinDetail(apply: (material: THREE.MeshStandardMaterial) => void) {
+      for (const m of [patchMat, backMat]) if (!m.userData.skinDetail) apply(m);
     },
     setDressed(on: boolean) {
       if (on === dressed) return;

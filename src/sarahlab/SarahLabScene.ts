@@ -28,7 +28,7 @@ import { SkinPose } from './skinPose';
 import { SkinContact, spreadTriangles } from './skinContact';
 import { JointLimits, type JointAngles } from '../actor/jointLimits';
 import { rangeDeg, type RangeLevel } from '../data/jointRange';
-import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
+import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_EVEN_ROUGHNESS, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
 import { SkinPainter, standingSourceOf, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
 import { ACTIVITY, ACTIVITIES, breathFlare, chestShare, diaphragmRise, restingVitals, stepVitals, type Activity, type VitalsNow } from '../actor/vitals';
 import { breathAt, breathVolumes, layBreathTable } from './breathSkin';
@@ -800,6 +800,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * belly's mass swinging them with her. Fetched the first time it is asked for.
    */
   let babyFrame: { bone: THREE.Bone; matrix: THREE.Matrix4; meshToRest: THREE.Matrix4 } | null = null;
+  /** her skin's fine relief, to lay on her opening's area as on her (skinDetail.ts, vulvaMesh.ts `setSkinDetail`) */
+  let herSkinDetail: ((m: THREE.MeshStandardMaterial) => void) | null = null;
   /** her vulva, rebuilt finer from her own skin to be able to open (vulvaMesh.ts) */
   let vulva: VulvaPatch | null = null;
   /** her skin her vulva's area may take (a probe's, to try another): how far in from each leg opening on her torso's side
@@ -1812,6 +1814,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     const b = bodyOf();
     if (b && skinFetched && b.material.map === skinFetched.texture && skinId === skinFetched.id) applySkin(true);
+    // (her even roughness is fetched, not her file's: fetched again if it was dropped)
+    if (roughEven && pictureLost(roughEven.image)) { roughEven.dispose(); roughEven = null; applyRoughness(roughWanted); }
   }
   /** The brush's copy goes; her material gets back the map it was copied from. */
   function dropPainter(): void {
@@ -1841,6 +1845,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (own && t !== own) own.dispose();
       skinWorn = id; skinState = 'ready';
       if (id !== 'upload') { try { localStore()?.setItem(SKIN_KEY, id); } catch { /* a private window: the choice is not kept */ } }
+      // (and her roughness even under any skin but her file's own: SKIN_EVEN_ROUGHNESS)
+      applyRoughness(id !== 'original');
       // (her doors' outsides take her skin's tone: the skin she wears now)
       applyOpening();
       refresh();
@@ -1860,6 +1866,25 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       freeFetched(texture);
       skinFetched = { id: choice.id, texture };
     });
+  }
+  /** Her even roughness (skinChoices.ts `SKIN_EVEN_ROUGHNESS`), fetched once; her file's own put back for ORIGINAL. */
+  let roughEven: THREE.Texture | null = null, roughLoading = false, roughWanted = false;
+  function applyRoughness(even: boolean): void {
+    roughWanted = even;
+    const b = bodyOf(); if (!b) return;
+    const own = (b.material.userData.ownRough ??= b.material.roughnessMap) as THREE.Texture | null;
+    if (!own) return; // (a body with no roughness map of its own has nothing to even)
+    const want = even ? roughEven : own;
+    if (want && b.material.roughnessMap !== want) { b.material.roughnessMap = want; b.material.needsUpdate = true; }
+    if (even && !roughEven && !roughLoading) {
+      roughLoading = true;
+      void assets.loadTexture(SKIN_EVEN_ROUGHNESS).then((t) => {
+        roughLoading = false;
+        if (!t || disposed) { t?.dispose(); return; }
+        t.flipY = false; t.colorSpace = THREE.NoColorSpace; t.wrapS = own.wrapS; t.wrapT = own.wrapT; t.channel = own.channel; t.needsUpdate = true;
+        roughEven = t; if (roughWanted) applyRoughness(true);
+      });
+    }
   }
   /** A picture from the phone becomes UPLOAD, and she wears it. */
   async function uploadSkin(file: File): Promise<void> {
@@ -8568,7 +8593,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; v2OrganBones = null; v2Womb = null; organsGrowWomb = false; abdomenFailed = false; thoraxFailed = false;
     skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
-    vulva?.dispose(); vulva = null; remakeVulva = null;
+    vulva?.dispose(); vulva = null; remakeVulva = null; herSkinDetail = null;
     bottomShell?.dispose(); bottomShell = null; bottomShellTried = false; briefTies = null;
     clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; briefData = null; clothBriefPose = '';
     paintedEdge?.dispose(); paintedEdge = null;
@@ -8722,6 +8747,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           b.mesh.geometry.computeBoundingBox(); const hb = b.mesh.geometry.boundingBox!;
           const u = skinDetailUniforms(prepareSkinDetailMap(t), perM, perM * scale, SKIN_DETAIL, { min: hb.min.y, max: hb.max.y });
           patchSkinDetail(b.material, u);
+          // (and her opening's area, drawn in place of her skin there, bare: vulvaMesh.ts `setSkinDetail`)
+          herSkinDetail = (m) => patchSkinDetail(m, u); vulva?.setSkinDetail(herSkinDetail);
           // (her own skin picture's depth beside it: the hybrid)
           void assets.loadTexture(SKIN_OWN_HEIGHT).then((o) => { if (!o || disposed) { o?.dispose(); return; } wearOwnHeight(u, o, b.material.map); });
         });
@@ -9059,7 +9086,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               vulva?.dispose();
               if (vulvaArea.under && !under) under = birthGapUnderMask(fieldsV.basePos, fieldsV.baseNrm!, frame.meshToRest);
               const u = vulvaArea.under ? under : null, legSkin = bw ? (i: number) => (!!u && u[i] === 1) || bw.legDistance(i) > -vulvaArea.band : undefined;
-              try { vulva = createVulvaPatch(bmV, fieldsV.basePos, frame.meshToRest, measure?.joints.pelvis, measure ? [measure.joints.hipL, measure.joints.hipR, measure.joints.kneeL, measure.joints.kneeR] : [], legSkin); vulva?.setOpen(birthOpenPct / 100); vulva?.setBulge(birthBulgePct / 100); balloonWombKey = ''; layBalloonWomb(); } catch (error) { console.error('[sarahlab] her vulva could not be rebuilt; her own skin is drawn', error); vulva = null; }
+              try { vulva = createVulvaPatch(bmV, fieldsV.basePos, frame.meshToRest, measure?.joints.pelvis, measure ? [measure.joints.hipL, measure.joints.hipR, measure.joints.kneeL, measure.joints.kneeR] : [], legSkin); vulva?.setOpen(birthOpenPct / 100); vulva?.setBulge(birthBulgePct / 100); if (herSkinDetail) vulva?.setSkinDetail(herSkinDetail); balloonWombKey = ''; layBalloonWomb(); } catch (error) { console.error('[sarahlab] her vulva could not be rebuilt; her own skin is drawn', error); vulva = null; }
               applyOpening();
             };
             remakeVulva();
@@ -10869,7 +10896,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { size: a.itemSize, count: a.count, data: btoa(s) };
         },
         // (a probe's) the male base model's normal map off or back on, to tell what of a mark is his normal map's
-        skinDetail: (patch: { depthM?: number; tileM?: number; cavity?: number; ownM?: number }) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial, u = m?.userData.skinDetail; if (!u) return null; u.__k ??= u.skinDetailDepth.value / SKIN_DETAIL.depthM; u.__kt ??= u.skinDetailTile.value / SKIN_DETAIL.tileM; u.__depthM ??= SKIN_DETAIL.depthM; u.__tileM ??= SKIN_DETAIL.tileM; const k = u.__k, kt = u.__kt; if (patch.depthM != null) { u.skinDetailDepth.value = patch.depthM * k; u.__depthM = patch.depthM; } if (patch.tileM != null) { u.skinDetailTile.value = patch.tileM * kt; u.__tileM = patch.tileM; } if (patch.cavity != null) u.skinDetailCavity.value = patch.cavity; u.__ownM ??= SKIN_DETAIL.ownDepthM; if (patch.ownM != null) { u.skinOwnDepth.value = patch.ownM * k; u.__ownM = patch.ownM; } return { ownM: u.__ownM, ownLoaded: !!u.skinOwnMap.value, depthM: u.__depthM, tileM: u.__tileM, cavity: u.skinDetailCavity.value }; },
+        skinDetail: (patch: { depthM?: number; tileM?: number; cavity?: number; ownM?: number }) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial, u = m?.userData.skinDetail; if (!u) return null; u.__k ??= u.skinDetailDepth.value / SKIN_DETAIL.depthM; u.__kt ??= u.skinDetailTile.value / SKIN_DETAIL.tileM; u.__depthM ??= SKIN_DETAIL.depthM; u.__tileM ??= SKIN_DETAIL.tileM; const k = u.__k, kt = u.__kt; if (patch.depthM != null) { u.skinDetailDepth.value = patch.depthM * k; u.__depthM = patch.depthM; } if (patch.tileM != null) { u.skinDetailTile.value = patch.tileM * kt; u.__tileM = patch.tileM; } if (patch.cavity != null) u.skinDetailCavity.value = patch.cavity; u.__ownM ??= SKIN_DETAIL.ownDepthM; if (patch.ownM != null) { u.skinOwnDepth.value = patch.ownM * k; u.__ownM = patch.ownM; } const vm = vulva?.mesh.material as THREE.Material | undefined; return { ownM: u.__ownM, ownLoaded: !!u.skinOwnMap.value, depthM: u.__depthM, tileM: u.__tileM, cavity: u.skinDetailCavity.value, area: vulva ? { given: !!herSkinDetail, key: vm?.customProgramCacheKey?.() ?? null, laid: !!vm?.userData.skinDetail, dressed: vulva.dressed, visible: vulva.mesh.visible, programs: (ctx.renderer.gl.info.programs ?? []).filter((q) => /vulvaPatch/.test((q as unknown as { cacheKey: string }).cacheKey)).map((q) => { const gl = ctx.renderer.gl.getContext(), vs = gl.getShaderSource((q as unknown as { vertexShader: WebGLShader }).vertexShader) ?? '', fs = gl.getShaderSource((q as unknown as { fragmentShader: WebGLShader }).fragmentShader) ?? ''; return { vSet: (vs.match(/vSkinRest = [^;]*;/g) ?? []), fUse: (fs.match(/skinDetailBend\(/g) ?? []).length, mainAt: vs.indexOf('void main()'), setAt: vs.indexOf('vSkinRest = ') }; }) } : null }; },
+        // (a probe's) her even roughness off or on, to picture what it changes
+        evenRough: (on: boolean) => { applyRoughness(on); return { on, loaded: !!roughEven }; },
         hairDepth: (patch: { strength?: number; groove?: number }) => { if (patch.strength != null) hairStrength = patch.strength; if (patch.groove != null) hairGroove = patch.groove; deepenHair(hairMeshes); return { strength: hairStrength, groove: hairGroove, meshes: hairMeshes.length }; },
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
