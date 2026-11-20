@@ -6,14 +6,17 @@
  * Its SEAMLESS edge blend is left off: her picture is a layout of separate pieces of her body, and blended at its edges
  * it is torn into patches (his IMG_6313.png). Read at the same place as her colour (her UVs), so every shade of her skin
  * picture has its depth just there.
+ * The lab's three sliders may be set (--large, --detail, --contrast): her hair's strands want its fine detail, not its broad form
+ * (`scripts/hair/height.mjs`).
  *   node scripts/skinHeight.mjs [--in models/skins/sarah-v2-skin-even-2048.webp] [--out models/skins/sarah-v2-skin-height-2048.png]
  */
 import sharp from 'sharp';
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
-const IN = `public/${arg('in', 'models/skins/sarah-v2-skin-even-2048.webp')}`, OUT = `public/${arg('out', 'models/skins/sarah-v2-skin-height-2048.png')}`;
+const at = (p) => (p.startsWith('/') ? p : `public/${p}`);
+const IN = at(arg('in', 'models/skins/sarah-v2-skin-even-2048.webp')), OUT = at(arg('out', 'models/skins/sarah-v2-skin-height-2048.png'));
 /** the lab's defaults, as its sliders open */
-export const LAB_CONVERT = Object.freeze({ largeForm: 62, imageDetail: 35, heightContrast: 125, heightLow: 4, heightHigh: 96 });
+export const LAB_CONVERT = Object.freeze({ largeForm: +arg('large', 62), imageDetail: +arg('detail', 35), heightContrast: +arg('contrast', 125), heightLow: 4, heightHigh: 96 });
 
 const clamp = (v) => Math.min(1, Math.max(0, v)), lerp = (a, b, t) => a + (b - a) * t;
 function boxBlurGray(gray, w, h, radius) { // the lab's, wrapping as it does

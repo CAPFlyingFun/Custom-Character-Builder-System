@@ -52,7 +52,7 @@ import { cutEdgeOn, setCutEdge } from './garment/cutEdge';
 import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorKey, withConstruction, type GarmentRecord, type GarmentSettings } from './garment/settings';
 import { GarmentPanel } from './garmentPanel';
 import { FaceMotion } from './faceMotion';
-import { patchHairMaterial, setHairColour } from './hairMaterial';
+import { HAIR_DEPTH, HAIR_HEIGHT_MAP, HAIR_NORMAL_MAP, patchHairMaterial, prepareHairMap, setHairColour, setHairDepth } from './hairMaterial';
 import { HAIR_LENGTH_MORPH, HAIR_STYLE_NONE, hairStyle } from './hairStyles';
 import { browFromHair } from './hairColours';
 import { HAIR_STYLE_FIRST, HEAD_DEFAULT, normaliseHead, type HeadLook } from './headLook';
@@ -1598,6 +1598,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * head's look's; another style's file is fetched, and the one before stays on her until it is in.
    */
   let hairMeshes: THREE.SkinnedMesh[] = [];
+  let hairMaps: Promise<[THREE.Texture | null, THREE.Texture | null]> | null = null, hairStrength: number = HAIR_DEPTH.strength, hairGroove: number = HAIR_DEPTH.groove;
+  /** her strands' depth on whatever hair she wears (hairMaterial.ts `setHairDepth`) */
+  function deepenHair(worn: THREE.Mesh[]): void {
+    hairMaps ??= Promise.all([assets.loadTexture(HAIR_NORMAL_MAP), assets.loadTexture(HAIR_HEIGHT_MAP)]);
+    void hairMaps.then(([n, h]) => {
+      if (!n || !h || disposed || hairMeshes !== worn) return;
+      for (const m of worn) for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+        const map = (mat as THREE.MeshStandardMaterial).map ?? null;
+        if (map) setHairDepth(mat, prepareHairMap(n, map), prepareHairMap(h, map), hairStrength, hairGroove);
+      }
+    });
+  }
   /** The style whose file `hairMeshes` came from (null: none on her), and whether one is on its way. */
   let hairWorn: string | null = null, hairLoading = false;
   let hairOn = true, hairRequest = 0;
@@ -1626,6 +1638,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       hairMeshes = attachRecoveredMeshes(root, b.mesh, 'sarahHair');
       hairWorn = style.id;
       for (const m of hairMeshes) { m.castShadow = b.mesh.castShadow; m.receiveShadow = b.mesh.receiveShadow; for (const mat of Array.isArray(m.material) ? m.material : [m.material]) patchHairMaterial(mat); }
+      // her strands' depth: one pair of maps for every style, fetched once
+      deepenHair(hairMeshes);
       layHair();
       // her hair takes her build too (its weights on her neck and head), and the shape of her face: it lies on her skin
       for (const m of hairMeshes) shaped.push({ mesh: m, fields: liftShapeFields(m) ?? baseShapeFields(m) });
@@ -10832,6 +10846,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         },
         // (a probe's) the male base model's normal map off or back on, to tell what of a mark is his normal map's
         skinDetail: (patch: { depthM?: number; tileM?: number; cavity?: number; ownM?: number }) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial, u = m?.userData.skinDetail; if (!u) return null; u.__k ??= u.skinDetailDepth.value / SKIN_DETAIL.depthM; u.__kt ??= u.skinDetailTile.value / SKIN_DETAIL.tileM; u.__depthM ??= SKIN_DETAIL.depthM; u.__tileM ??= SKIN_DETAIL.tileM; const k = u.__k, kt = u.__kt; if (patch.depthM != null) { u.skinDetailDepth.value = patch.depthM * k; u.__depthM = patch.depthM; } if (patch.tileM != null) { u.skinDetailTile.value = patch.tileM * kt; u.__tileM = patch.tileM; } if (patch.cavity != null) u.skinDetailCavity.value = patch.cavity; u.__ownM ??= SKIN_DETAIL.ownDepthM; if (patch.ownM != null) { u.skinOwnDepth.value = patch.ownM * k; u.__ownM = patch.ownM; } return { ownM: u.__ownM, ownLoaded: !!u.skinOwnMap.value, depthM: u.__depthM, tileM: u.__tileM, cavity: u.skinDetailCavity.value }; },
+        hairDepth: (patch: { strength?: number; groove?: number }) => { if (patch.strength != null) hairStrength = patch.strength; if (patch.groove != null) hairGroove = patch.groove; deepenHair(hairMeshes); return { strength: hairStrength, groove: hairGroove, meshes: hairMeshes.length }; },
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
           const b = bodyOf()?.mesh ?? (isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? herSkinned() : null); if (!b) return null;

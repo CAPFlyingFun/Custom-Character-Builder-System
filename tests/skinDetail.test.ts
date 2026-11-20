@@ -20,3 +20,18 @@ describe('his skin detail', () => {
     expect(m.customProgramCacheKey()).toContain('skinDetail');
   });
 });
+
+import { HAIR_DEPTH_KEY, HAIR_TBN_LINE, setHairDepth } from '../src/sarahlab/hairMaterial';
+describe('her strands depth', () => {
+  it('wears the normal map, keys its program, and gives the frame her hair\'s own normal', () => {
+    const m = new THREE.MeshStandardMaterial(), n = new THREE.Texture(), h = new THREE.Texture();
+    setHairDepth(m, n, h, 1, 0.12);
+    expect(m.normalMap).toBe(n);
+    expect(m.customProgramCacheKey()).toContain(HAIR_DEPTH_KEY);
+    const shader = { uniforms: {}, vertexShader: '', fragmentShader: '#include <common>\n#include <map_fragment>\n#include <normal_fragment_maps>' } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    m.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
+    expect(shader.fragmentShader.indexOf(HAIR_TBN_LINE)).toBeLessThan(shader.fragmentShader.indexOf('#include <normal_fragment_maps>'));
+    setHairDepth(m, n, h, 0);
+    expect(m.normalMap).toBeNull();
+  });
+});

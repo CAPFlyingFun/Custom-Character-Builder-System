@@ -1274,6 +1274,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   side falls bunch seen from her front, and under about 40% of its LENGTH its hem is a row of thin strands; a few
   wisps stand off her shoulder on the wavy ponytail and the long hair; no fringe or parting of its own to choose yet;
   RANDOMIZE leaves her head as it is; a head's look is not in the story's bake.
+- **HER STRANDS' DEPTH** (Joshua, 2026-11-19, of his Local Texture Lab: "add better depth and detail on like the hair so it
+  doesn't look so flat"): `node scripts/hair/height.mjs` takes the strand atlas through the lab's Convert mode (`--large 15
+  --detail 100 --contrast 160`: its fine detail, not its broad form), evens it DOWN each strand (24 px: along a strand it drew
+  rungs across her hair), and draws its normal map by the lab's `normalCanvas` (`hair-height-1024.png`,
+  `hair-normal-1024.png`, every style's). The room wears it as her hair's NORMAL MAP (`hairMaterial.setHairDepth`,
+  `HAIR_DEPTH`: strength 1, grooves 12% darker; the probe's `hairDepth({ strength, groove })`). TRIED FIRST, AND WHY NOT: the
+  height's slope across the screen (as her skin's tile): strands thinner than a pixel drew a woven checker. And a FAULT FOUND
+  AND FIXED on the way: three builds a normal map's frame with a back face's normal turned round, and her hair gives the
+  normal back (`HAIR_NORMAL_LINE`) but not the frame -- a lock by her face went brown (`HAIR_TBN_LINE`). MEASURED in the room:
+  the ponytail from her three-quarter and her back at 0, 1 and 2. Run the script again after `texture.mjs` paints the atlas.
 - After anything changes her head: `tests/headLook.test.ts`, `tests/headPanel.test.ts`, `tests/faceShapes.test.ts`,
   `tests/faceShapeFields.test.ts`, `tests/faceLook.test.ts`, `tests/faceRig.test.ts`, `tests/hairStyles.test.ts`,
   `tests/hairColours.test.ts`, `tests/characterSaves.test.ts`; then the room: her head from her front and her side in
