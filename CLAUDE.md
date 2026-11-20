@@ -2033,6 +2033,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   and below, off and on (60 passes within 7 cm tried first: the pinch gone, a line left down his middle): one surface from
   thigh to thigh. LEFT: a soft line of shade down his middle; a white streak along his lower belly's left side from below,
   there without it too.
+- **HIS BELLY IS HIS BODY'S IN SQUAT, AS HERS IS** (Joshua, 2026-11-20: "at max belly for the male squatting, his lower belly
+  was squished"; `SarahLabScene.ts` `MALE_HOLD`, `maleHeld`, field `shape:maleHold`, laid by `keepMaleSquat` before his groin's
+  smoothing; `hipTurn.ts` `createHipTurn`'s `opts`: his units and his numbers). His lower belly is up to half his thighs'
+  in his file, so the hold takes points his thigh carries up to half of (`most` 0.5, none past 0.85 -- hers 0.12/0.22: at
+  hers it held 2,000 points a side and left a torn edge across his belly), and by his belly's size from 0 to 50% (his
+  file has none; at 100% unheld his belly was squashed flat). MEASURED in the room, SQUAT: 0% as before; 100% and 200%
+  round over his thighs from his side and three-quarter, about 4,700 points held a side, 82 mm moved at the most at 200%.
+  The probe's `maleHold(on, numbers)`. LEFT: a firm fold where the underside of a 200% belly meets his thighs.
 - NOT DONE: his own pelvis bone; clothes;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
 - After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:

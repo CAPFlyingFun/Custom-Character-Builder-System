@@ -380,6 +380,14 @@ const MALE_BELLY_FIELD = 'shape:maleBelly', MALE_OUTIE_FIELD = 'shape:maleOutie'
  */
 const MALE_GROIN_FIELD = 'shape:maleGroin';
 export const MALE_GROIN = Object.freeze({ below: 0.07, near: 0.08, far: 0.17, passes: 150, lambda: 0.7 });
+/**
+ * HIS BELLY IS HIS BODY'S IN SQUAT, AS HERS IS (Joshua, 2026-11-20: "at max belly for the male squatting, his lower belly
+ * was squished"): hipTurn.ts's hold, laid for him as a field of its own before his groin is smoothed. GAME TUNING.
+ */
+const MALE_HOLD_FIELD = 'shape:maleHold';
+export const MALE_HOLD = Object.freeze({ near: 0.1, far: 0.22, most: 0.5, mostNone: 0.85,
+  /** by his belly's size (the belly slider's %): none at 0, all from `full` -- his belly is none in his file, hers 100% */
+  full: 50 });
 /** His skin made even (`node scripts/evenSkin.mjs --body public/models/male-base.glb --out <this>`). */
 const MALE_EVEN_SKIN = 'models/skins/male-base-skin-even-2048.webp';
 /**
@@ -2621,6 +2629,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     out[MALE_BELLY_FIELD] = Math.min(2, Math.max(0, b / 100));
     out[MALE_OUTIE_FIELD] = maleOutie;
     out[MALE_GROIN_FIELD] = 1; // (laid only while he squats: keepMaleSquat)
+    out[MALE_HOLD_FIELD] = 1; // (the same)
     // her birth area, shaped the same at every size (birthArea.ts)
     // (its folds fuller only while nothing is worn over them: a fitted bottom is a few millimetres off her skin)
     out[BIRTH_CLEFT_FIELD] = birthAreaShown ? 1 : 0;
@@ -6937,24 +6946,40 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let maleGroin: BirthNormals | null = null, maleGroinMesh: THREE.SkinnedMesh | null = null, maleGroinFor = '';
   /** on (Joshua, 2026-11-19, of its before and after: "Good to switch his squat fix on"); the probe's `maleGroin(false)` takes it off */
   let maleGroinOn = true;
+  /** his belly held to his body in SQUAT (MALE_HOLD; the probe's `maleHold(false)` takes it off) */
+  let maleHip: HipTurn | null = null, maleHoldOn = true, maleHoldFull: number = MALE_HOLD.full;
+  const maleHeld = (): number => { if (!maleHoldOn || !maleHip || pose !== 'squat') return 0; const t = maleHoldFull <= 0 ? 1 : Math.min(1, Math.max(0, bump / maleHoldFull)); return t * t * (3 - 2 * t); };
   function keepMaleSquat(): void {
     if (!maleGroin || !maleGroinMesh || !model) return;
     const sb = shaped.find((x) => x.mesh === maleGroinMesh); if (!sb) return;
-    const want = maleGroinOn && pose === 'squat';
-    const shapeKey = sb.fields.last.split('|').filter((k) => !k.startsWith(MALE_GROIN_FIELD)).join('|');
-    const sig = want ? `${pose}|${shapeKey}` : '';
+    const hold = maleHeld(), want = (maleGroinOn || hold > 0) && pose === 'squat';
+    const mine = (k: string) => k.startsWith(MALE_GROIN_FIELD) || k.startsWith(MALE_HOLD_FIELD);
+    const shapeKey = sb.fields.last.split('|').filter((k) => !mine(k)).join('|');
+    const sig = want ? `${pose}|${maleGroinOn}|${hold.toFixed(3)}|${shapeKey}` : '';
     if (sig === maleGroinFor) return;
     maleGroinFor = sig;
-    const bare = new Map(sb.fields.fields); bare.delete(MALE_GROIN_FIELD);
+    const bare = new Map(sb.fields.fields); bare.delete(MALE_GROIN_FIELD); bare.delete(MALE_HOLD_FIELD);
     sb.fields = { ...sb.fields, fields: bare, last: '' };
     applyLook();
     if (!want) return;
-    model.updateMatrixWorld(true); maleGroinMesh.skeleton.update();
-    const g = maleGroinMesh.geometry, P = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, N = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
-    const map = new Map(bare); map.set(MALE_GROIN_FIELD, maleGroin.compute(P, N));
+    const g = maleGroinMesh.geometry, at = () => [(g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array] as const;
+    const map = new Map(bare);
+    // his belly held to his body first, on his bare shape; his groin smoothed on him as held
+    if (hold > 0 && maleHip) {
+      model.updateMatrixWorld(true); maleGroinMesh.skeleton.update();
+      const [P0, N0] = at();
+      map.set(MALE_HOLD_FIELD, maleHip.compute(P0, N0, false, hold));
+      sb.fields = { ...sb.fields, fields: new Map(map), last: '' };
+      applyLook();
+    }
+    if (maleGroinOn) {
+      model.updateMatrixWorld(true); maleGroinMesh.skeleton.update();
+      const [P, N] = at();
+      map.set(MALE_GROIN_FIELD, maleGroin.compute(P, N));
+    }
     sb.fields = { ...sb.fields, fields: map, last: '' };
     applyLook();
-    maleGroinFor = `${pose}|${sb.fields.last.split('|').filter((k) => !k.startsWith(MALE_GROIN_FIELD)).join('|')}`;
+    maleGroinFor = `${pose}|${maleGroinOn}|${hold.toFixed(3)}|${sb.fields.last.split('|').filter((k) => !mine(k)).join('|')}`;
   }
   /**
    * Room between her thighs as she is posed (birthRoom.ts): worked out again whenever what she is posed as, or her shape,
@@ -7075,6 +7100,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       maleGroin = createBirthNormals(mesh, toRest, idx.array, [], undefined, undefined, undefined, { centres: [centre], near: MALE_GROIN.near, far: MALE_GROIN.far, passes: MALE_GROIN.passes, lambda: MALE_GROIN.lambda });
       maleGroinMesh = mesh; maleGroinFor = '';
     } catch (error) { console.error('[sarahlab] his groin could not be smoothed', error); maleGroin = null; }
+    try {
+      const unit = new THREE.Vector3().setFromMatrixScale(toRest).x; // metres a unit of his mesh
+      maleHip = createHipTurn(mesh, [j.hipL, j.hipR], [j.hipL, j.hipR, j.kneeL, j.kneeR], toRest, { perMetre: 1 / unit, hold: MALE_HOLD });
+    } catch (error) { console.error('[sarahlab] his belly could not be held', error); maleHip = null; }
   }
 
   /**
@@ -11014,6 +11043,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (a probe's) her even roughness off or on, to picture what it changes
         evenRough: (on: boolean) => { applyRoughness(on); return { on, loaded: !!roughEven }; },
         // (a probe's) his groin's smoothing in SQUAT off or on
+        maleHold: (on?: boolean, numbers?: Partial<typeof MALE_HOLD>) => { if (numbers && maleGroinMesh && measure) { const jt = measure.joints, root = model ?? maleGroinMesh, tr = restOfMesh(maleGroinMesh, root); maleHip = createHipTurn(maleGroinMesh, [jt.hipL, jt.hipR], [jt.hipL, jt.hipR, jt.kneeL, jt.kneeR], tr, { perMetre: 1 / new THREE.Vector3().setFromMatrixScale(tr).x, hold: { ...MALE_HOLD, ...numbers } }); maleGroinFor = '-'; } if (on !== undefined && on !== maleHoldOn) { maleHoldOn = on; maleGroinFor = '-'; } if (numbers?.full !== undefined) { maleHoldFull = numbers.full; maleGroinFor = '-'; } return { on: maleHoldOn, here: maleHeld(), stats: maleHip?.stats ?? null }; },
         maleGroin: (on?: boolean) => { if (on !== undefined && on !== maleGroinOn) { maleGroinOn = on; maleGroinFor = '-'; } return { on: maleGroinOn, laid: !!maleGroin, watched: maleGroin?.watched ?? 0, folded: maleGroin?.folded ?? null }; },
         hairDepth: (patch: { strength?: number; groove?: number }) => { if (patch.strength != null) hairStrength = patch.strength; if (patch.groove != null) hairGroove = patch.groove; deepenHair(hairMeshes); return { strength: hairStrength, groove: hairGroove, meshes: hairMeshes.length }; },
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },

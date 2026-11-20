@@ -18,7 +18,7 @@
  */
 import * as THREE from 'three';
 /** Her geometry's units to the metre (her file keeps 1 / 0.89974678). */
-const PER_METRE = 1 / 0.89974678;
+const PER_METRE_HERS = 1 / 0.89974678;
 
 export const HIP_TURN_FIELD = 'shape:hipTurn';
 
@@ -50,6 +50,7 @@ export const HIP_TURN = Object.freeze({ carried: 0.6, least: 0.02, from: 40, ful
 export const BELLY_HOLD = Object.freeze({ from: 100, full: 150, near: 0.1, far: 0.22, most: 0.12, mostNone: 0.22, even: 40 });
 /** How much of her belly is held to her body at a size of belly (the belly slider's %): 0 to 1. */
 export function bellyHold(bumpPercent: number): number { return smoothstep(BELLY_HOLD.from, BELLY_HOLD.full, bumpPercent); }
+const BELLY_HOLD_HERS = BELLY_HOLD;
 
 export interface HipTurn {
   /**
@@ -58,12 +59,14 @@ export interface HipTurn {
    */
   compute(pos: ArrayLike<number>, nrm: ArrayLike<number>, turn?: boolean, hold?: number): { index: Uint32Array; pos: Float32Array; nrm: Float32Array };
   /** what the last compute did: points turned each leg, the hip's bend each leg (degrees), and the furthest any moved (mm) */
-  readonly stats: { turned: number[]; bendDeg: number[]; mostMm: number };
+  readonly stats: { turned: number[]; bendDeg: number[]; mostMm: number; held?: number[] };
 }
 
 /** `hips`: each leg's thigh bone; `legBones`: every bone of her legs (none of them her body's) */
 /** `toRest`: her geometry to her rest frame (metres, +z her front) */
-export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], legBones: readonly number[], toRest: THREE.Matrix4): HipTurn {
+/** `opts`: another body's units to the metre (his: `perMetre`) and its own numbers for the hold (`hold`) */
+export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], legBones: readonly number[], toRest: THREE.Matrix4, opts: { perMetre?: number; hold?: Partial<Record<keyof typeof BELLY_HOLD, number>> } = {}): HipTurn {
+  const PER_METRE = opts.perMetre ?? PER_METRE_HERS, BELLY_HOLD = { ...BELLY_HOLD_HERS, ...opts.hold };
   const g = mesh.geometry, pa = g.getAttribute('position'), n = pa.count;
   const si = g.getAttribute('skinIndex'), sw = g.getAttribute('skinWeight');
   const bindInv = new THREE.Matrix4().copy(mesh.bindMatrix).invert();
@@ -118,7 +121,7 @@ export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], 
   /** that carry for a point, into `Se` (false: it has none, and its own is used) */
   const Se = new THREE.Matrix4();
   const evenBlend = (i: number): boolean => { const v = evenBody().get(i); if (!v) return false; const el = Se.elements; el.fill(0); let sum = 0; for (let b = 0; b < v.length; b++) { const w = v[b]; if (w <= 0) continue; sum += w; const se = S[b].elements; for (let e = 0; e < 16; e++) el[e] += w * se[e]; } return sum > 0; };
-  const stats = { turned: [] as number[], bendDeg: [] as number[], mostMm: 0 };
+  const stats = { turned: [] as number[], bendDeg: [] as number[], mostMm: 0, held: [] as number[] };
   return {
     stats,
     compute(pos, nrm, turn = true, hold = 0) {
@@ -129,11 +132,11 @@ export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], 
       const slot = new Map<number, number>();
       const v = new THREE.Vector3(), pt = new THREE.Vector3(), pl = new THREE.Vector3(), nv = new THREE.Vector3(), q0 = new THREE.Quaternion(), qb = new THREE.Quaternion(), qt = new THREE.Quaternion(), qrel = new THREE.Quaternion();
       const Li = new THREE.Matrix3(), Ni = new THREE.Matrix3(), sc = new THREE.Vector3(), tr = new THREE.Vector3();
-      stats.turned = []; stats.bendDeg = []; let most = 0;
+      stats.turned = []; stats.bendDeg = []; stats.held = []; let most = 0;
       for (const thigh of hips) {
         const T = S[thigh], pts = pointsOf(thigh), joint = jointAt(thigh), jointP = joint.clone().applyMatrix4(T), jointZ = joint.clone().applyMatrix4(toRest).z, vr = new THREE.Vector3();
         T.decompose(tr, qt, sc);
-        let turned = 0, bendSum = 0, bendN = 0;
+        let turned = 0, bendSum = 0, bendN = 0, heldN = 0;
         for (let q = 0; q < pts.length; q++) {
           const i = pts[q];
           let wt = 0, wb = 0; for (let k = 0; k < 4; k++) { const b = si.getComponent(i, k), w = sw.getComponent(i, k); if (b === thigh) wt += w; else if (!isLeg.has(b)) wb += w; }
@@ -144,6 +147,7 @@ export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], 
           if (mInf && mPos) for (let m = 0; m < mPos.length; m++) { const w = mInf[m] ?? 0; if (!w) continue; const ma = mPos[m]; if (rel) v.set(v.x + w * ma.getX(i), v.y + w * ma.getY(i), v.z + w * ma.getZ(i)); else v.set(v.x + w * (ma.getX(i) - pos[i * 3]), v.y + w * (ma.getY(i) - pos[i * 3 + 1]), v.z + w * (ma.getZ(i) - pos[i * 3 + 2])); }
           const held = hold > 0 ? hold * smoothstep(BELLY_HOLD.near * PER_METRE, BELLY_HOLD.far * PER_METRE, v.distanceTo(joint)) * (1 - smoothstep(BELLY_HOLD.most, BELLY_HOLD.mostNone, s)) : 0;
           const turns = turn && c >= HIP_TURN.carried && s >= HIP_TURN.least && s <= 1 - HIP_TURN.least;
+          if (held > 0.5) heldN++;
           if (!turns && held <= 0) continue;
           const Bd = bodyBlend(i);
           // (where her skinning puts the part her thigh and body carry: their own average -- by her body's OWN carry)
@@ -178,7 +182,7 @@ export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], 
           turned++;
           if (d > most) most = d;
         }
-        stats.turned.push(turned); stats.bendDeg.push(bendN ? +(bendSum / bendN).toFixed(1) : 0);
+        stats.turned.push(turned); stats.held.push(heldN); stats.bendDeg.push(bendN ? +(bendSum / bendN).toFixed(1) : 0);
       }
       // (mm: her geometry's units are 1/0.89974678 to the metre)
       stats.mostMm = +(most * 0.89974678 * 1000).toFixed(1);
