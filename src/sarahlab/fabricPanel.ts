@@ -1907,6 +1907,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     underLaid = key;
     setUnder(body, bodyMaterial(body), key ? bridgeLayer : -1, key ? bridge!.under : null, { layers: PAINT_LAYER_COUNT, rest: hooks.rest(body) });
   }
+  /** GAME TUNING (her trunk, 0 her hip joints, 1 the base of her neck): a drawn top's neckline under this has no cleavage bridge -- a deep V or U (his sheet's V is 0.819, U 0.809). */
+  const LOW_NECK_NO_BRIDGE = 0.78;
   function dressBridge(body: THREE.Mesh, p: BodyPaint | null): void {
     let top = -1;
     for (let i = PAINT_LAYER_COUNT - 1; i >= 0 && top < 0; i--) {
@@ -1922,6 +1924,13 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     // a DRAWN top's sheet is cut by its neck opening's rim as her skin is, pixel by pixel (`topCut.ts`): it spans all of
     // her cleavage, in the top's fabric with its collar's band -- in its edging's colour, when it has one
     const mine = wornCut ? cutOf(params) : null, cut = mine && wornCut && mine.key === wornCut.key ? wornCut : null;
+    // (a drawn top whose neckline dips under LOW_NECK_NO_BRIDGE has none: its opening is wider than her cleavage over
+    // all of the sheet but its foot, and where the sheet stood off her across the gap the rim on it and on her skin behind
+    // did not meet -- MEASURED 2026-11-20 in the room, a low V and a low U (0.7 of her trunk) from her three-quarter at her
+    // 10% and 73% bellies: a notch in the far side of the rim at the sheet's top, gone with the sheet left off. Seen only
+    // up to a little over the neckline's lowest point, or folded down to it, the skin behind it was cut on the sheet's
+    // own rows and stood across the opening in steps)
+    if (cut && params.neckFront !== null && params.neckFront < LOW_NECK_NO_BRIDGE) { bridge.wear(null); bridgeLayer = -1; layUnder(); return; }
     bridge.wear({ params, covered: (v) => p.coverAt(v, [under]), drawn: !!cut });
     const sheet = bridge.mesh.material as THREE.Material, l = layerFor(body, c, c.fabric, 'plain');
     setFabricLayer(bridge.mesh, sheet, 0, l ? { ...l, cut: cut ? cutLayerOf(cut, c) : null } : null, { layers: 1, masked: false, rest: null, cut: true });

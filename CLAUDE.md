@@ -1078,6 +1078,12 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   depth, `DRAWN_NECK`) and TURTLENECK (`neckShape`, over the template's style or the outline's own). A swimsuit taken
   past the base of her neck wears the mock neck's collar front and back: a sleeveless turtleneck. All GAME TUNING.
   A look saved before keeps its numbers (`neckShape`, `neckWide` absent: the style it had, its own width).
+- **A DEEP NECKLINE HAS NO CLEAVAGE BRIDGE** (`fabricPanel.ts` `LOW_NECK_NO_BRIDGE`, 0.78 of her trunk; his sheet's V is
+  0.819, U 0.809: they keep theirs). MEASURED 2026-11-20 in the room, a low V and a low U (0.7) at her 10% and 73%
+  bellies: from her three-quarter a notch in the far side of the rim at the sheet's top, gone with the sheet left off.
+  TRIED AND TAKEN OUT the same morning: the sheet folded down to a little over the neckline's lowest point (its top rows
+  stood across the opening as the garment), and seen only up to there (her skin behind it was cut in steps).
+  Pictured after: the low V and U from her front and three-quarter, clean; the V and U tees as they were.
 - `tests/topCut.test.ts` (its last describe); after anything changes them, the room: the catsuit at each shape, low and
   wide, at the collar's top from her front, side and back; the swimsuit and the leotard at a shape and a collar.
 
