@@ -17,7 +17,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
-  CUT_VERTEX_RAMP_M, NECK_RANGE, NECK_STYLES, TEE_BANDS, collarAt, hasNoHem, isCatsuit, takesTurtleneck, TOP_CUT, alongArm, armSide, cutAt, cutCoverage, cutEdgeAt, cutPicture, drawCut, isCutTop, isOnePiece, midDepthAt, neckDefault,
+  CHEST_CUTOUT, CUT_VERTEX_RAMP_M, NECK_RANGE, cutoutDistance, NECK_STYLES, TEE_BANDS, collarAt, hasNoHem, isCatsuit, takesTurtleneck, TOP_CUT, alongArm, armSide, cutAt, cutCoverage, cutEdgeAt, cutPicture, drawCut, isCutTop, isOnePiece, midDepthAt, neckDefault,
   ridgeAt, rimPath, sleevePlane, topCut, topCutSpec, topFrame, type NeckStyle, type TopCut, type TopFrame,
 } from '../src/sarahlab/topCut';
 import { BAND_SHADE, COVERAGE_TEMPLATES, DRAWN_NECK, coverage, cutLayer, designedField, dialsFor, templateCut, wornParams, type CoverageParams } from '../src/sarahlab/paintTemplates';
@@ -163,7 +163,7 @@ describe('a top\'s cut: its numbers from a template\'s sliders', () => {
     const drawn = COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params)).map((t) => t.id);
     // (and, since his sheet's outlines, the tank, the camisole, the mock neck, the crop tee and the sports bra: `tests/topOutline.test.ts`)
     // (...and the five with something drawn on them, the raglan, the henley, the polo, the wrap and the button-up: `tests/topDetails.test.ts`)
-    expect(drawn).toEqual(['tank', 'camisole', 'mockNeck', 'cropTee', 'sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong', 'teeRaglan', 'henley', 'polo', 'wrap', 'buttonUp', 'sportsBra', 'bodysuitFull', 'bodysuit', 'swimsuit']);
+    expect(drawn).toEqual(['tank', 'camisole', 'mockNeck', 'cropTee', 'sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong', 'teeRaglan', 'henley', 'polo', 'wrap', 'buttonUp', 'sportsBra', 'bodysuitFull', 'catsuitCutout', 'bodysuit', 'swimsuit']);
     // (the leotard and the swimsuit since 2026-11-16: ONE-PIECES, a top's cut with no hem and their leg openings a field's: `isOnePiece`)
     expect(COVERAGE_TEMPLATES.filter((t) => isOnePiece(t.params)).map((t) => t.id)).toEqual(['bodysuit', 'swimsuit']);
     for (const t of COVERAGE_TEMPLATES.filter((t) => isOnePiece(t.params))) { expect(dialsFor(t.params), t.id).not.toContain('legCut'); expect(designedField(t.params, 0), t.id).toBeNull(); }
@@ -541,11 +541,45 @@ describe('a one-piece\'s and the catsuit\'s neckline: from a low U or V to a tur
   });
   it('is offered on the catsuit, the leotard and the swimsuit alone, in place of NECKLINE', () => {
     const offered = COVERAGE_TEMPLATES.filter((t) => takesTurtleneck(t.params)).map((t) => t.id);
-    expect(offered).toEqual(['bodysuitFull', 'bodysuit', 'swimsuit']);
+    expect(offered).toEqual(['bodysuitFull', 'catsuitCutout', 'bodysuit', 'swimsuit']);
     for (const id of offered) { const d = dialsFor(COVERAGE_TEMPLATES.find((t) => t.id === id)!.params); expect(d, id).toContain('neckline'); expect(d, id).toContain('neckWidth'); expect(d, id).not.toContain('neck'); }
     for (const t of COVERAGE_TEMPLATES.filter((x) => !takesTurtleneck(x.params))) expect(dialsFor(t.params), t.id).not.toContain('neckline');
     // the catsuit: a drawn top with no hem and no leg openings, its LEG LENGTH its own
     const cat = COVERAGE_TEMPLATES.find((t) => t.id === 'bodysuitFull')!.params;
     expect(isCatsuit(cat)).toBe(true); expect(hasNoHem(cat)).toBe(true); expect(isOnePiece(cat)).toBe(false); expect(dialsFor(cat)).toContain('legEnd');
+  });
+});
+
+describe('a chest cutout (`CHEST_CUTOUT`)', () => {
+  const { frame } = doll();
+  const withCut = (shape: 'oval' | 'diamond' | 'keyhole', neckFront?: number) => topCut(topCutSpec({ neckFront: neckFront ?? neckDefault('crew', frame), neckStyle: 'crew', sleeve: 1, cutout: { shape, width: 0.1, height: 0.08, drop: 0.15 } }, frame, -4), frame);
+  it('is a hole in her front\'s drawing alone, its edge where its shape says, and her back as it was', () => {
+    for (const shape of ['oval', 'diamond', 'keyhole'] as const) {
+      const cut = withCut(shape), y = N - 0.15, plain = topCut(specOf(frame, 'crew', { hem: -4, sleeve: 1 }), frame);
+      expect(front(cut, 0, y), shape).toBeLessThan(-0.02);
+      // across its middle: its edge 5 cm out (the keyhole's round hole and the oval's, the diamond's corner)
+      expect(front(cut, 0.045, y), shape).toBeLessThan(0);
+      expect(front(cut, 0.055, y), shape).toBeGreaterThan(0);
+      // over and under it the garment (but up a keyhole's slit)
+      expect(front(cut, 0, y - 0.06), shape).toBeGreaterThan(0.01);
+      if (shape !== 'keyhole') expect(front(cut, 0, y + 0.06), shape).toBeGreaterThan(0.01);
+      else { expect(front(cut, 0, y + 0.08)).toBeLessThan(0); expect(front(cut, 0.012, y + 0.08)).toBeGreaterThan(0); }
+      for (let k = 0; k < cut.back.length; k += 97) expect(cut.back[k]).toBe(plain.back[k]);
+    }
+  });
+  it('cuts a turtleneck too, and holds its numbers to its sliders\' stops', () => {
+    const cut = withCut('oval', NECK_RANGE.dial);
+    expect(front(cut, 0, N - 0.15)).toBeLessThan(-0.02);
+    expect(front(cut, 0, N + 0.03)).toBeGreaterThan(0.005);
+    const tiny = topCutSpec({ neckFront: 0.9, neckStyle: 'crew', sleeve: 1, cutout: { shape: 'oval', width: 0, height: 9, drop: 2 } }, frame, -4).cutout!;
+    expect(tiny.hw * 2).toBeCloseTo(CHEST_CUTOUT.range.width[0], 9);
+    expect(tiny.hh * 2).toBeCloseTo(CHEST_CUTOUT.range.height[1], 9);
+    expect(N - tiny.y).toBeCloseTo(CHEST_CUTOUT.range.drop[1], 9);
+    expect(cutoutDistance({ shape: 'diamond', y: 0, hw: 0.05, hh: 0.04 }, 0.05, 0, 1)).toBeCloseTo(0, 9);
+  });
+  it('is offered with its three sliders while a piece has one', () => {
+    const t = COVERAGE_TEMPLATES.find((x) => x.id === 'catsuitCutout')!;
+    expect(dialsFor(t.params)).toEqual(expect.arrayContaining(['cutoutWidth', 'cutoutHeight', 'cutoutDrop']));
+    expect(dialsFor(COVERAGE_TEMPLATES.find((x) => x.id === 'bodysuitFull')!.params)).not.toContain('cutoutWidth');
   });
 });

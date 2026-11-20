@@ -42,7 +42,7 @@ import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricL
 import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, hoopInside, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, planeFront, planeShare, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
 import { makePulledSlip, pulledSlipDriver, type PulledDriver } from './pulledSlip';
 import { MOTION_SHAPES } from './levelLine';
-import { ARMSCYE, NECK_RANGE, TOP_CUT, TOP_OUTLINES, cutPicture, hasNoHem, isCatsuit, isCutTop, isOnePiece, sleevePlane, takesTurtleneck, topFrame, type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind } from './topCut';
+import { ARMSCYE, CHEST_CUTOUT, NECK_RANGE, TOP_CUT, type CutoutParams, type CutoutShape, TOP_OUTLINES, cutPicture, hasNoHem, isCatsuit, isCutTop, isOnePiece, sleevePlane, takesTurtleneck, topFrame, type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind } from './topCut';
 import type { TopDetailSpec } from './topDetails';
 import { layCarried, poseTurns, settleCarry } from './designPose';
 import { besideShapes, makeFrameSlip, makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
@@ -125,6 +125,8 @@ export const FABRIC_ACTION = Object.freeze({
   styleKind: (k: PieceKind) => `sarahlab:fabric:style-kind:${k}`,
   /** A one-piece's or the catsuit's NECK SHAPE (`topCut.NECK_RANGE`): a style of `NECK_STYLES`, or 'turtle'. */
   neckShape: (k: NeckStyle | 'turtle') => `sarahlab:fabric:neck-shape:${k}`,
+  /** A one-piece's or the catsuit's CHEST CUTOUT (`topCut.CHEST_CUTOUT`): a shape, or 'none'. */
+  cutout: (k: CutoutShape | 'none') => `sarahlab:fabric:cutout:${k}`,
   space: (s: EditorSpace) => `sarahlab:fabric:space:${s}`,
   view: (v: PaintView) => `sarahlab:fabric:view:${v}`,
   isolate: 'sarahlab:fabric:isolate',
@@ -277,7 +279,7 @@ export interface FabricPanel {
    * does not goes back to its own look; fabrics picked by hand on other garments are left alone), and `trims` their
    * edgings in a fabric of their own (without one a garment's edging follows its fabric).
    */
-  wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick; readonly edging?: FabricPick; readonly dials?: Readonly<Partial<Record<CoverageDial['id'], number>>>; readonly neckShape?: NeckStyle | null }[] | null, garments?: Readonly<Record<string, FabricPick | undefined>>, trims?: Readonly<Record<string, FabricPick | undefined>>): boolean;
+  wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick; readonly edging?: FabricPick; readonly dials?: Readonly<Partial<Record<CoverageDial['id'], number>>>; readonly neckShape?: NeckStyle | null; readonly cutout?: CutoutParams | null }[] | null, garments?: Readonly<Record<string, FabricPick | undefined>>, trims?: Readonly<Record<string, FabricPick | undefined>>): boolean;
   /** Whether a set's two halves are kept in one fabric (TOP + BOTTOM MATCH). */
   setMatched(): boolean;
   /** Every paint layer and garment fabric off (a blank NEW OUTFIT); the detail back to AUTO. */
@@ -526,6 +528,15 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   neckShapeRow.append(...neckShapeButtons.values());
   const neckShapeBox = el('div', 'display:flex;flex-direction:column;gap:4px'); neckShapeBox.append(heading('NECK SHAPE'), neckShapeRow);
   dialBox.append(neckShapeBox);
+  // CHEST CUTOUT (`topCut.CHEST_CUTOUT`): none, or a shape at its own size and place, which its three sliders move
+  const CUTOUT_NAMES: Readonly<Record<CutoutShape | 'none', string>> = { none: 'NONE', oval: 'OVAL', diamond: 'DIAMOND', keyhole: 'KEYHOLE' };
+  const cutoutRow = el('div', 'display:flex;gap:4px;flex-wrap:wrap');
+  const cutoutButtons = new Map((Object.keys(CUTOUT_NAMES) as (CutoutShape | 'none')[]).map((k) => {
+    const b = button(CUTOUT_NAMES[k], FABRIC_ACTION.cutout(k), () => pickCutout(k)); b.style.minHeight = '32px'; b.style.padding = '4px 8px'; b.style.fontSize = '11px'; return [k, b] as const;
+  }));
+  cutoutRow.append(...cutoutButtons.values());
+  const cutoutBox = el('div', 'display:flex;flex-direction:column;gap:4px'); cutoutBox.append(heading('CHEST CUTOUT'), cutoutRow);
+  dialBox.append(cutoutBox);
   for (const d of dials.values()) dialBox.append(d.wrap);
   // STYLE AS PICTURES: the styles of one kind of piece in a row that scrolls sideways, each a small picture of its cut on
   // her with its name under it; a tap puts it on the piece. The kinds are a row of four above it (the piece's own kind is
@@ -989,7 +1000,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     // (everything a cut and what is drawn on it are laid from: a kind of its own -- an outline, the crop tee -- and a
     // hem of its own where a top has no LENGTH are among it since 2026-11-14. Without them a camisole whose NECKLINE
     // was moved to a tank's wore the tank's cut)
-    const key = JSON.stringify([params.neckStyle, params.neckShape ?? null, params.neckWide ?? null, params.neckFront, params.sleeve, params.length, params.band ?? null, params.top ?? null, params.length === null ? params.hemFront : null, params.detail ?? null]);
+    const key = JSON.stringify([params.neckStyle, params.neckShape ?? null, params.neckWide ?? null, params.cutout ?? null, params.neckFront, params.sleeve, params.length, params.band ?? null, params.top ?? null, params.length === null ? params.hemFront : null, params.detail ?? null]);
     let made = cuts.get(key);
     if (made) cuts.delete(key);
     else {
@@ -1039,6 +1050,14 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const i = layer(), t = i >= 0 ? templates[i] : null, p = bodyPaint(), map = regionMap();
     if (!t || !p || !map) return;
     templates[i] = { id: t.id, params: k === 'turtle' ? { ...t.params, neckFront: NECK_RANGE.dial } : { ...t.params, neckShape: k, neckFront: DRAWN_NECK[k] } };
+    p.setLayer(i, coverage(map, templates[i]!.params, cutOf(templates[i]!.params)?.cut ?? null));
+    sync(); draw(); touched();
+  }
+  /** A CHEST CUTOUT picked: that shape at the size and place the piece's cutout had (or its own), or none. */
+  function pickCutout(k: CutoutShape | 'none'): void {
+    const i = layer(), t = i >= 0 ? templates[i] : null, p = bodyPaint(), map = regionMap();
+    if (!t || !p || !map) return;
+    templates[i] = { id: t.id, params: { ...t.params, cutout: k === 'none' ? null : { ...(t.params.cutout ?? CHEST_CUTOUT.default), shape: k } } };
     p.setLayer(i, coverage(map, templates[i]!.params, cutOf(templates[i]!.params)?.cut ?? null));
     sync(); draw(); touched();
   }
@@ -1189,6 +1208,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       const shaped = !!tpl && takesTurtleneck(tpl.params);
       neckShapeBox.style.display = shaped ? 'flex' : 'none';
       if (shaped) { const on = neckShapeOf(tpl!.params); for (const [k, b] of neckShapeButtons) press(b, k === on); }
+      cutoutBox.style.display = shaped ? 'flex' : 'none';
+      if (shaped) { const on = tpl!.params.cutout?.shape ?? 'none'; for (const [k, b] of cutoutButtons) press(b, k === on); }
       for (const [id, d] of dials) {
         d.wrap.style.display = used.includes(id) ? 'flex' : 'none';
         if (tpl) { const v = dialValue(tpl.params, id); d.input.value = String(v); d.label.textContent = `${COVERAGE_DIALS.find((x) => x.id === id)!.name} · ${v.toFixed(2)}`; }
@@ -1930,7 +1951,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     // 10% and 73% bellies: a notch in the far side of the rim at the sheet's top, gone with the sheet left off. Seen only
     // up to a little over the neckline's lowest point, or folded down to it, the skin behind it was cut on the sheet's
     // own rows and stood across the opening in steps)
-    if (cut && params.neckFront !== null && params.neckFront < LOW_NECK_NO_BRIDGE) { bridge.wear(null); bridgeLayer = -1; layUnder(); return; }
+    // (nor one with a CHEST CUTOUT: the hole is cut where the sheet would stand off her across her cleavage)
+    if (cut && ((params.neckFront !== null && params.neckFront < LOW_NECK_NO_BRIDGE) || params.cutout)) { bridge.wear(null); bridgeLayer = -1; layUnder(); return; }
     bridge.wear({ params, covered: (v) => p.coverAt(v, [under]), drawn: !!cut });
     const sheet = bridge.mesh.material as THREE.Material, l = layerFor(body, c, c.fabric, 'plain');
     setFabricLayer(bridge.mesh, sheet, 0, l ? { ...l, cut: cut ? cutLayerOf(cut, c) : null } : null, { layers: 1, masked: false, rest: null, cut: true });
@@ -1989,7 +2011,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   const outfitLayers: boolean[] = Array.from({ length: PAINT_LAYER_COUNT }, () => false);
   // ...and which garments it dressed
   const outfitGarments = new Set<string>();
-  function wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick; readonly edging?: FabricPick; readonly dials?: Readonly<Partial<Record<CoverageDial['id'], number>>>; readonly neckShape?: NeckStyle | null }[] | null, garments: Readonly<Record<string, FabricPick | undefined>> = {}, trims: Readonly<Record<string, FabricPick | undefined>> = {}): boolean {
+  function wearOutfit(layers: readonly { readonly template: string; readonly fabric: FabricPick; readonly edging?: FabricPick; readonly dials?: Readonly<Partial<Record<CoverageDial['id'], number>>>; readonly neckShape?: NeckStyle | null; readonly cutout?: CutoutParams | null }[] | null, garments: Readonly<Record<string, FabricPick | undefined>> = {}, trims: Readonly<Record<string, FabricPick | undefined>> = {}): boolean {
     const p = bodyPaint(), map = regionMap();
     if (!p || !map) return false;
     for (const name of outfitGarments) if (!garments[name]) garmentChoices.delete(name);
@@ -2000,6 +2022,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (want && t) {
         // (a shirt at the room's LENGTH; and the outfit's own settings of the template's sliders, a crop tee's hem)
         let params = t.params.length !== null ? withDial(t.params, 'length', shirtLength) : t.params;
+        if (want.cutout !== undefined) params = { ...params, cutout: want.cutout };
         if (want.neckShape) params = { ...params, neckShape: want.neckShape, neckFront: DRAWN_NECK[want.neckShape] };
         for (const [dial, value] of Object.entries(want.dials ?? {}) as [CoverageDial['id'], number][]) if (Number.isFinite(value)) params = withDial(params, dial, value);
         templates[i] = { id: t.id, params };

@@ -243,6 +243,8 @@ export interface TopCutSpec {
   readonly sideBlend?: number;
   /** A COLLAR (`NECK_RANGE`): no neck opening, the garment up her neck to this height (her units), level round her. Absent: the neck opening. */
   readonly collarY?: number;
+  /** A CHEST CUTOUT (`CHEST_CUTOUT`) in her front's drawing (her units): its shape, its middle's height, its half width and half height. Absent: none. */
+  readonly cutout?: { readonly shape: CutoutShape; readonly y: number; readonly hw: number; readonly hh: number };
 }
 
 /**
@@ -307,6 +309,44 @@ export function hasNoHem(p: Partial<Pick<CoverageParams, 'legCut' | 'neckFront' 
  * of the style's own width (GAME TUNING).
  */
 export const NECK_RANGE = Object.freeze({ low: 0.6, dial: 1.1, most: 0.05, width: Object.freeze([0.6, 1.6] as const) });
+/**
+ * A CHEST CUTOUT (Joshua, 2026-11-20, sharing another game's bronze catsuit with a cut-out over her chest: "can add as a
+ * new style with a cutout which is adjustable"): a hole in her FRONT's drawing alone, under her neck opening or her
+ * collar, its edge drawn and banded as the neck opening's is (it is the same distance). Its numbers are metres on her:
+ * `drop` its middle under her neck joint, `width` and `height` across it. A KEYHOLE is a round hole with a slit up from
+ * it through the neckline (`slit` wide). `range`: each slider's stops. GAME TUNING (the default by eye on her at 0%: the
+ * top of her cleavage, 10 to 16 cm under her neck joint -- MEASURED on her body file, her breasts' tops 11 cm under it).
+ */
+export type CutoutShape = 'oval' | 'diamond' | 'keyhole';
+export interface CutoutParams { readonly shape: CutoutShape; readonly width: number; readonly height: number; readonly drop: number }
+export const CHEST_CUTOUT = Object.freeze({
+  default: Object.freeze({ shape: 'diamond', width: 0.09, height: 0.08, drop: 0.13 } as CutoutParams),
+  slit: 0.008,
+  range: Object.freeze({ width: Object.freeze([0.03, 0.2] as const), height: Object.freeze([0.03, 0.2] as const), drop: Object.freeze([0.05, 0.3] as const) }),
+});
+/** A cutout's numbers held to their sliders' stops. */
+export function heldCutout(c: CutoutParams): CutoutParams {
+  const R = CHEST_CUTOUT.range, hold = (v: number, r: readonly [number, number]) => Math.max(r[0], Math.min(r[1], Number.isFinite(v) ? v : r[0]));
+  const shape: CutoutShape = c.shape === 'oval' || c.shape === 'keyhole' ? c.shape : 'diamond';
+  return { shape, width: hold(c.width, R.width), height: hold(c.height, R.height), drop: hold(c.drop, R.drop) };
+}
+/** A cutout on her (her units), or none. */
+function cutoutOn(c: CutoutParams | null | undefined, frame: Pick<TopFrame, 'neckY' | 'unitsPerMetre'>): TopCutSpec['cutout'] | undefined {
+  if (!c) return undefined;
+  const h = heldCutout(c), U = frame.unitsPerMetre;
+  return { shape: h.shape, y: frame.neckY - h.drop * U, hw: (h.width / 2) * U, hh: (h.height / 2) * U };
+}
+/** How far outside a cutout a place is (her units; - inside it), `x` from her middle. */
+export function cutoutDistance(c: NonNullable<TopCutSpec['cutout']>, x: number, y: number, U: number): number {
+  const dx = Math.abs(x), dy = y - c.y;
+  if (c.shape === 'diamond') return (dx / c.hw + Math.abs(dy) / c.hh - 1) * (c.hw * c.hh) / Math.hypot(c.hw, c.hh);
+  // an ellipse's distance, near enough: its scaled radius less one, by its smaller half
+  const ell = (Math.hypot(dx / c.hw, dy / c.hh) - 1) * Math.min(c.hw, c.hh);
+  if (c.shape === 'oval') return ell;
+  // a keyhole: the round hole, and a slit from its middle up through anything above it
+  const sw = (CHEST_CUTOUT.slit / 2) * U, slit = dy >= 0 ? dx - sw : Math.max(dx - sw, -dy);
+  return Math.min(ell, slit);
+}
 /** Whether a template takes the neckline from a low U or V to a turtleneck, its width and its shape (`NECK_RANGE`). */
 export function takesTurtleneck(p: Partial<Pick<CoverageParams, 'legCut' | 'neckFront' | 'topFront'>> & { readonly top?: CutTopKind | null }): boolean {
   return hasNoHem(p);
@@ -358,7 +398,7 @@ export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFron
  * of her neck) give the rim, its SLEEVE (0 her shoulder joint, 1 her wrist) the sleeves' ends, `hemTrunk` (her hem on
  * her trunk) the hem.
  */
-export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null; readonly top?: CutTopKind | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null; readonly top?: CutTopKind | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null; readonly cutout?: CutoutParams | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
   if (p.top && p.top in TOP_OUTLINES) return outlineSpec(p, p.top as TopOutlineKind, frame, hemTrunk);
   const shape = p.neckShape ?? p.neckStyle, style: NeckStyle = (shape in NECK_STYLES ? shape : 'crew') as NeckStyle, S = NECK_STYLES[style], U = frame.unitsPerMetre;
   const trunk = frame.neckY - frame.hipY, collarY = collarAt(p.neckFront, frame), dipY = frame.hipY + (p.neckFront ?? 1) * trunk;
@@ -368,14 +408,14 @@ export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | '
   const half = (S.half + 0.012 * deeper) * U * wide;
   const armLength = (frame.arms[0].length + frame.arms[1].length) / 2;
   return {
-    style, half, dipY: Math.min(dipY, ridgeAt(frame, half) - 0.004 * U), ...(collarY !== null ? { collarY } : {}),
+    style, half, dipY: Math.min(dipY, ridgeAt(frame, half) - 0.004 * U), ...(collarY !== null ? { collarY } : {}), ...(p.cutout ? { cutout: cutoutOn(p.cutout, frame) } : {}),
     sleeve: p.sleeve >= -0.04 ? p.sleeve * armLength : -U,
     hemY: hemTrunk === null ? -Infinity : frame.hipY + hemTrunk * trunk,
     bands: { neck: (p.band?.neck ?? TEE_BANDS.neck) * U, sleeve: (p.band?.sleeve ?? TEE_BANDS.sleeve) * U, hem: (p.band?.hem ?? TEE_BANDS.hem) * U },
   };
 }
 /** An outline's spec on her: its own numbers, its NECKLINE (the front's depth, or a camisole's top edge) and its hem; no sleeves. */
-function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Partial<TopBands> | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null }, kind: TopOutlineKind, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Partial<TopBands> | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null; readonly cutout?: CutoutParams | null }, kind: TopOutlineKind, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
   const O = TOP_OUTLINES[kind] as unknown as Readonly<Record<string, number>> & { readonly neck: NeckStyle; readonly front: string; readonly back: string }, U = frame.unitsPerMetre;
   const n = (k: string) => (O[k] ?? 0) * U;
   // (a one-piece's NECK WIDTH and NECK SHAPE, `NECK_RANGE`: its straps' inner edges move, never past 1.2 cm inside their
@@ -386,7 +426,7 @@ function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Pa
   const dipY = Math.min(frame.hipY + (p.neckFront ?? 1 - O.depth * U / trunk) * trunk, ridgeAt(frame, half) - 0.004 * U);
   const bound = (p.band?.neck ?? OUTLINE_BANDS.neck) * U, cami = kind === 'camisole';
   return {
-    style: p.neckShape && p.neckShape in NECK_STYLES ? p.neckShape : O.neck, half, dipY, sleeve: -U,
+    style: p.neckShape && p.neckShape in NECK_STYLES ? p.neckShape : O.neck, half, dipY, sleeve: -U, ...(p.cutout ? { cutout: cutoutOn(p.cutout, frame) } : {}),
     hemY: hemTrunk === null ? -Infinity : frame.hipY + hemTrunk * trunk,
     bands: { neck: bound, sleeve: 0, hem: (p.band?.hem ?? OUTLINE_BANDS.hem) * U },
     sideBlend: OUTLINE_SIDE_BLEND * U,
@@ -487,6 +527,19 @@ export function rimPath(spec: TopCutSpec, frame: TopFrame, front: boolean): P2[]
  * rim between its side points, above the lines straight up from them, or above the ceiling.
  */
 export function drawCut(spec: TopCutSpec, frame: TopFrame, front: boolean): Float32Array {
+  const d = drawRim(spec, frame, front);
+  return front && spec.cutout ? cutOut(d, spec.cutout, frame) : d;
+}
+/** A chest cutout taken out of her front's drawing: each cell no further inside the garment than it is outside the hole. */
+function cutOut(dist: Float32Array, c: NonNullable<TopCutSpec['cutout']>, frame: TopFrame): Float32Array {
+  const { cols, rows, cell, x0, y0 } = frame, U = frame.unitsPerMetre, range = TOP_CUT.range * U;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const k = j * cols + i, h = cutoutDistance(c, x0 + (i + 0.5) * cell - frame.mid, y0 + (j + 0.5) * cell, U);
+    if (h < dist[k]) dist[k] = Math.max(-range, h);
+  }
+  return dist;
+}
+function drawRim(spec: TopCutSpec, frame: TopFrame, front: boolean): Float32Array {
   if (spec.outline) return pathDistances(outlinePath(spec, frame, front), frame);
   const { cols, cell } = frame, U = frame.unitsPerMetre, range = TOP_CUT.range * U;
   // (a COLLAR: level round her neck, front and back alike -- all of her under it is the garment)

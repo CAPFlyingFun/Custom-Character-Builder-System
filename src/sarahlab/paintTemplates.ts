@@ -17,7 +17,7 @@ import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
-import { NECK_RANGE, NECK_STYLES, TOP_OUTLINES, cutCoverage, hasNoHem, isCutTop, isOnePiece, takesTurtleneck, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
+import { CHEST_CUTOUT, NECK_RANGE, NECK_STYLES, type CutoutParams, TOP_OUTLINES, cutCoverage, hasNoHem, isCutTop, isOnePiece, takesTurtleneck, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
 import { waistLine, type LowBands } from './bottomCut';
 import { TOP_DETAIL_STYLES, topDetailSpec, type TopDetailName, type TopDetailSpec } from './topDetails';
 
@@ -124,6 +124,8 @@ export interface CoverageParams {
   readonly neckShape?: NeckStyle | null;
   /** Their NECK WIDTH: a share of the shape's own width (`NECK_RANGE.width`). Absent or null: 1. */
   readonly neckWide?: number | null;
+  /** Their CHEST CUTOUT (`topCut.CHEST_CUTOUT`): a hole in the front under the neckline. Absent or null: none. */
+  readonly cutout?: CutoutParams | null;
   /**
    * What is DRAWN ON a drawn top (`topDetails.ts` `TOP_DETAIL_STYLES`, his sheet's 08, 09, 10, 15 and 16): 'raglan' (its
    * sleeves, shoulders and neckband in its EDGING colour), 'henley' (a short placket, three buttons), 'polo' (a collar,
@@ -543,6 +545,8 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['bandeau', 'Bandeau', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckCrew, -1, { topFront: LINES.bandeauTop, topSide: LINES.bandeauSide, topBack: LINES.bandTopBack })],
   // (the catsuit: its neck and its sleeves drawn, its legs ending in a drawn ring at her ankles -- `topCut.isCatsuit`)
   ['bodysuitFull', 'Full bodysuit', 'Other', { ...upper(-1, -1, DRAWN_NECK.crew, 1.0), ...FULL, legEnd: 1.0, top: 'catsuit' }],
+  // (and with a chest cutout, a diamond at the top of her cleavage: `topCut.CHEST_CUTOUT`)
+  ['catsuitCutout', 'Catsuit, chest cutout', 'Other', { ...upper(-1, -1, DRAWN_NECK.crew, 1.0), ...FULL, legEnd: 1.0, top: 'catsuit', cutout: CHEST_CUTOUT.default }],
   // a leotard cut high, front and back (`ONE_PIECE_CUT`)
   ['bodysuit', 'Long-sleeve leotard', 'Other', { ...upper(-1, -1, LINES.neckCrew, 1.0), ...FULL, legEnd: 0.4, legCut: ONE_PIECE_CUT }],
   // a one-piece swimsuit's bottom is cut the leotard's way, a strip between her legs and the openings over her hips
@@ -595,7 +599,7 @@ export const BAND_DIAL = Object.freeze({ min: 0.5, max: 12, unset: 3,
    * breaks up in the fold under her belly. Its cause is not looked for yet. */
   hoopMax: 1.5 });
 /** The sliders a template offers, and the parameter each moves. */
-export interface CoverageDial { readonly id: 'rise' | 'riseBack' | 'band' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'neckline' | 'neckWidth' | 'sleeve'; readonly name: string; readonly min: number; readonly max: number }
+export interface CoverageDial { readonly id: 'rise' | 'riseBack' | 'band' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'neckline' | 'neckWidth' | 'cutoutWidth' | 'cutoutHeight' | 'cutoutDrop' | 'sleeve'; readonly name: string; readonly min: number; readonly max: number }
 export const COVERAGE_DIALS: readonly CoverageDial[] = Object.freeze([
   { id: 'rise', name: 'WAISTBAND (FRONT)', min: -0.2, max: 0.7 },
   { id: 'riseBack', name: 'HIPS & BACK RISE', min: 0, max: 0.6 },
@@ -611,6 +615,10 @@ export const COVERAGE_DIALS: readonly CoverageDial[] = Object.freeze([
   // (a one-piece's and the catsuit's: from a low U or V up past the base of her neck to a turtleneck, `NECK_RANGE`)
   { id: 'neckline', name: 'NECKLINE · LOW → TURTLENECK', min: NECK_RANGE.low, max: NECK_RANGE.dial },
   { id: 'neckWidth', name: 'NECK WIDTH', min: NECK_RANGE.width[0], max: NECK_RANGE.width[1] },
+  // (a chest cutout's, in CENTIMETRES on her: `topCut.CHEST_CUTOUT`)
+  { id: 'cutoutWidth', name: 'CUTOUT WIDTH (CM)', min: CHEST_CUTOUT.range.width[0] * 100, max: CHEST_CUTOUT.range.width[1] * 100 },
+  { id: 'cutoutHeight', name: 'CUTOUT HEIGHT (CM)', min: CHEST_CUTOUT.range.height[0] * 100, max: CHEST_CUTOUT.range.height[1] * 100 },
+  { id: 'cutoutDrop', name: 'CUTOUT DROP (CM UNDER HER NECK)', min: CHEST_CUTOUT.range.drop[0] * 100, max: CHEST_CUTOUT.range.drop[1] * 100 },
   { id: 'sleeve', name: 'SLEEVE', min: -0.05, max: 1 },
 ].map((d) => Object.freeze(d)) as CoverageDial[]);
 
@@ -627,6 +635,7 @@ export function dialsFor(p: CoverageParams): CoverageDial['id'][] {
   if (p.length !== null) { if (PAINTED_SHIRT_LONGEST > 0) out.push('length'); }
   else if (p.hemFront !== null && p.hemFront > -1) out.push('hem');
   if (p.neckFront !== null) out.push(...(takesTurtleneck(p) ? ['neckline', 'neckWidth'] as const : ['neck'] as const));
+  if (takesTurtleneck(p) && p.cutout) out.push('cutoutWidth', 'cutoutHeight', 'cutoutDrop');
   // (a top of an outline is sleeveless: its armholes are its own)
   if (p.hemFront !== null && !(p.top && p.top in TOP_OUTLINES)) out.push('sleeve');
   return out;
@@ -646,6 +655,9 @@ export function dialValue(p: CoverageParams, dial: CoverageDial['id']): number {
     case 'neck': return p.topFront ?? p.neckFront ?? 1;
     case 'neckline': return p.neckFront ?? 1;
     case 'neckWidth': return p.neckWide ?? 1;
+    case 'cutoutWidth': return (p.cutout?.width ?? CHEST_CUTOUT.default.width) * 100;
+    case 'cutoutHeight': return (p.cutout?.height ?? CHEST_CUTOUT.default.height) * 100;
+    case 'cutoutDrop': return (p.cutout?.drop ?? CHEST_CUTOUT.default.drop) * 100;
     case 'sleeve': return p.sleeve;
   }
 }
@@ -664,6 +676,9 @@ export function withDial(p: CoverageParams, dial: CoverageDial['id'], value: num
     case 'neck': return p.topFront !== null ? { ...p, topFront: value, topBack: (p.topBack ?? value) + value - p.topFront } : { ...p, neckFront: value };
     case 'neckline': return { ...p, neckFront: value };
     case 'neckWidth': return { ...p, neckWide: value };
+    case 'cutoutWidth': return p.cutout ? { ...p, cutout: { ...p.cutout, width: value / 100 } } : p;
+    case 'cutoutHeight': return p.cutout ? { ...p, cutout: { ...p.cutout, height: value / 100 } } : p;
+    case 'cutoutDrop': return p.cutout ? { ...p, cutout: { ...p.cutout, drop: value / 100 } } : p;
     case 'sleeve': return { ...p, sleeve: value };
   }
 }
