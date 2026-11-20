@@ -1087,6 +1087,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   TRIED AND TAKEN OUT the same morning: the sheet folded down to a little over the neckline's lowest point (its top rows
   stood across the opening as the garment), and seen only up to there (her skin behind it was cut in steps).
   Pictured after: the low V and U from her front and three-quarter, clean; the V and U tees as they were.
+- **A CHEST CUTOUT** (Joshua, 2026-11-20, of another game's bronze catsuit cut out over her chest: "can add as a new style
+  with a cutout which is adjustable"). `topCut.CHEST_CUTOUT`: a hole in her FRONT's drawing alone (`cutOut`, after the
+  neck opening or the collar is drawn), so its edge is drawn and banded as the neck opening's is; OVAL, DIAMOND or
+  KEYHOLE (a round hole with a slit up through the neckline), CUTOUT WIDTH, HEIGHT and DROP under her neck joint in cm
+  (`CoverageParams.cutout`, `heldCutout`'s stops); its chips CHEST CUTOUT · NONE OVAL DIAMOND KEYHOLE beside NECK SHAPE on
+  the catsuit, the leotard and the swimsuit; a piece with one has no cleavage bridge. A new style, `catsuitCutout`
+  ("Catsuit, chest cutout": a diamond 9 by 8 cm, 13 cm under her neck joint, at the top of her cleavage -- her breasts'
+  tops 11 cm under it, MEASURED on her body file). GAME TUNING. PICTURED in the room (light skin, 1x, his copper) at her
+  10% and 73% bellies from her front and three-quarter: each shape, a keyhole under the turtleneck, a big diamond, an oval
+  on the swimsuit -- clean, each with its band. Its per-vertex paint has no hole (what reads it: a save, a brush).
 - `tests/topCut.test.ts` (its last describe); after anything changes them, the room: the catsuit at each shape, low and
   wide, at the collar's top from her front, side and back; the swimsuit and the leotard at a shape and a collar.
 
