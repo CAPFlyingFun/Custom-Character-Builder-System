@@ -1908,7 +1908,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     setUnder(body, bodyMaterial(body), key ? bridgeLayer : -1, key ? bridge!.under : null, { layers: PAINT_LAYER_COUNT, rest: hooks.rest(body) });
   }
   /** GAME TUNING (her trunk, 0 her hip joints, 1 the base of her neck): a drawn top's neckline under this has no cleavage bridge -- a deep V or U (his sheet's V is 0.819, U 0.809). */
-  const LOW_NECK_NO_BRIDGE = 0.78;
+  const LOW_NECK_NO_BRIDGE = 0.9;
   function dressBridge(body: THREE.Mesh, p: BodyPaint | null): void {
     let top = -1;
     for (let i = PAINT_LAYER_COUNT - 1; i >= 0 && top < 0; i--) {
