@@ -1785,9 +1785,12 @@ void main() {
             for (let j2 = 0; j2 < M; j2++) nB.add(v3.copy(nO).applyMatrix3(t3.setFromMatrix4(T[j2])));
             if (nB.lengthSq() > 1e-18) { nB.normalize(); if (nP.lengthSq() < 1e-18) nP.copy(nB); else { nP.normalize(); if (nP.dot(nB) < 0) nP.negate(); nP.lerp(nB, 1 - smooth(0.15, 0.35, open)); } } }
           if (nP.lengthSq() < 1e-18) nP.copy(nO); nP.normalize();
-          natC.copy(C); natN.copy(nP); natOk = true;
+          // (her opening's own middle and facing are her rim's as her bones carry it, BEFORE any of this round moves it: read
+          // on a later round they were the middle of a rim already drawn round her baby's head, and a head steered onto that
+          // middle chased it -- MEASURED 2026-11-20, 2 cm across her from one moment to the next)
+          if (iter === 0) { natC.copy(C); natN.copy(nP); natOk = true; }
           // (and the way up her split, toward her pubic bone, in its plane: from her rim's back end to its front)
-          { let jb3 = 0, jf3 = 0; for (let j2 = 0; j2 < M; j2++) { if (colQ[j2] < colQ[jb3]) jb3 = j2; if (colQ[j2] > colQ[jf3]) jf3 = j2; }
+          if (iter === 0) { let jb3 = 0, jf3 = 0; for (let j2 = 0; j2 < M; j2++) { if (colQ[j2] < colQ[jb3]) jb3 = j2; if (colQ[j2] > colQ[jf3]) jf3 = j2; }
             natU.fromArray(Pp, jf3 * 3).sub(new THREE.Vector3().fromArray(Pp, jb3 * 3)); natU.addScaledVector(nP, -natU.dot(nP)); if (natU.lengthSq() > 1e-18) natU.normalize(); }
           let mean = 0; const rr = new Float32Array(M);
           for (let j2 = 0; j2 < M; j2++) { d.fromArray(Pp, j2 * 3).sub(C); d.addScaledVector(nP, -d.dot(nP)); rr[j2] = d.length(); mean += rr[j2] / M; }
