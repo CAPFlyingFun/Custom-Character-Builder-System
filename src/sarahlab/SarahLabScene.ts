@@ -1072,7 +1072,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let babyRoot: THREE.Object3D | null = null, babyHolder: THREE.Object3D | null = null, babySac: THREE.Mesh | null = null;
   let babyShown = false, babyLoading = false, babyKey = '';
   /** PREGNANT (P5): is she -- on or off, nothing else (her weeks are typed: `pregnancy`, below) */
-  const pregnant = (): boolean => pregnancy.pregnant;
+  // (the male base model is never pregnant, whatever her state was when he was put on)
+  const pregnant = (): boolean => pregnancy.pregnant && !isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
   /**
    * Whether she is DRAWN carrying: her pregnancy state, or a birth on the clock. Her state ends with the birth (Joshua,
    * 2026-11-14: "just keep it simple and automatically turn off the pregnancy state after birth" -- `stepBirth`), and
@@ -2357,6 +2358,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       lit(b, isMaleModel(SARAH_LAB_MODELS[modelIndex].id) === (sex === 'male'));
     }
     if (buttons.pregnant) { buttons.pregnant.textContent = pregnantLine(pregnancy); lit(buttons.pregnant, pregnant()); }
+    // (the male base model: nothing of a pregnancy offered -- PREGNANT, her babies, KICK)
+    { const male = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+      for (const b of [buttons.pregnant, buttons.baby, buttons.babies, buttons.babyLie, buttons.babyKick]) if (b) b.style.display = male ? 'none' : ''; }
     if (buttons.opening) { buttons.opening.textContent = openingLine(skeletonOpening); buttons.opening.style.display = v2OrganBones ? '' : 'none'; lit(buttons.opening, skeletonOpening); }
     if (buttons.baby) { buttons.baby.textContent = !carrying() ? 'SEE BABY · not pregnant' : babyShown ? (babyCount > 1 ? 'HIDE BABIES' : 'HIDE BABY') : (babyCount > 1 ? 'SEE BABIES' : 'SEE BABY'); lit(buttons.baby, babyShown); }
     // (an unavailable action never looks like one that works: a baby's controls dimmed while she is not pregnant)
@@ -7530,10 +7534,40 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // drawn under it, in her skin's tone -- what shows wherever her own skin does not reach, behind her where the tube
   // comes out through skin that is not the area's)
   const v2Seat: { out: number; restScale: number; ring: boolean; lining: number; bone: boolean; skin: boolean; drawn: boolean } = { out: 0, restScale: V2_DOORS.restScale, ring: true, lining: V2_DOORS.lining, bone: false, skin: true, drawn: true };
+  /**
+   * HIS LANDMARKS (the male base model's), measured on the skeleton as it is laid in him -- what her files hold for her
+   * (src/data/pelvis/v2.json, torso/v2.json, thorax/v2.json, made the same way from the skeleton laid in her): her
+   * pelvis's and her torso's measured points carried with the bone round each, and the inside of the rib cage measured on
+   * its chest bones as laid. Null until the skeleton is laid in him.
+   */
+  let maleMarks: { pelvis: unknown; torso: unknown; thorax: unknown } | null = null;
+  function maleLandmarks(): { pelvis: unknown; torso: unknown; thorax: unknown } | null {
+    if (maleMarks) return maleMarks;
+    const sk = skeletonV2;
+    if (!sk) return null;
+    const carry = (pts: number[][]) => sk.carry(pts);
+    try {
+      maleMarks = { pelvis: carryLandmarks(skeletonPelvis, carry, skeletonV2PelvisJoint, 'male-base'), torso: carryLandmarks(skeletonTorso, carry, null, 'male-base'), thorax: measureThorax(sk.restPointsOf(new Set([ORGAN_SPINE[3]]))) };
+    } catch (error) { console.error('[sarahlab] his landmarks could not be measured on the skeleton in him', error); maleMarks = null; }
+    return maleMarks;
+  }
   function layOrgansV2(all = true): void {
     if (!v2OrganBones || (organs && (abdomen || abdomenFailed || !all))) return;
     const f = v2OrganBones;
+    // HIS (the male base model's): laid on what the skeleton laid in him measures, once it is laid (it lays them then)
+    const male = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+    if (male && !all) return;
+    const marks = male ? maleLandmarks() : null;
+    if (male && !marks) { skeletonV2Lay?.(); return; }
+    const pelvisL = (marks?.pelvis ?? v2Pelvis) as typeof v2Pelvis, torsoL = (marks?.torso ?? v2Torso) as typeof v2Torso, thoraxL = (marks?.thorax ?? v2Thorax) as unknown as ThoraxLandmarks;
     try {
+      if (male && !organs) {
+        organsGrowWomb = false;
+        organs = new PelvicOrgansView(pelvisL as unknown as ConstructorParameters<typeof PelvicOrgansView>[0], torsoL, f.pelvis.bone, f.pelvis.matrix, M);
+        organs.setMale();
+        organs.setBladder(gut.bladderMl);
+        three.add(organs.group);
+      }
       if (!organs) {
         organsGrowWomb = false;
         // (her doors' seat: her skin's opening as measured, or -- a probe trying another -- moved `out` along her canal)
@@ -7559,13 +7593,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     } catch (error) { console.error('[sarahlab] her pelvic organs could not be laid in her', error); organs?.dispose(); organs = null; v2OrganBones = null; applyOpening(); refresh(); return; }
     // (each on its own: one that cannot be built leaves the others, and is not tried again)
     try {
-      abdomen = new AbdomenView(v2Pelvis, v2Torso, f, M, organs!, v2Thorax as unknown as ThoraxLandmarks);
+      abdomen = new AbdomenView(pelvisL, torsoL, f, M, organs!, thoraxL);
       abdomen.setFill(gutFill());
       three.add(abdomen.group);
     } catch (error) { console.error("[sarahlab] her belly's organs could not be laid in her", error); abdomen?.dispose(); abdomen = null; abdomenFailed = true; }
     try {
       // (her lungs, heart and diaphragm in her rib cage, carried by her chest: built new in v2)
-      if (!thorax && !thoraxFailed) { thorax = new ThoraxView(v2Thorax as unknown as ThoraxLandmarks, f.chest, M, layKidneys(v2Torso, v2Pelvis.landmarks.symphysisTop[0])); three.add(thorax.group); }
+      if (!thorax && !thoraxFailed) { thorax = new ThoraxView(thoraxL, f.chest, M, layKidneys(torsoL, pelvisL.landmarks.symphysisTop[0])); three.add(thorax.group); }
     } catch (error) { console.error('[sarahlab] her lungs and heart could not be laid in her', error); thorax?.dispose(); thorax = null; thoraxFailed = true; }
     refresh();
   }
@@ -8691,8 +8725,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const pelvisBone = bones[measure.joints.pelvis];
         // v2: her spine's bones with her rest frame as each carries it, read here at her bind, for her organs to hang from
         // (the rig's own names -- her pelvis, her lumbar spine below and above L3, her chest: src/data/torso/)
-        if (SARAH_LAB_MODELS[modelIndex].id === 'v2-body') {
-          const at = (name: string) => { const b = loadedModel.getObjectByName(name) as THREE.Bone | undefined; return b?.isBone ? { bone: b, matrix: new THREE.Matrix4().copy(b.matrixWorld).invert().multiply(loadedModel.matrixWorld) } : null; };
+        if (SARAH_LAB_MODELS[modelIndex].id === 'v2-body' || isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) {
+          // (his by the names his rig gives the same bones: maleRig.ts)
+          const male = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+          const at = (her: string) => { const name = male ? hisBone(her) : her, b = loadedModel.getObjectByName(name) as THREE.Bone | undefined; return b?.isBone ? { bone: b, matrix: new THREE.Matrix4().copy(b.matrixWorld).invert().multiply(loadedModel.matrixWorld) } : null; };
           const [p0, p1, p2, p3] = ORGAN_SPINE.map(at);
           v2OrganBones = p0 && p1 && p2 && p3 ? { pelvis: p0, lumbar: p1, upper: p2, chest: p3 } : null;
         }
@@ -8794,6 +8830,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               } catch (error) { console.error('[sarahlab] her bare feet could not be fitted over her foot bones', error); }
               // (a probe lays it again with set sizes: its skull at real size against a bigger head)
               relaySkeletonV2 = (scales) => { const was = skeletonV2?.mesh.visible ?? false; skeletonV2?.dispose(); skeletonV2 = make(scales ?? undefined); skeletonV2.visible = was; };
+              // (his organs are laid on what the skeleton in him measures: laid now if X-RAY is waiting for them)
+              if (maleNow) { maleMarks = null; if (xrayPct > 0) layOrgansV2(); }
               applyXray(); refresh();
               // (its file stays loaded: the laid copy shares its material's maps)
             } catch (error) { console.error('[sarahlab] her skeleton could not be laid inside v2', error); skeletonV2 = null; release(skel); }

@@ -21,6 +21,8 @@ import { NP, NT, sacRadius, type WombShape } from './baby';
 import { followCage, makeCage, placeCage, restGaps, separate, skinToCage, stepCage, type Cage, type CageSkin, type CageTune } from '../actor/organCage';
 import type { P3 } from '../actor/pelvisMeasure';
 import { layAdnexa } from '../actor/adnexa';
+import { ellipsoid } from '../actor/pelvicOrgans';
+import { layProstate } from '../actor/maleOrgans';
 
 /** How each organ's soft body is tuned. GAME TUNING: firm enough to keep its shape, damped so a sway settles in about a
  * second ("not like jelly"), its ties looser where anatomy leaves it free. */
@@ -176,6 +178,12 @@ export class PelvicOrgansView {
    * their full size as they are pushed open (it stretches): 1 is as they were. GAME TUNING.
    */
   restScale = 1;
+  /**
+   * HIS (the male base model's: `setMale`): no womb, canal, ovaries or doors drawn -- they are still laid, unseen, as the
+   * frame his belly's organs are laid against -- and his prostate under his bladder (actor/maleOrgans.ts).
+   */
+  private maleOn = false;
+  private prostate: THREE.Mesh | null = null;
   private doorsOn = true;
   private innerOn = true;
   private outerOn = true;
@@ -262,13 +270,14 @@ export class PelvicOrgansView {
   setOuterWomb(room: WombRoom | null): void {
     if (room === this.outer) return;
     this.outer = room;
-    const u = this.organs.find((o) => o.name === 'uterus'); if (u) u.mesh.visible = !room && this.innerOn;
+    const u = this.organs.find((o) => o.name === 'uterus'); if (u) u.mesh.visible = !room && this.innerOn && !this.maleOn;
     this.layAdnexa(); this.draw();
   }
   /** Her ovaries and tubes laid again beside her womb as it is now: v2's own, or her small womb (carried by its soft body). */
   private layAdnexa(): void {
     for (const a of this.adnexa) { a.mesh.removeFromParent(); a.mesh.geometry.dispose(); }
     this.adnexa = [];
+    if (this.maleOn) return;
     // (v2's own womb only once it has grown past her small one -- before that its sac is small and low in front, and her
     // ovaries and tubes are where they are without a pregnancy: beside her small womb, which is laid even when not drawn)
     const uterus = this.organs.find((o) => o.name === 'uterus'), small = this.layout?.uterus;
@@ -289,10 +298,24 @@ export class PelvicOrgansView {
   /** The room her womb takes, whichever womb she has: v2's own, or the one grown here (null: not pregnant). */
   get wombRoom(): WombRoom | null { return this.outer ?? this.grown; }
   /** HER OPENING'S DOORS DRAWN OR NOT (v2 keeps its own opening until the skeleton's replaces it; they still follow). */
-  set doorsShown(on: boolean) { this.doorsOn = on; this.doors.mesh.visible = on && this.group.visible; this.doors.skin.visible = on && this.outerOn && this.group.visible; }
+  set doorsShown(on: boolean) { this.doorsOn = on && !this.maleOn; this.doors.mesh.visible = this.doorsOn && this.group.visible; this.doors.skin.visible = this.doorsOn && this.outerOn && this.group.visible; }
   /** Her womb and her bladder drawn or not (v2: only while she is seen through -- behind her open doors only her canal
    * is to be seen); her canal is always drawn with the rest. */
-  set innerShown(on: boolean) { this.innerOn = on; for (const o of this.organs) if (o.name !== 'vagina') o.mesh.visible = on && !(o.name === 'uterus' && !!this.outer); for (const a of this.adnexa) a.mesh.visible = on; }
+  set innerShown(on: boolean) { this.innerOn = on; for (const o of this.organs) if (o.name !== 'vagina') o.mesh.visible = on && !(o.name === 'uterus' && (!!this.outer || this.maleOn)); for (const a of this.adnexa) a.mesh.visible = on; if (this.prostate) this.prostate.visible = on; }
+  /** HIS (the male base model's): his womb, canal, ovaries and doors put out of sight, and his prostate laid under his bladder. */
+  setMale(): void {
+    if (this.maleOn) return;
+    this.maleOn = true;
+    this.doorsShown = false;
+    for (const o of this.organs) if (o.name === 'uterus' || o.name === 'vagina') o.mesh.visible = false;
+    this.layAdnexa();
+    const lay = layProstate(this.bones), m = ellipsoid(lay.centre, lay.radii, 14, 20), g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(m.points, 3)); g.setIndex(new THREE.BufferAttribute(m.triangles, 1)); g.computeVertexNormals();
+    this.prostate = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xc98f86, roughness: 0.6, metalness: 0 }));
+    this.prostate.name = 'organ:prostate'; this.prostate.frustumCulled = false; this.prostate.visible = this.innerOn;
+    this.holder.add(this.prostate);
+  }
+  get male(): boolean { return this.maleOn; }
   /** The test piece of outer skin round her doors drawn or not: in v2 her own skin is there. */
   set outerSkinShown(on: boolean) { this.outerOn = on; this.doors.skin.visible = on && this.doorsOn && this.group.visible; }
   /** Her doors' outer faces in this colour (v2: her own skin's tone round her opening); their lining stays its own. */
@@ -373,7 +396,7 @@ export class PelvicOrgansView {
       geometry.setIndex(new THREE.BufferAttribute(m.triangles, 1));
       const mesh = new THREE.Mesh(geometry, this.materials.get(name)!);
       mesh.name = `organ:${name}`; mesh.frustumCulled = false;
-      if ((name === 'uterus' && this.outer) || (name !== 'vagina' && !this.innerOn)) mesh.visible = false;
+      if ((name === 'uterus' && this.outer) || (name !== 'vagina' && !this.innerOn) || (this.maleOn && name !== 'bladder')) mesh.visible = false;
       this.group.add(mesh);
       this.organs.push({ name, cage, skin, mesh, tune: { shape: U[name].shape, keep: U[name].keep }, out: new Float32Array(m.points.length) });
     }
@@ -810,10 +833,11 @@ export class PelvicOrgansView {
     return out;
   }
 
-  set visible(on: boolean) { this.group.visible = on; this.doors.mesh.visible = on && this.doorsOn; this.doors.skin.visible = on && this.doorsOn && this.outerOn; }
+  set visible(on: boolean) { this.group.visible = on; this.doors.mesh.visible = on && this.doorsOn; this.doors.skin.visible = on && this.doorsOn && this.outerOn; if (this.prostate) this.prostate.visible = on && this.innerOn; }
 
   dispose(): void {
     for (const o of this.organs) { o.mesh.removeFromParent(); o.mesh.geometry.dispose(); }
+    if (this.prostate) { this.prostate.removeFromParent(); this.prostate.geometry.dispose(); (this.prostate.material as THREE.Material).dispose(); this.prostate = null; }
     this.organs = []; this.touching = [];
     for (const a of this.adnexa) { a.mesh.removeFromParent(); a.mesh.geometry.dispose(); }
     this.adnexa = []; this.adnexaMaterials.ovaries.dispose(); this.adnexaMaterials.tubes.dispose();
