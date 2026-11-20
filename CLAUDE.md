@@ -1898,6 +1898,18 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   rest place as her skin's program carries it (`vFabricPos`, `vFabricNrm`: nothing added to her vertex stage, which has
   every attribute a phone gives it), her skin's program put on her for it (`ensureSkinFabric`), and NONE OF IT UNDER HER
   PAINT (`fabricMatte`). MEASURED in the room: the painted bike shorts and crop tee at 100%, her side and her belly, on and off.
+- **THE HYBRID, AS IT IS NOW** (Joshua, 2026-11-19: "Can you do a hybrid of yours and theirs, push, and then I can have it
+  grab the latest update and grab your work to apply" -- "theirs" Galaxy Defender's agent's): two depths on bare skin, as
+  one bump of the drawn normal (`skinDetail.ts`), none under paint:
+  1. EACH BODY'S OWN SKIN PICTURE'S DEPTH, 0.5 mm (`SKIN_DETAIL.ownDepthM`): `node scripts/skinHeight.mjs --in <its EVEN
+     skin> --out <height png>` -- the lab's Convert mode at its own defaults (`LAB_CONVERT`), its SEAMLESS blend OFF (it
+     tears an atlas into patches), read at the body's UVs where its colour is (`sarah-v2-skin-height-2048.png`,
+     `male-base-skin-height-2048.png`). Make it again whenever a body's skin picture changes;
+  2. THE TILE, 0.3 mm (`depthM`; 0.4 alone): `scripts/skinDetail.mjs`'s seamless pores and creases, triplanar on the rest
+     place, 6 cm a tile, its pits 18% darker (`cavity`).
+  FOR ANOTHER GAME (TRADDOMIUM, Galaxy Defender, the Godot rebuild): take the two scripts, the tile, and these numbers; a
+  body's own height map is made from ITS OWN skin picture (its own UV layout), never borrowed from another body's.
+  PICTURED in the room: plain, its own picture alone, the tile alone, both -- her bare belly and her face.
 - His organs (a prostate, no womb or ovaries), the pregnancy controls hidden for him, and his EVEN skin are done.
 - NOT DONE: BUILD and the other body shapes on him; his squat (his thighs bunch at his groin); his own pelvis bone; clothes;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.

@@ -20,15 +20,21 @@ import * as THREE from 'three';
 
 /** The tile's file. */
 export const SKIN_DETAIL_MAP = 'models/skins/skin-detail-1024.png';
-/** Her own skin picture's height map (the lab's Convert mode on her EVEN skin), on trial beside the tile. */
+/**
+ * THE HYBRID (Joshua, 2026-11-19: "Can you do a hybrid of yours and theirs"): each body's own skin picture's height map
+ * (the lab's Convert mode on its EVEN skin, edges unblended), read at its UVs, beside the tile.
+ */
 export const SKIN_OWN_HEIGHT = 'models/skins/sarah-v2-skin-height-2048.png';
+export const MALE_OWN_HEIGHT = 'models/skins/male-base-skin-height-2048.png';
 
 /** GAME TUNING (by eye on him in the room): how wide one tile is, how deep its relief, how much darker its pits. */
 export const SKIN_DETAIL = Object.freeze({
   /** metres one tile spans (its 40 x 40 pores 1.5 mm apart) */
   tileM: 0.06,
-  /** metres from its highest to its lowest */
-  depthM: 0.0004,
+  /** metres from its highest to its lowest (0.4 alone; 0.3 beside her own picture's depth: the hybrid Joshua asked for) */
+  depthM: 0.0003,
+  /** metres of depth her own skin picture gives (`scripts/skinHeight.mjs`; Galaxy Defender's agent's 0.5 mm) */
+  ownDepthM: 0.0005,
   /** how much darker its pits are (0 none) */
   cavity: 0.18,
 });
@@ -43,6 +49,8 @@ export interface SkinDetailUniforms {
   /** her own skin picture's height (`scripts/skinHeight.mjs`), read at her UVs, and its depth in posed units (0: off) */
   skinOwnMap: { value: THREE.Texture | null };
   skinOwnDepth: { value: number };
+  /** 1 once its map is in (until then its sampler reads nothing) */
+  skinOwnLoaded: { value: number };
 }
 
 /** `unitsPerMetre`: his rest place's units in a metre (his mesh's own); `posedUnitsPerMetre`: what his drawn surface is in. */
@@ -53,8 +61,17 @@ export function skinDetailUniforms(map: THREE.Texture, unitsPerMetre: number, po
     skinDetailDepth: { value: d.depthM * posedUnitsPerMetre },
     skinDetailCavity: { value: d.cavity },
     skinOwnMap: { value: null },
-    skinOwnDepth: { value: 0 },
+    skinOwnDepth: { value: d.ownDepthM * posedUnitsPerMetre },
+    skinOwnLoaded: { value: 0 },
   };
+}
+
+/** A body's own height map, laid as its skin picture is (`like`), and the uniforms told it is in. */
+export function wearOwnHeight(u: SkinDetailUniforms, t: THREE.Texture, like: THREE.Texture | null): void {
+  t.colorSpace = THREE.NoColorSpace;
+  if (like) { t.flipY = like.flipY; t.channel = like.channel; t.wrapS = like.wrapS; t.wrapT = like.wrapT; }
+  t.needsUpdate = true;
+  u.skinOwnMap.value = t; u.skinOwnLoaded.value = 1;
 }
 
 /** The tile itself: repeated, mipmapped, read as numbers (not a colour). */
@@ -75,7 +92,7 @@ varying vec3 vSkinRestN;`;
 
 export const SKIN_DETAIL_FRAGMENT = /* glsl */ `
 uniform sampler2D skinDetailMap, skinOwnMap;
-uniform float skinDetailTile, skinDetailDepth, skinDetailCavity, skinOwnDepth;
+uniform float skinDetailTile, skinDetailDepth, skinDetailCavity, skinOwnDepth, skinOwnLoaded;
 float skinDetailHeight() {
   vec3 w = pow( abs( normalize( SKIN_REST_N ) ), vec3( 4.0 ) );
   w /= max( 1e-5, w.x + w.y + w.z );
@@ -97,7 +114,7 @@ if ( skinDetailDepth > 0.0 || skinOwnDepth > 0.0 ) {
   vec2 skinDH = vec2( dFdx( skinH ), dFdy( skinH ) ) * skinDetailDepth * skinBare;
 #ifdef USE_MAP
   // her own skin picture's depth (the lab's Convert mode), read where her colour is
-  if ( skinOwnDepth > 0.0 ) { float skinO = texture2D( skinOwnMap, vMapUv ).r; skinDH += vec2( dFdx( skinO ), dFdy( skinO ) ) * skinOwnDepth * skinBare; }
+  if ( skinOwnDepth > 0.0 && skinOwnLoaded > 0.5 ) { float skinO = texture2D( skinOwnMap, vMapUv ).r; skinDH += vec2( dFdx( skinO ), dFdy( skinO ) ) * skinOwnDepth * skinBare; }
 #endif
   normal = skinDetailBend( - vViewPosition, normal, skinDH, faceDirection );
   diffuseColor.rgb *= 1.0 - skinDetailCavity * skinBare * clamp( ( 0.42 - skinH ) * 3.0, 0.0, 1.0 ); // (its pits alone: the mean of it stays his own colour)
