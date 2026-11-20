@@ -679,7 +679,9 @@ describe('a bottom\'s cut in the shader', () => {
     // legs where a place's stand round her swings from pixel to pixel, its slope is no pixel's width)
     for (const i of [0, 1, 2]) {
       expect(s.fragmentShader).toContain(`float fle = fabricLowLeg${i}.x - vFabricLow.w, fls = vFabricLow.w - fabricLowLeg${i}.y;`);
-      expect(s.fragmentShader).toContain(`fe${i} = fcw * mix(fabricLowLeg${i}.z, fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0)), fabricLegShare) * fabricNotArm;`);
+      expect(s.fragmentShader).toContain(`float flg = fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0));`);
+      // (and a cut beside it -- the catsuit -- is ended at its legs' rings alone)
+      expect(s.fragmentShader).toContain(`fe${i} = fe${i} >= 0.0 ? min(fe${i}, mix(1.0, flg, fabricLegShare)) : fcw * mix(fabricLowLeg${i}.z, flg, fabricLegShare) * fabricNotArm;`);
     }
     // the layer it was put on has its numbers; the others are off
     const u = s.uniforms, far = LOW_CUT.far;

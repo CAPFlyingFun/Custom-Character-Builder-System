@@ -17,7 +17,7 @@ import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
-import { NECK_STYLES, TOP_OUTLINES, cutCoverage, isCutTop, isOnePiece, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
+import { NECK_RANGE, NECK_STYLES, TOP_OUTLINES, cutCoverage, hasNoHem, isCutTop, isOnePiece, takesTurtleneck, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
 import { waistLine, type LowBands } from './bottomCut';
 import { TOP_DETAIL_STYLES, topDetailSpec, type TopDetailName, type TopDetailSpec } from './topDetails';
 
@@ -117,6 +117,13 @@ export interface CoverageParams {
    * Its strap, armhole and neckBack numbers are its outline's, not the old `strap` / `strapIn` / `armhole` / `neckBack`.
    */
   readonly top?: CutTopKind | null;
+  /**
+   * A one-piece's and the catsuit's NECK SHAPE (`topCut.NECK_RANGE`): one of `NECK_STYLES`, over the style its template
+   * or its outline has. Absent or null: that one.
+   */
+  readonly neckShape?: NeckStyle | null;
+  /** Their NECK WIDTH: a share of the shape's own width (`NECK_RANGE.width`). Absent or null: 1. */
+  readonly neckWide?: number | null;
   /**
    * What is DRAWN ON a drawn top (`topDetails.ts` `TOP_DETAIL_STYLES`, his sheet's 08, 09, 10, 15 and 16): 'raglan' (its
    * sleeves, shoulders and neckband in its EDGING colour), 'henley' (a short placket, three buttons), 'polo' (a collar,
@@ -534,7 +541,8 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // (his 07: a scoop between wide straps, a racerback, a wide band under her bust; drawn, `TOP_OUTLINES.sportsBra`)
   ['sportsBra', 'Sports bra', 'Bras & bands', upper(LINES.hemSportsBra, LINES.bandBack, OUTLINE_NECK.sportsBra, -1, { strapIn: 0.85, strap: 0.65, neckBack: 0.86, armhole: LINES.armhole - 0.02, band: SPORTS_BRA_BANDS, top: 'sportsBra' }), 'sportsBra'],
   ['bandeau', 'Bandeau', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckCrew, -1, { topFront: LINES.bandeauTop, topSide: LINES.bandeauSide, topBack: LINES.bandTopBack })],
-  ['bodysuitFull', 'Full bodysuit', 'Other', { ...upper(-1, -1, LINES.neckCrew, 1.0), ...FULL, legEnd: 1.0 }],
+  // (the catsuit: its neck and its sleeves drawn, its legs ending in a drawn ring at her ankles -- `topCut.isCatsuit`)
+  ['bodysuitFull', 'Full bodysuit', 'Other', { ...upper(-1, -1, DRAWN_NECK.crew, 1.0), ...FULL, legEnd: 1.0, top: 'catsuit' }],
   // a leotard cut high, front and back (`ONE_PIECE_CUT`)
   ['bodysuit', 'Long-sleeve leotard', 'Other', { ...upper(-1, -1, LINES.neckCrew, 1.0), ...FULL, legEnd: 0.4, legCut: ONE_PIECE_CUT }],
   // a one-piece swimsuit's bottom is cut the leotard's way, a strip between her legs and the openings over her hips
@@ -587,7 +595,7 @@ export const BAND_DIAL = Object.freeze({ min: 0.5, max: 12, unset: 3,
    * breaks up in the fold under her belly. Its cause is not looked for yet. */
   hoopMax: 1.5 });
 /** The sliders a template offers, and the parameter each moves. */
-export interface CoverageDial { readonly id: 'rise' | 'riseBack' | 'band' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'sleeve'; readonly name: string; readonly min: number; readonly max: number }
+export interface CoverageDial { readonly id: 'rise' | 'riseBack' | 'band' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'neckline' | 'neckWidth' | 'sleeve'; readonly name: string; readonly min: number; readonly max: number }
 export const COVERAGE_DIALS: readonly CoverageDial[] = Object.freeze([
   { id: 'rise', name: 'WAISTBAND (FRONT)', min: -0.2, max: 0.7 },
   { id: 'riseBack', name: 'HIPS & BACK RISE', min: 0, max: 0.6 },
@@ -600,6 +608,9 @@ export const COVERAGE_DIALS: readonly CoverageDial[] = Object.freeze([
   { id: 'hem', name: 'HEM / BELLY', min: -0.3, max: 0.75 },
   { id: 'length', name: 'SHIRT LENGTH', min: 0, max: PAINTED_SHIRT_LONGEST },
   { id: 'neck', name: 'NECKLINE / TOP EDGE', min: 0.7, max: 1 },
+  // (a one-piece's and the catsuit's: from a low U or V up past the base of her neck to a turtleneck, `NECK_RANGE`)
+  { id: 'neckline', name: 'NECKLINE · LOW → TURTLENECK', min: NECK_RANGE.low, max: NECK_RANGE.dial },
+  { id: 'neckWidth', name: 'NECK WIDTH', min: NECK_RANGE.width[0], max: NECK_RANGE.width[1] },
   { id: 'sleeve', name: 'SLEEVE', min: -0.05, max: 1 },
 ].map((d) => Object.freeze(d)) as CoverageDial[]);
 
@@ -615,7 +626,7 @@ export function dialsFor(p: CoverageParams): CoverageDial['id'][] {
   // (a shirt's length is a dial only while a painted shirt has any length to choose from: PAINTED_SHIRT_LONGEST)
   if (p.length !== null) { if (PAINTED_SHIRT_LONGEST > 0) out.push('length'); }
   else if (p.hemFront !== null && p.hemFront > -1) out.push('hem');
-  if (p.neckFront !== null) out.push('neck');
+  if (p.neckFront !== null) out.push(...(takesTurtleneck(p) ? ['neckline', 'neckWidth'] as const : ['neck'] as const));
   // (a top of an outline is sleeveless: its armholes are its own)
   if (p.hemFront !== null && !(p.top && p.top in TOP_OUTLINES)) out.push('sleeve');
   return out;
@@ -633,6 +644,8 @@ export function dialValue(p: CoverageParams, dial: CoverageDial['id']): number {
     case 'hem': return p.hemFront ?? 0;
     case 'length': return p.length ?? 0;
     case 'neck': return p.topFront ?? p.neckFront ?? 1;
+    case 'neckline': return p.neckFront ?? 1;
+    case 'neckWidth': return p.neckWide ?? 1;
     case 'sleeve': return p.sleeve;
   }
 }
@@ -649,6 +662,8 @@ export function withDial(p: CoverageParams, dial: CoverageDial['id'], value: num
     case 'length': return { ...p, length: paintedShirtLength(value) };
     // a bandeau's top edge, front and back together; otherwise the neckline's depth
     case 'neck': return p.topFront !== null ? { ...p, topFront: value, topBack: (p.topBack ?? value) + value - p.topFront } : { ...p, neckFront: value };
+    case 'neckline': return { ...p, neckFront: value };
+    case 'neckWidth': return { ...p, neckWide: value };
     case 'sleeve': return { ...p, sleeve: value };
   }
 }
@@ -804,7 +819,7 @@ export function templateCut(map: BodyMap, p: CoverageParams, frame: TopFrame | n
   // (a one-piece has no hem: it ends at its leg openings, which are its field's. Its hem is put under the floor, a
   // number and not "none": the shader mixes a hem's distance with a sleeve's by which skin a pixel is, and no number
   // times nothing is no number -- MEASURED in the room, her arms drawn half covered)
-  return topCut(topCutSpec(p, frame, isOnePiece(p) ? ONE_PIECE_HEM : p.length === null && p.hemFront !== null ? p.hemFront : shirtHem(map, p.length ?? 0)), frame);
+  return topCut(topCutSpec(p, frame, hasNoHem(p) ? ONE_PIECE_HEM : p.length === null && p.hemFront !== null ? p.hemFront : shirtHem(map, p.length ?? 0)), frame);
 }
 /** A one-piece's "hem", on her trunk (0 her hip joints, 1 the base of her neck): under the floor. */
 export const ONE_PIECE_HEM = -4;
@@ -865,7 +880,7 @@ export function armSkinOf(map: BodyMap): Float32Array {
 export function coverage(map: BodyMap, p: CoverageParams, cut: TopCut | null = null): Float32Array {
   const n = map.region.length, out = new Float32Array(n);
   // (a one-piece's cut has no hem and would paint her legs: per vertex it is laid as it always was, by its own lines)
-  if (cut && !isOnePiece(p) && map.rest && map.rest.length === n * 3) return cutCoverage(cut, map.rest, armSkinOf(map), out);
+  if (cut && !hasNoHem(p) && map.rest && map.rest.length === n * 3) return cutCoverage(cut, map.rest, armSkinOf(map), out);
   if (p.outline === 'bikiniBottom') {
     // how far in from the brief's outline each point of her is (metres), a straight ramp either side of it: the paint's
     // crisp edge falls on the outline itself (see EDGE); none where her body is not the one it was traced on

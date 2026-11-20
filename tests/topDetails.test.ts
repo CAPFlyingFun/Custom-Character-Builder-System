@@ -14,7 +14,7 @@ import { cutAt, neckDefault, topCut, topCutSpec, topFrame, type TopCut, type Top
 import { DETAIL_LOOK, TOP_DETAIL_STYLES, detailOf, topDetailAt, topDetailGlsl, topDetailSpec, type TopDetailParams, type TopDetailSpec } from '../src/sarahlab/topDetails';
 import { setFabricCut, setFabricLayer } from '../src/sarahlab/fabricMaterial';
 import { COVERAGE_TEMPLATES, pieceKind, templateDetail } from '../src/sarahlab/paintTemplates';
-import { isCutTop, isOnePiece } from '../src/sarahlab/topCut';
+import { hasNoHem, isCutTop } from '../src/sarahlab/topCut';
 import { readBody } from '../scripts/sarahV2SideLock.mjs';
 
 const MM = 0.001;
@@ -294,7 +294,7 @@ describe('a top\'s details in the shader', () => {
       expect(s.uniforms.fabricCutHem.value).toBe(0);
     }
     // the tops whose hem is their own are the ones cut above a shirt's LENGTH: the sports bra and the boxy crop tee
-    expect(COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params) && !isOnePiece(t.params) && t.params.length === null && t.params.hemFront !== null).map((t) => t.id).sort()).toEqual(['cropTee', 'sportsBra']);
+    expect(COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params) && !hasNoHem(t.params) && t.params.length === null && t.params.hemFront !== null).map((t) => t.id).sort()).toEqual(['cropTee', 'sportsBra']);
     expect(skin.fragmentShader).toContain('vec2(fabricCutLimb.x + place.z * fabricCutLimb.w - fabricCutSide.x, place.y)');
     expect(skin.fragmentShader).toContain('neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;');
     expect(sheet.fragmentShader).not.toContain('fabricCutSide.x');

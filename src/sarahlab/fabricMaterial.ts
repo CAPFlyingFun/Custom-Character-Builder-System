@@ -428,7 +428,9 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
             fcw = fabricEdge(clamp(0.5 + fws / (2.0 * fabricLowAxis.w), 0.0, 1.0));
           }
           float fle = fabricLowLeg${i}.x - vFabricLow.w, fls = vFabricLow.w - fabricLowLeg${i}.y;
-          fe${i} = fcw * mix(fabricLowLeg${i}.z, fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0)), fabricLegShare) * fabricNotArm;${lowWaistBand(i)}${lowBand('fle', `fabricLowBand${i}.y`, 'fabricLegShare', i)}${lowBand('fls', `fabricLowBand${i}.z`, 'fabricLegShare', i)}
+          float flg = fabricEdge(clamp(0.5 + fle / (2.0 * fabricLowAxis.w), 0.0, 1.0)) * fabricEdge(clamp(0.5 + fls / (2.0 * fabricLowAxis.w), 0.0, 1.0));
+          // (a CUT beside it -- the catsuit, \`topCut.isCatsuit\`: its cut is all of it but its legs' ends, which are these)
+          fe${i} = fe${i} >= 0.0 ? min(fe${i}, mix(1.0, flg, fabricLegShare)) : fcw * mix(fabricLowLeg${i}.z, flg, fabricLegShare) * fabricNotArm;${lowWaistBand(i)}${lowBand('fle', `fabricLowBand${i}.y`, 'fabricLegShare', i)}${lowBand('fls', `fabricLowBand${i}.z`, 'fabricLegShare', i)}
         }`;
     const cutLine = (i: number, neckOnly: boolean) => `
           float fn = fabricCutValue.x;${band('fn', `fabricCutBand${i}.x`, i)}

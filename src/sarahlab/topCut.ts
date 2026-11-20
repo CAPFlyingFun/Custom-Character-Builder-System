@@ -241,6 +241,8 @@ export interface TopCutSpec {
    * round her shoulder as a slope, not a step (`OUTLINE_SIDE_BLEND`).
    */
   readonly sideBlend?: number;
+  /** A COLLAR (`NECK_RANGE`): no neck opening, the garment up her neck to this height (her units), level round her. Absent: the neck opening. */
+  readonly collarY?: number;
 }
 
 /**
@@ -282,7 +284,39 @@ export const TOP_OUTLINES = Object.freeze({
 });
 export type TopOutlineKind = keyof typeof TOP_OUTLINES;
 /** The drawn tops that are not a tee's neck opening, sleeves and level hem alone: the outlines, and the boxy crop tee (a crew tee with a hem of its own). */
-export type CutTopKind = TopOutlineKind | 'cropTee';
+export type CutTopKind = TopOutlineKind | 'cropTee' | 'catsuit';
+/**
+ * THE CATSUIT (Joshua, 2026-11-20, of the full bodysuit: "look at the catsuit's edges (neck, arms, feet) and neckline"): a
+ * drawn top with no hem -- its neck opening and its sleeves drawn as a tee's are -- and no leg openings of its own: its
+ * legs end where a drawn bottom's do, a flat ring round each leg carried by its bone (`fabricPanel`'s `low`, its LEG
+ * LENGTH). Before, all of it was paint a value a vertex.
+ */
+export function isCatsuit(p: { readonly top?: CutTopKind | null }): boolean { return p.top === 'catsuit'; }
+/** A drawn top that has no hem: a one-piece (its leg openings end it) and the catsuit (its legs' rings end it). */
+export function hasNoHem(p: Partial<Pick<CoverageParams, 'legCut' | 'neckFront' | 'topFront'>> & { readonly top?: CutTopKind | null }): boolean {
+  return isOnePiece(p) || isCatsuit(p);
+}
+/**
+ * THE NECKLINE OF A ONE-PIECE AND THE CATSUIT, from a low U or V up to a turtleneck (Joshua, 2026-11-20: "Can we make
+ * the neckline adjustable from a low V-U, to up a mid-neck turtleneck?"; "do the same for the swimsuit and leotard…
+ * Make the length adjustable, but also the width of the neckline and shape like some of our other outfits"). Its
+ * NECKLINE runs on past the base of her neck (1): from there its rim is a COLLAR, level round her neck, up to `most`
+ * over her neck joint (metres) at `dial`. MEASURED on her body file down the middle of her front: her neck's front at
+ * 6 to 7.5 cm in front of her neck joint from 3 cm under it to 6 cm over it, and her chin's underside from 6.5 cm over
+ * it -- so a collar no higher than 5 cm stands on her neck and never on her chin. `width`: NECK WIDTH's range, a share
+ * of the style's own width (GAME TUNING).
+ */
+export const NECK_RANGE = Object.freeze({ low: 0.6, dial: 1.1, most: 0.05, width: Object.freeze([0.6, 1.6] as const) });
+/** Whether a template takes the neckline from a low U or V to a turtleneck, its width and its shape (`NECK_RANGE`). */
+export function takesTurtleneck(p: Partial<Pick<CoverageParams, 'legCut' | 'neckFront' | 'topFront'>> & { readonly top?: CutTopKind | null }): boolean {
+  return hasNoHem(p);
+}
+/** A collar's rim on her (her units) for a NECKLINE past the base of her neck, or null for a neck opening. */
+export function collarAt(neckFront: number | null | undefined, frame: Pick<TopFrame, 'neckY' | 'hipY' | 'unitsPerMetre'>): number | null {
+  if (neckFront === null || neckFront === undefined || !(neckFront > 1)) return null;
+  const U = frame.unitsPerMetre, f = Math.min(1, (neckFront - 1) / (NECK_RANGE.dial - 1));
+  return frame.neckY + f * NECK_RANGE.most * U;
+}
 /** An outline laid on one body (her units; heights absolute). */
 export interface TopOutlineSpec {
   readonly kind: TopOutlineKind;
@@ -315,7 +349,7 @@ export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFron
   // its leg openings' field, `paintTemplates.designedField`)
   if (isOnePiece(p)) return true;
   // (a kind of its own -- the outlines and the crop tee -- is drawn whatever else a look saved before said of it)
-  if (p.top && (p.top === 'cropTee' || p.top in TOP_OUTLINES)) return true;
+  if (p.top && (p.top === 'cropTee' || p.top === 'catsuit' || p.top in TOP_OUTLINES)) return true;
   return p.hemFront !== null && p.neckFront !== null && p.length !== null && !(p.strap > 0) && p.topFront === null && p.riseFront === null;
 }
 
@@ -324,30 +358,35 @@ export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFron
  * of her neck) give the rim, its SLEEVE (0 her shoulder joint, 1 her wrist) the sleeves' ends, `hemTrunk` (her hem on
  * her trunk) the hem.
  */
-export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null; readonly top?: CutTopKind | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null; readonly top?: CutTopKind | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
   if (p.top && p.top in TOP_OUTLINES) return outlineSpec(p, p.top as TopOutlineKind, frame, hemTrunk);
-  const style: NeckStyle = (p.neckStyle in NECK_STYLES ? p.neckStyle : 'crew') as NeckStyle, S = NECK_STYLES[style], U = frame.unitsPerMetre;
-  const trunk = frame.neckY - frame.hipY, dipY = frame.hipY + (p.neckFront ?? 1) * trunk;
+  const shape = p.neckShape ?? p.neckStyle, style: NeckStyle = (shape in NECK_STYLES ? shape : 'crew') as NeckStyle, S = NECK_STYLES[style], U = frame.unitsPerMetre;
+  const trunk = frame.neckY - frame.hipY, collarY = collarAt(p.neckFront, frame), dipY = frame.hipY + (p.neckFront ?? 1) * trunk;
+  const wide = Math.max(NECK_RANGE.width[0], Math.min(NECK_RANGE.width[1], p.neckWide ?? 1));
   // a crew taken lower than a crew opens a little wider as it goes (it never takes her shoulders: Joshua, 2026-10-23)
   const deeper = style === 'crew' ? smoothstep(0, 0.07 * U, frame.neckY - S.depth * U - dipY) : 0;
-  const half = (S.half + 0.012 * deeper) * U;
+  const half = (S.half + 0.012 * deeper) * U * wide;
   const armLength = (frame.arms[0].length + frame.arms[1].length) / 2;
   return {
-    style, half, dipY: Math.min(dipY, ridgeAt(frame, half) - 0.004 * U),
+    style, half, dipY: Math.min(dipY, ridgeAt(frame, half) - 0.004 * U), ...(collarY !== null ? { collarY } : {}),
     sleeve: p.sleeve >= -0.04 ? p.sleeve * armLength : -U,
     hemY: hemTrunk === null ? -Infinity : frame.hipY + hemTrunk * trunk,
     bands: { neck: (p.band?.neck ?? TEE_BANDS.neck) * U, sleeve: (p.band?.sleeve ?? TEE_BANDS.sleeve) * U, hem: (p.band?.hem ?? TEE_BANDS.hem) * U },
   };
 }
 /** An outline's spec on her: its own numbers, its NECKLINE (the front's depth, or a camisole's top edge) and its hem; no sleeves. */
-function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Partial<TopBands> | null }, kind: TopOutlineKind, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Partial<TopBands> | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null }, kind: TopOutlineKind, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
   const O = TOP_OUTLINES[kind] as unknown as Readonly<Record<string, number>> & { readonly neck: NeckStyle; readonly front: string; readonly back: string }, U = frame.unitsPerMetre;
   const n = (k: string) => (O[k] ?? 0) * U;
-  const trunk = frame.neckY - frame.hipY, half = O.strapIn * U;
+  // (a one-piece's NECK WIDTH and NECK SHAPE, `NECK_RANGE`: its straps' inner edges move, never past 1.2 cm inside their
+  // outer edges; and past the base of her neck it is a COLLAR, the mock neck's own front and back -- a sleeveless
+  // turtleneck)
+  const wide = Math.max(NECK_RANGE.width[0], Math.min(NECK_RANGE.width[1], p.neckWide ?? 1)), collarY = collarAt(p.neckFront, frame);
+  const trunk = frame.neckY - frame.hipY, half = Math.min(O.strapIn * wide, O.strapOut - 0.012) * U;
   const dipY = Math.min(frame.hipY + (p.neckFront ?? 1 - O.depth * U / trunk) * trunk, ridgeAt(frame, half) - 0.004 * U);
   const bound = (p.band?.neck ?? OUTLINE_BANDS.neck) * U, cami = kind === 'camisole';
   return {
-    style: O.neck, half, dipY, sleeve: -U,
+    style: p.neckShape && p.neckShape in NECK_STYLES ? p.neckShape : O.neck, half, dipY, sleeve: -U,
     hemY: hemTrunk === null ? -Infinity : frame.hipY + hemTrunk * trunk,
     bands: { neck: bound, sleeve: 0, hem: (p.band?.hem ?? OUTLINE_BANDS.hem) * U },
     sideBlend: OUTLINE_SIDE_BLEND * U,
@@ -358,8 +397,8 @@ function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Pa
         // (a camisole's bodice begins at its peak: nothing over it but its strap)
         startX: O.strapOut * U, startY: cami ? camiPeakY(dipY, ridgeAt(frame, O.strapOut * U), U) : Infinity, slope: cami ? CAMI_FALL.slope : 0,
       },
-      front: O.front as TopOutlineSpec['front'], back: O.back as TopOutlineSpec['back'],
-      backY: frame.neckY - n('backDrop'), racerX: n('racerX'), racerY: frame.neckY - n('racerDrop'), sag: n('sag'), corner: n('corner'), collarY: frame.neckY + n('collar'),
+      front: collarY !== null ? 'collar' : O.front as TopOutlineSpec['front'], back: collarY !== null ? 'collar' : O.back as TopOutlineSpec['back'],
+      backY: frame.neckY - n('backDrop'), racerX: n('racerX'), racerY: frame.neckY - n('racerDrop'), sag: n('sag'), corner: collarY !== null && !(O.corner > 0) ? TOP_OUTLINES.mockNeck.corner * U : n('corner'), collarY: collarY ?? frame.neckY + n('collar'),
     },
   };
 }
@@ -450,6 +489,8 @@ export function rimPath(spec: TopCutSpec, frame: TopFrame, front: boolean): P2[]
 export function drawCut(spec: TopCutSpec, frame: TopFrame, front: boolean): Float32Array {
   if (spec.outline) return pathDistances(outlinePath(spec, frame, front), frame);
   const { cols, cell } = frame, U = frame.unitsPerMetre, range = TOP_CUT.range * U;
+  // (a COLLAR: level round her neck, front and back alike -- all of her under it is the garment)
+  if (spec.collarY !== undefined) return pathDistances([[frame.x0 - range * 4, spec.collarY], [frame.x0 + cols * cell + range * 4, spec.collarY]], frame);
   const rim = rimPath(spec, frame, front), ceil = frame.neckY + TOP_CUT.ceiling * U, far = frame.x0 + cols * cell + range * 4;
   const w = spec.half, top = rim[rim.length - 1][1];
   // the opening's edge, left to right: the ceiling, down the line over the left side point, the rim, up, the ceiling

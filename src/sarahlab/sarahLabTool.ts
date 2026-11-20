@@ -16,6 +16,7 @@ import type { DevTool } from '../devtools/DevTool';
 import type { FabricFamilyId } from './fabricLibrary';
 import type { GarmentSettings } from './garment/settings';
 import type { SkirtSettings } from './skirt/skirtDraft';
+import type { NeckStyle } from './topCut';
 
 export const SARAH_LAB_SCENE_ID = 'lab:sarah';
 export const SARAH_LAB_TOOL_ID = 'lab.sarah';
@@ -673,7 +674,9 @@ export const SHEET_BOTTOMS_TEE_HEM = 0.42;
 export interface PaintedLayer {
   readonly template: string; readonly fabric: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string }; readonly edging?: { readonly family: FabricFamilyId; readonly colour: number; readonly tint?: string };
   /** The template's sliders set for this outfit (`paintTemplates.withDial`, by a dial's id): a crop tee's HEM higher than its style's own. */
-  readonly dials?: Readonly<Partial<Record<'rise' | 'riseBack' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'sleeve', number>>>;
+  readonly dials?: Readonly<Partial<Record<'rise' | 'riseBack' | 'legCut' | 'legEnd' | 'legStart' | 'hem' | 'length' | 'neck' | 'neckline' | 'neckWidth' | 'sleeve', number>>>;
+  /** A one-piece's or the catsuit's NECK SHAPE, at its own depth (before `dials`). */
+  readonly neckShape?: NeckStyle | null;
 }
 /**
  * THE CLOTH TOPS (Joshua, 2026-11-16: "Can we instead convert all the painted tops to the cloth sim ones? We have a few
