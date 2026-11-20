@@ -1930,7 +1930,15 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   BREAST SHAPE are not shown for him (`shapeBoxes`: her bump's and her breasts' controls, which move nothing on him).
   MEASURED in the room: his height at 0, +20 and -20 cm with shoulders, waist, hips, upper arms and head moved with it;
   walking and squatting with a build on.
-- NOT DONE: his squat (his thighs bunch at his groin); his own pelvis bone; clothes;
+- HIS SQUAT, TRIED AND NOT TAKEN (2026-11-19): his groin's skin is his thighs' -- MEASURED on his file, in the band from 44
+  to 54% of his height within 20 cm of his middle his two thighs carry 7,728 of its weight and his body's bones 968, and
+  down his midline one point is his left thigh's and the next his right's. Each thigh's share solved smooth along his skin
+  round each hip joint (a harmonic solve, held at his region's edge, down each thigh, and on his midline at nothing and
+  then at half of what the two carry): standing and walking as before, and in SQUAT the seam down his crotch from his
+  front, three-quarter and below the same as without it (held at nothing, a web between his thighs). The seam is the
+  fold of his skin between thighs spread past 100 degrees, a SHAPE his weights can not undo: it wants a pose's own field
+  as hers has (`hipTurn.ts`, her groin's normals), laid for him.
+- NOT DONE: his squat (above); his own pelvis bone; clothes;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
 - After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:
   MALE, his belly at 0, 100 and 200% from his side and front, T-POSE from his back, X-RAY from his side.
