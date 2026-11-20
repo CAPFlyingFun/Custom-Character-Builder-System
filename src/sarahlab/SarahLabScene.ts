@@ -342,7 +342,7 @@ const BIRTH_ALONG = Object.freeze({ inside: 0.01, outside: 0.02, settle: 0.05, h
  * (MEASURED, the same frames: let down 1 cm the gap was there still, 2 cm all the way and its head stood through her skin
  * under her opening at 1:14 again and the gap was at the top at 1:20). GAME TUNING.
  */
-const BIRTH_STRAIGHT = Object.freeze({ from: 0.13, full: 0.06, reach: 1.25, drop: 0.012, dropFrom: 0.06, dropFull: 0.025, tiltDeg: 4 });
+const BIRTH_STRAIGHT = Object.freeze({ from: 0.13, full: 0.06, reach: 1.25, drop: 0.012, dropFrom: 0.075, dropFull: 0.045, tiltDeg: 4 });
 const BIRTH_HEAD = Object.freeze({ radius: 0.0475, atLength: 0.51, lift: [0, 0.008, 0.007] as const, tangentSpan: 0.0125, bodyBehind: 0.1, pastMouth: 0.6, centreEase: 0.35 });
 /**
  * THE AFTERBIRTH, drawn (GAME TUNING; its timing is birthSequence.ts AFTERBIRTH): the placenta folded soft as it comes down
