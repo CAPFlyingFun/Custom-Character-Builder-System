@@ -1894,7 +1894,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   the lab's own procedural maths and a pore layer (`public/models/skins/skin-detail-1024.png`); `skinDetail.ts` lays it
   TRIPLANAR on his rest place (his atlas's islands are every size), 6 cm a tile, 0.4 mm deep, as a bump over his normal map,
   its pits a little darker (`SKIN_DETAIL`: GAME TUNING; the probe's `skinDetail({ depthM, tileM, cavity })`). MEASURED in the
-  room: front, close and back, on and off. Hers is not given it yet.
+  room: front, close and back, on and off. HERS TOO (Joshua, 2026-11-19: "How does it look on the female model?"): laid on her
+  rest place as her skin's program carries it (`vFabricPos`, `vFabricNrm`: nothing added to her vertex stage, which has
+  every attribute a phone gives it), her skin's program put on her for it (`ensureSkinFabric`), and NONE OF IT UNDER HER
+  PAINT (`fabricMatte`). MEASURED in the room: the painted bike shorts and crop tee at 100%, her side and her belly, on and off.
 - His organs (a prostate, no womb or ovaries), the pregnancy controls hidden for him, and his EVEN skin are done.
 - NOT DONE: BUILD and the other body shapes on him; his squat (his thighs bunch at his groin); his own pelvis bone; clothes;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.

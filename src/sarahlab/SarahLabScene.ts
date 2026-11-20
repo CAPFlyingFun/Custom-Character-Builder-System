@@ -8672,6 +8672,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           patchSkinDetail(mat, skinDetailUniforms(prepareSkinDetailMap(t), restH / 1.7, (restH * scale) / 1.7));
         });
       }
+      // HER SKIN'S FINE RELIEF as his (skinDetail.ts), on her skin's program, which carries her rest place to each pixel
+      if (recovered) {
+        const b = bodyOf(), rest = b ? shaped.find((x) => x.mesh === b.mesh)?.fields ?? null : null;
+        if (b) void assets.loadTexture(SKIN_DETAIL_MAP).then((t) => {
+          if (!t || disposed || model !== loadedModel || bodyOf()?.material !== b.material) { t?.dispose(); return; }
+          ensureSkinFabric(b.mesh, b.material, { layers: PAINT_LAYER_COUNT, rest });
+          // (her rest place is in her bind units, `bindScale` of them to the metre: MEASURED 1.11142)
+          const perM = rig && rig.bindScale > 0 ? rig.bindScale : 1.11142, scale = b.mesh.getWorldScale(new THREE.Vector3()).y;
+          patchSkinDetail(b.material, skinDetailUniforms(prepareSkinDetailMap(t), perM, perM * scale));
+        });
+      }
       model = loadedModel;
       // her refined 0% shape and her navel as its own piece (zeroRefine.ts), put on her approved body when the file is
       // in -- fetched beside her body file and almost always there first; it never holds up her loading

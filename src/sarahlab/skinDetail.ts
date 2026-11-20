@@ -12,7 +12,9 @@
  * the screen's step in his posed surface left at its length so a height in metres is a height in metres), and its pits
  * are a little darker (a cavity).
  *
- * A fragment and vertex patch on his skin's material; it chains on whatever `onBeforeCompile` it has.
+ * A fragment and vertex patch on a skin's material; it chains on whatever `onBeforeCompile` it has. HERS TOO (Joshua,
+ * 2026-11-19: "How does it look on the female model? The belly looked better… so it didn't look so glossy… and had some
+ * depth"): laid the same way on her rest place, which her skin's program already carries.
  */
 import * as THREE from 'three';
 
@@ -65,14 +67,12 @@ varying vec3 vSkinRest;
 varying vec3 vSkinRestN;`;
 
 export const SKIN_DETAIL_FRAGMENT = /* glsl */ `
-varying vec3 vSkinRest;
-varying vec3 vSkinRestN;
 uniform sampler2D skinDetailMap;
 uniform float skinDetailTile, skinDetailDepth, skinDetailCavity;
 float skinDetailHeight() {
-  vec3 w = pow( abs( normalize( vSkinRestN ) ), vec3( 4.0 ) );
+  vec3 w = pow( abs( normalize( SKIN_REST_N ) ), vec3( 4.0 ) );
   w /= max( 1e-5, w.x + w.y + w.z );
-  vec3 p = vSkinRest / skinDetailTile;
+  vec3 p = SKIN_REST / skinDetailTile;
   return texture2D( skinDetailMap, p.zy ).r * w.x + texture2D( skinDetailMap, p.xz ).r * w.y + texture2D( skinDetailMap, p.xy ).r * w.z;
 }
 vec3 skinDetailBend( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDir ) {
@@ -86,22 +86,29 @@ vec3 skinDetailBend( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDir ) 
 export const SKIN_DETAIL_APPLY = /* glsl */ `
 if ( skinDetailDepth > 0.0 ) {
   float skinH = skinDetailHeight();
-  vec2 skinDH = vec2( dFdx( skinH ), dFdy( skinH ) ) * skinDetailDepth;
+  float skinBare = 1.0 - SKIN_COVER; // (none of it under her paint: painted cloth is cloth)
+  vec2 skinDH = vec2( dFdx( skinH ), dFdy( skinH ) ) * skinDetailDepth * skinBare;
   normal = skinDetailBend( - vViewPosition, normal, skinDH, faceDirection );
-  diffuseColor.rgb *= 1.0 - skinDetailCavity * clamp( ( 0.42 - skinH ) * 3.0, 0.0, 1.0 ); // (its pits alone: the mean of it stays his own colour)
+  diffuseColor.rgb *= 1.0 - skinDetailCavity * skinBare * clamp( ( 0.42 - skinH ) * 3.0, 0.0, 1.0 ); // (its pits alone: the mean of it stays his own colour)
 }`;
 
-/** His skin's material given the detail. */
+/** A skin's material given the detail (his, or hers once her skin's program is on it: put this on after it). */
 export function patchSkinDetail(material: THREE.MeshStandardMaterial, u: SkinDetailUniforms): void {
   const before = material.onBeforeCompile, key = material.customProgramCacheKey?.bind(material);
   material.onBeforeCompile = (shader, renderer) => {
     before?.call(material, shader, renderer);
     Object.assign(shader.uniforms, u);
-    shader.vertexShader = shader.vertexShader
+    // HER SKIN'S PROGRAM (fabricMaterial.ts) already carries her rest place and its normal to each pixel (`vFabricPos`,
+    // `vFabricNrm`): read those, and add nothing to a vertex stage that has every attribute a phone gives it. Otherwise
+    // (his) two varyings of its own, from his rest place and normal.
+    const fabric = /varying vec3 vFabricPos;/.test(shader.fragmentShader) && /varying vec3 vFabricNrm;/.test(shader.fragmentShader);
+    if (!fabric) shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>${SKIN_DETAIL_VERTEX}`)
       .replace(/void main\(\)\s*\{/, (m) => `${m}\n  vSkinRest = position; vSkinRestN = normal;`);
+    const painted = fabric && /float fabricMatte/.test(shader.fragmentShader);
+    const rest = (fabric ? '#define SKIN_REST vFabricPos\n#define SKIN_REST_N vFabricNrm' : `${SKIN_DETAIL_VERTEX}\n#define SKIN_REST vSkinRest\n#define SKIN_REST_N vSkinRestN`) + `\n#define SKIN_COVER ${painted ? 'fabricMatte' : '0.0'}`;
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>${SKIN_DETAIL_FRAGMENT}`)
+      .replace('#include <common>', `#include <common>\n${rest}${SKIN_DETAIL_FRAGMENT}`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>${SKIN_DETAIL_APPLY}`);
   };
   material.customProgramCacheKey = () => `${key ? key() : ''}|skinDetail`;
