@@ -9,6 +9,7 @@
  * -- and picture the part of her that kind of piece is on (`bakeStylePictures` in SarahLabScene.ts), then writes them
  * to public/sarahlab/styles/<style>.jpg, where the editor's STYLE row reads them. She is pictured as the room opens
  * her: the Female Base Model at 0%, not pregnant. Run it again when a style is added or its cut changes; then build.
+ * MALE=1 pictures them on the male base model (his own styles: ONLY=trunks,boxerBriefs,shortsMale,tightsMale MALE=1).
  * ONLY=<template ids, comma separated> pictures just those (ONLY=tank,camisole), and leaves the other pictures as they
  * are. NO_BUILD=1 serves dist/ as it is.
  */
@@ -43,6 +44,12 @@ try {
   page.on('pageerror', (e) => { failed = true; log(`page error: ${e.message}`); });
   await page.goto(`${server.resolvedUrls.local[0]}?open=CharacterRoom&bake=styles`);
   await page.waitForFunction(() => typeof globalThis.__sarahLabBakeStyles === 'function' && document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
+  // (MALE=1: the styles named by ONLY pictured on the male base model -- his own: his underwear, his shorts and tights)
+  if (process.env.MALE) {
+    await page.evaluate(() => document.querySelector('[data-action="sarahlab:base:male"]')?.click());
+    await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'male-base', null, { timeout: 300_000 });
+    await page.waitForTimeout(8000);
+  }
   log('the room is up: picturing each style (some twenty seconds each on a software renderer)');
   const only = process.env.ONLY ? process.env.ONLY.split(',').map((n) => n.trim()).filter(Boolean) : null;
   const pictures = await page.evaluate((names) => globalThis.__sarahLabBakeStyles(names ?? undefined), only, { timeout: 0 });

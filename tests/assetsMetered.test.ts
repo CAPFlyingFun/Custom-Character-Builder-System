@@ -159,8 +159,10 @@ describe('the room opens with only what she has on', () => {
     // under the sheet since 2026-11-17), fetching nothing
     for (let i = 46; i < 50; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
     // ...and three with the cloth tee over or under a skirt, fetching the light tee alone, as every cloth tee does
-    for (let i = 50; i < OUTFITS.length; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(OUTFITS[i].procedural).toBe('raglan'); expect(recoveredPartsFor(wornGarments(i, all))).toEqual(recoveredPartsFor(wornGarments(7, all))); }
-    expect(OUTFITS).toHaveLength(53);
+    for (let i = 50; i < 53; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(OUTFITS[i].procedural).toBe('raglan'); expect(recoveredPartsFor(wornGarments(i, all))).toEqual(recoveredPartsFor(wornGarments(7, all))); }
+    // ...and HIS six (2026-11-20), all paint, fetching nothing, offered on him alone
+    for (let i = 53; i < OUTFITS.length; i++) { expect(OUTFITS[i].his).toBe(true); expect(OUTFITS[i].paint?.length).toBeGreaterThan(0); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
+    expect(OUTFITS).toHaveLength(59);
   });
 
   it('cycles through the painted outfits, the light tee, the bikini and none on the slim v2 body, never the big modelled shirts and leggings', () => {
@@ -172,7 +174,7 @@ describe('the room opens with only what she has on', () => {
     // the painted ones (the light tee is the one outfit with both a garment and paint)
     // (the bikini's bottom is painted now: it is among the painted ones as well -- Joshua, 2026-11-12)
     // (and the three with the cloth tee and a skirt, which paint nothing since 2026-11-17 and are offered all the same)
-    expect([...new Set(seen)].sort((a, b) => a - b)).toEqual([...new Set([2, 4, ...OUTFITS.map((o, i) => (o.paint || o.skirt ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b));
+    expect([...new Set(seen)].sort((a, b) => a - b)).toEqual([...new Set([2, 4, ...OUTFITS.map((o, i) => ((o.paint || o.skirt) && !o.his ? i : -1)).filter((i) => i >= 0)])].sort((a, b) => a - b));
     expect(seen).toContain(SARAH_DEFAULT_OUTFIT);
   });
 
@@ -187,8 +189,10 @@ describe('the room opens with only what she has on', () => {
     }
     // the big modelled shirts and leggings become the outfit the room opens her in; what OUTFIT offers stays itself
     for (const i of [0, 1, 5, 6]) expect(outfitWorn(i, slim), OUTFITS[i].name).toBe(SARAH_DEFAULT_OUTFIT);
-    for (const i of [2, 4, SARAH_DEFAULT_OUTFIT, PAINTED_DEFAULT_OUTFIT, OUTFITS.length - 1]) expect(outfitWorn(i, slim), OUTFITS[i].name).toBe(i);
-    expect(outfitWorn(-1, slim)).toBe(OUTFITS.length - 1);
+    const hersLast = OUTFITS.length - 1 - [...OUTFITS].reverse().findIndex((o) => !o.his);
+    for (const i of [2, 4, SARAH_DEFAULT_OUTFIT, PAINTED_DEFAULT_OUTFIT, hersLast]) expect(outfitWorn(i, slim), OUTFITS[i].name).toBe(i);
+    // (the last outfit is his: on her it is her own)
+    expect(outfitWorn(-1, slim)).toBe(SARAH_DEFAULT_OUTFIT);
     // a model without her painted outfits keeps its own first outfit, and is put in it from a painted one
     expect(outfitWorn(0, ['shirtAthletic', 'leggings'])).toBe(0);
     expect(outfitWorn(SARAH_DEFAULT_OUTFIT, ['shirtAthletic', 'leggings'])).toBe(0);

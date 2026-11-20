@@ -11,7 +11,7 @@
  * word Sarah and keep everything generic"; the cards before were of Sarah at 73%). Run it again when an outfit is
  * added, its look changes, or what the room opens on does; then build. A fresh browser, so the LIGHT theme.
  * ONLY=<outfit names, comma separated> pictures just those (ONLY=bikini), and leaves the other cards as they are.
- * NO_BUILD=1 serves dist/ as it is.
+ * NO_BUILD=1 serves dist/ as it is. MALE=1 pictures the male base model's own outfits on him.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -45,6 +45,12 @@ try {
   page.on('pageerror', (e) => { failed = true; log(`page error: ${e.message}`); });
   await page.goto(`${server.resolvedUrls.local[0]}?open=CharacterRoom&bake=outfits`);
   await page.waitForFunction(() => typeof globalThis.__sarahLabBakeOutfits === 'function' && document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'v2-body', null, { timeout: 300_000 });
+  // (MALE=1: the male base model's own outfits, pictured on him)
+  if (process.env.MALE) {
+    await page.evaluate(() => document.querySelector('[data-action="sarahlab:base:male"]')?.click());
+    await page.waitForFunction(() => document.querySelector('[data-field="sarahlab-status"]')?.dataset.model === 'male-base', null, { timeout: 300_000 });
+    await page.waitForTimeout(8000);
+  }
   log('the room is up: picturing each outfit (a minute or more each on a software renderer)');
   const only = process.env.ONLY ? process.env.ONLY.split(',').map((n) => n.trim()).filter(Boolean) : null;
   const pictures = await page.evaluate((names) => globalThis.__sarahLabBakeOutfits(names ?? undefined), only, { timeout: 0 });

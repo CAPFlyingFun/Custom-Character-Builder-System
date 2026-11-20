@@ -385,6 +385,8 @@ export const MALE_GROIN = Object.freeze({ below: 0.07, near: 0.08, far: 0.17, pa
  * was squished"): hipTurn.ts's hold, laid for him as a field of its own before his groin is smoothed. GAME TUNING.
  */
 const MALE_HOLD_FIELD = 'shape:maleHold';
+/** How far from his arm's bones his arm's skin reaches, for his clothes (`bodyRegions.mapBody`'s `armReach`; metres, GAME TUNING: his upper arm's radius is about 7.5 cm). */
+const MALE_ARM_REACH = 0.085;
 export const MALE_HOLD = Object.freeze({ near: 0.1, far: 0.22, most: 0.5, mostNone: 0.85,
   /** by his belly's size (the belly slider's %): none at 0, all from `full` -- his belly is none in his file, hers 100% */
   full: 50 });
@@ -415,7 +417,7 @@ import { UNITS_PER_METRE } from './units';
 import { LIGHT_BODY_TRIANGLES,
   SARAH_V2_HAIR_MODEL, BELLY_MOTION, BELLY_TARGET, trimShown, BREAST_TARGETS, BUMP_MAX_PERCENT, GARMENTS, RECOVERED_SHIRTS, followingGarment, OUTFITS, outfitLine, modelLine, nextModel, openingLine, refineLine, refineWeight, nextOutfit, wornGarments, coverMask, bodyNeverHidden, uncoveredSkinIndices, UNDER_TOP_GARMENT, BELLY_REFINE_TARGET, SEAT_TARGET, seatCorrectiveWeight, SARAH_LAB_MODELS, SARAH_LAB_DEFAULT_MODEL, SARAH_SKELETON_MODEL, levelArmsModel, fleshlessModel, SARAH_LAB_ACTION, SARAH_LAB_FIELD, birthOpenLine, foldBackLine, xrayLine, birthBulgeLine, SARAH_LAB_HUD_ROLE, SARAH_LAB_SCENE_ID, shirtLengthLine, sarahModelPath, BODY_RANDOM_SPECS, CLOTH_SHIRT_PATH, teeLengthLine, teeLengthParts, sleevesLine, necklineLine, neckShapeLine, CLOTH_NECKLINE_DEFAULT, clothLine, CLOTH_DIALS, CLOTH_TUNE_DEFAULT, CLOTH_TEE_LENGTH_DEFAULT, clothTuning, clothRestScale, type ClothTune,
   labTitle, CLOTH_SEATED_LINE, bellyMotionWeights, bellyWeights, breastWeightsForShape, bodyShapeFieldWeights, SIZE_TILT_PRESETS_DEG, effectiveTiltDeg, stepSeated, bustVolume, BREAST_GROW_TARGET, settledSitFor, bellyUpperWeight, BELLY_UPPER_TARGET, navelWeights, NAVEL_FLAT_TARGET, NAVEL_INNIE_EXTRA, NAVEL_OUTIE_EXTRA, tPoseTurns, ARM_SIDES, armsLine, ARM_RAISE_TARGETS, armRaiseWeight, SEAT_V2_TARGET, seatCorrectiveV2Weight, fingerBend, THUMB_TO_PALM, bumpLine, fingersLine, restingBellySpring, statusLine, walkBounceAccel, walkSwayAccel,
-  offeredOutfits, outfitThumbPath,
+  offeredOutfits, outfitThumbPath, HIS_DEFAULT_OUTFIT,
   type Garment, type SarahLabPose, isBirthPose, recoveredPartsFor, recoveredPartPath, isShirtPart, shirtOfPart, type RecoveredPart, SARAH_DEFAULT_OUTFIT, SIM_TEE_OUTFIT, RECOVERED_GARMENTS, outfitWorn, outfitNamed, modelName, modelsOnMenu, isMaleModel,
   BIKINI_BOTTOM_FROM_SKIN, BIKINI_BOTTOM_SOURCE, SKIRT_UNDER_BAND,
 } from './sarahLabTool';
@@ -2632,8 +2634,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     out[MALE_HOLD_FIELD] = 1; // (the same)
     // her birth area, shaped the same at every size (birthArea.ts)
     // (its folds fuller only while nothing is worn over them: a fitted bottom is a few millimetres off her skin)
-    out[BIRTH_CLEFT_FIELD] = birthAreaShown ? 1 : 0;
-    out[BIRTH_LIPS_FIELD] = birthAreaShown ? (lowerCovered() ? LIPS_COVERED : 1) : 0;
+    { const his = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+      out[BIRTH_CLEFT_FIELD] = birthAreaShown && !his ? 1 : 0;
+      out[BIRTH_LIPS_FIELD] = birthAreaShown && !his ? (lowerCovered() ? LIPS_COVERED : 1) : 0; }
     birthShadeU.shade.value = birthAreaShown && !lowerCovered() ? 1 : 0;
     // her inner thighs out of the way of her birth area in a birth position (birthThighs.ts)
     out[BIRTH_THIGHS_FIELD] = isBirthPose(pose) ? 1 : 0;
@@ -3054,7 +3057,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     takenOff = new Set(pendingClothes?.off ?? []);
     // (her skirt is a garment of the outfit's: its fabric the ATHLETIC knit in the skirt's own colour until another is picked)
     const own = OUTFITS[outfit], skirtFabric = own?.skirt ? { skirt: { family: 'athletic', colour: 0, ...(own.skirtTint ? { tint: own.skirtTint } : {}) } as FabricPick } : {};
-    fabric?.wearOutfit(recovered ? own?.paint ?? null : null, recovered ? { ...(own?.fabrics ?? {}), ...skirtFabric } : undefined, recovered ? own?.trims : undefined);
+    const dressable = recovered || isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+    fabric?.wearOutfit(dressable ? own?.paint ?? null : null, dressable ? { ...(own?.fabrics ?? {}), ...skirtFabric } : undefined, dressable ? own?.trims : undefined);
     // the new tee's settings: the save's, or the outfit's own
     adoptGarment(pendingClothes?.garment ?? null);
     // ...and her skirt's numbers the same
@@ -4003,9 +4007,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       clothes: clothesNow,
       body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head) }),
       characterName: () => characters?.name() ?? '',
-      builtins: () => OUTFITS.filter((o) => (o.paint ? recovered : o.name !== 'none')).map((o) => o.name),
+      builtins: () => OUTFITS.filter((o) => (o.his ? isMaleModel(SARAH_LAB_MODELS[modelIndex].id) : o.paint ? recovered : o.name !== 'none')).map((o) => o.name),
       // her own outfit first, then the rest in the room's order
-      wearable: () => offeredOutfits(garments).sort((a, b) => Number(b === SARAH_DEFAULT_OUTFIT) - Number(a === SARAH_DEFAULT_OUTFIT)).map((i) => ({ name: OUTFITS[i].name, thumb: assetUrl(outfitThumbPath(OUTFITS[i].name)) })),
+      wearable: () => offeredOutfits(garments, isMaleModel(SARAH_LAB_MODELS[modelIndex].id)).sort((a, b) => Number(b === SARAH_DEFAULT_OUTFIT) - Number(a === SARAH_DEFAULT_OUTFIT)).map((i) => ({ name: OUTFITS[i].name, thumb: assetUrl(outfitThumbPath(OUTFITS[i].name)) })),
       thumbnail: () => thumbnail(),
       wearBuiltin: (name) => {
         const index = outfitNamed(name);
@@ -4113,7 +4117,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           at.fromArray(normal, i * 3).applyMatrix3(bindNormal).toArray(normal, i * 3);
         }
         const bindRig = rig, jointAt = Object.fromEntries(Object.entries(measure.joints).map(([k, j]) => [k, [bindRig.bind[j].x, bindRig.bind[j].y, bindRig.bind[j].z]])) as Record<keyof typeof measure.joints, [number, number, number]>;
-        return mapBody({ skinIndex: four(si), skinWeight: four(sw), parents: rig.bind.map(j => j.parent), joints: measure.joints, restNormal: normal, restPosition: position, jointAt });
+        // (HIS facing is told by his feet -- his toes reach far further from his ankles than his heels do: his torso reaches
+        // further back than forward, and her rule for it reads him backward)
+        let facing: number | undefined;
+        if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) {
+          let fore = 0, aft = 0;
+          for (const ankle of [jointAt.ankleL, jointAt.ankleR]) for (let i = 0; i < n; i++) {
+            if (position[i * 3 + 1] > ankle[1] || Math.abs(position[i * 3] - ankle[0]) > Math.abs(jointAt.hipL[0] - jointAt.hipR[0]) / 2) continue;
+            const dz = position[i * 3 + 2] - ankle[2]; fore = Math.max(fore, dz); aft = Math.max(aft, -dz);
+          }
+          if (fore > 0 || aft > 0) facing = fore >= aft ? 1 : -1;
+        }
+        return mapBody({ skinIndex: four(si), skinWeight: four(sw), parents: rig.bind.map(j => j.parent), joints: measure.joints, restNormal: normal, restPosition: position, jointAt, ...(facing !== undefined ? { facing, armReach: MALE_ARM_REACH * (rig.bindScale > 0 ? rig.bindScale : 1) } : {}) });
       },
     });
     fabric.element.dataset.tab = 'fabric';
@@ -4390,7 +4405,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   async function bakeOutfitPictures(only?: readonly string[]): Promise<{ name: string; path: string; picture: string | null }[]> {
     const out: { name: string; path: string; picture: string | null }[] = [];
-    for (const i of offeredOutfits(garments)) {
+    for (const i of offeredOutfits(garments, isMaleModel(SARAH_LAB_MODELS[modelIndex].id))) {
       // (`only`: just the outfits named, when one's look has changed)
       if (only && !only.includes(OUTFITS[i].name)) continue;
       wornFrom = null; pendingClothes = null; nextSource = null;
@@ -8845,8 +8860,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         try { buildRig = b && s ? prepareBuildRig(b.mesh, s.fields.basePos, measure.joints, FACE_REST_SCALE) : null; } catch (error) { console.error('[sarahlab] her build could not be measured; BUILD is off', error); buildRig = null; }
       }
       if (!recovered && outfit >= 5) outfit = 0;
+      // (his outfits are his and hers are hers: the male base model opens in his boxer briefs, the female in her own)
+      { const his = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+        if (his && !OUTFITS[outfit]?.his && HIS_DEFAULT_OUTFIT >= 0) outfit = HIS_DEFAULT_OUTFIT;
+        else if (!his && OUTFITS[outfit]?.his) outfit = recovered ? SARAH_DEFAULT_OUTFIT : 0; }
       // THE MALE BASE MODEL's belly and navel (maleBelly.ts): two fields laid on his rest shape, his belly slider's
       if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) { try { layMaleBelly(loadedModel); } catch (error) { console.error('[sarahlab] his belly could not be laid; he is as modelled', error); } }
+      // HIS CLOTHES (Joshua, 2026-11-20: "start on some clothing options for the male model"): the outfit editor's paint
+      // finds its body by the skin carrying `_cloth_cover` (which of her modelled garments covers each point); he has none
+      // of those garments, so his is all nothing -- and paint is laid on him as on her
+      if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) { const sm = findSkinnedMesh(loadedModel); if (sm && !sm.geometry.getAttribute('_cloth_cover')) sm.geometry.setAttribute('_cloth_cover', new THREE.BufferAttribute(new Float32Array(sm.geometry.getAttribute('position').count), 1)); }
       // HIS BUILD (Joshua, 2026-11-19: "get the sliders to work… minus the breasts"): measured on his rest as hers is on hers,
       // his bones found by role (measureHuman), his geometry's units told by his rest frame (`metresPerUnitOf`)
       if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id) && measure) {
@@ -9208,7 +9231,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             const rest = new Float32Array(sb.fields.basePos.length), v = new THREE.Vector3();
             for (let i = 0; i < rest.length / 3; i++) v.fromArray(sb.fields.basePos, i * 3).applyMatrix4(babyFrame.meshToRest).toArray(rest, i * 3);
             const c = birthAreaCentre(rest);
-            if (c) {
+            if (c && !isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) {
               birthShadeU.centre.value.set(0, c.y, c.z); birthShadeU.rest.value.copy(babyFrame.meshToRest);
               for (const m of (Array.isArray(bm!.material) ? bm!.material : [bm!.material])) patchBirthShade(m, birthShadeU);
             }
@@ -9219,6 +9242,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             let under: Uint8Array | null = null;
             remakeVulva = () => {
               vulva?.dispose();
+              // (HIS body has no opening: the area is hers alone. Rebuilt on him it was drawn in place of his own skin over
+              // the inside of his right thigh, a patch his clothes' paint never reached -- MEASURED 2026-11-20)
+              if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) { vulva = null; applyOpening(); return; }
               if (vulvaArea.under && !under) under = birthGapUnderMask(fieldsV.basePos, fieldsV.baseNrm!, frame.meshToRest);
               const u = vulvaArea.under ? under : null, legSkin = bw ? (i: number) => (!!u && u[i] === 1) || bw.legDistance(i) > -vulvaArea.band : undefined;
               try { vulva = createVulvaPatch(bmV, fieldsV.basePos, frame.meshToRest, measure?.joints.pelvis, measure ? [measure.joints.hipL, measure.joints.hipR, measure.joints.kneeL, measure.joints.kneeR] : [], legSkin); vulva?.setOpen(birthOpenPct / 100); vulva?.setBulge(birthBulgePct / 100); if (herSkinDetail) vulva?.setSkinDetail(herSkinDetail); balloonWombKey = ''; layBalloonWomb(); } catch (error) { console.error('[sarahlab] her vulva could not be rebuilt; her own skin is drawn', error); vulva = null; }

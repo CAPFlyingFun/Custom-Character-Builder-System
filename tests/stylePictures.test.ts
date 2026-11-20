@@ -194,7 +194,7 @@ describe('his sheet of bottoms\' tight ones, as outfits', () => {
     // (and after them only the ten cloth tops of 2026-11-16, which were put after everything in their turn)
     expect(OUTFITS.slice(first + SIX.length, first + SIX.length + 10).every((o) => o.name.startsWith('cloth ') && !!o.procedural)).toBe(true);
     // (...and the skirts' pilot after those: `tests/skirtDraft.test.ts`)
-    expect(OUTFITS.slice(first + SIX.length + 10).every((o) => !!o.skirt)).toBe(true);
-    expect(OUTFITS.length - (first + SIX.length)).toBe(17);
+    expect(OUTFITS.slice(first + SIX.length + 10).every((o) => !!o.skirt || !!o.his)).toBe(true);
+    expect(OUTFITS.length - (first + SIX.length)).toBe(23);
   });
 });

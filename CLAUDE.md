@@ -2041,7 +2041,31 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   file has none; at 100% unheld his belly was squashed flat). MEASURED in the room, SQUAT: 0% as before; 100% and 200%
   round over his thighs from his side and three-quarter, about 4,700 points held a side, 82 mm moved at the most at 200%.
   The probe's `maleHold(on, numbers)`. LEFT: a firm fold where the underside of a 200% belly meets his thighs.
-- NOT DONE: his own pelvis bone; clothes;
+- **HIS CLOTHES: HIS OWN OUTFITS, PAINTED** (Joshua, 2026-11-20: "start on some clothing options for the male model"; the
+  order he passed: his underwear first, so he never loads bare, then the painted basics, then the cloth tee, then cuts of
+  his own). The outfit editor's paint is laid on him as on her (`SarahLabScene.ts`: his skin given an all-nothing
+  `_cloth_cover`, the attribute the editor finds its body by; `wearPaint`'s `dressable`). SIX OUTFITS OF HIS
+  (`sarahLabTool.ts` `BuiltInOutfit.his`, put after everything there was; `offeredOutfits(available, his)`: his on him
+  and hers on her, and her OUTFIT never steps onto his): his boxer briefs (`HIS_DEFAULT_OUTFIT`: what he opens in), his
+  trunks, a tee, a V-neck tee, a sleeveless shirt over athletic shorts, a long-sleeve shirt over compression tights, in
+  `MALE_COLOURS`. Four templates of his (`paintTemplates.ts`): `trunks` (0.105 of his leg), `boxerBriefs` (0.17),
+  `shortsMale` (0.32), `tightsMale`, all on `MALE_RISE` (0.1 / 0.14 / 0.18 of his trunk: under his navel in front,
+  over his seat behind) with a 3.5 cm waistband; his tops are her drawn tops as they are. All GAME TUNING.
+  - THREE FAULTS FOUND PUTTING THEM ON HIM, each fixed: (1) HER OPENING'S AREA WAS REBUILT ON HIM (`remakeVulva`; her birth
+    shade and her cleft's and lips' fields too) and drawn over his own skin -- a patch on the inside of his right thigh and
+    under his seat that no paint reached; it is hers alone now. (2) HE WAS READ FACING BACKWARD: `bodyRegions.mapBody` tells
+    which way a body faces by its torso (a pregnant torso reaches further forward than back), and his seat and back reach
+    further back: every drawn top's neck opening was laid on his back (a V-neck a crew in front) and a waistband's front
+    and back were swapped. His facing is told by his feet now (`mapBody`'s `facing`: his toes reach further from his
+    ankles than his heels). (3) HIS FILE GIVES HIS ARM BONES THE SIDE OF HIS CHEST under his armpit: a sleeveless shirt's
+    armhole was bare there in a ragged patch. His arm's skin is what lies within `MALE_ARM_REACH` (8.5 cm) of his arm's
+    bones (`mapBody`'s `armReach`); further, it is his torso's. Hers is told as it always was.
+  - TRUE BRIEFS ARE NOT A RING ROUND HIS LEG: tried at 0.04 of his leg, the lower half of his seat was bare. They want a
+    drawn leg opening, as her bikini bottom has: NOT DONE. MEASURED in the room (light skin, 1x): the six from his
+    three-quarter and his back, his underwear from his front, side, back and below, the sleeveless from both sides.
+  - Their cards: `MALE=1 node scripts/bakeOutfitThumbs.mjs` (ONLY= his); his styles' pictures: `MALE=1
+    ONLY=trunks,boxerBriefs,shortsMale,tightsMale node scripts/bakeStyleThumbs.mjs`.
+- NOT DONE: his own pelvis bone; true briefs; the cloth tee on him; loose shorts and trousers;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
 - After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:
   MALE, his belly at 0, 100 and 200% from his side and front, T-POSE from his back, X-RAY from his side.

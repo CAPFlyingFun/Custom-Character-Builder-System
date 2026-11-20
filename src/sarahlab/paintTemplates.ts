@@ -467,6 +467,12 @@ const SHORTS_BANDS = Object.freeze({ leg: 0.015 }), BIKE_BANDS = Object.freeze({
 const HIGH_RISE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST }), LOW_RISE_BANDS = Object.freeze({ waist: 0.045 }), UNDER_BELLY_BANDS = Object.freeze({ waist: 0.015 });
 /** The under-belly waistband's bowl (`bottomCut.waistLine`; GAME TUNING to his yellow U over it at 0 and at 100%, 2026-11-15). */
 const UNDER_BELLY_BOWL = 0.7;
+/**
+ * HIS UNDERWEAR'S LINE AND BANDS (GAME TUNING, on the trunk as `RISES`): a low rise -- under his navel in front, over
+ * the top of his seat behind -- and a 3.5 cm elastic waistband with a 1 cm hem.
+ */
+const MALE_RISE = Object.freeze({ front: 0.1, side: 0.14, back: 0.18 });
+const BRIEF_BANDS = Object.freeze({ waist: 0.035, leg: 0.01 }), MALE_SHORTS_BANDS = Object.freeze({ waist: 0.035, leg: 0.015 });
 const STOCKING_BANDS = Object.freeze({ top: 0.045 }), KNEE_SOCK_BANDS = Object.freeze({ top: 0.02 }), CREW_SOCK_BANDS = Object.freeze({ top: 0.04 });
 const FULL = Object.freeze({ riseFront: 1, riseSide: 1, riseBack: 1 });
 /**
@@ -505,6 +511,16 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // was the under-belly rise to 0.36 until 2026-11-15)
   ['shortsBike', 'Bike shorts', 'Shorts', lower(RISES.high, 0.23, { lowBand: BIKE_BANDS })],
   ['shortsKnee', 'Knee-length shorts', 'Shorts', lower(RISES.high, 0.44, { lowBand: SHORTS_BANDS })],
+  // HIS UNDERWEAR (Joshua, 2026-11-20: "start on some clothing options for the male model"; the order he passed:
+  // underwear first, so he never loads bare): drawn bottoms as the shorts are, low on his hips (`MALE_RISE`), a deep
+  // elastic waistband and a narrow hem. Trunks end under the fold of his seat, boxer briefs a third of the way to his
+  // knee. (True briefs, cut up over his hips, are not a ring round his leg: MEASURED 2026-11-20 at 0.04 of his leg the
+  // lower half of his seat was bare. They want a drawn leg opening, as her bikini bottom has)
+  ['trunks', 'Trunks', 'Shorts', lower(MALE_RISE, 0.105, { lowBand: BRIEF_BANDS })],
+  ['boxerBriefs', 'Boxer briefs', 'Shorts', lower(MALE_RISE, 0.17, { lowBand: BRIEF_BANDS })],
+  // ...and over them, at the same rise: athletic shorts a hand over his knee, and compression tights to his ankle
+  ['shortsMale', 'Athletic shorts', 'Shorts', lower(MALE_RISE, 0.32, { lowBand: MALE_SHORTS_BANDS })],
+  ['tightsMale', 'Compression tights', 'Leggings', lower(MALE_RISE, 1.0, { lowBand: BRIEF_BANDS })],
   // (his 06: a scoop between wide straps, armholes cut in, a scoop behind a little higher; drawn, `TOP_OUTLINES.tank`.
   // Its old numbers stay: a look saved before names them, and what draws it now is its kind)
   ['tank', 'Tank top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, OUTLINE_NECK.tank, -1, { strapIn: 1.0, strap: 0.55, neckBack: 0.9, armhole: LINES.armhole, length: DEFAULT_SHIRT_LENGTH, top: 'tank' })],

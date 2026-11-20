@@ -21,7 +21,7 @@ import { loadHerBody, type HerBody } from './herBodyMap';
 
 let her: HerBody, frame: LowFrame, limb: Float32Array, along: Float32Array, MM: number;
 const template = (id: string) => COVERAGE_TEMPLATES.find((t) => t.id === id)!;
-const DRAWN = ['leggingsHigh', 'leggingsLow', 'leggingsFull', 'leggingsUnder', 'leggingsCapri', 'leggingsKnee', 'shortsAthletic', 'shortsMid', 'shortsBike', 'shortsKnee', 'stockings', 'socksKnee', 'socks'];
+const DRAWN = ['leggingsHigh', 'leggingsLow', 'leggingsFull', 'leggingsUnder', 'leggingsCapri', 'leggingsKnee', 'shortsAthletic', 'shortsMid', 'shortsBike', 'shortsKnee', 'trunks', 'boxerBriefs', 'shortsMale', 'tightsMale', 'stockings', 'socksKnee', 'socks'];
 
 beforeAll(async () => {
   her = await loadHerBody();
@@ -91,7 +91,16 @@ describe('which templates are drawn bottoms', () => {
     }
     expect(lowSpec(P('leggingsLow'), frame).bands.waist / MM).toBeCloseTo(45, 6);
     // in the editor's order his sheet's: the high rise first
-    expect(COVERAGE_TEMPLATES.filter((t) => t.group === 'Leggings').map((t) => t.id)).toEqual(['leggingsHigh', 'leggingsLow', 'leggingsFull', 'leggingsUnder', 'leggingsCapri', 'leggingsKnee']);
+    expect(COVERAGE_TEMPLATES.filter((t) => t.group === 'Leggings').map((t) => t.id)).toEqual(['leggingsHigh', 'leggingsLow', 'leggingsFull', 'leggingsUnder', 'leggingsCapri', 'leggingsKnee', 'tightsMale']);
+  });
+
+  it('his underwear and his shorts and tights sit low on his hips, one rise, under his navel in front and over his seat behind', () => {
+    const P = (id: string) => template(id).params;
+    for (const id of ['trunks', 'boxerBriefs', 'shortsMale', 'tightsMale']) {
+      expect(isDrawnBottom(P(id)), id).toBe(true);
+      expect([P(id).riseFront, P(id).riseSide, P(id).riseBack], id).toEqual([0.1, 0.14, 0.18]);
+    }
+    expect([P('trunks').legEnd, P('boxerBriefs').legEnd, P('shortsMale').legEnd, P('tightsMale').legEnd]).toEqual([0.105, 0.17, 0.32, 1]);
   });
 
   it('the other shorts and the knee leggings are level at her waist, as his sheet\'s are (they had the maternity rises)', () => {
@@ -313,7 +322,7 @@ describe('each drawn bottom on her own rest skin', () => {
         expect(old / MM, id).toBeLessThan(4);
       }
     }
-    expect(report.length).toBe(13);
+    expect(report.length).toBe(17);
   });
 
   it('its legs\' ends are clear of the row of her triangles that joins her leg\'s skin to the rest of her', () => {

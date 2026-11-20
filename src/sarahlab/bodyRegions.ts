@@ -111,6 +111,15 @@ export interface BodyMapInput {
   /** Rest positions and normals, three a vertex, in bind space. */
   readonly restPosition: ArrayLike<number>;
   readonly restNormal: ArrayLike<number>;
+  /**
+   * Which way the body faces, where its caller knows (+1 +z, -1 -z). Unsaid, it is told from the torso (below), which
+   * is right for HER -- her pregnant torso reaches further forward than back -- and wrong for the MALE BASE MODEL, whose
+   * seat and back reach further back of his middle than his front does forward (MEASURED 2026-11-20: told -1, his nose
+   * at +z; every drawn top's neck opening was laid on his back and his back's on his front).
+   */
+  readonly facing?: number;
+  /** How far from its bones an arm's skin may be (her units), where its caller says: further, it is the torso's. */
+  readonly armReach?: number;
 }
 
 /** The map: per vertex, its region and its place on her trunk and limbs (NaN off that limb). */
@@ -206,6 +215,21 @@ export function mapBody(input: BodyMapInput): BodyMap {
     limb[v] = LIMB_OF[owner[best]] ?? (owner[best] === 'neck' ? 'neck' : 'torso');
   }
 
+  // AN ARM'S SKIN IS WITHIN `armReach` OF ITS BONES, where its caller says (the MALE BASE MODEL: his file gives his arm
+  // bones the side of his chest down under his armpit, and a sleeveless shirt's armhole was bare there in a ragged patch
+  // -- MEASURED 2026-11-20): further from the line through its shoulder, elbow and wrist than that, it is his torso's
+  if (input.armReach) {
+    const reach = input.armReach;
+    const seg = (p: V3, a: V3, b: V3) => { const ab: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1e-12; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / l2)); return Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t, p[2] - a[2] - ab[2] * t); };
+    for (let v = 0; v < n; v++) {
+      const k = limb[v]; if (k !== 'armL' && k !== 'armR') continue;
+      const p = at(v), l = k === 'armL';
+      // (by his UPPER arm alone: his forearm's and his hand's skin, which hangs beside his hips, is his arm's whatever)
+      const up = seg(p, l ? J.shoulderL : J.shoulderR, l ? J.elbowL : J.elbowR), fore = seg(p, l ? J.elbowL : J.elbowR, l ? J.wristL : J.wristR);
+      if (up > reach && up <= fore) limb[v] = 'torso';
+    }
+  }
+
   // her skin weights are not quite symmetric: near one shoulder blade the back's skin is carried by the arm, at the
   // other by the spine, which put the back of a tank's strap on her torso on one side and on her arm on the other
   // (Joshua, 2026-10-21: "One of the shoulder straps is not sitting straight like the others"). So where a vertex's
@@ -229,7 +253,7 @@ export function mapBody(input: BodyMapInput): BodyMap {
   // which way she faces: a pregnant torso reaches much further forward of its middle than back
   let lo = Infinity, hi = -Infinity, sum = 0, cnt = 0;
   for (let v = 0; v < n; v++) if (limb[v] === 'torso') { const z = P[v * 3 + 2]; lo = Math.min(lo, z); hi = Math.max(hi, z); sum += z; cnt++; }
-  const mean = cnt ? sum / cnt : 0, facing = !cnt || hi - mean >= mean - lo ? 1 : -1;
+  const mean = cnt ? sum / cnt : 0, facing = input.facing ?? (!cnt || hi - mean >= mean - lo ? 1 : -1);
 
   // the neck's own radius: the median distance from its axis of the skin halfway up it
   const midNeck = (J.neck[1] + J.head[1]) / 2, band = Math.abs(J.head[1] - J.neck[1]) * 0.15, radii: number[] = [];

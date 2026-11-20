@@ -667,6 +667,8 @@ export const SHEET_BOTTOMS = Object.freeze({ black: '#232326', slate: '#4f5d7c',
  * over the high rise's band.
  */
 export const SHEET_BOTTOMS_TEE_HEM = 0.42;
+/** HIS OUTFITS' COLOURS (GAME TUNING): plain menswear colours. */
+export const MALE_COLOURS = Object.freeze({ black: '#232326', navy: '#26324f', charcoal: '#45464c', white: '#e6e6e2', heather: '#9a9ca2' });
 /**
  * One layer of a built-in outfit: a template and its fabric, a pack colour or a custom one (`tint`, fabricTint.ts).
  * `edging`: a drawn top's bands in a colour of their own (`fabricLibrary.edgingOf`); without one they match its fabric.
@@ -779,7 +781,9 @@ export interface BuiltInOutfit { readonly name: string; readonly garments: reado
   /** A SKIRT (`skirt/skirtDraft.ts`): its top, its length, its flare, its fit. */
   readonly skirt?: SkirtSettings;
   /** Its skirt's colour (a tint of the pack's ATHLETIC knit, as its painted part was dyed): a skirt has no paint of its own to take one from. */
-  readonly skirtTint?: string }
+  readonly skirtTint?: string;
+  /** HIS (the male base model's): offered on him and only on him (`offeredOutfits`); every other outfit is hers. */
+  readonly his?: true }
 export const OUTFITS: readonly BuiltInOutfit[] = [
   { name: 'tee + leggings', garments: ['shirtAthletic', 'leggings'] },
   { name: 'top + low leggings', garments: ['shirtAthletic', 'leggingsLow'] },
@@ -868,6 +872,19 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ...TEE_SKIRTS.map(([name, tint, skirt, cut]): BuiltInOutfit => ({
     name, garments: ['shirtSpandexLite'], skirt, skirtTint: tint, procedural: 'raglan', cut,
     fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0 } }, paint: skirtUnderwear(tint),
+  })),  // HIS OUTFITS (Joshua, 2026-11-20: "start on some clothing options for the male model"; the order he passed: his
+  // underwear first, so he never loads bare, then the painted basics), all paint, offered on him alone. Put after
+  // everything there was: no outfit has moved.
+  ...([
+    ['his boxer briefs', [['boxerBriefs', MALE_COLOURS.navy]]],
+    ['his trunks', [['trunks', MALE_COLOURS.charcoal]]],
+    ['his tee + athletic shorts', [['shortsMale', MALE_COLOURS.black], ['teeShort', MALE_COLOURS.white]]],
+    ['his V-neck tee + athletic shorts', [['shortsMale', MALE_COLOURS.charcoal], ['teeV', MALE_COLOURS.heather]]],
+    ['his sleeveless shirt + athletic shorts', [['shortsMale', MALE_COLOURS.navy], ['sleeveless', MALE_COLOURS.white]]],
+    ['his long-sleeve shirt + tights', [['tightsMale', MALE_COLOURS.black], ['teeLong', MALE_COLOURS.navy]]],
+  ] as const).map(([name, layers]): BuiltInOutfit => ({
+    name, garments: [], his: true,
+    paint: layers.map(([template, tint]) => ({ template, fabric: { family: template === 'teeShort' || template === 'teeV' || template === 'sleeveless' || template === 'teeLong' ? 'jersey' : 'athletic', colour: 0, tint } })),
   })),
 ];
 /**
@@ -936,6 +953,7 @@ export function nextOutfit(index: number, available: readonly Garment[] = []): n
 }
 /** Whether a model offering `available` offers outfit `index` (what OUTFIT steps through, and the WEAR cards show). */
 function offered(index: number, available: readonly Garment[]): boolean {
+  if (OUTFITS[index].his) return false;
   const wanted = wantedGarments(index, available);
   if (OUTFITS[index].paint && available.length && !paintedOutfitsAvailable(available)) return false;
   // where painted outfits are, the modelled clothes that need their own files are kept but never offered, so never
@@ -959,9 +977,11 @@ export function outfitWorn(index: number, available: readonly Garment[]): number
   return offered(i, available) ? i : paintedOutfitsAvailable(available) ? SARAH_DEFAULT_OUTFIT : 0;
 }
 /** Every outfit a model offering `available` offers, in OUTFITS order, without 'none' (a blank outfit is NEW OUTFIT's). */
-export function offeredOutfits(available: readonly Garment[]): number[] {
-  return OUTFITS.map((_, i) => i).filter((i) => OUTFITS[i].name !== 'none' && offered(i, available));
+export function offeredOutfits(available: readonly Garment[], his = false): number[] {
+  return OUTFITS.map((_, i) => i).filter((i) => OUTFITS[i].name !== 'none' && !!OUTFITS[i].his === his && (his || offered(i, available)));
 }
+/** The outfit the MALE BASE MODEL opens in: his boxer briefs (he never loads bare). */
+export const HIS_DEFAULT_OUTFIT = OUTFITS.findIndex((o) => o.name === 'his boxer briefs');
 /** Where a built-in outfit's baked card picture is served (`scripts/bakeOutfitThumbs.mjs` writes it). */
 export const outfitThumbPath = (name: string): string => `sarahlab/outfits/${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.jpg`;
 /**
