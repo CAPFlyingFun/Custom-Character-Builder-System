@@ -342,7 +342,7 @@ const BIRTH_ALONG = Object.freeze({ inside: 0.01, outside: 0.02, settle: 0.05, h
  * (MEASURED, the same frames: let down 1 cm the gap was there still, 2 cm all the way and its head stood through her skin
  * under her opening at 1:14 again and the gap was at the top at 1:20). GAME TUNING.
  */
-const BIRTH_STRAIGHT = Object.freeze({ from: 0.13, full: 0.06, reach: 1.25, drop: 0.012, dropFrom: 0.075, dropFull: 0.045, tiltDeg: 4 });
+const BIRTH_STRAIGHT = Object.freeze({ from: 0.13, full: 0.06, reach: 1.25, drop: 0.012, dropFrom: 0.075, dropFull: 0.045, openFrom: 0.3, openFull: 0.8, tiltDeg: 4 });
 const BIRTH_HEAD = Object.freeze({ radius: 0.0475, atLength: 0.51, lift: [0, 0.008, 0.007] as const, tangentSpan: 0.0125, bodyBehind: 0.1, pastMouth: 0.6, centreEase: 0.35 });
 /**
  * THE AFTERBIRTH, drawn (GAME TUNING; its timing is birthSequence.ts AFTERBIRTH): the placenta folded soft as it comes down
@@ -7964,7 +7964,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const at = babyHolder.worldToLocal(mr.centre.clone());
     // (let down toward her perineum as its head meets her opening, and in from it `tiltDeg` toward her front: BIRTH_STRAIGHT;
     // her holder is in metres)
-    const down = up ? up.clone().multiplyScalar(-BIRTH_STRAIGHT.drop) : new THREE.Vector3();
+    // (and only as her opening opens round it, `openFrom` to `openFull` of the way: let down while she is still nearly shut --
+    // between pushes, its head sinking back -- it came out through her skin under her opening, MEASURED 2026-11-20 at 1:14)
+    const o = vulva?.drawnOpen ?? 0, t = Math.min(1, Math.max(0, (o - BIRTH_STRAIGHT.openFrom) / (BIRTH_STRAIGHT.openFull - BIRTH_STRAIGHT.openFrom)));
+    const down = up ? up.clone().multiplyScalar(-BIRTH_STRAIGHT.drop * t * t * (3 - 2 * t)) : new THREE.Vector3();
     const a = (BIRTH_STRAIGHT.tiltDeg * Math.PI) / 180, inward = out.clone().multiplyScalar(-Math.cos(a));
     if (up) inward.addScaledVector(up, Math.sin(a));
     return { at, out, inward: inward.normalize(), down };
