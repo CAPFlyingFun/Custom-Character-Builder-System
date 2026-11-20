@@ -99,7 +99,7 @@ import { eyesLine, mouthLine, nextEyeMode } from './faceChoices';
  * Lab's bodies are.
  */
 import * as THREE from 'three';
-import { SKIN_DETAIL, SKIN_DETAIL_MAP, patchSkinDetail, prepareSkinDetailMap, skinDetailUniforms } from './skinDetail';
+import { SKIN_DETAIL, SKIN_DETAIL_MAP, SKIN_OWN_HEIGHT, patchSkinDetail, prepareSkinDetailMap, skinDetailUniforms } from './skinDetail';
 import { SkeletonInV2, carryLandmarks } from './skeletonInV2';
 import { footCover } from './footCover';
 import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
@@ -8680,7 +8680,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           ensureSkinFabric(b.mesh, b.material, { layers: PAINT_LAYER_COUNT, rest });
           // (her rest place is in her bind units, `bindScale` of them to the metre: MEASURED 1.11142)
           const perM = rig && rig.bindScale > 0 ? rig.bindScale : 1.11142, scale = b.mesh.getWorldScale(new THREE.Vector3()).y;
-          patchSkinDetail(b.material, skinDetailUniforms(prepareSkinDetailMap(t), perM, perM * scale));
+          const u = skinDetailUniforms(prepareSkinDetailMap(t), perM, perM * scale);
+          patchSkinDetail(b.material, u);
+          // (her own skin picture's depth, on trial: off until a probe sets it)
+          void assets.loadTexture(SKIN_OWN_HEIGHT).then((o) => { if (!o || disposed) { o?.dispose(); return; } o.colorSpace = THREE.NoColorSpace; o.flipY = b.material.map?.flipY ?? false; o.needsUpdate = true; u.skinOwnMap.value = o; });
         });
       }
       model = loadedModel;
@@ -10826,7 +10829,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { size: a.itemSize, count: a.count, data: btoa(s) };
         },
         // (a probe's) the male base model's normal map off or back on, to tell what of a mark is his normal map's
-        skinDetail: (patch: { depthM?: number; tileM?: number; cavity?: number }) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial, u = m?.userData.skinDetail; if (!u) return null; u.__k ??= u.skinDetailDepth.value / SKIN_DETAIL.depthM; u.__kt ??= u.skinDetailTile.value / SKIN_DETAIL.tileM; u.__depthM ??= SKIN_DETAIL.depthM; u.__tileM ??= SKIN_DETAIL.tileM; const k = u.__k, kt = u.__kt; if (patch.depthM != null) { u.skinDetailDepth.value = patch.depthM * k; u.__depthM = patch.depthM; } if (patch.tileM != null) { u.skinDetailTile.value = patch.tileM * kt; u.__tileM = patch.tileM; } if (patch.cavity != null) u.skinDetailCavity.value = patch.cavity; return { depthM: u.__depthM, tileM: u.__tileM, cavity: u.skinDetailCavity.value }; },
+        skinDetail: (patch: { depthM?: number; tileM?: number; cavity?: number; ownM?: number }) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial, u = m?.userData.skinDetail; if (!u) return null; u.__k ??= u.skinDetailDepth.value / SKIN_DETAIL.depthM; u.__kt ??= u.skinDetailTile.value / SKIN_DETAIL.tileM; u.__depthM ??= SKIN_DETAIL.depthM; u.__tileM ??= SKIN_DETAIL.tileM; const k = u.__k, kt = u.__kt; if (patch.depthM != null) { u.skinDetailDepth.value = patch.depthM * k; u.__depthM = patch.depthM; } if (patch.tileM != null) { u.skinDetailTile.value = patch.tileM * kt; u.__tileM = patch.tileM; } if (patch.cavity != null) u.skinDetailCavity.value = patch.cavity; if (patch.ownM != null) { u.skinOwnDepth.value = patch.ownM * k; u.__ownM = patch.ownM; } return { ownM: u.__ownM ?? 0, ownLoaded: !!u.skinOwnMap.value, depthM: u.__depthM, tileM: u.__tileM, cavity: u.skinDetailCavity.value }; },
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
           const b = bodyOf()?.mesh ?? (isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? herSkinned() : null); if (!b) return null;

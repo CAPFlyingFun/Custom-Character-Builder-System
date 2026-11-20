@@ -20,6 +20,8 @@ import * as THREE from 'three';
 
 /** The tile's file. */
 export const SKIN_DETAIL_MAP = 'models/skins/skin-detail-1024.png';
+/** Her own skin picture's height map (the lab's Convert mode on her EVEN skin), on trial beside the tile. */
+export const SKIN_OWN_HEIGHT = 'models/skins/sarah-v2-skin-height-2048.png';
 
 /** GAME TUNING (by eye on him in the room): how wide one tile is, how deep its relief, how much darker its pits. */
 export const SKIN_DETAIL = Object.freeze({
@@ -38,6 +40,9 @@ export interface SkinDetailUniforms {
   /** posed units of height from its lowest to its highest (0: off) */
   skinDetailDepth: { value: number };
   skinDetailCavity: { value: number };
+  /** her own skin picture's height (`scripts/skinHeight.mjs`), read at her UVs, and its depth in posed units (0: off) */
+  skinOwnMap: { value: THREE.Texture | null };
+  skinOwnDepth: { value: number };
 }
 
 /** `unitsPerMetre`: his rest place's units in a metre (his mesh's own); `posedUnitsPerMetre`: what his drawn surface is in. */
@@ -47,6 +52,8 @@ export function skinDetailUniforms(map: THREE.Texture, unitsPerMetre: number, po
     skinDetailTile: { value: d.tileM * unitsPerMetre },
     skinDetailDepth: { value: d.depthM * posedUnitsPerMetre },
     skinDetailCavity: { value: d.cavity },
+    skinOwnMap: { value: null },
+    skinOwnDepth: { value: 0 },
   };
 }
 
@@ -67,8 +74,8 @@ varying vec3 vSkinRest;
 varying vec3 vSkinRestN;`;
 
 export const SKIN_DETAIL_FRAGMENT = /* glsl */ `
-uniform sampler2D skinDetailMap;
-uniform float skinDetailTile, skinDetailDepth, skinDetailCavity;
+uniform sampler2D skinDetailMap, skinOwnMap;
+uniform float skinDetailTile, skinDetailDepth, skinDetailCavity, skinOwnDepth;
 float skinDetailHeight() {
   vec3 w = pow( abs( normalize( SKIN_REST_N ) ), vec3( 4.0 ) );
   w /= max( 1e-5, w.x + w.y + w.z );
@@ -84,10 +91,14 @@ vec3 skinDetailBend( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDir ) 
 }`;
 
 export const SKIN_DETAIL_APPLY = /* glsl */ `
-if ( skinDetailDepth > 0.0 ) {
+if ( skinDetailDepth > 0.0 || skinOwnDepth > 0.0 ) {
   float skinH = skinDetailHeight();
   float skinBare = 1.0 - SKIN_COVER; // (none of it under her paint: painted cloth is cloth)
   vec2 skinDH = vec2( dFdx( skinH ), dFdy( skinH ) ) * skinDetailDepth * skinBare;
+#ifdef USE_MAP
+  // her own skin picture's depth (the lab's Convert mode), read where her colour is
+  if ( skinOwnDepth > 0.0 ) { float skinO = texture2D( skinOwnMap, vMapUv ).r; skinDH += vec2( dFdx( skinO ), dFdy( skinO ) ) * skinOwnDepth * skinBare; }
+#endif
   normal = skinDetailBend( - vViewPosition, normal, skinDH, faceDirection );
   diffuseColor.rgb *= 1.0 - skinDetailCavity * skinBare * clamp( ( 0.42 - skinH ) * 3.0, 0.0, 1.0 ); // (its pits alone: the mean of it stays his own colour)
 }`;
