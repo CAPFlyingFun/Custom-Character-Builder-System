@@ -80,6 +80,11 @@ const EMERGE = 0.05;
  * above, the opening it left showed into her cleavage. A neckline's cut is a hem and stays in front.
  */
 const EMERGE_TOP = 0.03;
+/**
+ * GAME TUNING (trunk heights, about 2.5 cm on her): how far over a DRAWN top's neckline's lowest point its sheet still
+ * spans her cleavage, so a V keeps its point between her breasts and a low one's rim is all on her skin above it.
+ */
+export const DRAWN_OVER_DIP = 0.05;
 /** How straight the sheet runs at trunk height `t` (0 lying on her skin, 1 the span), between its bottom and top. */
 function straightAt(t: number, bottom: number, top: number, hemmed: boolean): number {
   const w = Math.max(0, Math.min(1, Math.min((t - bottom) / EMERGE, hemmed ? 1 : (top - t) / EMERGE_TOP)));
@@ -596,8 +601,12 @@ export class CleavageBridge {
       while (k + 2 < rows.length && rows[k + 1].t < t) k++;
       f = Math.max(0, Math.min(1, (t - rows[k].t) / Math.max(1e-6, rows[k + 1].t - rows[k].t)));
     };
-    // (a drawn top's sheet is whole: its material cuts it)
-    const cut = this.drawn ? Infinity : this.cutAt();
+    // (a drawn top's sheet is whole: its material cuts it -- up to DRAWN_OVER_DIP over its neckline's lowest point, its
+    // top going back onto her there. Above that a low neckline's opening is wider than her cleavage: there is nothing for
+    // the sheet to span, and where it stood off her across the gap a top's rim on it and on her skin behind did not
+    // meet -- MEASURED 2026-11-20 in the room, a low V and a low U (0.7 of her trunk) from her three-quarter at her 10%
+    // and 73% bellies: a notch in the far side of the rim at the sheet's top, gone with the sheet left off)
+    const cut = this.drawn ? (this.params.neckFront !== null && this.params.neckFront !== undefined ? this.params.neckFront + DRAWN_OVER_DIP : Infinity) : this.cutAt();
     // a neckline that dips below where her cleavage opens leaves no gap under it to span: nothing is drawn (laid flat
     // at its lowest slice instead, the sheet showed as a strip across the opening, above the paint's neckline)
     if (cut <= rows[0].t + ROW_STEP) {
