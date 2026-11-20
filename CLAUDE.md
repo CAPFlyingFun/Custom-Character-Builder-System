@@ -1056,6 +1056,31 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - After anything changes it: `tests/topCut.test.ts`, `tests/topDetails.test.ts`, `tests/bottomCut.test.ts`; after the
   bottom's curves change, run the design script (it writes both fields); then the room, standing, apart and reclined.
 
+## The catsuit, and a one-piece's neckline to a turtleneck
+
+- **THE CATSUIT IS DRAWN** (Joshua, 2026-11-20, sharing two of his characters in it: "look at the catsuit's edges (neck,
+  arms, feet) and neckline"). The full bodysuit (`bodysuitFull`, `top: 'catsuit'`, `topCut.isCatsuit`) is a drawn top
+  with NO HEM (`hasNoHem`: its hem told far under the floor, as a one-piece's) -- its neck opening and its sleeves drawn
+  as a tee's -- and its legs end in a DRAWN BOTTOM'S RINGS (`fabricPanel` `catsuitLegs`: `lowSpec` with no waistband), a
+  cuff at each, at its LEG LENGTH (offered: a catsuit to a capri). In the shader a layer with a cut and a `low` beside it
+  is there where the cut has it and, on her leg's skin, inside its rings (`fabricMaterial.ts`, the low line's
+  `fe = min(fe, mix(1, flg, fabricLegShare))`). Its paint a value a vertex is laid as it always was (what reads it).
+  As a one-piece's, its cut is the ONE cut worn at a time (the topmost).
+- **NECKLINE · LOW → TURTLENECK, NECK WIDTH, NECK SHAPE** (Joshua, the same morning: "Can we make the neckline adjustable
+  from a low V-U, to up a mid-neck turtleneck?"; "do the same for the swimsuit and leotard… Make the length adjustable,
+  but also the width of the neckline and shape like some of our other outfits"). On the catsuit, the leotard and the
+  swimsuit (`takesTurtleneck`), in place of NECKLINE: `topCut.NECK_RANGE` -- the neckline from 0.6 of her trunk up past
+  the base of her neck (1) to 1.1, where from 1 its rim is a COLLAR level round her neck (`collarAt`, `TopCutSpec.collarY`)
+  up to 5 cm over her neck joint (MEASURED on her body file down her front's middle: her neck's front 6 to 7.5 cm ahead
+  of her neck joint from 3 cm under it to 6 over it, the underside of her chin from 6.5 cm over it -- so the collar is
+  on her neck, never her chin); NECK WIDTH 0.6 to 1.6 of the shape's own width (`neckWide`; a swimsuit's straps' inner
+  edges, never past 1.2 cm inside their outer); NECK SHAPE chips CREW · U · V · SCOOP · SQUARE (each at its tee's own
+  depth, `DRAWN_NECK`) and TURTLENECK (`neckShape`, over the template's style or the outline's own). A swimsuit taken
+  past the base of her neck wears the mock neck's collar front and back: a sleeveless turtleneck. All GAME TUNING.
+  A look saved before keeps its numbers (`neckShape`, `neckWide` absent: the style it had, its own width).
+- `tests/topCut.test.ts` (its last describe); after anything changes them, the room: the catsuit at each shape, low and
+  wide, at the collar's top from her front, side and back; the swimsuit and the leotard at a shape and a collar.
+
 ## The under-belly waistband (a hoop)
 
 - **One plane on her as she stands** (Joshua, 2026-11-15, of the edging still uneven after a day on her rest skin: "Try
