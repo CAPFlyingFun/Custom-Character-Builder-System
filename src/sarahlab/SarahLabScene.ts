@@ -351,6 +351,8 @@ import { hisBone, herBone } from './maleRig';
 import { MALE_BELLY, maleBellyField, maleOutieField, vertexNormals } from './maleBelly';
 /** His belly's and his navel's shape fields (the male base model's: maleBelly.ts). */
 const MALE_BELLY_FIELD = 'shape:maleBelly', MALE_OUTIE_FIELD = 'shape:maleOutie';
+/** His skin made even (`node scripts/evenSkin.mjs --body public/models/male-base.glb --out <this>`). */
+const MALE_EVEN_SKIN = 'models/skins/male-base-skin-even-2048.webp';
 /**
  * HIS RIB CAGE, hers laid in him and made his size (skeletonInV2.ts `trunkShape`). MEASURED on him with hers as laid
  * (2026-11-19, the skeleton's chest pieces against his skin, his rest frame): the back of her ribs lies 0.9 cm inside his
@@ -8655,6 +8657,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (!recovered && outfit >= 5) outfit = 0;
       // THE MALE BASE MODEL's belly and navel (maleBelly.ts): two fields laid on his rest shape, his belly slider's
       if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) { try { layMaleBelly(loadedModel); } catch (error) { console.error('[sarahlab] his belly could not be laid; he is as modelled', error); } }
+      // HIS SKIN EVEN as hers is (scripts/evenSkin.mjs on his file: one skin colour, his own details kept -- Meshy's colour
+      // picture had dark slits where its islands meet, seen on his chest and arms)
+      if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) {
+        const sm = findSkinnedMesh(loadedModel), mat = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial;
+        if (mat) void assets.loadTexture(MALE_EVEN_SKIN).then((t) => { if (!t || disposed || model !== loadedModel) { t?.dispose(); return; } const own = mat.map; mat.map = likeOwn(t, own); mat.needsUpdate = true; own?.dispose(); });
+      }
       model = loadedModel;
       // her refined 0% shape and her navel as its own piece (zeroRefine.ts), put on her approved body when the file is
       // in -- fetched beside her body file and almost always there first; it never holds up her loading
@@ -10797,6 +10805,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const out = Float32Array.from(a.array as ArrayLike<number>), bytes = new Uint8Array(out.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
           return { size: a.itemSize, count: a.count, data: btoa(s) };
         },
+        // (a probe's) the male base model's normal map off or back on, to tell what of a mark is his normal map's
+        maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
           const b = bodyOf()?.mesh ?? (isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? herSkinned() : null); if (!b) return null;
           const g = b.geometry, n = g.getAttribute('position').count, out = new Float32Array(n * 3), v = new THREE.Vector3();

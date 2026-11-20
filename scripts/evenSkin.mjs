@@ -39,6 +39,10 @@ const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); r
  * its neighbourhood's (`DETAIL`, the log of red or blue against green), or how dark against it (`DARK`, of its
  * lightness), a vertex is a detail and left out of it; how many times her tone is taken again without them; how much of
  * a detail's step is kept (1 all of it). */
+/** (`--clamp c`: off a detail, how far a texel may stand from its tone, as a share -- what is past that in the picture is
+ * its own fault, not skin: the male base model's picture has dark slits where its islands meet, which KEEP carries over
+ * whole. Off by default: hers is laid as it was.) */
+const CLAMP = Number(arg('clamp', 'Infinity'));
 const SIGMA = Number(arg('sigma', 0.03)), DETAIL = Number(arg('detail', 0.12)), DARK = Number(arg('dark', 0.6)), PASSES = 3, KEEP = Number(arg('keep', 1));
 const BODY = path.resolve(ROOT, arg('body', 'public/models/sarah-v2-body-slim.glb'));
 const OUT = path.resolve(ROOT, arg('out', 'public/models/skins/sarah-v2-skin-even-2048.webp'));
@@ -182,9 +186,12 @@ for (let t = 0; t < I.length; t += 3) {
     best[y * W + x] = outside;
     if (outside > 0) { l0 = Math.max(0, l0); l1 = Math.max(0, l1); l2 = Math.max(0, l2); const s = l0 + l1 + l2; l0 /= s; l1 /= s; l2 /= s; }
     const o = (y * W + x) * 3;
+    const mk0 = detail[a] * l0 + detail[b] * l1 + detail[c] * l2;
     for (let k = 0; k < 3; k += 1) {
       const tn = tone[a * 3 + k] * l0 + tone[b * 3 + k] * l1 + tone[c * 3 + k] * l2, old = LIN[px[o + k]];
-      out[o + k] = Math.round(Math.min(1, Math.max(0, toSrgb(SKIN[k] * (tn > 1e-4 ? old / tn : 1) ** KEEP))) * 255);
+      let q = tn > 1e-4 ? old / tn : 1;
+      if (Number.isFinite(CLAMP) && mk0 < 0.5) q = Math.min(1 + CLAMP, Math.max(1 - CLAMP, q));
+      out[o + k] = Math.round(Math.min(1, Math.max(0, toSrgb(SKIN[k] * q ** KEEP))) * 255);
       toneOut[o + k] = Math.round(toSrgb(Math.min(1, tn)) * 255);
     }
     const mk = detail[a] * l0 + detail[b] * l1 + detail[c] * l2;

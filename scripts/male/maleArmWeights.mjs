@@ -32,7 +32,7 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 
 /** The region solved around each shoulder joint, metres. */
-export const REGION_M = 0.3;
+export const REGION_M = 0.36; // HIS (hers 0.3): his arm's share reaches further down his sides
 /** The upper arm held fully to the arm: this far down its axis from the shoulder joint, and within this of the axis. */
 export const ARM_FROM_M = 0.10; // HIS (hers 0.12)
 /** Where the arm is held whole on its INNER face, the side against her ribs (lower: the hollow there belongs to the armpit). */
@@ -117,7 +117,23 @@ export async function maleArmWeights(src, dst, { log = console.log } = {}) {
       log(`${joints[up].getName()}: ${blended} points on the shoulder's top blended back toward the approved weights`);
       // the new share written back: the arm's bones keep their split of it, the rest goes to the bones that held it (or the collarbone)
       let changed = 0, most = 0;
-      for (const u of free) {
+      // HIS: what the solve held at none (the region's edge, his midline) is WRITTEN none as well. Her file gave her arm
+      // nothing that far out; his gives it some, and left as it was beside a solve that went to none at the region's edge,
+      // his skin stood in jagged cracks along that edge across his chest's sides and his back as his arms rose (MEASURED in
+      // the room, 2026-11-19: a line about 30 cm from each shoulder joint, in T-POSE)
+      const zeroed = [];
+      for (let u = 0; u < U; u += 1) {
+        if (fixed[u] !== 0 || !(a0[u] > 0.005) || a0[u] > 0.6) continue;
+        // (only his trunk's skin: not down his arm, where his forearm and hand are the arm's whatever the solve held)
+        const i = rep[u], r = [P[i * 3] - s[0], P[i * 3 + 1] - s[1], P[i * 3 + 2] - s[2]], along = r[0] * au[0] + r[1] * au[1] + r[2] * au[2];
+        // (his arm hangs down and out in his A: a point of his trunk under his shoulder lies down the arm's line too, so
+        // the arm is told by how near its axis a point is, not how far along it)
+        const radial = Math.hypot(r[0] - along * au[0], r[1] - along * au[1], r[2] - along * au[2]);
+        if ((along > 0.05 && radial < ARM_RADIUS_M * 1.5) || Math.sign(P[i * 3]) !== Math.sign(s[0])) continue;
+        a[u] = 0; zeroed.push(u);
+      }
+      log(`${joints[up].getName()}: ${zeroed.length} points of his trunk held at none by the solve written none`);
+      for (const u of [...free, ...zeroed]) {
         const was = a0[u], now = Math.min(1, Math.max(0, a[u])), m = wmap[u]; if (Math.abs(now - was) < 0.005) continue;
         changed += 1; most = Math.max(most, Math.abs(now - was));
         const out = new Map();
@@ -126,6 +142,26 @@ export async function maleArmWeights(src, dst, { log = console.log } = {}) {
         wmap[u] = out;
       }
       log(`${joints[up].getName()}: ${free.length} points solved around the shoulder, ${changed} changed (largest change ${(most * 100).toFixed(0)}% of the arm)`);
+      // HIS: THE REGION'S EDGE EVENED. The shoulder's top is blended back toward the file's own weights (above) right up to
+      // the edge, and outside it they are written none: a step across the edge, a crack along it as his arms rise
+      // (MEASURED in the room: it moved out with the edge, 30 cm to 36). So his arm's share is evened over his skin in a
+      // band either side of the edge, on his trunk only.
+      { const band = 0.08, share = new Float32Array(U), inBand = [];
+        for (let u = 0; u < U; u += 1) { let x = 0; for (const [k, w] of wmap[u]) if (arm.has(k)) x += w; share[u] = x;
+          const i = rep[u], r = [P[i * 3] - s[0], P[i * 3 + 1] - s[1], P[i * 3 + 2] - s[2]], along = r[0] * au[0] + r[1] * au[1] + r[2] * au[2], d = Math.hypot(...r);
+          const radial = Math.hypot(r[0] - along * au[0], r[1] - along * au[1], r[2] - along * au[2]);
+          if (Math.abs(d - REGION_M) < band && !(along > 0.05 && radial < ARM_RADIUS_M * 1.5) && Math.sign(P[i * 3]) === Math.sign(s[0]) && share[u] < 0.6 && nb[u].size) inBand.push(u); }
+        for (let pass = 0; pass < 60; pass += 1) for (const u of inBand) { let sum = 0; for (const v of nb[u]) sum += share[v]; share[u] = sum / nb[u].size; }
+        let evened = 0;
+        for (const u of inBand) {
+          const m = wmap[u]; let was = 0; for (const [k, w] of m) if (arm.has(k)) was += w; const now = Math.min(1, Math.max(0, share[u]));
+          if (Math.abs(now - was) < 0.002) continue; evened += 1;
+          const out = new Map();
+          if (was > 1e-4) { for (const [k, x] of m) if (arm.has(k)) out.set(k, x * now / was); } else out.set(up, now);
+          const rest = 1 - was; if (rest > 1e-4) { for (const [k, x] of m) if (!arm.has(k)) out.set(k, (out.get(k) || 0) + x * (1 - now) / rest); } else out.set(collar, (out.get(collar) || 0) + (1 - now));
+          wmap[u] = out;
+        }
+        log(`${joints[up].getName()}: ${evened} of ${inBand.length} points about the region's edge evened`); }
     }
     // THE RAISED-ARM CORRECTIVE, one per arm (armRaiseL / armRaiseR). With the arm raised
     // level, skin shared between arm and torso is drawn toward the shoulder's pivot (inside
