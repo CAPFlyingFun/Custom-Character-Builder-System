@@ -71,7 +71,8 @@ describe('one cloth over another', () => {
   it('is worn by the cloth tee with a skirt: over a low one, each of the three (his: only under her belly for now)', () => {
     const worn = OUTFITS.filter((o) => o.skirt && o.procedural);
     expect(worn.map((o) => o.name)).toEqual(TEE_SKIRTS.map(([name]) => name));
-    expect(OUTFITS.slice(-TEE_SKIRTS.length).map((o) => o.name)).toEqual(TEE_SKIRTS.map(([name]) => name));
+    // (the last of hers: his own outfits come after, 2026-11-20)
+    expect(OUTFITS.filter((o) => !o.his).slice(-TEE_SKIRTS.length).map((o) => o.name)).toEqual(TEE_SKIRTS.map(([name]) => name));
     expect(worn.map((o) => `${o.skirt!.top}/${o.skirt!.tucked}`)).toEqual(['under/false', 'under/false', 'under/false']);
     // and no skirt on the menu sits over her belly; a name one had still finds its outfit
     expect(OUTFITS.filter((o) => o.skirt?.top === 'over')).toEqual([]);

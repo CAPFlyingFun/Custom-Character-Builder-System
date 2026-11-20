@@ -1355,7 +1355,8 @@ export function statusLine(loaded: boolean, failed: boolean, garments: readonly 
   const called = MODEL_NAMES[m.id];
   if (failed) return `${m.path} did not load`;
   if (!loaded) return `loading ${called ?? m.id}…`;
-  const g = garments.length ? `${garments.length} garment${garments.length === 1 ? '' : 's'}` : 'no clothes in this file yet';
+  // (his clothes are all paint: none of them is in his file, and he is not without clothes)
+  const g = garments.length ? `${garments.length} garment${garments.length === 1 ? '' : 's'}` : isMaleModel(m.id) ? 'painted clothes' : 'no clothes in this file yet';
   const rest = `${hasBelly ? 'belly slider' : 'no belly slider'} · ${g}`;
   if (called) return named ? `${called} · ${rest}` : rest;
   return `model ${m.id} · ${rest}`;
