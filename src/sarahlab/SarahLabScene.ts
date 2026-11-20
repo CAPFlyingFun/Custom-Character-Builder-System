@@ -99,6 +99,7 @@ import { eyesLine, mouthLine, nextEyeMode } from './faceChoices';
  * Lab's bodies are.
  */
 import * as THREE from 'three';
+import { SKIN_DETAIL, SKIN_DETAIL_MAP, patchSkinDetail, prepareSkinDetailMap, skinDetailUniforms } from './skinDetail';
 import { SkeletonInV2, carryLandmarks } from './skeletonInV2';
 import { footCover } from './footCover';
 import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
@@ -8662,6 +8663,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) {
         const sm = findSkinnedMesh(loadedModel), mat = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial;
         if (mat) void assets.loadTexture(MALE_EVEN_SKIN).then((t) => { if (!t || disposed || model !== loadedModel) { t?.dispose(); return; } const own = mat.map; mat.map = likeOwn(t, own); mat.needsUpdate = true; own?.dispose(); });
+        // and his skin's fine relief over it, laid triplanar on his rest place (skinDetail.ts; his Local Texture Lab's maths)
+        if (sm && mat) void assets.loadTexture(SKIN_DETAIL_MAP).then((t) => {
+          if (!t || disposed || model !== loadedModel) { t?.dispose(); return; }
+          sm.geometry.computeBoundingBox(); sm.updateWorldMatrix(true, false);
+          const box = sm.geometry.boundingBox!, restH = box.max.y - box.min.y, scale = sm.getWorldScale(new THREE.Vector3()).y;
+          // (his rest frame stands him 1.70 m tall: MEASURED)
+          patchSkinDetail(mat, skinDetailUniforms(prepareSkinDetailMap(t), restH / 1.7, (restH * scale) / 1.7));
+        });
       }
       model = loadedModel;
       // her refined 0% shape and her navel as its own piece (zeroRefine.ts), put on her approved body when the file is
@@ -10806,6 +10815,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return { size: a.itemSize, count: a.count, data: btoa(s) };
         },
         // (a probe's) the male base model's normal map off or back on, to tell what of a mark is his normal map's
+        skinDetail: (patch: { depthM?: number; tileM?: number; cavity?: number }) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial, u = m?.userData.skinDetail; if (!u) return null; u.__k ??= u.skinDetailDepth.value / SKIN_DETAIL.depthM; u.__kt ??= u.skinDetailTile.value / SKIN_DETAIL.tileM; u.__depthM ??= SKIN_DETAIL.depthM; u.__tileM ??= SKIN_DETAIL.tileM; const k = u.__k, kt = u.__kt; if (patch.depthM != null) { u.skinDetailDepth.value = patch.depthM * k; u.__depthM = patch.depthM; } if (patch.tileM != null) { u.skinDetailTile.value = patch.tileM * kt; u.__tileM = patch.tileM; } if (patch.cavity != null) u.skinDetailCavity.value = patch.cavity; return { depthM: u.__depthM, tileM: u.__tileM, cavity: u.skinDetailCavity.value }; },
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {
           const b = bodyOf()?.mesh ?? (isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? herSkinned() : null); if (!b) return null;
