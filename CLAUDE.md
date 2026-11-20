@@ -1855,6 +1855,44 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   leaves a touch on a pill's glass alone. MEASURED in the room: every button's own box is its own at all 25 points
   tried, and a real touch 2 px above LIGHT/DARK and 6 px below it both change the theme.
 
+## The male base model
+
+- **On the menu beside her, FEMALE and MALE** (Joshua, 2026-11-19: "Can we work on the male character now?... load the same
+  skeleton, redraw the organs for a male, size the skeleton to fit the male model, get the sliders to work… minus the
+  breasts"; of the two male files, "go with 2"). `public/models/male-base.glb`, made from `assets-archive/models/male-base-touched.glb`
+  by `node scripts/male/maleSideLock.mjs` (the archive is not changed). `sarahLabTool.ts` `MALE_BASE_MODEL`, `isMaleModel`;
+  the Body tab's FEMALE / MALE (`SARAH_LAB_ACTION.baseModel`); MODEL stays, hidden, for a probe. On screen: "Male Base Model".
+- **HIS BONES ARE NAMED ONE ON FROM HERS** (MEASURED: his spine has one bone more -- Bone_001, Bone_005, Bone_004, Bone_003,
+  Bone_002 to hers Bone_001, Bone_004, Bone_003, Bone_002 -- and every bone after it is one further on). The room finds his
+  bones BY ROLE (`measureHuman`); what knew her bones by name is mapped (`maleRig.ts` `hisBone`, `herBone`; her arms' bones
+  for her breath, `armShareOf`, by role now).
+- **HIS ARMPITS AND SIDES** (a fault of his file: in T-POSE his back and sides stood in flaps up to his arms; Meshy gave his arm
+  bones up to 0.79 of his side down to 14 cm under his armpit). `scripts/male/maleArmWeights.mjs` (her armpit script with his
+  own arm numbers: thicker upper arm, `ARM_RADIUS_M` 0.075) and her side lock (`SIDE_LOCK`), his weights as 32-bit numbers.
+  `tests/maleBase.test.ts`.
+- **HIS BELLY** (`maleBelly.ts`; his: "maybe a max 100%", then "200% will be just doubled the size"): one smooth field in
+  space on his rest shape, between the BOTTOM of his pubic bone and his breastbone's tip as the skeleton laid in him has them
+  (his: "it should sit below the ribs"). An EGG (his: "more of an egg / oval shape, bottom a little bigger then the top";
+  "blend all around the belly into the surrounding skin"): from his side fullest at 0.42 of the way up, soft at both ends
+  (`bellyEgg`); from his front an oval a third narrower at his ribs than at his pubic bone, eased into his sides; its bottom
+  edge a U along his groin. 6.75 cm forward at 100% (his drawn curve's 13.5 at 200%), the belly slider's %, to 200.
+  Moves none of what his arms carry, and all of the skin low on his belly that his file half gives his thighs ("It's still
+  squished at the bottom"). Taken off his own side photograph and then his drawing over the chart of it (neither kept): his
+  profile is nearest her belly at 40% in shape and 45% in size. GAME TUNING: `MALE_BELLY`.
+- **HIS NAVEL**: an innie as modelled; NAVEL · INNIE / HALF OUT / OUTIE (`maleOutie`) pushes its floor out to his skin and 4 mm
+  past (an adult outie is mostly a small umbilical hernia: Cleveland Clinic). NOT YET KEPT IN A SAVE.
+- **THE ONE SKELETON IN HIM** (her `sarah-skeleton.glb`, laid by `skeletonInV2.ts` through `bodyName`), HIS RIB CAGE SIZED TO
+  HIM (`trunkShape`, `MALE_TRUNK_SHAPE_OF`): MEASURED with hers as laid, his breastbone 5 to 8 cm behind his skin and her ribs
+  2.5 to 4.5 cm inside his sides; deepened 1.35 from the back of the ribs and widened 1.07 over his chest, his breastbone is 1 to
+  3 cm under his skin. Her pelvis stays (NOT YET a male pelvis).
+- A fault found switching models, fixed: three's `compileAsync` threw in a timer when a body was let go under it
+  (`compileSafely`).
+- NOT DONE: his organs (male: no womb or ovaries; a prostate); the pregnancy controls still show for him; BUILD and the
+  other body shapes on him; his squat (his thighs bunch at his groin); EVEN skin (Meshy's colour picture has dark slits at its
+  seams); clothes; his head's parts; RECLINE floats (her bed is not drawn either).
+- After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:
+  MALE, his belly at 0, 100 and 200% from his side and front, T-POSE from his back, X-RAY from his side.
+
 ## Verification
 
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local
