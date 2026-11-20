@@ -6901,7 +6901,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * inverse binds, the same for every bone) and the mesh's place in her model.
    */
   /** His groin smoothed while he squats (MALE_GROIN), worked out again when his shape or his pose changes. */
-  let maleGroin: BirthNormals | null = null, maleGroinMesh: THREE.SkinnedMesh | null = null, maleGroinFor = '', maleGroinOn = true;
+  let maleGroin: BirthNormals | null = null, maleGroinMesh: THREE.SkinnedMesh | null = null, maleGroinFor = '';
+  /** OFF until Joshua has seen it (pushed with v0.9.55 unseen: CLAUDE.md's standing rule); the probe's `maleGroin(true)` puts it on */
+  let maleGroinOn = false;
   function keepMaleSquat(): void {
     if (!maleGroin || !maleGroinMesh || !model) return;
     const sb = shaped.find((x) => x.mesh === maleGroinMesh); if (!sb) return;
