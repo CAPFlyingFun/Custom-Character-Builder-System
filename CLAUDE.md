@@ -1947,7 +1947,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   front, three-quarter and below the same as without it (held at nothing, a web between his thighs). The seam is the
   fold of his skin between thighs spread past 100 degrees, a SHAPE his weights can not undo: it wants a pose's own field
   as hers has (`hipTurn.ts`, her groin's normals), laid for him.
-- NOT DONE: his squat (above); his own pelvis bone; clothes;
+- **HIS GROIN SMOOTHED IN SQUAT** (`SarahLabScene.ts` `MALE_GROIN`, `keepMaleSquat`; the probe's `maleGroin(on)`): as her knees
+  are (`birthNormals.ts` with a band: it needs no birth area of hers now), his posed skin round the point 7 cm under the middle
+  of his hip joints is smoothed where it stands -- 150 passes, 0.7 of the way, all within 8 cm, none past 17 -- and laid as a
+  shape field while he squats (worked out again when his shape changes). PICTURED in the room from his front, three-quarter
+  and below, off and on (60 passes within 7 cm tried first: the pinch gone, a line left down his middle): one surface from
+  thigh to thigh. LEFT: a soft line of shade down his middle; a white streak along his lower belly's left side from below,
+  there without it too.
+- NOT DONE: his own pelvis bone; clothes;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
 - After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:
   MALE, his belly at 0, 100 and 200% from his side and front, T-POSE from his back, X-RAY from his side.

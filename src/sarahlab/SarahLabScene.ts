@@ -352,6 +352,16 @@ import { hisBone, herBone } from './maleRig';
 import { MALE_BELLY, maleBellyField, maleOutieField, vertexNormals } from './maleBelly';
 /** His belly's and his navel's shape fields (the male base model's: maleBelly.ts). */
 const MALE_BELLY_FIELD = 'shape:maleBelly', MALE_OUTIE_FIELD = 'shape:maleOutie';
+/**
+ * HIS GROIN IN SQUAT (Joshua, 2026-11-19: "his thighs bunch at his groin"). His weights were solved smooth across his groin
+ * and changed nothing to see (CLAUDE.md, "The male base model"): the seam is his skin's FOLD between thighs spread past 100
+ * degrees. So, as her knees are (birthNormals.ts, a band round a centre): in SQUAT his skin round the point between his hip
+ * joints, under them, is smoothed where it stands posed -- `passes` times, `lambda` of the way to its neighbours' middle,
+ * all of it within `near` metres, none past `far` -- and its normals laid as the smoothed surface's, as a shape field.
+ * GAME TUNING.
+ */
+const MALE_GROIN_FIELD = 'shape:maleGroin';
+export const MALE_GROIN = Object.freeze({ below: 0.07, near: 0.08, far: 0.17, passes: 150, lambda: 0.7 });
 /** His skin made even (`node scripts/evenSkin.mjs --body public/models/male-base.glb --out <this>`). */
 const MALE_EVEN_SKIN = 'models/skins/male-base-skin-even-2048.webp';
 /**
@@ -2588,6 +2598,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (100% his own belly, 200% twice it: Joshua, 2026-11-19, "200% will be just doubled the size")
     out[MALE_BELLY_FIELD] = Math.min(2, Math.max(0, b / 100));
     out[MALE_OUTIE_FIELD] = maleOutie;
+    out[MALE_GROIN_FIELD] = 1; // (laid only while he squats: keepMaleSquat)
     // her birth area, shaped the same at every size (birthArea.ts)
     // (its folds fuller only while nothing is worn over them: a fitted bottom is a few millimetres off her skin)
     out[BIRTH_CLEFT_FIELD] = birthAreaShown ? 1 : 0;
@@ -6889,6 +6900,27 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * Her mesh's points to her rest metres, at her bind: the skin's bind (her file keeps its scale and offset in the skin's
    * inverse binds, the same for every bone) and the mesh's place in her model.
    */
+  /** His groin smoothed while he squats (MALE_GROIN), worked out again when his shape or his pose changes. */
+  let maleGroin: BirthNormals | null = null, maleGroinMesh: THREE.SkinnedMesh | null = null, maleGroinFor = '', maleGroinOn = true;
+  function keepMaleSquat(): void {
+    if (!maleGroin || !maleGroinMesh || !model) return;
+    const sb = shaped.find((x) => x.mesh === maleGroinMesh); if (!sb) return;
+    const want = maleGroinOn && pose === 'squat';
+    const shapeKey = sb.fields.last.split('|').filter((k) => !k.startsWith(MALE_GROIN_FIELD)).join('|');
+    const sig = want ? `${pose}|${shapeKey}` : '';
+    if (sig === maleGroinFor) return;
+    maleGroinFor = sig;
+    const bare = new Map(sb.fields.fields); bare.delete(MALE_GROIN_FIELD);
+    sb.fields = { ...sb.fields, fields: bare, last: '' };
+    applyLook();
+    if (!want) return;
+    model.updateMatrixWorld(true); maleGroinMesh.skeleton.update();
+    const g = maleGroinMesh.geometry, P = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, N = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
+    const map = new Map(bare); map.set(MALE_GROIN_FIELD, maleGroin.compute(P, N));
+    sb.fields = { ...sb.fields, fields: map, last: '' };
+    applyLook();
+    maleGroinFor = `${pose}|${sb.fields.last.split('|').filter((k) => !k.startsWith(MALE_GROIN_FIELD)).join('|')}`;
+  }
   /**
    * Room between her thighs as she is posed (birthRoom.ts): worked out again whenever what she is posed as, or her shape,
    * changes -- read off her bones as they are this frame -- and laid on her as a shape field.
@@ -7001,6 +7033,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     lay(MALE_BELLY_FIELD, maleBellyField(rest, trunk));
     if (Number.isFinite(front)) lay(MALE_OUTIE_FIELD, maleOutieField(rest, front));
     hasBelly = true;
+    // his groin's smoothing in SQUAT, round the point between his hip joints, under them (MALE_GROIN)
+    try {
+      const sk = mesh.skeleton, at = (k: number) => new THREE.Vector3().setFromMatrixPosition(sk.boneInverses[k].clone().invert()).applyMatrix4(toRest);
+      const centre = at(j.hipL).add(at(j.hipR)).multiplyScalar(0.5); centre.y -= MALE_GROIN.below;
+      maleGroin = createBirthNormals(mesh, toRest, idx.array, [], undefined, undefined, undefined, { centres: [centre], near: MALE_GROIN.near, far: MALE_GROIN.far, passes: MALE_GROIN.passes, lambda: MALE_GROIN.lambda });
+      maleGroinMesh = mesh; maleGroinFor = '';
+    } catch (error) { console.error('[sarahlab] his groin could not be smoothed', error); maleGroin = null; }
   }
 
   /**
@@ -8593,7 +8632,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null; v2OrganBones = null; v2Womb = null; organsGrowWomb = false; abdomenFailed = false; thoraxFailed = false;
     skeletonV2?.dispose(); skeletonV2 = null; skeletonV2Request++; relaySkeletonV2 = null;
     // (and v2's opening with her: it is laid again when a v2 body comes; kept, it stood in for her skeleton's in a birth)
-    vulva?.dispose(); vulva = null; remakeVulva = null; herSkinDetail = null;
+    vulva?.dispose(); vulva = null; remakeVulva = null; herSkinDetail = null; maleGroin = null; maleGroinMesh = null;
     bottomShell?.dispose(); bottomShell = null; bottomShellTried = false; briefTies = null;
     clothBrief?.dispose(); clothBrief = null; clothBriefTried = false; briefData = null; clothBriefPose = '';
     paintedEdge?.dispose(); paintedEdge = null;
@@ -9203,6 +9242,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       settleBelly(dt);
       naturalOpening(dt);
       keepBirthRoom();
+      keepMaleSquat();
       // VULVA DETAIL through clothes, as the fabric panel has it now (nothing is done unless it changed)
       vulva?.setDressedLips(vulvaKeepNow());
       vulva?.sync();
@@ -10899,6 +10939,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         skinDetail: (patch: { depthM?: number; tileM?: number; cavity?: number; ownM?: number }) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial, u = m?.userData.skinDetail; if (!u) return null; u.__k ??= u.skinDetailDepth.value / SKIN_DETAIL.depthM; u.__kt ??= u.skinDetailTile.value / SKIN_DETAIL.tileM; u.__depthM ??= SKIN_DETAIL.depthM; u.__tileM ??= SKIN_DETAIL.tileM; const k = u.__k, kt = u.__kt; if (patch.depthM != null) { u.skinDetailDepth.value = patch.depthM * k; u.__depthM = patch.depthM; } if (patch.tileM != null) { u.skinDetailTile.value = patch.tileM * kt; u.__tileM = patch.tileM; } if (patch.cavity != null) u.skinDetailCavity.value = patch.cavity; u.__ownM ??= SKIN_DETAIL.ownDepthM; if (patch.ownM != null) { u.skinOwnDepth.value = patch.ownM * k; u.__ownM = patch.ownM; } const vm = vulva?.mesh.material as THREE.Material | undefined; return { ownM: u.__ownM, ownLoaded: !!u.skinOwnMap.value, depthM: u.__depthM, tileM: u.__tileM, cavity: u.skinDetailCavity.value, area: vulva ? { given: !!herSkinDetail, key: vm?.customProgramCacheKey?.() ?? null, laid: !!vm?.userData.skinDetail, dressed: vulva.dressed, visible: vulva.mesh.visible, programs: (ctx.renderer.gl.info.programs ?? []).filter((q) => /vulvaPatch/.test((q as unknown as { cacheKey: string }).cacheKey)).map((q) => { const gl = ctx.renderer.gl.getContext(), vs = gl.getShaderSource((q as unknown as { vertexShader: WebGLShader }).vertexShader) ?? '', fs = gl.getShaderSource((q as unknown as { fragmentShader: WebGLShader }).fragmentShader) ?? ''; return { vSet: (vs.match(/vSkinRest = [^;]*;/g) ?? []), fUse: (fs.match(/skinDetailBend\(/g) ?? []).length, mainAt: vs.indexOf('void main()'), setAt: vs.indexOf('vSkinRest = ') }; }) } : null }; },
         // (a probe's) her even roughness off or on, to picture what it changes
         evenRough: (on: boolean) => { applyRoughness(on); return { on, loaded: !!roughEven }; },
+        // (a probe's) his groin's smoothing in SQUAT off or on
+        maleGroin: (on?: boolean) => { if (on !== undefined && on !== maleGroinOn) { maleGroinOn = on; maleGroinFor = '-'; } return { on: maleGroinOn, laid: !!maleGroin, watched: maleGroin?.watched ?? 0, folded: maleGroin?.folded ?? null }; },
         hairDepth: (patch: { strength?: number; groove?: number }) => { if (patch.strength != null) hairStrength = patch.strength; if (patch.groove != null) hairGroove = patch.groove; deepenHair(hairMeshes); return { strength: hairStrength, groove: hairGroove, meshes: hairMeshes.length }; },
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
         bodyPoints: (kind: 'local' | 'rest' | 'posed' | 'shaped' | 'slip') => {

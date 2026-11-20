@@ -111,10 +111,11 @@ export function createBirthNormals(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
   if (!si || !sw || !pa) return null;
   const n = pa.count, B = BIRTH_NORMALS, rest = new Float32Array(n * 3), v = new THREE.Vector3();
   for (let i = 0; i < n; i++) v.set(pa.getX(i), pa.getY(i), pa.getZ(i)).applyMatrix4(toRest).toArray(rest, i * 3);
+  // (another band than her groin's needs no birth area of hers: a body without one -- his -- is smoothed round its centres)
   const c = birthAreaCentre(rest);
-  if (!c) return null;
+  if (!c && !band) return null;
   const m = (((BIRTH_AREA.front + BIRTH_AREA.back) / 2) * Math.PI) / 180;
-  const mid = new THREE.Vector3(0, c.y - 0.047 * Math.cos(m), c.z + 0.047 * Math.sin(m));
+  const mid = c ? new THREE.Vector3(0, c.y - 0.047 * Math.cos(m), c.z + 0.047 * Math.sin(m)) : band!.centres[0].clone();
   // the band, and how much of the fix each of its points takes
   const share = new Float32Array(n), inBand = new Uint8Array(n);
   if (band) for (let i = 0; i < n; i++) {
