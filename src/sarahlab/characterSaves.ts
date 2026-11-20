@@ -135,6 +135,12 @@ export interface SavedClothes {
    */
   readonly skirt?: SkirtRecord;
   /**
+   * WHAT SHE HAS TAKEN OFF of her outfit's garments (REMOVE PIECE; Joshua, 2026-11-20: "make the skirts as a layer to
+   * remove"): their names -- 'skirt', and a modelled or cloth garment's ('shirtSpandexLite'). Absent: nothing; and in every
+   * save made before, which load as they did. Part of how an outfit is MADE (`sameMake`).
+   */
+  readonly off?: readonly string[];
+  /**
    * HER SHOES (sneakers.ts; Joshua, 2026-11-07): 'sneakers' or 'none'. Absent in saves made before them and in the
    * room's own outfits: whatever she has on her feet stays on.
    */
@@ -255,6 +261,8 @@ function sameMake(a: SavedClothes, b: SavedClothes): boolean {
   if (json(a.built ? builtToJson(a.built) : null) !== json(b.built ? builtToJson(b.built) : null)) return false;
   // ...and so are a skirt's numbers
   if (!sameSkirtRecord(a.skirt, b.skirt)) return false;
+  // ...and what she has taken off of it
+  if (json(a.off ?? []) !== json(b.off ?? [])) return false;
   const n = Math.max(a.layers.length, b.layers.length);
   for (let i = 0; i < n; i++) {
     const x = a.layers[i] ?? null, y = b.layers[i] ?? null;
@@ -457,6 +465,7 @@ function readClothes(v: unknown): SavedClothes | null {
     ...built(v.built),
     ...readGarment(v.garment),
     ...readSkirt(v.skirt),
+    ...readOff(v.off),
     ...readShoes(v.shoes),
   };
 }
@@ -464,6 +473,12 @@ function readClothes(v: unknown): SavedClothes | null {
 function readSkirt(v: unknown): { skirt?: SkirtRecord } {
   const r = readSkirtRecord(v);
   return r ? { skirt: r } : {};
+}
+/** What she has taken off, from untrusted data: short names, at most a dozen, none twice. */
+function readOff(v: unknown): { off?: readonly string[] } {
+  if (!Array.isArray(v)) return {};
+  const names = [...new Set(v.filter((x): x is string => typeof x === 'string' && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(x)))].slice(0, 12).sort();
+  return names.length ? { off: names } : {};
 }
 /** Her shoes from untrusted data: one of the known, else none said. */
 function readShoes(v: unknown): { shoes?: Shoes } {

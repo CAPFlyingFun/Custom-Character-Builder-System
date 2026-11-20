@@ -211,6 +211,11 @@ export interface FabricHooks {
    * garment ISOLATED in DESIGN). The room applies her look again after it.
    */
   garmentsShown(which: 'all' | 'none' | string): void;
+  /**
+   * Take a worn garment off her (Joshua, 2026-11-20: "make the skirts as a layer to remove… I can't remove as a bottom";
+   * "check the cloth shirts as well"): REMOVE PIECE on a garment's piece. Absent: a garment can not be taken off here.
+   */
+  takeOff?(name: string): void;
   /** The camera and the canvas size in CSS pixels, for a brush stroke. */
   view(): { camera: THREE.Camera; width: number; height: number };
   /** Which model and outfit, for an exported config. */
@@ -398,6 +403,7 @@ function garmentKind(name: string): Piece['kind'] {
   if (/^leggings/.test(name)) return 'bottom';
   if (name === 'swimsuit') return 'onePiece';
   if (name === 'bikini') return 'set';
+  if (name === 'skirt') return 'bottom';
   return 'garment';
 }
 const KIND_TITLE: Readonly<Record<Piece['kind'], string>> = { ...PIECE_KIND_NAMES, paint: 'PAINT', set: 'SET', garment: 'GARMENT', new: '+ NEW PIECE' };
@@ -682,6 +688,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   orderRow.append(orderNote, upButton, downButton);
   const removeRow = row();
   removeRow.append(twoTap('REMOVE PIECE', 'REMOVE? TAP AGAIN', FABRIC_ACTION.remove, () => {
+    // (a garment she wears: taken off her by the room, its fabric choice let go)
+    if (target.kind === 'garment') { const name = target.name; if (hooks.takeOff) { garmentChoices.delete(name); hooks.takeOff(name); refreshTargets(); touched(); } return; }
     const p = bodyPaint(), i = layer();
     if (!p || i < 0) return;
     p.checkpoint(i); p.clear(i); templates[i] = null; paintChoices[i] = DEFAULT_CHOICE; details[i] = DEFAULT_LAYER_DETAIL;
@@ -1215,7 +1223,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         if (tpl) { const v = dialValue(tpl.params, id); d.input.value = String(v); d.label.textContent = `${COVERAGE_DIALS.find((x) => x.id === id)!.name} · ${v.toFixed(2)}`; }
       }
     }
-    removeRow.style.display = onLayer && kindOf(i) ? 'flex' : 'none';
+    removeRow.style.display = (onLayer && kindOf(i)) || (!onLayer && !!hooks.takeOff) ? 'flex' : 'none';
     setMatchRow.style.display = setOf(target) ? 'flex' : 'none';
     press(setMatchButton, setMatch);
     const fabricShown = !onLayer || !!kindOf(i);

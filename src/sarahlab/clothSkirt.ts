@@ -392,6 +392,17 @@ export class ClothSkirt {
     g.setAttribute('normal', this.normal);
     g.setAttribute(HIDDEN_ATTRIBUTE, this.hidden = new THREE.BufferAttribute(new Float32Array(d.count), 1).setUsage(THREE.DynamicDrawUsage));
     g.setIndex(new THREE.BufferAttribute(d.triangles, 1));
+    // ITS FABRIC'S REST PLACE (Joshua, 2026-11-20: "make the skirts as a layer to remove, different textures + custom
+    // import texture like the other ones"): where each point is as it is CUT, in the room's units, and its way out from
+    // the skirt's axis -- the weave and a picture of his own are laid there (`fabricMaterial.ts`, triplanar), so they
+    // stay on the cloth as it moves
+    { const R = new Float32Array(d.count * 3), N = new Float32Array(d.count * 3);
+      for (let p = 0; p < d.count; p++) {
+        for (let c = 0; c < 3; c++) R[p * 3 + c] = d.rest[p * 3 + c] * M;
+        const x = d.rest[p * 3] - d.axis[0], z = d.rest[p * 3 + 2] - d.axis[1], l = Math.hypot(x, z) || 1;
+        N[p * 3] = x / l; N[p * 3 + 2] = z / l;
+      }
+      g.setAttribute('fabricRest', new THREE.BufferAttribute(R, 3)); g.setAttribute('fabricRestNormal', new THREE.BufferAttribute(N, 3)); }
     hiddenEdge(options.material);
     this.mesh = new THREE.Mesh(g, options.material);
     this.mesh.name = 'cloth-skirt';
