@@ -820,7 +820,18 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - **HER NAVEL THROUGH A SKIRT OVER HER BELLY** (his, the same day: the side profile showed it, "but didn't show from the
   front… probably need to add the same thing for the skirt like the shirt"): drawn through the fabric as through the
   cloth tee (`clothDetail.ts`, `DetailSpots.cloth`), at the tee's NAVEL DETAIL. MEASURED at 100%, front and three-quarter.
-- NOT DONE, AND NAMED: its colour is one flat colour, not the fabric's weave; seated, the CLOTH passes through the
+- **A SKIRT IS A PIECE, AND A GARMENT CAN BE TAKEN OFF** (Joshua, 2026-11-20: "make the skirts as a layer to remove,
+  different textures + custom import texture like the other ones… I can't remove as a bottom"; "check the cloth shirts as
+  well"). The skirt is the outfit editor's BOTTOM piece `garment:skirt` (`fabricPanel` `garmentKind`): its material is
+  named 'skirt' and its mesh is among the panel's (`meshes`), its points carry a REST PLACE for the weave (`clothSkirt.ts`:
+  each point where it is cut, in the room's units, and its way out from the skirt's axis -- the weave triplanar there,
+  so it stays on the cloth as it moves), so every fabric family, swatch, custom colour and a picture of his own are
+  offered as for the cloth tee; an outfit's skirt opens in the ATHLETIC knit in its own colour. REMOVE PIECE on a
+  garment's piece takes it off her (`FabricHooks.takeOff`, the room's `takenOff`: the skirt, the cloth tee, any modelled
+  garment) until another outfit is put on; a save keeps the list (`SavedClothes.off`, `sameMake`). MEASURED in the room
+  (light skin, 1x, 10%): the A-line in SWEATER and in FLAT, then removed (her bikini bottom under it); the cloth crew
+  tee removed; no error on the page. NOT TRIED in the room: a picture of his own on the skirt (the same path as the tee's).
+- NOT DONE, AND NAMED: seated, the CLOTH passes through the
   stool's edge and shows a hole at her side (pictured again at 0 and 100% on the new line: as it was; on her, FIT 0,
   and half-way it sits whole); her hands pass through it; it does not collide with itself; walking at 200% it gathers
   between her thighs; the maxi walking and a narrow skirt as her walk begins ("As her walk begins", above); a look saved in a low skirt on v0.9.41
