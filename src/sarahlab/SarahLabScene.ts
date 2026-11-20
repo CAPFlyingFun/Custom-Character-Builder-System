@@ -11603,6 +11603,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       skirtRoom?.dispose(); skirtRoom = null;
       garmentPanel?.dispose(); garmentPanel = null;
       skirtPanel?.dispose(); skirtPanel = null;
+      // (her head's panel holds the page's pointerup / pointercancel while a slider is held: let go, or the closed room
+      // stays in memory through it -- a fault another game's agent found, 2026-11-20)
+      headPanel?.dispose(); headPanel = null;
       hud?.remove();
       hud = null;
       thorax?.dispose(); thorax = null; abdomen?.dispose(); abdomen = null; organs?.dispose(); organs = null;

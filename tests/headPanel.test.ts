@@ -247,3 +247,20 @@ describe('touch', () => {
     expect(heard).not.toHaveBeenCalled();
   });
 });
+
+describe('the head panel let go (a fault another game\'s agent found, 2026-11-20)', () => {
+  it('takes its listeners off the page when disposed, and the room disposes it with the other panels', async () => {
+    const add = vi.spyOn(document, 'addEventListener'), remove = vi.spyOn(document, 'removeEventListener');
+    const panel = new HeadPanel({ look: () => HEAD_DEFAULT, change: () => {} });
+    const added = add.mock.calls.filter((c) => c[0] === 'pointerup' || c[0] === 'pointercancel');
+    expect(added.length).toBe(2);
+    panel.dispose();
+    for (const [type, fn] of added) expect(remove.mock.calls.some((c) => c[0] === type && c[1] === fn && c[2] === true), type).toBe(true);
+    add.mockRestore(); remove.mockRestore();
+    // the room's own dispose lets it go beside the tee's and the skirt's panels
+    const { readFileSync } = await import('node:fs');
+    const scene = readFileSync('src/sarahlab/SarahLabScene.ts', 'utf8'), at = scene.indexOf('skirtPanel?.dispose(); skirtPanel = null;');
+    expect(at).toBeGreaterThan(0);
+    expect(scene.slice(at, at + 400)).toContain('headPanel?.dispose(); headPanel = null;');
+  });
+});
