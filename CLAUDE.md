@@ -1924,7 +1924,13 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   BIOLOGICAL SHAPE: the base of the neck to the chin): close on her face both depths read as orange peel (pictured
   2026-11-19, Joshua: "Haha, yeah…"). MEASURED in the room after: her face and his close, her belly as it was.
 - His organs (a prostate, no womb or ovaries), the pregnancy controls hidden for him, and his EVEN skin are done.
-- NOT DONE: BUILD and the other body shapes on him; his squat (his thighs bunch at his groin); his own pelvis bone; clothes;
+- **HIS BUILD** (Joshua, 2026-11-19: "get the sliders to work… minus the breasts"): HEIGHT & PROPORTIONS work on him as on her
+  (`prepareBuildRig` on his rest, his bones by role, his geometry's units told by his rest frame: `metresPerUnitOf` --
+  taken as his geometry's height over 1.70 m first, his height read 1.56 m; now 1.70). WALK is his too. BELLY SHAPE and
+  BREAST SHAPE are not shown for him (`shapeBoxes`: her bump's and her breasts' controls, which move nothing on him).
+  MEASURED in the room: his height at 0, +20 and -20 cm with shoulders, waist, hips, upper arms and head moved with it;
+  walking and squatting with a build on.
+- NOT DONE: his squat (his thighs bunch at his groin); his own pelvis bone; clothes;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
 - After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:
   MALE, his belly at 0, 100 and 200% from his side and front, T-POSE from his back, X-RAY from his side.

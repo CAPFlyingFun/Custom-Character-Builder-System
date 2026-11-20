@@ -1386,6 +1386,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     bonesBuilt = STALE_BUILD; layBuildBones(currentBuild());
   }
   let buildBox: HTMLElement | null = null;
+  /** the Body tab's shape sections by group (his has no breasts and no pregnancy: those two are not shown for him) */
+  const shapeBoxes: Partial<Record<'build' | 'belly' | 'breasts' | 'walk', HTMLElement>> = {};
   let babyNote: HTMLElement | null = null;
   // her crease under her breasts, untangled where her summed shapes fold it (bodyCrease.ts); the spring's shapes move
   // every frame and are not part of what it was worked out for
@@ -2286,6 +2288,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her proportions are measured on her approved v2 body: on another, the section and its lock are not shown at all
     if (buildBox) buildBox.style.display = buildRig ? '' : 'none';
     if (buttons['groupLock-build']) buttons['groupLock-build'].style.display = buildRig ? '' : 'none';
+    // HIS SECTIONS (Joshua, 2026-11-19: "get the sliders to work… minus the breasts"): BREAST SHAPE and BELLY SHAPE are hers --
+    // her bump's morphs, her breasts' fields, her babies -- and move nothing on him (his belly is the belly slider's field)
+    { const his = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+      for (const g of ['belly', 'breasts'] as const) { const box = shapeBoxes[g], b = buttons[`groupLock-${g}`]; if (box) box.style.display = his ? 'none' : ''; if (b) b.style.display = his ? 'none' : ''; } }
     for (const r of rangeRows) {
       r.row.style.display = rangesShown ? 'flex' : 'none';
       const rule = ruleFor(randomRules, r.spec);
@@ -3786,6 +3792,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     for (const [group, title] of [['build', 'HEIGHT & PROPORTIONS'], ['belly', 'BELLY SHAPE'], ['breasts', 'BREAST SHAPE'], ['walk', 'WALK']] as const) {
       const box = document.createElement('details');
       box.dataset.tab = 'body';
+      shapeBoxes[group] = box;
       box.style.cssText = 'border-top:1px solid rgba(255,255,255,0.12);padding-top:6px';
       const head = document.createElement('summary');
       head.textContent = title;
@@ -6971,6 +6978,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     hasBelly = true;
   }
 
+  /**
+   * Metres in one unit of a mesh's geometry, by its rest frame (`restOfMesh`, in metres). His was taken as his geometry's
+   * height over 1.70 m at first: MEASURED in the room his BUILD then read his height 1.56 m.
+   */
+  function metresPerUnitOf(mesh: THREE.SkinnedMesh, root: THREE.Object3D): number {
+    root.updateMatrixWorld(true);
+    return new THREE.Vector3().setFromMatrixColumn(restOfMesh(mesh, root), 1).length();
+  }
   function restOfMesh(mesh: THREE.SkinnedMesh, root: THREE.Object3D): THREE.Matrix4 {
     const sk = mesh.skeleton, bone = sk.bones[0];
     const skin = new THREE.Matrix4().copy(mesh.bindMatrixInverse).multiply(bone.matrixWorld).multiply(sk.boneInverses[0]).multiply(mesh.bindMatrix);
@@ -8672,6 +8687,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       if (!recovered && outfit >= 5) outfit = 0;
       // THE MALE BASE MODEL's belly and navel (maleBelly.ts): two fields laid on his rest shape, his belly slider's
       if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) { try { layMaleBelly(loadedModel); } catch (error) { console.error('[sarahlab] his belly could not be laid; he is as modelled', error); } }
+      // HIS BUILD (Joshua, 2026-11-19: "get the sliders to work… minus the breasts"): measured on his rest as hers is on hers,
+      // his bones found by role (measureHuman), his geometry's units told by his rest frame (`metresPerUnitOf`)
+      if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id) && measure) {
+        const m = findSkinnedMesh(loadedModel), s = m ? shaped.find((x) => x.mesh === m) : undefined;
+        if (m && s) {
+          try { buildRig = prepareBuildRig(m, s.fields.basePos, measure.joints, metresPerUnitOf(m, loadedModel)); } catch (error) { console.error('[sarahlab] his build could not be measured; BUILD is off', error); buildRig = null; }
+        }
+      }
       // HIS SKIN EVEN as hers is (scripts/evenSkin.mjs on his file: one skin colour, his own details kept -- Meshy's colour
       // picture had dark slits where its islands meet, seen on his chest and arms)
       if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) {
@@ -8681,9 +8704,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         if (sm && mat) void assets.loadTexture(SKIN_DETAIL_MAP).then((t) => {
           if (!t || disposed || model !== loadedModel) { t?.dispose(); return; }
           sm.geometry.computeBoundingBox(); sm.updateWorldMatrix(true, false);
-          const box = sm.geometry.boundingBox!, restH = box.max.y - box.min.y, scale = sm.getWorldScale(new THREE.Vector3()).y;
+          const box = sm.geometry.boundingBox!, scale = sm.getWorldScale(new THREE.Vector3()).y;
           // (his rest frame stands him 1.70 m tall: MEASURED)
-          const u = skinDetailUniforms(prepareSkinDetailMap(t), restH / 1.7, (restH * scale) / 1.7, SKIN_DETAIL, { min: box.min.y, max: box.max.y });
+          const perM = 1 / metresPerUnitOf(sm, loadedModel), u = skinDetailUniforms(prepareSkinDetailMap(t), perM, perM * scale, SKIN_DETAIL, { min: box.min.y, max: box.max.y });
           patchSkinDetail(mat, u);
           void assets.loadTexture(MALE_OWN_HEIGHT).then((o) => { if (!o || disposed) { o?.dispose(); return; } wearOwnHeight(u, o, mat.map); });
         });
