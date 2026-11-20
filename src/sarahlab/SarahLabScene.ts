@@ -10216,6 +10216,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           else if (cmd?.run !== undefined) { if (beginBirth(null, true)) birthRunning = cmd.run; }
           const r0 = babyRoots()[0], headW = r0 && birthHeadModel ? headMiddle(r0) : null, pts = birthPath?.points;
           const along = headW && pts && pts.length > 1 ? (() => { const mouth = pts[pts.length - 1], t = mouth.clone().sub(pts[pts.length - 2]).normalize(); return +((headW.clone().sub(mouth).dot(t)) / M * 100).toFixed(1); })() : null;
+          // (its head's middle in her opening's own frame, as her bones carry it: along its way out, toward her front, across)
+          const headInMouth = (() => {
+            const mr = vulva?.mouthRest?.(); if (!headW || !mr) return null;
+            const d = headW.clone().sub(mr.centre), up = mr.up ? mr.up.clone().sub(mr.out.clone().multiplyScalar(mr.up.dot(mr.out))).normalize() : null;
+            const across = up ? new THREE.Vector3().crossVectors(mr.out, up).normalize() : null, cmOf = (x: number) => +(x / M * 100).toFixed(2);
+            return { out: cmOf(d.dot(mr.out)), up: up ? cmOf(d.dot(up)) : null, across: across ? cmOf(d.dot(across)) : null };
+          })();
           const offAxis = headW && pts ? +((Math.min(...pts.map((p) => p.distanceTo(headW)))) / M * 100).toFixed(1) : null;
           // (and its body: how far each joint of its back and legs that is in her canal lies from her canal's middle line --
           // one stiff length cut the corner of a canal that turns, by centimetres)
@@ -10245,7 +10252,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             babyHolder.updateMatrixWorld(true); const held = babyHolder.localToWorld(birthRestAt.clone());
             return { restMatchCm: +(Math.sqrt(bd) * 100).toFixed(1), drawnVsHeldCm: +(drawn.distanceTo(held) / M * 100).toFixed(1), d: drawn.clone().sub(held).divideScalar(M / 100).toArray().map((x) => +x.toFixed(1)) };
           })() } : null;
-          return { rest: rp, headPastMouthCm: along, headFromPathCm: offAxis, bodyOffPathCm: bodyOff && bodyOff.length ? Math.max(...bodyOff.map((x) => x[1])) : null, bodyInCanal: bodyOff, headR: r0 ? +(headRadiusOf(r0.scale.x) * 100).toFixed(2) : null, open: vulva?.drawnOpen, clock: birthClock, running: birthRunning, pace: birthPace, now: birthNow, path: birthPath ? { length: +birthPath.length.toFixed(4), points: birthPath.points.length } : null, head: birthHeadModel?.toArray().map((x) => +x.toFixed(3)) ?? null, line: birthLine(birthNow),
+          return { rest: rp, headInMouth, headPastMouthCm: along, headFromPathCm: offAxis, bodyOffPathCm: bodyOff && bodyOff.length ? Math.max(...bodyOff.map((x) => x[1])) : null, bodyInCanal: bodyOff, headR: r0 ? +(headRadiusOf(r0.scale.x) * 100).toFixed(2) : null, open: vulva?.drawnOpen, clock: birthClock, running: birthRunning, pace: birthPace, now: birthNow, path: birthPath ? { length: +birthPath.length.toFixed(4), points: birthPath.points.length } : null, head: birthHeadModel?.toArray().map((x) => +x.toFixed(3)) ?? null, line: birthLine(birthNow),
             // (ITS BODY AGAINST THE WAY IT COMES: each joint of its back and legs against her canal's middle line carried on
             // -- up from its top the way her canal comes from, and out of its mouth the way it leaves her -- as `[joint,
             // 'womb' | 'canal' | 'out', centimetres off that line]`. `bodyInCanal` above measures against her canal alone,
