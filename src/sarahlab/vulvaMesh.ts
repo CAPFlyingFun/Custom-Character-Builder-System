@@ -289,7 +289,7 @@ export interface VulvaPatch {
    * her opening's own middle and the way out of her square to it, as her bones carry it -- before it is drawn round
    * anything passing (world), or null before it is first laid: where a birth brings its baby's head
    */
-  mouthRest(): { centre: THREE.Vector3; out: THREE.Vector3 } | null;
+  mouthRest(): { centre: THREE.Vector3; out: THREE.Vector3; up: THREE.Vector3 | null } | null;
   readonly open: number;
   /** read her skin weights again (they changed: birthWeights.ts) */
   resyncWeights(): void;
@@ -896,7 +896,7 @@ void main() {
   let colMetres: Float32Array | null = null;
   /** the opening's width held back by her legs (metres across), or null when it is not */
   /** her opening's own middle and its way out, body-local, as last laid (`mouthRest`) */
-  const natC = new THREE.Vector3(), natN = new THREE.Vector3(); let natOk = false;
+  const natC = new THREE.Vector3(), natN = new THREE.Vector3(), natU = new THREE.Vector3(); let natOk = false;
   let heldTo: number | null = null, blocker: number[] = [], bulgeNow = 0, lipMax = 0, lipCount = 0, legsHold = true;
   /** her opening's oval as last laid (`skinOpenShape`), for rounding her rim to it */
   let ovalNow: { centre: number; half: number; across: number } | null = null;
@@ -1786,6 +1786,9 @@ void main() {
             if (nB.lengthSq() > 1e-18) { nB.normalize(); if (nP.lengthSq() < 1e-18) nP.copy(nB); else { nP.normalize(); if (nP.dot(nB) < 0) nP.negate(); nP.lerp(nB, 1 - smooth(0.15, 0.35, open)); } } }
           if (nP.lengthSq() < 1e-18) nP.copy(nO); nP.normalize();
           natC.copy(C); natN.copy(nP); natOk = true;
+          // (and the way up her split, toward her pubic bone, in its plane: from her rim's back end to its front)
+          { let jb3 = 0, jf3 = 0; for (let j2 = 0; j2 < M; j2++) { if (colQ[j2] < colQ[jb3]) jb3 = j2; if (colQ[j2] > colQ[jf3]) jf3 = j2; }
+            natU.fromArray(Pp, jf3 * 3).sub(new THREE.Vector3().fromArray(Pp, jb3 * 3)); natU.addScaledVector(nP, -natU.dot(nP)); if (natU.lengthSq() > 1e-18) natU.normalize(); }
           let mean = 0; const rr = new Float32Array(M);
           for (let j2 = 0; j2 < M; j2++) { d.fromArray(Pp, j2 * 3).sub(C); d.addScaledVector(nP, -d.dot(nP)); rr[j2] = d.length(); mean += rr[j2] / M; }
           // (the target: the shape it was laid to, round the rim's own middle, its length along her split as she is posed --
@@ -3098,7 +3101,7 @@ void main() {
     mouthRest() {
       if (!natOk) return null;
       body.updateMatrixWorld(true);
-      return { centre: natC.clone().applyMatrix4(body.matrixWorld), out: natN.clone().transformDirection(body.matrixWorld) };
+      return { centre: natC.clone().applyMatrix4(body.matrixWorld), out: natN.clone().transformDirection(body.matrixWorld), up: natU.lengthSq() > 0 ? natU.clone().transformDirection(body.matrixWorld) : null };
     },
     get bulge() { return bulgeAmt; },
     setBirthDrive(d) {
