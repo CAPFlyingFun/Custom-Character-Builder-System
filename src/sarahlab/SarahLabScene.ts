@@ -325,6 +325,18 @@ const SEAT_HELD = Object.freeze({ from: 0.9, release: 0.8 });
  * the middle of her canal (`settle`: its neck's joint lies beside her canal's line, where its tucked head has it); and
  * how far behind the middle of its head the way its head points is read from (`headSpan`: about where its neck is). */
 const BIRTH_ALONG = Object.freeze({ inside: 0.01, outside: 0.02, settle: 0.05, headSpan: 0.06 });
+/**
+ * ITS HEAD COMES OUT OF THE MIDDLE OF HER OPENING (Joshua, 2026-11-19: "the opening, opened a little late and the baby's
+ * head appeared to be off centered at first… The head poked through the skin at a few spots"; of her opening drawn wide
+ * round it: "Don't move the opening to proportions that is unrealistic to fit the baby's head… Just shift the head in the
+ * right place"). It rode her canal's own middle line, which comes to her opening at a slant and off its middle: MEASURED in
+ * the room, RECLINE at her 73%, from 1:10 to 1:17 its hair stood through her skin under her opening, and as it crowned it
+ * sat high in her opening, a crescent of her open beside it. So over the last `from` (metres) of her canal its way is
+ * brought onto the straight line out of her opening's own middle, square to it (`VulvaPatch.mouthRest`: as her bones carry
+ * it, before it is drawn round anything), all of it from `full` before her opening, and on out along that line; and her
+ * opening widens (to its own round shape, as before) as a sphere `reach` times its head's meets it. GAME TUNING.
+ */
+const BIRTH_STRAIGHT = Object.freeze({ from: 0.1, full: 0.045, reach: 1.25 });
 const BIRTH_HEAD = Object.freeze({ radius: 0.0475, atLength: 0.51, lift: [0, 0.008, 0.007] as const, tangentSpan: 0.0125, bodyBehind: 0.1, pastMouth: 0.6, centreEase: 0.35 });
 /**
  * THE AFTERBIRTH, drawn (GAME TUNING; its timing is birthSequence.ts AFTERBIRTH): the placenta folded soft as it comes down
@@ -7863,7 +7875,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // her opening: as wide as the head is where her opening is (a sphere's slice), its neck and shoulders after it, and
     // closing once all of it is out; the skin round it bulging as the head comes near and while it crowns
     const x = L - d;
-    let across = Math.abs(x) < R ? 2 * Math.sqrt(R * R - x * x) : 0;
+    // (timed by a sphere BIRTH_STRAIGHT.reach its own, never wider than the head: the head as drawn reaches further
+    // forward of its middle than the sphere does, and at 1:17 its hair stood through her skin round her opening, shut)
+    const Ro = R * BIRTH_STRAIGHT.reach;
+    let across = Math.abs(x) < Ro ? Math.min(2 * R, 2 * Math.sqrt(Ro * Ro - x * x)) : 0;
     if (x <= -R) across = 2 * R * 0.9;
     // (and as its feet leave her, down to part open, easing back from there once it is born)
     let open = across > 0 ? Math.min(1, (across + 0.006) / 0.1) : 0;
@@ -7935,6 +7950,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * birth has it (straight on out, tilted, swung, lifted) -- eased from one to the other over `BIRTH_ALONG` at her opening.
    * `k`: how far it is made long (none of this while it is curled in her womb).
    */
+  /** her opening's own middle and its way out, in her baby's holder (BIRTH_STRAIGHT), or null */
+  function birthMouthLine(): { at: THREE.Vector3; out: THREE.Vector3 } | null {
+    const mr = vulva?.mouthRest(); if (!mr || !babyHolder) return null;
+    babyHolder.updateMatrixWorld(true);
+    return { at: babyHolder.worldToLocal(mr.centre.clone()), out: mr.out.clone().transformDirection(babyHolder.matrixWorld.clone().invert()) };
+  }
+  /** a place `dd` down her canal (`end` its length) brought onto that line as BIRTH_STRAIGHT has it */
+  function straightened(dd: number, end: number, mouth: { at: THREE.Vector3; out: THREE.Vector3 }, out: THREE.Vector3): THREE.Vector3 {
+    const t = Math.min(1, Math.max(0, (dd - (end - BIRTH_STRAIGHT.from)) / (BIRTH_STRAIGHT.from - BIRTH_STRAIGHT.full))), w = t * t * (3 - 2 * t);
+    if (w <= 0) return out;
+    return out.lerp(mouth.at.clone().addScaledVector(mouth.out, dd - end), w);
+  }
   function birthAlong(r: THREE.Object3D, i: number, m: BirthMoment, bones: ReadonlyMap<string, THREE.Bone>, k: number): void {
     birthAlongOff.delete(r);
     const c = alongCanal() && k > 0 && babyHolder && babyCurl && birthHeadModel ? canalHere() : null, neck = bones.get(BABY_BONES.neck);
@@ -7944,12 +7971,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (where its head's middle is down her canal, and how far behind that its neck's joint is, along its length)
     const long = babyCurl.long.clone().applyQuaternion(r.getWorldQuaternion(new THREE.Quaternion())).normalize();
     const behind = Math.max(0, birthHeadModel.clone().applyMatrix4(r.matrixWorld).sub(neck.getWorldPosition(new THREE.Vector3())).dot(long)) / perMetre;
-    const d = Math.max(0, headDownOf(m, end, r.scale.x)) - behind, way = new THREE.Vector3();
+    const d = Math.max(0, headDownOf(m, end, r.scale.x)) - behind, way = new THREE.Vector3(), mouth = birthMouthLine();
     const moved = poseAlong(bones, {
       perMetre, settle: BIRTH_ALONG.settle,
       at: (s, out) => {
         const dd = d - s;
-        if (dd > end && line) out.copy(line.at).addScaledVector(line.way, dd - end); else canalAt(c, dd, out, way);
+        if (dd > end && line) out.copy(line.at).addScaledVector(line.way, dd - end); else { canalAt(c, dd, out, way); if (mouth) straightened(dd, end, mouth, out); }
         return babyHolder!.localToWorld(out);
       },
       share: (s) => { const t = Math.min(1, Math.max(0, (d - s - (end - BIRTH_ALONG.inside)) / (BIRTH_ALONG.inside + BIRTH_ALONG.outside))); return k * (1 - t * t * (3 - 2 * t)); },
@@ -7967,13 +7994,16 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (each point's distance down, measured on her canal as it is now and stretched to the length the birth began with)
     const pts = birthPath.points.map((p) => babyHolder!.worldToLocal(p.clone())), n = pts.length, k0 = L / Math.max(1e-6, birthPath.down[n - 1]), down = birthPath.down.map((x) => x * k0);
     // the point d down her canal, and the way on (past her opening, straight on out the way it leaves her)
-    const at = (dd: number, out: THREE.Vector3) => {
+    const onPath = (dd: number, out: THREE.Vector3) => {
       // (above the top of her cervix, on up the way her canal comes from)
       if (dd < 0) return out.copy(pts[0]).sub(pts[1]).normalize().multiplyScalar(-dd).add(pts[0]);
       let k = 0; while (k < n - 2 && down[k + 1] < dd) k++;
       const f = Math.min(1, Math.max(0, (dd - down[k]) / Math.max(1e-6, down[k + 1] - down[k])));
       return out.copy(pts[k]).lerp(pts[k + 1], f);
     };
+    // (over the last of her canal, onto the line out of her opening's own middle: BIRTH_STRAIGHT)
+    const mouth = birthMouthLine(), endAt = down[n - 1];
+    const at = (dd: number, out: THREE.Vector3) => { onPath(dd, out); return mouth ? straightened(dd, endAt, mouth, out) : out; };
     // (the way along, over a span either side: its rings at the mouth are too close together to say it alone; past her
     // opening, the way the last 2.5 cm of her canal points)
     const end = down[n - 1], span = BIRTH_HEAD.tangentSpan;

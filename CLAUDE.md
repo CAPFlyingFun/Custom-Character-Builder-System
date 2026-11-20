@@ -1651,6 +1651,19 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `pointFoot`, `DESCENT.footOff` (61: the straight body's own, MEASURED on `sarah-baby-straight.glb`): turned at its ankle
   as its legs straighten. MEASURED in the room: 105 and 111 at 0:62, 68 by crowning, 61 from 0:88 until it is born.
   NOT TOUCHED: lifted onto her its feet go back to its curl's and past (122 to 147 degrees with its stretch).
+- **ITS HEAD COMES OUT OF THE MIDDLE OF HER OPENING, AS HER OPENING IS** (Joshua, 2026-11-19: "the opening, opened a little
+  late and the baby's head appeared to be off centered at first… The head poked through the skin at a few spots"; then, of
+  her opening drawn wide and off its middle round the head: "Don't move the opening to proportions that is unrealistic to
+  fit the baby's head, that doesn't happen and looks weird…. Just shift the head in the right place"). `SarahLabScene.ts`
+  `BIRTH_STRAIGHT`: over the last 10 cm of her canal its head's way (and its body's, `birthAlong`) is brought onto the
+  straight line out of her opening's OWN middle, square to it (`vulvaMesh.ts` `mouthRest`: as her bones carry it, before it
+  is drawn round anything), all of it from 4.5 cm before her opening, and on out along that line; and her opening widens to
+  its own round shape as a sphere 1.25 times its head's meets it (the head as drawn reaches further forward than its 4.3 cm
+  sphere). MEASURED in the room, RECLINE at her 73%, before: from 1:10 to 1:17 its hair stood through her skin under and
+  beside her opening, shut at 2 cm, and from 1:20 it sat high in her opening with a crescent of her open beside it. After:
+  nothing through her skin at 1:10, 1:14 and 1:16; her opening widening from 1:16; the head in its middle from 1:17; born
+  with its cord at 1:40 as before; SQUAT the same from her front. TRIED AND TAKEN OUT the same night: her rim following the
+  head sooner (0.5 of its way down) and her perineum bulging sooner -- the head stood out further.
 - After anything changes the birth, her canal, her legs' poses or its poses: `tests/birthBegins.test.ts`,
   `tests/legsOpen.test.ts`, `tests/babyFeet.test.ts`, `tests/babyAlong.test.ts`, `tests/herOwnSkeleton.test.ts`,
   `tests/birthSequence.test.ts`; then the birth read in the room (the `birth` and `legSpread` probes).
