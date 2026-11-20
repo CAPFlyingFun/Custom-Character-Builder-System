@@ -17,7 +17,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
-  CUT_VERTEX_RAMP_M, NECK_STYLES, TEE_BANDS, TOP_CUT, alongArm, armSide, cutAt, cutCoverage, cutEdgeAt, cutPicture, drawCut, isCutTop, isOnePiece, midDepthAt, neckDefault,
+  CUT_VERTEX_RAMP_M, NECK_RANGE, NECK_STYLES, TEE_BANDS, collarAt, hasNoHem, isCatsuit, takesTurtleneck, TOP_CUT, alongArm, armSide, cutAt, cutCoverage, cutEdgeAt, cutPicture, drawCut, isCutTop, isOnePiece, midDepthAt, neckDefault,
   ridgeAt, rimPath, sleevePlane, topCut, topCutSpec, topFrame, type NeckStyle, type TopCut, type TopFrame,
 } from '../src/sarahlab/topCut';
 import { BAND_SHADE, COVERAGE_TEMPLATES, DRAWN_NECK, coverage, cutLayer, designedField, dialsFor, templateCut, wornParams, type CoverageParams } from '../src/sarahlab/paintTemplates';
@@ -510,5 +510,42 @@ describe('a drawn top\'s template', () => {
     const ringer = templateCut(map, t('teeRinger'), d.frame)!, y = ringer.spec.dipY;
     const one = { ...map, rest: Float32Array.from([0, y - 0.016, 0.1, 0, y, 0.1]), region: new Uint8Array(2), arm: new Float32Array(2).fill(NaN) } as unknown as BodyMap;
     expect(Array.from(coverage(one, t('teeRinger'), ringer))).toEqual([1, 0.5].map((v) => expect.closeTo(v, 2)));
+  });
+});
+
+describe('a one-piece\'s and the catsuit\'s neckline: from a low U or V to a turtleneck, its width and its shape (`NECK_RANGE`)', () => {
+  const { frame } = doll();
+  it('is a collar past the base of her neck, level round her up to 5 cm over her neck joint, and a neck opening under it', () => {
+    expect(collarAt(1, frame)).toBeNull();
+    expect(collarAt(0.8, frame)).toBeNull();
+    expect(collarAt(NECK_RANGE.dial, frame)).toBeCloseTo(N + NECK_RANGE.most, 9);
+    expect(collarAt(1 + (NECK_RANGE.dial - 1) / 2, frame)).toBeCloseTo(N + NECK_RANGE.most / 2, 9);
+    expect(collarAt(2, frame)).toBeCloseTo(N + NECK_RANGE.most, 9);
+    const turtle = topCut(specOf(frame, 'crew', { neckFront: NECK_RANGE.dial }), frame), y = N + NECK_RANGE.most;
+    // front and back alike: the garment under its rim, her head over it, at her middle and out over her shoulders
+    for (const x of [0, 0.04, -0.06]) for (const side of [1, -1] as const) {
+      expect(drawingAt(turtle, x, y - 0.01, side), `${x} ${side}`).toBeCloseTo(0.01, 4);
+      expect(drawingAt(turtle, x, y + 0.01, side), `${x} ${side}`).toBeCloseTo(-0.01, 4);
+    }
+  });
+  it('widens and narrows the neck opening by NECK WIDTH, within its range, its depth kept', () => {
+    const at = (neckWide: number) => topCutSpec({ neckFront: 0.85, neckStyle: 'u', sleeve: 1, neckWide }, frame, -4);
+    expect(at(1.4).half).toBeCloseTo(at(1).half * 1.4, 9);
+    expect(at(0.6).half).toBeCloseTo(at(1).half * 0.6, 9);
+    expect(at(9).half).toBeCloseTo(at(1).half * NECK_RANGE.width[1], 9);
+    expect(at(1.4).dipY).toBeCloseTo(at(1).dipY, 9);
+  });
+  it('takes NECK SHAPE over its template\'s style', () => {
+    expect(topCutSpec({ neckFront: 0.85, neckStyle: 'crew', neckShape: 'v', sleeve: 1 }, frame, -4).style).toBe('v');
+    expect(topCutSpec({ neckFront: 0.85, neckStyle: 'u', neckShape: null, sleeve: 1 }, frame, -4).style).toBe('u');
+  });
+  it('is offered on the catsuit, the leotard and the swimsuit alone, in place of NECKLINE', () => {
+    const offered = COVERAGE_TEMPLATES.filter((t) => takesTurtleneck(t.params)).map((t) => t.id);
+    expect(offered).toEqual(['bodysuitFull', 'bodysuit', 'swimsuit']);
+    for (const id of offered) { const d = dialsFor(COVERAGE_TEMPLATES.find((t) => t.id === id)!.params); expect(d, id).toContain('neckline'); expect(d, id).toContain('neckWidth'); expect(d, id).not.toContain('neck'); }
+    for (const t of COVERAGE_TEMPLATES.filter((x) => !takesTurtleneck(x.params))) expect(dialsFor(t.params), t.id).not.toContain('neckline');
+    // the catsuit: a drawn top with no hem and no leg openings, its LEG LENGTH its own
+    const cat = COVERAGE_TEMPLATES.find((t) => t.id === 'bodysuitFull')!.params;
+    expect(isCatsuit(cat)).toBe(true); expect(hasNoHem(cat)).toBe(true); expect(isOnePiece(cat)).toBe(false); expect(dialsFor(cat)).toContain('legEnd');
   });
 });
