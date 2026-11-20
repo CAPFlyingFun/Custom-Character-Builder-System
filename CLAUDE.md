@@ -1664,6 +1664,17 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   nothing through her skin at 1:10, 1:14 and 1:16; her opening widening from 1:16; the head in its middle from 1:17; born
   with its cord at 1:40 as before; SQUAT the same from her front. TRIED AND TAKEN OUT the same night: her rim following the
   head sooner (0.5 of its way down) and her perineum bulging sooner -- the head stood out further.
+  THEN (2026-11-20, his marks on those pictures: "the first 4 frames, I see the head poking through the skin at the bottom,
+  the next 6 frames, the center of the head is slightly off center to the top and there is a gap at the bottom"): it comes
+  to her opening 4 degrees in from her front (`tiltDeg`) and is let down 1.2 cm toward her perineum (`drop`) from 7.5 to
+  4.5 cm before her opening (`dropFrom`, `dropFull`) AND ONLY AS HER OPENING OPENS round it (`openFrom` 0.3 to `openFull`
+  0.8: let down while she is nearly shut between pushes, it stood through her skin under her opening at 1:14). And her
+  opening's middle (`mouthRest`) is read on her rim BEFORE the round that draws it round the head (`iter === 0`): read
+  after, it was the middle of a rim already drawn round the head, which the head was then steered to -- MEASURED, the
+  head 2.4 cm across her one moment and 2.1 the other way the next; now 0.0 at every moment. MEASURED in the room,
+  RECLINE at 73%, the head's middle in her opening's frame (the `birth` probe's `headInMouth`): across 0.0 from 1:06 to
+  1:22; toward her perineum 0.8 to 1.0 cm from 1:17 on. Pictured at 1:12, 1:14, 1:16, 1:17 to 1:20: nothing through her
+  skin, the head filling her opening (the pink seen past it from her side is her opening's inner wall).
 - After anything changes the birth, her canal, her legs' poses or its poses: `tests/birthBegins.test.ts`,
   `tests/legsOpen.test.ts`, `tests/babyFeet.test.ts`, `tests/babyAlong.test.ts`, `tests/herOwnSkeleton.test.ts`,
   `tests/birthSequence.test.ts`; then the birth read in the room (the `birth` and `legSpread` probes).
