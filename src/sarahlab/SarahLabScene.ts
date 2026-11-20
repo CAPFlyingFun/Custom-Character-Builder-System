@@ -8683,7 +8683,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           sm.geometry.computeBoundingBox(); sm.updateWorldMatrix(true, false);
           const box = sm.geometry.boundingBox!, restH = box.max.y - box.min.y, scale = sm.getWorldScale(new THREE.Vector3()).y;
           // (his rest frame stands him 1.70 m tall: MEASURED)
-          const u = skinDetailUniforms(prepareSkinDetailMap(t), restH / 1.7, (restH * scale) / 1.7);
+          const u = skinDetailUniforms(prepareSkinDetailMap(t), restH / 1.7, (restH * scale) / 1.7, SKIN_DETAIL, { min: box.min.y, max: box.max.y });
           patchSkinDetail(mat, u);
           void assets.loadTexture(MALE_OWN_HEIGHT).then((o) => { if (!o || disposed) { o?.dispose(); return; } wearOwnHeight(u, o, mat.map); });
         });
@@ -8696,7 +8696,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           ensureSkinFabric(b.mesh, b.material, { layers: PAINT_LAYER_COUNT, rest });
           // (her rest place is in her bind units, `bindScale` of them to the metre: MEASURED 1.11142)
           const perM = rig && rig.bindScale > 0 ? rig.bindScale : 1.11142, scale = b.mesh.getWorldScale(new THREE.Vector3()).y;
-          const u = skinDetailUniforms(prepareSkinDetailMap(t), perM, perM * scale);
+          b.mesh.geometry.computeBoundingBox(); const hb = b.mesh.geometry.boundingBox!;
+          const u = skinDetailUniforms(prepareSkinDetailMap(t), perM, perM * scale, SKIN_DETAIL, { min: hb.min.y, max: hb.max.y });
           patchSkinDetail(b.material, u);
           // (her own skin picture's depth beside it: the hybrid)
           void assets.loadTexture(SKIN_OWN_HEIGHT).then((o) => { if (!o || disposed) { o?.dispose(); return; } wearOwnHeight(u, o, b.material.map); });

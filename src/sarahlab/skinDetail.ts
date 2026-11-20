@@ -37,6 +37,14 @@ export const SKIN_DETAIL = Object.freeze({
   ownDepthM: 0.0005,
   /** how much darker its pits are (0 none) */
   cavity: 0.18,
+  /**
+   * how much of it her FACE keeps, and between which shares of the body's height it eases to that (BIOLOGICAL SHAPE: an
+   * adult's chin is at about 0.87 of his height and the base of his neck about 0.82). Close on her face, both depths
+   * together read as orange peel (pictured in the room, 2026-11-19; Joshua agreed): a face's pores are finer than a body's.
+   */
+  face: 0.5,
+  faceFrom: 0.83,
+  faceTo: 0.87,
 });
 
 export interface SkinDetailUniforms {
@@ -51,10 +59,14 @@ export interface SkinDetailUniforms {
   skinOwnDepth: { value: number };
   /** 1 once its map is in (until then its sampler reads nothing) */
   skinOwnLoaded: { value: number };
+  /** rest heights between which it eases to its face's share, and that share */
+  skinFace: { value: THREE.Vector3 };
 }
 
 /** `unitsPerMetre`: his rest place's units in a metre (his mesh's own); `posedUnitsPerMetre`: what his drawn surface is in. */
-export function skinDetailUniforms(map: THREE.Texture, unitsPerMetre: number, posedUnitsPerMetre: number, d = SKIN_DETAIL): SkinDetailUniforms {
+export function skinDetailUniforms(map: THREE.Texture, unitsPerMetre: number, posedUnitsPerMetre: number, d = SKIN_DETAIL, rest: { min: number; max: number } | null = null): SkinDetailUniforms {
+  // (the body's height in its rest place: its face eased off from its neck up; without one, nothing eased)
+  const H = rest ? rest.max - rest.min : 0, from = rest ? rest.min + d.faceFrom * H : 1e9, to = rest ? rest.min + d.faceTo * H : 2e9;
   return {
     skinDetailMap: { value: map },
     skinDetailTile: { value: d.tileM * unitsPerMetre },
@@ -63,6 +75,7 @@ export function skinDetailUniforms(map: THREE.Texture, unitsPerMetre: number, po
     skinOwnMap: { value: null },
     skinOwnDepth: { value: d.ownDepthM * posedUnitsPerMetre },
     skinOwnLoaded: { value: 0 },
+    skinFace: { value: new THREE.Vector3(from, to, d.face) },
   };
 }
 
@@ -93,6 +106,7 @@ varying vec3 vSkinRestN;`;
 export const SKIN_DETAIL_FRAGMENT = /* glsl */ `
 uniform sampler2D skinDetailMap, skinOwnMap;
 uniform float skinDetailTile, skinDetailDepth, skinDetailCavity, skinOwnDepth, skinOwnLoaded;
+uniform vec3 skinFace;
 float skinDetailHeight() {
   vec3 w = pow( abs( normalize( SKIN_REST_N ) ), vec3( 4.0 ) );
   w /= max( 1e-5, w.x + w.y + w.z );
@@ -110,7 +124,8 @@ vec3 skinDetailBend( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDir ) 
 export const SKIN_DETAIL_APPLY = /* glsl */ `
 if ( skinDetailDepth > 0.0 || skinOwnDepth > 0.0 ) {
   float skinH = skinDetailHeight();
-  float skinBare = 1.0 - SKIN_COVER; // (none of it under her paint: painted cloth is cloth)
+  float skinBare = ( 1.0 - SKIN_COVER ) // (none of it under her paint: painted cloth is cloth)
+    * mix( 1.0, skinFace.z, smoothstep( skinFace.x, skinFace.y, SKIN_REST.y ) ); // (and less of it on her face)
   vec2 skinDH = vec2( dFdx( skinH ), dFdy( skinH ) ) * skinDetailDepth * skinBare;
 #ifdef USE_MAP
   // her own skin picture's depth (the lab's Convert mode), read where her colour is

@@ -1920,6 +1920,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   FOR ANOTHER GAME (TRADDOMIUM, Galaxy Defender, the Godot rebuild): take the two scripts, the tile, and these numbers; a
   body's own height map is made from ITS OWN skin picture (its own UV layout), never borrowed from another body's.
   PICTURED in the room: plain, its own picture alone, the tile alone, both -- her bare belly and her face.
+  HALF OF IT ON A FACE (`SKIN_DETAIL.face` 0.5, eased in between 0.83 and 0.87 of the body's height in its rest place --
+  BIOLOGICAL SHAPE: the base of the neck to the chin): close on her face both depths read as orange peel (pictured
+  2026-11-19, Joshua: "Haha, yeah…"). MEASURED in the room after: her face and his close, her belly as it was.
 - His organs (a prostate, no womb or ovaries), the pregnancy controls hidden for him, and his EVEN skin are done.
 - NOT DONE: BUILD and the other body shapes on him; his squat (his thighs bunch at his groin); his own pelvis bone; clothes;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
