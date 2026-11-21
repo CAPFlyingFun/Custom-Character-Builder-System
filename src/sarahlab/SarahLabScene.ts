@@ -41,7 +41,7 @@ import { ClothSkirt } from './clothSkirt';
 import { CLOTH_LAYERS, ClothUnder, besideCloth, cinchUnder, coveredBy, holdInside, underTop } from './clothLayers';
 import { SKIRT_RECORD_VERSION, anchorsOf, clampSkirt, fitOf, sameSkirt, type SkirtRecord, type SkirtSettings } from './skirt/skirtDraft';
 import { SkirtPanel } from './skirtPanel';
-import { bodyInputOf } from './garment/bodyInput';
+import { bodyInputOf, rigOf } from './garment/bodyInput';
 import type { BodyInput } from './garment/types';
 import { pickHex, type FabricPick } from './fabricLibrary';
 import { BEND_COMPLIANCE } from './garment/garmentCloth';
@@ -3201,7 +3201,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (garmentProbed || garmentTailoring) return;
     const want = takenOff.has('shirtSpandexLite') ? null : OUTFITS[outfit]?.procedural ?? null;
     const tee = partMeshes.get('spandex-lite')?.[0];
-    if (want && loaded && recovered && tee && model) {
+    const his = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+    if (want && loaded && model && ((recovered && tee) || his)) {
       // on her already, drafted as its settings ask once let go (a re-tailor control let go, a save put on, tailors anew;
       // she keeps the one she has on until the new one is ready -- the Stage 1 plan's re-tailor)
       if (garmentRoom && garmentAuto === want && garmentRoom.tailorKey === garmentCommitted) return;
@@ -3215,6 +3216,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         putOnGarment(garmentSettings.construction, garmentSettings.gusset, false, {}, garmentSettings);
         garmentAuto = garmentRoom ? want : null; garmentDressT = 0;
         if (garmentRoom) garmentRoom.cloth.weightless = true;
+        // (his tee's material is its own: the outfit editor's FABRIC finds it now)
+        if (his && garmentRoom) { fabric?.sync(); fabric?.refreshTargets(); }
         applyLook(); refresh(); settle();
       }, 30);
       return;
@@ -3314,13 +3317,21 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const teeMaterial = partMeshes.get('spandex-lite')?.[0]?.material;
     const shared = !wire && teeMaterial && !Array.isArray(teeMaterial) ? teeMaterial : null;
     if (shared) { setClothNeckline(shared, null); setClothTrim(shared, null); }
-    const material = shared ?? new THREE.MeshStandardMaterial({ color: 0xe8e4dc, roughness: 0.85, side: THREE.DoubleSide, wireframe: wire, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+    // HIS CLOTH TEE (Joshua, 2026-11-20: "focus on his cloth tee now"): he has no light tee of his own to lend it a
+    // material, so it wears one of its own NAMED as that tee's, which the outfit editor's FABRIC finds it by; it is
+    // tailored to his body by his own rig (his joints by role, his arm bones, his units), with no domes (her navel's
+    // and nipples' points are hers) and none of her 0% design or her BELLY ROOM
+    const his = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+    const material = shared ?? new THREE.MeshStandardMaterial({ name: his && !wire ? 'shirtSpandexLite' : '', color: 0xe8e4dc, roughness: 0.85, side: THREE.DoubleSide, wireframe: wire, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+    const hisRig = his && measure ? rigOf(body, measure.joints, 1 / (rig && rig.bindScale > 0 ? rig.bindScale : 1)) : null;
+    if (his && !hisRig) return null;
     garmentRoom = new RoomGarment({
       body, root: model, params: { construction, gusset, ...(extra.neckWidth !== undefined ? { neckWidth: extra.neckWidth } : {}), ...(extra.neckDrop !== undefined ? { neckDrop: extra.neckDrop } : {}), ...(extra.bustShaping ? { bustShaping: extra.bustShaping } : {}), ...(extra.armholeBand !== undefined ? { armholeBand: extra.armholeBand } : {}) },
-      neckBand: extra.neckBand, ...(extra.detail === false ? { detail: false } : {}), settings, standOff, unitsPerMetre: M, scale: FACE_REST_SCALE, offset: FACE_REST_OFFSET, material,
+      neckBand: extra.neckBand, ...(extra.detail === false ? { detail: false } : {}), settings, standOff, unitsPerMetre: M, material,
+      ...(hisRig ? { scale: hisRig.scale, offset: hisRig.offset, rig: hisRig, detailPoints: null, fabricScale: 1 / M } : { scale: FACE_REST_SCALE, offset: FACE_REST_OFFSET }),
       // the outfit's new tee (Stage 3): drafted to its full extent from its settings and worn as they cut it, its edge
       // drawn by the material; BELLY ROOM reads her at the room's size; FIT scales its own size
-      ...(garment ? { garment, roomShape } : {}), designRest, fitScale: garmentFitScale(),
+      ...(garment ? { garment, ...(hisRig ? {} : { roomShape }) } : {}), ...(hisRig ? {} : { designRest }), fitScale: garmentFitScale(),
     });
     if (garment) setCutEdge(material, true);
     three.add(garmentRoom.cloth.mesh);
@@ -4045,9 +4056,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     };
     fabric = fabricPanel({
       // (and her skirt, a garment of its own: `syncSkirt`)
-      meshes: () => (skirtRoom ? [...skinned, skirtRoom.mesh as unknown as THREE.SkinnedMesh] : skinned),
+      meshes: () => [...skinned, ...(skirtRoom ? [skirtRoom.mesh as unknown as THREE.SkinnedMesh] : []), ...(garmentRoom && isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? [garmentRoom.cloth.mesh as unknown as THREE.SkinnedMesh] : [])],
       body: () => skinned.find(m => !!m.geometry.getAttribute('_cloth_cover')) ?? null,
-      worn: () => [...wornNow().map(g => ({ name: g as string, label: GARMENT_LABEL[g] ?? g, trim: skinned.some(m => (Array.isArray(m.material) ? m.material : [m.material]).some(x => x.name === `${g}Trim`)) })), ...(skirtRoom && !skirtProbe ? [{ name: 'skirt', label: OUTFITS[outfit]?.name.includes('skirt') ? `${OUTFITS[outfit].name.split(' + ').find((x) => x.includes('skirt')) ?? 'skirt'}` : 'skirt', trim: false }] : [])],
+      worn: () => [...wornNow().map(g => ({ name: g as string, label: GARMENT_LABEL[g] ?? g, trim: skinned.some(m => (Array.isArray(m.material) ? m.material : [m.material]).some(x => x.name === `${g}Trim`)) })), ...(garmentRoom && isMaleModel(SARAH_LAB_MODELS[modelIndex].id) && !takenOff.has('shirtSpandexLite') ? [{ name: 'shirtSpandexLite', label: GARMENT_LABEL.shirtSpandexLite ?? 'tee', trim: false }] : []), ...(skirtRoom && !skirtProbe ? [{ name: 'skirt', label: OUTFITS[outfit]?.name.includes('skirt') ? `${OUTFITS[outfit].name.split(' + ').find((x) => x.includes('skirt')) ?? 'skirt'}` : 'skirt', trim: false }] : [])],
       // REMOVE PIECE on a garment (Joshua, 2026-11-20: "make the skirts as a layer to remove"; "check the cloth shirts as
       // well"): taken off her until another outfit is put on; a save keeps the list (`SavedClothes.off`)
       takeOff: (name) => { takenOff.add(name); syncSkirt(); syncGarment(); if (name === 'shirtSpandexLite' && cloth && clothOn) void toggleCloth(); applyLook(); refresh(); },
@@ -10624,6 +10635,13 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // its strain now (length / pattern length x FIT): everywhere, and over the underarm
         garmentStrain: () => garmentRoom ? { all: garmentRoom.cloth.strain(), underarm: garmentRoom.cloth.strain((p) => garmentRoom!.underarm[p] === 1) } : null,
         garmentNeck: () => garmentRoom?.neck() ?? null,
+        // where the procedural tee is: its drafted rest places (metres) and its cloth now, each as a box, and how many of
+        // its cloth's numbers are not numbers (a probe's first question of a tee on a new body)
+        garmentBox: () => {
+          if (!garmentRoom) return null;
+          const box = (a: ArrayLike<number>) => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; let bad = 0; for (let i = 0; i < a.length; i += 3) { if (!Number.isFinite(a[i])) { bad++; continue; } for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], a[i + c]); hi[c] = Math.max(hi[c], a[i + c]); } } return { lo, hi, bad, n: a.length / 3 }; };
+          return { rest: box(garmentRoom.tailored.placed.positions), cloth: box(garmentRoom.cloth.positions), joints: garmentRoom.tailored.measure };
+        },
         // the most stretched edges now, which particles and where, and what her skin carries under them (a probe's look)
         garmentWorst: (k = 8) => garmentRoom ? garmentRoom.cloth.worst(k).map((w) => ({ ...w, trunkOnly: garmentRoom!.tailored.placed.trunkOnly[w.a], piece: garmentRoom!.tailored.sewn.particlePiece[w.a] })) : null,
         // the particles furthest inside her skin now, and their floors (a probe's look at skin showing through)

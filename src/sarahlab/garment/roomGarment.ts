@@ -18,7 +18,7 @@
  */
 import * as THREE from 'three';
 import type { Capsules, ClothSettings } from '../clothSim';
-import { bodyInputOf, SARAH_V2_ARM_BONES, SARAH_V2_JOINTS } from './bodyInput';
+import { bodyInputOf, SARAH_V2_RIG, type GarmentRig } from './bodyInput';
 import { bodyCapsules, type CapsuleRequest } from './capsules';
 import { teeParams, type TeeParams } from './draft';
 import { garmentCuts, garmentStops } from './cuts';
@@ -64,6 +64,16 @@ export interface RoomGarmentOptions {
   readonly designRest?: (measure: () => void) => void;
   /** The cloth's FIT dial against its default: the drafted tee's rest scale (REST_SCALE) times this. Default 1. */
   readonly fitScale?: number;
+  /** The body's rig (its joints, its arm bones; `scale` and `offset` are this file's own): hers, `SARAH_V2_RIG`, unsaid. */
+  readonly rig?: GarmentRig;
+  /**
+   * Metres a unit of the fabric's rest surface (`fabricRest`, which the weave is laid on): `scale` unsaid, her geometry's
+   * own (her tee shares her light tee's material, laid in her units). A tee with a material of its own is laid as the
+   * skirt is, in the room's units (MEASURED: his tee laid in his geometry's metres wore its jersey a hundred times over).
+   */
+  readonly fabricScale?: number;
+  /** Where her navel and nipples are (the domes over them): hers unsaid; null, none (a body without her points). */
+  readonly detailPoints?: typeof SARAH_V2_DETAIL_POINTS | null;
 }
 
 export interface ArmPose { raise: number; forward: number; elbow: number }
@@ -92,21 +102,22 @@ export class RoomGarment {
     this.options = options;
     const design = options.designRest ?? ((measure: () => void) => measure());
     let input!: BodyInput;
-    design(() => { input = bodyInputOf(options.body, { belly: 1 }); });
+    const rig = options.rig ?? SARAH_V2_RIG;
+    design(() => { input = bodyInputOf(options.body, rig === SARAH_V2_RIG ? { belly: 1 } : {}, { ...rig, scale: options.scale, offset: options.offset }); });
     const g = options.garment;
     const params = teeParams(g ? { ...tailorParams(g), ...options.params } : options.params);
     this.tailorKey = g ? tailorKey(g) : '';
     this.tailored = tailor(input, params, { scale: options.scale, offset: options.offset });
     const t = this.tailored;
     this.cloth = new GarmentCloth({
-      body: options.body, sewn: t.sewn, binding: t.binding, trunkOnly: t.placed.trunkOnly, armBones: SARAH_V2_ARM_BONES,
+      body: options.body, sewn: t.sewn, binding: t.binding, trunkOnly: t.placed.trunkOnly, armBones: rig.armBones,
       settings: { ...options.settings, restScale: REST_SCALE * (options.fitScale ?? 1) }, standOff: options.standOff, material: options.material, unitsPerMetre: options.unitsPerMetre,
       // her design at 0% belly, as `bodyInputOf` read her to tailor it: every cut is measured from there
       tailoredShape: (measure) => design(() => tailoredShape(options.body, measure)),
       ...(options.roomShape ? { roomShape: options.roomShape } : {}),
       // worn as its settings cut it from the start (the full extent is never simulated whole)
       ...(g ? { cuts: garmentCuts(t, g) } : {}),
-      drawLift: DRAW_LIFT * options.unitsPerMetre, fabricRest: fabricRestOf(t.placed.positions, options.scale, options.offset), neckBand: options.neckBand ?? params.neckBand ?? 1, armpitRule: params.construction !== 'setIn', detail: SARAH_V2_DETAIL_POINTS, ...(options.detail === false ? { detailDomes: false } : {}),
+      drawLift: DRAW_LIFT * options.unitsPerMetre, fabricRest: fabricRestOf(t.placed.positions, options.fabricScale ?? options.scale, options.offset), neckBand: options.neckBand ?? params.neckBand ?? 1, armpitRule: params.construction !== 'setIn', ...(options.detailPoints === null ? {} : { detail: options.detailPoints ?? SARAH_V2_DETAIL_POINTS }), ...(options.detail === false ? { detailDomes: false } : {}),
     });
     if (g) this.cloth.bellyRoom = g.bellyRoom;
     this.underarm = new Uint8Array(t.sewn.count);
@@ -129,7 +140,7 @@ export class RoomGarment {
   applyPose(): void {
     const { raise, forward, elbow } = this.pose;
     if (!raise && !forward && !elbow) return;
-    const bones = this.options.body.skeleton.bones, J = SARAH_V2_JOINTS;
+    const bones = this.options.body.skeleton.bones, J = (this.options.rig ?? SARAH_V2_RIG).joints;
     this.options.root.updateMatrixWorld(true);
     const frame = this.options.root.getWorldQuaternion(this.frameQuaternion);
     const turn = (i: number, q: THREE.Quaternion) => {
@@ -148,7 +159,7 @@ export class RoomGarment {
 
   /** One frame of the cloth, her capsules read from her as she is now. */
   frame(dt: number): void {
-    const t = this.tailored, J = SARAH_V2_JOINTS;
+    const t = this.tailored, J = (this.options.rig ?? SARAH_V2_RIG).joints;
     const caps = bodyCapsules(this.options.body, { shoulder: J.shoulder, elbow: J.elbow, wrist: J.wrist, hip: J.hip, knee: J.knee }, t.measure, this.capsules, this.options.unitsPerMetre, this.capsuleBuffer);
     this.capsuleBuffer = caps;
     this.cloth.frame(dt, caps.count ? caps : undefined);

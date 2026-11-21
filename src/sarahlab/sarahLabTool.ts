@@ -690,16 +690,16 @@ export interface PaintedLayer {
  * GAME TUNING, by eye on her: metres under her front neck point and across her shoulders, and the sliders' own stops.
  */
 export const CLOTH_TOPS: readonly (readonly [name: string, tint: string | null, cut: Partial<GarmentSettings>, construction?: 'raglan' | 'setIn'])[] = Object.freeze([
-  ['cloth crew tee + leggings', null, { neckDepth: 0.025, neckWidth: 0.18 }],
+  ['cloth crew tee + leggings', null, { neckDepth: 0.025, neckWidth: 0.18, length: 17 }],
   ['cloth U-neck tee + leggings', null, { neckDepth: 0.11, neckWidth: 0.2, neckCurve: 0 }],
-  ['cloth V-neck tee + leggings', null, { neckDepth: 0.13, neckWidth: 0.2, neckCurve: 1 }],
+  ['cloth V-neck tee + leggings', null, { neckDepth: 0.13, neckWidth: 0.2, neckCurve: 1, length: 17 }],
   ['cloth scoop-neck tee + leggings', SHEET_PLUM, { neckDepth: 0.12, neckWidth: 0.26, neckCurve: 0.15 }],
   // (these two SET-IN: MEASURED in the room on the base model, a raglan cut off at her shoulder leaves its armhole open
   // down her side to her waist; a set-in's armhole lies round her arm -- and is still deep, seen from her side)
   ['cloth sleeveless tee + leggings', SHEET_TOPS.olive, { neckDepth: 0.06, neckWidth: 0.2, sleeve: 0 }, 'setIn'],
   ['cloth cap-sleeve tee + leggings', SHEET_TOPS.rose, { neckDepth: 0.06, neckWidth: 0.2, sleeve: 20 }, 'setIn'],
   ['cloth three-quarter tee + leggings', SHEET_TOPS.heather, { neckDepth: 0.04, sleeve: 80 }],
-  ['cloth long-sleeve tee + leggings', SHEET_DENIM, { neckDepth: 0.025, sleeve: 100 }],
+  ['cloth long-sleeve tee + leggings', SHEET_DENIM, { neckDepth: 0.025, sleeve: 100, length: 17 }],
   ['cloth crop tee + leggings', SHEET_TOPS.lilac, { neckDepth: 0.04, length: 0 }],
   ['cloth tunic + leggings', SHEET_TOPS.burgundy, { neckDepth: 0.08, neckWidth: 0.22, length: 50 }],
 ]);
@@ -885,6 +885,17 @@ export const OUTFITS: readonly BuiltInOutfit[] = [
   ] as const).map(([name, layers]): BuiltInOutfit => ({
     name, garments: [], his: true,
     paint: layers.map(([template, tint]) => ({ template, fabric: { family: template === 'teeShort' || template === 'teeV' || template === 'sleeveless' || template === 'teeLong' ? 'jersey' : 'athletic', colour: 0, tint } })),
+  })),
+  // HIS CLOTH TEES (Joshua, 2026-11-20: "focus on his cloth tee now"): the procedural tee tailored to him, over his
+  // athletic shorts -- crew, V-neck and long sleeve. Put after his painted six
+  ...([
+    ['his cloth tee + athletic shorts', MALE_COLOURS.heather, MALE_COLOURS.black, { neckDepth: 0.025, neckWidth: 0.18, length: 17 }],
+    ['his cloth V-neck tee + athletic shorts', MALE_COLOURS.navy, MALE_COLOURS.charcoal, { neckDepth: 0.13, neckWidth: 0.2, neckCurve: 1, length: 17 }],
+    ['his cloth long-sleeve tee + athletic shorts', MALE_COLOURS.charcoal, MALE_COLOURS.black, { neckDepth: 0.025, sleeve: 100, length: 17 }],
+  ] as const).map(([name, tee, shorts, cut]): BuiltInOutfit => ({
+    name, garments: [], his: true, procedural: 'raglan', cut,
+    paint: [{ template: 'shortsMale', fabric: { family: 'athletic', colour: 0, tint: shorts } }],
+    fabrics: { shirtSpandexLite: { family: 'jersey', colour: 0, tint: tee } },
   })),
 ];
 /**

@@ -2065,7 +2065,22 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     three-quarter and his back, his underwear from his front, side, back and below, the sleeveless from both sides.
   - Their cards: `MALE=1 node scripts/bakeOutfitThumbs.mjs` (ONLY= his); his styles' pictures: `MALE=1
     ONLY=trunks,boxerBriefs,shortsMale,tightsMale node scripts/bakeStyleThumbs.mjs`.
-- NOT DONE: his own pelvis bone; true briefs; the cloth tee on him; loose shorts and trousers;
+- **HIS CLOTH TEE** (Joshua, 2026-11-20: "we should focus on his cloth tee now"). The procedural tee (`garment/`) DRAFTED ON
+  HIM: `bodyInput.ts` `rigOf` (his joints by role, his arm bones every bone from a shoulder down, his geometry's metres as
+  they are: `bindScale` 1, no offset) in place of her `SARAH_V2_RIG`; `RoomGarment`'s `rig`, `detailPoints: null` (her
+  navel and nipples' detail points are hers) and `fabricScale` (his weave laid in metres, as hers is: `1 / M`, or the
+  jersey drew in blotches). Its material is `shirtSpandexLite`, so the outfit editor's fabrics, colours and a picture of
+  his own reach it. Three outfits of his, put after his six (`sarahLabTool.ts`): `his cloth tee`, `his cloth V-neck tee`
+  and `his cloth long-sleeve tee + athletic shorts`, each at LENGTH 17 (the drafted hem, her hip's, is at his mid-thigh:
+  his widest girth is low -- at 12 a gap of skin over his shorts' waistband), fetching nothing. GAME TUNING.
+  - TWO WRONG STEPS OF MINE ON THE WAY: `unitsPerMetre` must be the room's (M, world cm): at 1 the tee closed to a ring;
+    and a HALF TURN I gave his body on the way in, thinking her rest frame faces -z -- `measure.ts` reads her front as
+    the LARGEST z, as his faces: turned, the V-neck was on his back. Taken out.
+  - MEASURED in the room (light skin, 1x): the three from his three-quarter and his back, the crew from his side; hem
+    86 to 87 cm from the floor, over his shorts' waistband; no error on the page.
+  - NOT DONE: his tee in his poses (squat, seated, walking) looked at; its sleeves stand a little off his arms (the
+    draft's ease is hers); a cuff's edge at the long sleeve's wrist.
+- NOT DONE: his own pelvis bone; true briefs; loose shorts and trousers;
   his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
 - After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:
   MALE, his belly at 0, 100 and 200% from his side and front, T-POSE from his back, X-RAY from his side.

@@ -161,8 +161,10 @@ describe('the room opens with only what she has on', () => {
     // ...and three with the cloth tee over or under a skirt, fetching the light tee alone, as every cloth tee does
     for (let i = 50; i < 53; i++) { expect(OUTFITS[i].skirt).toBeDefined(); expect(OUTFITS[i].procedural).toBe('raglan'); expect(recoveredPartsFor(wornGarments(i, all))).toEqual(recoveredPartsFor(wornGarments(7, all))); }
     // ...and HIS six (2026-11-20), all paint, fetching nothing, offered on him alone
-    for (let i = 53; i < OUTFITS.length; i++) { expect(OUTFITS[i].his).toBe(true); expect(OUTFITS[i].paint?.length).toBeGreaterThan(0); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
-    expect(OUTFITS).toHaveLength(59);
+    for (let i = 53; i < 59; i++) { expect(OUTFITS[i].his).toBe(true); expect(OUTFITS[i].paint?.length).toBeGreaterThan(0); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
+    // ...and HIS three cloth tees (the same day): drafted on him, fetching nothing (her light tee's file is hers)
+    for (let i = 59; i < 62; i++) { expect(OUTFITS[i].his).toBe(true); expect(OUTFITS[i].procedural).toBe('raglan'); expect(recoveredPartsFor(wornGarments(i, all))).toEqual([]); }
+    expect(OUTFITS).toHaveLength(62);
   });
 
   it('cycles through the painted outfits, the light tee, the bikini and none on the slim v2 body, never the big modelled shirts and leggings', () => {
