@@ -366,6 +366,7 @@ const AFTERBIRTH = Object.freeze({
 import { BIRTH_CONTACT_FIELD, createBirthContact, type BirthContact } from './birthContact';
 import { KNEE_TURN_FIELD, createKneeTurn, type KneeTurn } from './kneeTurn';
 import { HIP_TURN_FIELD, bellyHold, createHipTurn, type HipTurn } from './hipTurn';
+import { SIT_BELLY, SIT_BELLY_FIELD, createSitBelly, type SitBelly } from './sitBelly';
 import { hisBone, herBone } from './maleRig';
 import { MALE_BELLY, maleBellyField, maleOutieField, vertexNormals } from './maleBelly';
 /** His belly's and his navel's shape fields (the male base model's: maleBelly.ts). */
@@ -448,7 +449,7 @@ import { UNITS_PER_METRE as GEOMETRY_PER_METRE } from './softBody';
  */
 /** The poses a skirt has ridden up her thighs in (`syncSkirt`). */
 const SKIRT_RIDES_UP: ReadonlySet<string> = new Set(['squat', 'recline']);
-const POSE_SHAPE_FIELDS: readonly string[] = Object.freeze([BIRTH_THIGHS_FIELD, BIRTH_GAP_FIELD, BIRTH_SEAT_FIELD, BIRTH_ROOM_FIELD, BIRTH_NORMALS_FIELD, BIRTH_KNEES_FIELD, KNEE_TURN_FIELD, HIP_TURN_FIELD, BIRTH_CONTACT_FIELD]);
+const POSE_SHAPE_FIELDS: readonly string[] = Object.freeze([BIRTH_THIGHS_FIELD, BIRTH_GAP_FIELD, BIRTH_SEAT_FIELD, BIRTH_ROOM_FIELD, BIRTH_NORMALS_FIELD, BIRTH_KNEES_FIELD, KNEE_TURN_FIELD, HIP_TURN_FIELD, BIRTH_CONTACT_FIELD, SIT_BELLY_FIELD]);
 /**
  * WHAT OF HER GROIN'S SMOOTHING A DRAWN GARMENT RIDES (`birthNormals.ts`): in front of her it rides it, as all of her
  * pose; BEHIND HER it does not -- there the smoothing irons her posed skin by sliding its points along it, each its own
@@ -915,6 +916,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** (a probe's) SIT's room made again with numbers of its own; her hips turned and her belly held in SIT; her seated correctives */
   let keepMs = 0;
   let sitRoomMake: ((tune: Partial<Record<keyof typeof BIRTH_ROOM, number>>) => BirthRoom | null) | null = null, sitHipOn = true, sitHoldOn = false, seatShapesOn = true, sitWeightsOn = true, sitAsSeated = false, sitShareLaid = -1, sitLayMs = 0;
+  /** seated, her bump carried as her own weights carry it (sitBelly.ts), and whether it is on */
+  let sitBelly: SitBelly | null = null, sitBellyOn = true, sitBellyUnderNormals = true;
   /** her groin lit as it is bent (birthNormals.ts), and whether it is on */
   let birthNormals: BirthNormals | null = null, birthNormalsOn = true;
   /** her middle kept with her pelvis in a birth position (birthWeights.ts), and a probe's override of how much */
@@ -2687,6 +2690,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     out[BIRTH_KNEES_FIELD] = isBirthPose(pose) && birthKneesOn ? 1 : 0;
     out[KNEE_TURN_FIELD] = kneeTurnHere() ? 1 : 0;
     out[HIP_TURN_FIELD] = hipTurnHere() || bellyHeldHere() > 0 ? 1 : sitHipHere() || sitHeldHere() > 0 ? sitShare() : 0;
+    out[SIT_BELLY_FIELD] = sitBellyOn && sitWeightsOn ? sitShare() : 0;
     out[BIRTH_CONTACT_FIELD] = pose === 'squat' && birthContactOn ? Math.max(0, contactValve.x) : 0;
     // AUTO DEPTH: her belly deepened by as much as her babies need (baby.ts, `babiesInHer`), on her own DEPTH
     if (babyAutoDepth) out[DEPTH_FIELD] = (out[DEPTH_FIELD] ?? 0) + bodyShapeFieldWeights({ ...body, bellyDepth: babyAutoDepth }, b, bellyCurve)[DEPTH_FIELD];
@@ -2909,14 +2913,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // and steps with her file's weights -- so the piece smoothed it away inside its ring and left it outside: a raised
     // patch with a ragged edge round her navel as soon as the field reached that far (MEASURED in the room 2026-11-16,
     // SQUAT at 200% with her belly held: 6 to 14 mm in the picture, none in her points as her bones alone carry them).
-    const sf = shaped.find((x) => x.mesh === navel!.mesh)?.fields, hf = sf?.fields.get(HIP_TURN_FIELD), hw = hf ? sf?.laid?.get(HIP_TURN_FIELD) ?? 0 : 0;
+    // (and her bump's carry seated, sitBelly.ts, the same way: it steps with her weights as well)
+    const sf = shaped.find((x) => x.mesh === navel!.mesh)?.fields;
     const pa = navel.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, P = pa.array as Float32Array;
-    const carry = (sign: number) => { if (!hf || !hw) return; const ix = hf.index, d = hf.pos; for (let j = 0; j < ix.length; j++) { const o = ix[j] * 3; P[o] += sign * hw * d[j * 3]; P[o + 1] += sign * hw * d[j * 3 + 1]; P[o + 2] += sign * hw * d[j * 3 + 2]; } };
+    let any = false;
+    const carry = (sign: number) => { for (const name of [HIP_TURN_FIELD, SIT_BELLY_FIELD]) carryOne(sign, sf?.fields.get(name), sf?.laid?.get(name) ?? 0); };
+    const carryOne = (sign: number, hf: { index: ArrayLike<number>; pos: ArrayLike<number> } | undefined, hw: number) => { if (!hf || !hw) return; any = true; const ix = hf.index, d = hf.pos; for (let j = 0; j < ix.length; j++) { const o = ix[j] * 3; P[o] += sign * hw * d[j * 3]; P[o + 1] += sign * hw * d[j * 3 + 1]; P[o + 2] += sign * hw * d[j * 3 + 2]; } };
     carry(-1);
     if (navelSoft) { const x: [number, number] = [navelXAt(0), navelXAt(1)]; navelLaid = { x, raw: [navelRawXAt(0), navelRawXAt(1)] }; navelSoft.lay(lw, x[0], x[1]); }
     else navel.piece.apply(navel.mesh, lw, navelX(b));
     carry(1);
-    if (hf && hw) pa.needsUpdate = true;
+    if (any) pa.needsUpdate = true;
   }
 
   function lookWeights(mesh: THREE.SkinnedMesh, b: number): Record<string, number> {
@@ -7109,8 +7116,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // (SIT has its own: her hips turned and her groin smoothed, worked out on her seated -- `sitRoomHere`)
     const sitting = sitRoomHere();
     if (!sitting && (!isBirthPose(pose) || (!birthRoomOn && !birthNormalsOn && !birthKneesOn))) { birthRoomFor = ''; return; }
-    const shapeKey = sb.fields.last.split('|').filter((k) => !k.startsWith(BIRTH_ROOM_FIELD) && !k.startsWith(BIRTH_NORMALS_FIELD) && !k.startsWith(BIRTH_KNEES_FIELD) && !k.startsWith(BIRTH_CONTACT_FIELD) && !k.startsWith(KNEE_TURN_FIELD) && !k.startsWith(HIP_TURN_FIELD)).join('|');
-    const sig = `${sitting ? 'sit' : pose}|${sitting}|${sitRoomOn}${sitNormalsOn}${sitHipOn}${sitHoldOn}${sitWeightsOn}|${JSON.stringify(birthTweak)}|${Math.round(bump)}|${birthRoomOn}|${birthNormalsOn}|${birthKneesOn}|${birthContactOn}|${kneeTurnOn}|${hipTurnOn}|${bellyHoldOn}${bellyHoldSquat}|${birthMaskOverride}|${shapeKey}`;
+    const shapeKey = sb.fields.last.split('|').filter((k) => !k.startsWith(BIRTH_ROOM_FIELD) && !k.startsWith(BIRTH_NORMALS_FIELD) && !k.startsWith(BIRTH_KNEES_FIELD) && !k.startsWith(BIRTH_CONTACT_FIELD) && !k.startsWith(KNEE_TURN_FIELD) && !k.startsWith(HIP_TURN_FIELD) && !k.startsWith(SIT_BELLY_FIELD)).join('|');
+    const sig = `${sitting ? 'sit' : pose}|${sitting}|${sitRoomOn}${sitNormalsOn}${sitHipOn}${sitHoldOn}${sitWeightsOn}${sitBellyOn}|${JSON.stringify(birthTweak)}|${Math.round(bump)}|${birthRoomOn}|${birthNormalsOn}|${birthKneesOn}|${birthContactOn}|${kneeTurnOn}|${hipTurnOn}|${bellyHoldOn}${bellyHoldSquat}|${birthMaskOverride}|${shapeKey}`;
     if (sig === birthRoomFor) return;
     birthRoomFor = sig;
     const keepAt = performance.now();
@@ -7122,17 +7129,33 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (asSeated) rig!.apply(turnsFor('sit', poseOut));
     // her shape without either of these first: each is worked out on her as she would be without it
     const bare = new Map(sb.fields.fields);
-    bare.delete(BIRTH_ROOM_FIELD); bare.delete(BIRTH_NORMALS_FIELD); bare.delete(BIRTH_KNEES_FIELD); bare.delete(BIRTH_CONTACT_FIELD); bare.delete(KNEE_TURN_FIELD); bare.delete(HIP_TURN_FIELD);
+    bare.delete(BIRTH_ROOM_FIELD); bare.delete(BIRTH_NORMALS_FIELD); bare.delete(BIRTH_KNEES_FIELD); bare.delete(BIRTH_CONTACT_FIELD); bare.delete(KNEE_TURN_FIELD); bare.delete(HIP_TURN_FIELD); bare.delete(SIT_BELLY_FIELD);
     sb.fields = { ...sb.fields, fields: bare, last: '' };
     applyLook();
     model.updateMatrixWorld(true);
     const g = b.mesh.geometry;
     const map = new Map(bare);
+    // SEATED, HER BUMP FIRST, CARRIED AS HER OWN WEIGHTS CARRY IT (sitBelly.ts), over her under-belly line (the
+    // under-belly leggings' own, as a skirt's ring is laid on it: `fabricPanel.hoopOn`), on her bare shape
+    if (sitting && sitBelly && sitBellyOn && sitWeightsOn && birthWeights && fabric) {
+      const Pb = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, Nb = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
+      const shapedNow = new Float32Array(Pb.length), vv = new THREE.Vector3();
+      for (let i = 0; i < Pb.length / 3; i++) { THREE.Mesh.prototype.getVertexPosition.call(b.mesh, i, vv); shapedNow[i * 3] = vv.x; shapedNow[i * 3 + 1] = vv.y; shapedNow[i * 3 + 2] = vv.z; }
+      const inside = fabric.hoopOn(SKIRT_UNDER_BAND, shapedNow);
+      if (inside) {
+        map.set(SIT_BELLY_FIELD, sitBelly.compute(Pb, Nb, inside, { index: birthWeights.ownIndex, weight: birthWeights.ownWeight }));
+        sb.fields = { ...sb.fields, fields: new Map(map), last: '' };
+        applyLook();
+        model.updateMatrixWorld(true);
+      }
+    }
     // her hips turned round first, on her bare shape: what follows smooths her as turned
     const turnHere = sitting ? sitHipHere() : hipTurnHere(), heldHere = sitting ? sitHeldHere() : bellyHeldHere();
     if (hipTurn && (turnHere || heldHere > 0)) {
       const P0 = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, N0 = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
-      map.set(HIP_TURN_FIELD, hipTurn.compute(P0, N0, turnHere, heldHere, sitting ? SIT_HIP_EASE : 0));
+      const turned = hipTurn.compute(P0, N0, turnHere, heldHere, sitting ? SIT_HIP_EASE : 0);
+      // (seated, kept off her bump: it is carried as her own weights carry it, `sitBelly`)
+      map.set(HIP_TURN_FIELD, sitting && map.has(SIT_BELLY_FIELD) && sitBelly ? sitBelly.under(turned) : turned);
       sb.fields = { ...sb.fields, fields: new Map(map), last: '' };
       applyLook();
       model.updateMatrixWorld(true);
@@ -7145,7 +7168,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         sb.fields = { ...sb.fields, fields: new Map(map), last: '' }; applyLook(); model.updateMatrixWorld(true);
         const Ps = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, Ns = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
         if (halfByPose) birthNormals.setHalf(!sitHipHere());
-        map.set(BIRTH_NORMALS_FIELD, birthNormals.compute(Ps, Ns, 0, 0));
+        const smoothed = birthNormals.compute(Ps, Ns, 0, 0);
+        map.set(BIRTH_NORMALS_FIELD, sitBellyUnderNormals && map.has(SIT_BELLY_FIELD) && sitBelly ? sitBelly.under(smoothed) : smoothed);
       }
       sb.fields = { ...sb.fields, fields: map, last: '' };
       sitAsSeated = false;
@@ -9396,7 +9420,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               }
               birthKnees = centres.length ? createBirthNormals(bm!, babyFrame.meshToRest, herTris, [], undefined, undefined, undefined, { centres, near: KNEE_SMOOTH.near, far: KNEE_SMOOTH.far, passes: KNEE_SMOOTH.passes, lambda: KNEE_SMOOTH.lambda, bones: pairs, restore: kneeRestore }) : null;
             } catch (error) { console.error('[sarahlab] her knees could not be smoothed', error); birthKnees = null; }
-            try { const jt = measure?.joints; hipTurn = jt ? createHipTurn(bm!, [jt.hipL, jt.hipR], [jt.hipL, jt.hipR, jt.kneeL, jt.kneeR], babyFrame.meshToRest) : null; } catch (error) { console.error('[sarahlab] her hips could not be turned', error); hipTurn = null; }
+            try { const jt = measure?.joints; hipTurn = jt ? createHipTurn(bm!, [jt.hipL, jt.hipR], [jt.hipL, jt.hipR, jt.kneeL, jt.kneeR], babyFrame.meshToRest) : null; sitBelly = jt ? createSitBelly(bm!, 0.89974678) : null; } catch (error) { console.error('[sarahlab] her hips could not be turned', error); hipTurn = null; }
             try { const jt = measure?.joints; kneeTurn = jt ? createKneeTurn(bm!, [[jt.hipL, jt.kneeL], [jt.hipR, jt.kneeR]]) : null; } catch (error) { console.error('[sarahlab] her knees could not be turned', error); kneeTurn = null; }
             try { const jt = measure?.joints; birthContact = jt ? createBirthContact(bm!, babyFrame.meshToRest, herTris, [[jt.hipL, jt.kneeL], [jt.hipR, jt.kneeR]]) : null; } catch (error) { console.error('[sarahlab] her calves could not be pressed to her thighs', error); birthContact = null; }
             try { const jt = measure?.joints; birthRoom = jt ? createBirthRoom(bm!, babyFrame.meshToRest, herTris, jt.pelvis, jt.hipL, jt.hipR) : null; const toRestNow = babyFrame.meshToRest; sitRoomMake = jt ? (tune) => createBirthRoom(bm!, toRestNow, herTris, jt.pelvis, jt.hipL, jt.hipR, tune) : null; sitRoom = sitRoomMake?.({}) ?? null; } catch (error) { console.error('[sarahlab] her birth-pose room could not be made', error); birthRoom = null; }
@@ -11291,6 +11315,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (reader) { const P = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array; reader.compute(P); }
           return { pose, sitAmount: +sitAmount.toFixed(3), sitMoving, layMs: +sitLayMs.toFixed(1), keepMs: +keepMs.toFixed(1), bend, spread: +legSpread().toFixed(1), insideMm: reader ? +(reader.largest * 1000).toFixed(1) : null, parts: reader ? Object.fromEntries(Object.entries(reader.parts).map(([k2, v2]) => [k2, +(v2 * 1000).toFixed(1)])) : null };
         },
+        sitBelly: (on?: boolean, tune?: { whole?: number; none?: number; normals?: boolean }) => { if (tune) { if (tune.whole !== undefined) SIT_BELLY.whole = tune.whole; if (tune.none !== undefined) SIT_BELLY.none = tune.none; if (tune.normals !== undefined) sitBellyUnderNormals = tune.normals; birthRoomFor = ''; } if (on !== undefined && on !== sitBellyOn) { sitBellyOn = on; birthRoomFor = ''; } if (tune || on !== undefined) applyLook(); const sf = bodyOf() ? shaped.find((x) => x.mesh === bodyOf()!.mesh)?.fields : undefined; return { on: sitBellyOn, ...(sitBelly?.stats ?? {}), inField: sf?.fields.get(SIT_BELLY_FIELD)?.index.length ?? 0, laidW: sf?.laid?.get(SIT_BELLY_FIELD) ?? 0, hip: sf?.fields.get(HIP_TURN_FIELD)?.index.length ?? 0, normals: sf?.fields.get(BIRTH_NORMALS_FIELD)?.index.length ?? 0 }; },
+        sitBellyMask: () => { const L = sitBelly?.last; if (!L?.mask || !L.inside) return null; const enc = (a: Float32Array) => { const bytes = new Uint8Array(a.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); }; return { mask: enc(L.mask), inside: enc(L.inside) }; },
         sitWeights: (on?: boolean) => { if (on !== undefined && on !== sitWeightsOn) { sitWeightsOn = on; birthRoomFor = ''; applyLook(); } return { on: sitWeightsOn, share: sitWeightsShare() }; },
         seatShapes: (on?: boolean) => { if (on !== undefined && on !== seatShapesOn) { seatShapesOn = on; applyLook(); applyMotion(); } return seatShapesOn; },
         paintBridgeOff: (off: boolean) => { fabric?.bridgeLeftOff(!!off); return !!off; },

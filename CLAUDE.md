@@ -1794,6 +1794,20 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     bump. MEASURED in the room: the hold moves 3,750 to 3,850 points of her belly at 150 and 200%, up to 47 mm; at 100%
     none over 1.2 mm; her side profile the same either way. Pictured from his view at 100, 150 and 200%, v0.9.65,
     v0.9.66 and without the hold: no crescent; the lower belly runs down into her groin as it does at 100%.
+  - OVER HER UNDER-BELLY LINE HER BUMP IS v0.9.65's: CARRIED BY HER OWN WEIGHTS (Joshua, 2026-11-21, of the hold taken off:
+    "before looked better as it kept the rounder belly and also sat lower… from the lower belly edge up is how it was,
+    below the belly into the pelvis/opening, keep your fix"). `sitBelly.ts`, field `shape:sitBelly`: each point where
+    her file's own weights put it seated, taken back through the leotard's (as `hipTurn.ts` does), laid by how far over
+    the under-belly leggings' line it stands (`bottomCut.hoopInside`, as a low skirt's ring): all of it from 1 cm over
+    that line, none from 2.5 cm under (`SIT_BELLY`, GAME TUNING: his pick of A, 2.5 cm over to 1 cm under, and this; 1.5
+    and 2 cm lower again were drawn with a hard ledge under her bump from below). Her hips' turn and her groin's
+    smoothing are kept off the same points by the same share (`SitBelly.under`): worked out with the leotard on, they
+    moved her bump up to 52 and 20 mm. A field moves her points, not her weights: no tear where the two carries meet.
+    MEASURED in the room at 100 and 200%: over the line within 1.2 to 2.6 mm of v0.9.65 at 99 in 100 points, under it
+    within 1.4 mm of v0.9.66; at 200% the lowest of her bump's front edge 60.1 cm off the floor in both, at her middle
+    and 6 and 10 cm off it, and from there back to her body the same curve but for her crease's last 5 cm (v0.9.65's
+    skin there pulled up between her thighs). Pictured going from standing to seated and back at 200%, seated at 0%:
+    smooth. The probe's `sitBelly(on, { whole, none, normals })`, `sitBellyMask()`. `tests/sitBelly.test.ts`.
   - FROM STANDING TO SEATED AND BACK: the leotard's weights all at once as she sets off (standing, weights move nothing),
     and its fields worked out ONCE on her SEATED pose as she sets off (`sitAsSeated`; kept as she stands again) and laid
     as far as she has sat, in `SIT_LAY_STEPS` (10) steps -- each her fields laid again (MEASURED: 25 ms a step on the build

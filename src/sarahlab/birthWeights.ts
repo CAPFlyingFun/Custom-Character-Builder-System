@@ -99,6 +99,9 @@ export interface BirthWeights {
    * -Infinity outside the reskin) */
   legDistance(i: number): number;
   readonly debug: Record<string, unknown>;
+  /** her own weights, four a point, as plain numbers (what `apply(0)` gives back; `sitBelly.ts` carries her bump by them) */
+  readonly ownIndex: Uint16Array;
+  readonly ownWeight: Float32Array;
 }
 
 /**
@@ -241,6 +244,8 @@ export function createBirthWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
   const I = si.array as ArrayLike<number> & { [k: number]: number }, W = sw.array as ArrayLike<number> & { [k: number]: number };
   const normalized = sw.normalized, scale = normalized ? (W instanceof Uint8Array ? 255 : W instanceof Uint16Array ? 65535 : 1) : 1;
   return {
+    ownIndex: ownI,
+    ownWeight: ownW,
     touched,
     debug: { hip: hip.map((h) => h.toArray().map((x) => +x.toFixed(3))), knee: knee.map((h) => h.toArray().map((x) => +x.toFixed(3))), crotch: crotch.toArray().map((x) => +x.toFixed(3)), planes },
     legDistance: (i: number) => legDist[i],
