@@ -3,16 +3,22 @@
  * (`head.mjs` `signedOff`), and how many of its points stand within reach of her at all. A style's points must not lie
  * under her skin by more than `tests/hairStyles.test.ts`'s tolerance; a tail meant to lie on her should be near her.
  *
- *   node scripts/hair/fit.mjs public/models/hair/<id>.glb [--shorter 1]
+ *   node scripts/hair/fit.mjs public/models/hair/<id>.glb [--shorter 1] [--body male]
  */
-import { loadHead, REST_OFFSET, REST_SCALE, hairIo } from './head.mjs';
+import { BODIES, loadHead, REST_OFFSET, REST_SCALE, bodyOf, hairIo, toRest } from './head.mjs';
 
 /** A hair file's points in her rest metres (its morph at `shorter`), and its parts' extras. */
-export async function hairPoints(file, shorter = 0) {
+export async function hairPoints(file, shorter = 0, body = 'female') {
   const io = await hairIo(), doc = await io.read(file), mesh = doc.getRoot().listMeshes()[0], prim = mesh.listPrimitives()[0];
   const P = prim.getAttribute('POSITION'), n = P.getCount(), out = new Float64Array(n * 3), e = [], d = [];
-  const T = prim.listTargets()[0]?.getAttribute('POSITION');
-  for (let i = 0; i < n; i++) { P.getElement(i, e); if (T && shorter) T.getElement(i, d); for (let k = 0; k < 3; k++) out[i * 3 + k] = (e[k] + (T && shorter ? d[k] * shorter : 0)) * REST_SCALE + REST_OFFSET[k]; }
+  const T = prim.listTargets()[0]?.getAttribute('POSITION'), b = bodyOf(body);
+  for (let i = 0; i < n; i++) {
+    P.getElement(i, e); if (T && shorter) T.getElement(i, d);
+    const g = [0, 1, 2].map((k) => e[k] + (T && shorter ? d[k] * shorter : 0));
+    // (hers exactly as it always was; his through his frame)
+    if (b === BODIES.female) for (let k = 0; k < 3; k++) out[i * 3 + k] = g[k] * REST_SCALE + REST_OFFSET[k];
+    else out.set(toRest(b, g), i * 3);
+  }
   return { points: out, extras: mesh.getExtras(), prim };
 }
 
@@ -41,6 +47,7 @@ export function underSkin(head, points, alpha = null) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const i = process.argv.indexOf('--shorter'), shorter = i > 0 ? Number(process.argv[i + 1]) : 0;
-  const head = await loadHead(), { points, prim } = await hairPoints(process.argv[2], shorter);
+  const bi = process.argv.indexOf('--body'), who = BODIES[bi > 0 ? process.argv[bi + 1] : 'female'];
+  const head = await loadHead(who.file, who.id), { points, prim } = await hairPoints(process.argv[2], shorter, who.id);
   console.log(process.argv[2], `shorter ${shorter}`, underSkin(head, points, pointAlpha(prim)));
 }

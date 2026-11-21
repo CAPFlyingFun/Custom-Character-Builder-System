@@ -11,11 +11,14 @@
  * Written into a copy of her body file (its skeleton and nodes kept, her mesh and pictures taken out), as the first
  * hairstyle's script did; `asToday` writes that script's extras exactly (and no morph), so its file can be compared
  * byte for byte.
+ *
+ * For HIM (`body` 'male', `head.mjs` `BODIES.male`): written into a copy of HIS body file, on his skeleton, its points
+ * and normals taken from the frame the style was drawn in back into his geometry.
  */
 import { statSync } from 'node:fs';
 import { EXTMeshoptCompression, EXTTextureWebP } from '@gltf-transform/extensions';
 import { prune } from '@gltf-transform/functions';
-import { REST_OFFSET, REST_SCALE, hairIo } from './head.mjs';
+import { BODIES, REST_OFFSET, REST_SCALE, bodyOf, dirFromRest, fromRest, hairIo } from './head.mjs';
 
 /** Only the vertices a triangle uses (a cap's grid runs past her hairline, and those past it are left out). */
 export function compact(out, extra = []) {
@@ -30,11 +33,17 @@ export function compact(out, extra = []) {
  * Write the file. built: a kit's `out` (long form) and `parts`; shorter: the short form's `out` (same points) or null;
  * webp: the atlas; style: its id.
  */
-export async function writeHair({ bodyFile, target, built, parts, shorter = null, webp, texSize, style, asToday = false }) {
-  const io = await hairIo(), doc = await io.read(bodyFile);
+export async function writeHair({ bodyFile, target, built, parts, shorter = null, webp, texSize, style, asToday = false, body = null }) {
+  const io = await hairIo(), doc = await io.read(bodyFile), b = bodyOf(body ?? bodyFile), own = b === BODIES.female;
   const c = compact(built, shorter ? [shorter] : []);
   const geomPos = new Float32Array(c.pos.length);
-  for (let i = 0; i < c.pos.length; i += 3) for (let k = 0; k < 3; k++) geomPos[i + k] = (c.pos[i + k] - REST_OFFSET[k]) / REST_SCALE;
+  // (hers exactly as it always was; another body's back through its frame, its normals turned with it)
+  if (own) for (let i = 0; i < c.pos.length; i += 3) for (let k = 0; k < 3; k++) geomPos[i + k] = (c.pos[i + k] - REST_OFFSET[k]) / REST_SCALE;
+  else for (let i = 0; i < c.pos.length; i += 3) {
+    geomPos.set(fromRest(b, [c.pos[i], c.pos[i + 1], c.pos[i + 2]]), i);
+    c.nrm.splice(i, 3, ...dirFromRest(b, [c.nrm[i], c.nrm[i + 1], c.nrm[i + 2]]));
+    for (const e of c.extra) e.nrm.splice(i, 3, ...dirFromRest(b, [e.nrm[i], e.nrm[i + 1], e.nrm[i + 2]]));
+  }
   for (const m of doc.getRoot().listMeshes()) m.dispose();
   for (const t of doc.getRoot().listTextures()) t.dispose();
   for (const m of doc.getRoot().listMaterials()) m.dispose();
@@ -57,7 +66,11 @@ export async function writeHair({ bodyFile, target, built, parts, shorter = null
   if (c.extra.length) {
     const s = c.extra[0], dp = new Float32Array(c.pos.length), dn = new Float32Array(c.pos.length);
     // the morph in her geometry units: the short form's place less the long form's, through the same scale
-    for (let i = 0; i < c.pos.length; i++) { dp[i] = (s.pos[i] - c.pos[i]) / REST_SCALE; dn[i] = s.nrm[i] - c.nrm[i]; }
+    if (own) for (let i = 0; i < c.pos.length; i++) { dp[i] = (s.pos[i] - c.pos[i]) / REST_SCALE; dn[i] = s.nrm[i] - c.nrm[i]; }
+    else for (let i = 0; i < c.pos.length; i += 3) {
+      const q = fromRest(b, [s.pos[i], s.pos[i + 1], s.pos[i + 2]]);
+      for (let k = 0; k < 3; k++) { dp[i + k] = q[k] - geomPos[i + k]; dn[i + k] = s.nrm[i + k] - c.nrm[i + k]; }
+    }
     prim.addTarget(doc.createPrimitiveTarget('shorter').setAttribute('POSITION', acc('VEC3', dp)).setAttribute('NORMAL', acc('VEC3', dn)));
     hairMesh.setWeights([0]);
   }

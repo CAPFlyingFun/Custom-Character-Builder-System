@@ -55,7 +55,7 @@
  */
 import * as THREE from 'three';
 
-type V3 = readonly [number, number, number];
+export type V3 = readonly [number, number, number];
 
 // ------------------------------------------------------------------------------------------------------------------
 // Her rest frame (MEASURED from `models/sarah-v2-body-slim.glb`)
@@ -266,6 +266,44 @@ export const FACE_DEFAULTS = {
 export const FACE_PUPIL_RANGE = [0.0005, 0.005] as const;
 
 // ------------------------------------------------------------------------------------------------------------------
+// A body's face (Joshua, 2026-11-21, of the male base model: "Let's work on hair, face, and eye options for the male
+// model now"): the face above is HERS, measured on her sculpt and drawn in her rest metres. Another body wears the same
+// design through a FRAME that takes its geometry into her rest metres -- fitted to her face, so her eyes, brows and
+// mouth fall on his -- with its own brows, lips and lashes where they differ.
+
+/** Numbers widened from their literal types, so another body's design can hold other numbers. */
+type Wide<T> = T extends number ? number : T extends string ? string : T extends readonly (infer U)[] ? readonly Wide<U>[] : { readonly [K in keyof T]: Wide<T[K]> };
+/**
+ * How a body's geometry is taken into the face's design frame (her rest metres): `rest = scale · turnX(pitch) · position
+ * + offset`, a turn of `pitch` radians about x (the jaw's own axis, so the jaw turns the same in both). `headBone` is the
+ * bone its face rides (`restFromWorld`).
+ */
+export interface FaceFrame { readonly id: string; readonly scale: number; readonly pitch: number; readonly offset: V3; readonly headBone: string }
+/** A body's face: its frame, and its brows, lips, lashes and defaults (hers, or its own). */
+export interface FaceSpec {
+  readonly frame: FaceFrame;
+  readonly brows: Wide<typeof FACE_BROWS>;
+  readonly lips: Wide<typeof FACE_LIPS>;
+  readonly lids: Wide<typeof FACE_LIDS>;
+  readonly defaults: Wide<typeof FACE_DEFAULTS>;
+}
+/** Her face: her own frame (no pitch) and design. */
+export const HER_FACE: FaceSpec = Object.freeze({
+  frame: Object.freeze({ id: 'her', scale: FACE_REST_SCALE, pitch: 0, offset: FACE_REST_OFFSET, headBone: FACE_HEAD_BONE }),
+  brows: FACE_BROWS, lips: FACE_LIPS, lids: FACE_LIDS, defaults: FACE_DEFAULTS,
+});
+/** A body's geometry point in the face's design frame (her rest metres). */
+export function faceRestOf(frame: FaceFrame, p: readonly number[]): [number, number, number] {
+  const c = Math.cos(frame.pitch), s = Math.sin(frame.pitch), k = frame.scale;
+  return [k * p[0] + frame.offset[0], k * (c * p[1] - s * p[2]) + frame.offset[1], k * (s * p[1] + c * p[2]) + frame.offset[2]];
+}
+/** ...and a direction (a move, a normal) from the design frame back into the body's geometry. */
+export function faceGeometryMove(frame: FaceFrame, d: readonly number[]): [number, number, number] {
+  const c = Math.cos(frame.pitch), s = Math.sin(frame.pitch), k = frame.scale;
+  return [d[0] / k, (c * d[1] + s * d[2]) / k, (-s * d[1] + c * d[2]) / k];
+}
+
+// ------------------------------------------------------------------------------------------------------------------
 // The setting
 
 /** The face as the shader draws it. */
@@ -331,7 +369,8 @@ function colour(c: readonly number[] | undefined, fallback: V3): V3 {
   if (!c || c.length < 3 || !c.slice(0, 3).every(Number.isFinite)) return fallback;
   return [clamp(c[0], 0, 1), clamp(c[1], 0, 1), clamp(c[2], 0, 1)];
 }
-function settingOf(state: FaceRigState): Setting {
+function settingOf(state: FaceRigState, spec: FaceSpec = HER_FACE): Setting {
+  const FACE_DEFAULTS = spec.defaults as typeof HER_FACE.defaults & { readonly iris: V3; readonly browColour: V3 }, FACE_LIPS = spec.lips as typeof HER_FACE.lips & { readonly tint: V3 };
   const pupil = state.pupil !== undefined && Number.isFinite(state.pupil) ? clamp(state.pupil, FACE_PUPIL_RANGE[0], FACE_PUPIL_RANGE[1]) : FACE_DEFAULTS.pupil;
   return {
     jaw: amount(state.jaw, 0),
@@ -344,14 +383,14 @@ function settingOf(state: FaceRigState): Setting {
     browColour: colour(state.browColour, FACE_DEFAULTS.browColour),
     lips: amount(state.lips, FACE_DEFAULTS.lips),
     lashes: amount(state.lashes, FACE_DEFAULTS.lashes),
-    ...pickedIris(state),
+    ...pickedIris(state, FACE_DEFAULTS.iris),
     lipTint: state.lipTint ? colour(state.lipTint, FACE_LIPS.tint) : null,
   };
 }
 /** A collar and a ring are drawn only as a pair (one alone would be half of one look, half of another). */
-function pickedIris(state: FaceRigState): { irisAmber: V3 | null; irisRing: V3 | null } {
+function pickedIris(state: FaceRigState, iris: V3 = FACE_DEFAULTS.iris): { irisAmber: V3 | null; irisRing: V3 | null } {
   if (!state.irisAmber || !state.irisRing) return { irisAmber: null, irisRing: null };
-  const base = colour(state.iris, FACE_DEFAULTS.iris);
+  const base = colour(state.iris, iris);
   return { irisAmber: colour(state.irisAmber, mul(base, AMBER_RATIO)), irisRing: colour(state.irisRing, mul(base, LIMBAL_RATIO)) };
 }
 const mul = (a: V3, b: V3): V3 => [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
@@ -359,64 +398,11 @@ const mul = (a: V3, b: V3): V3 => [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
 // ------------------------------------------------------------------------------------------------------------------
 // The constants in the frames the shader works in, converted once
 
-const O = FACE_ORIGIN;
-/** `position` (geometry units) to face coordinates: `f = position * FACE_REST_SCALE + F_OFFSET`. */
-const F_OFFSET: V3 = [FACE_REST_OFFSET[0] - O[0], FACE_REST_OFFSET[1] - O[1], FACE_REST_OFFSET[2] - O[2]];
-/** The hinge in face coordinates, and in geometry units (where the vertex stage turns `transformed`). */
-const HINGE_F: V3 = [FACE_JAW_HINGE[0] - O[0], FACE_JAW_HINGE[1] - O[1], FACE_JAW_HINGE[2] - O[2]];
-const HINGE_G: V3 = [
-  (FACE_JAW_HINGE[0] - FACE_REST_OFFSET[0]) / FACE_REST_SCALE,
-  (FACE_JAW_HINGE[1] - FACE_REST_OFFSET[1]) / FACE_REST_SCALE,
-  (FACE_JAW_HINGE[2] - FACE_REST_OFFSET[2]) / FACE_REST_SCALE,
-];
-/** The seam's angle about the hinge at the middle and at the corners. */
-const PHI_CENTRE = Math.atan2(FACE_MOUTH.seamY - FACE_JAW_HINGE[1], FACE_MOUTH.seamZ - FACE_JAW_HINGE[2]);
-const PHI_CORNER = Math.atan2(FACE_MOUTH.cornerY - FACE_JAW_HINGE[1], FACE_MOUTH.cornerZ - FACE_JAW_HINGE[2]);
-const NECK_FROM_F = FACE_JAW.neckFrom - O[1];
-const NECK_TO_F = FACE_JAW.neckTo - O[1];
-const BOX_Y0_F = FACE_BOX.yFrom - O[1];
-const BOX_Y1_F = FACE_BOX.yTo - O[1];
-const BOX_Z_F = FACE_BOX.zFrom - O[2];
-const INSIDE_Z_F = FACE_MOUTH_INSIDE.zFrom - O[2];
-const SEAM_F = FACE_MOUTH.seamY - O[1];
-/** The seam in face coordinates: its height and depth at the middle and at the corners. */
-const SEAM_Z_F = FACE_MOUTH.seamZ - O[2];
-const CORNER_Y_F = FACE_MOUTH.cornerY - O[1];
-const CORNER_Z_F = FACE_MOUTH.cornerZ - O[2];
-const LIP_Z_F = FACE_LIPS.zFrom - O[2];
-const EYE_Z_F = FACE_EYES.zFrom - O[2];
-const BROW_Z_F = FACE_BROWS.zFrom - O[2];
 interface EyeF { readonly inner: readonly [number, number]; readonly outer: readonly [number, number]; readonly centre: readonly [number, number] }
-const eyeF = (e: EyeTable): EyeF => ({
-  inner: [e.inner[0] - O[0], e.inner[1] - O[1]],
-  outer: [e.outer[0] - O[0], e.outer[1] - O[1]],
-  centre: [e.centre[0] - O[0], e.centre[1] - O[1]],
-});
-const RIGHT_F = eyeF(FACE_EYES.right);
-const LEFT_F = eyeF(FACE_EYES.left);
-const EYE_R = FACE_EYES.radius;
-const IRIS_ANGLE = Math.asin(FACE_EYES.iris / FACE_EYES.radius);
-const EDGE_HALF = FACE_EYES.edge / 2;
 /** The iris's amber centre and limbal ring as multiples of its base colour, so a new base recolours the whole iris. */
 const AMBER_RATIO: V3 = [0, 1, 2].map((i) => FACE_LOOK.amber[i] / FACE_DEFAULTS.iris[i]) as unknown as V3;
-const LIMBAL_RATIO: V3 = [0, 1, 2].map((i) => FACE_LOOK.limbal[i] / FACE_DEFAULTS.iris[i]) as unknown as V3;
 /** Linear light's luminance (Rec. 709), what a chosen lip colour keeps of her lips' own light and dark. */
 const LUMA: V3 = [0.2126, 0.7152, 0.0722];
-/** The brows' quadratics in s (0 at the head, 1 at the tail), as a + b·s + c·s², height in face coordinates and thickness. */
-const BROW_S_ARCH = (FACE_BROWS.arch[0] - FACE_BROWS.head[0]) / (FACE_BROWS.tail[0] - FACE_BROWS.head[0]);
-function quadratic(v0: number, va: number, v1: number): readonly [number, number, number] {
-  // through (0, v0), (sa, va), (1, v1)
-  const sa = BROW_S_ARCH;
-  const c = ((va - v0) - (v1 - v0) * sa) / (sa * sa - sa);
-  return [v0, (v1 - v0) - c, c];
-}
-const BROW_Y = quadratic(FACE_BROWS.head[1] - O[1], FACE_BROWS.arch[1] - O[1], FACE_BROWS.tail[1] - O[1]);
-const BROW_T = quadratic(FACE_BROWS.thickness[0], FACE_BROWS.thickness[1], FACE_BROWS.thickness[2]);
-const BROW_HEAD_X = FACE_BROWS.head[0];
-const BROW_SPAN = FACE_BROWS.tail[0] - FACE_BROWS.head[0];
-const HAIR = FACE_BROWS.hairs;
-const MI = FACE_MOUTH_INSIDE;
-const MT = FACE_MOUTH_TAPER;
 
 // GLSL literals from the same numbers
 const n = (x: number): string => {
@@ -450,43 +436,6 @@ interface Uniforms {
 const patched = new WeakMap<THREE.Material, Uniforms>();
 
 /**
- * The seam weight (`faceJawSeam` below) and the corner taper (`faceJawWeight` is their product). `f` is the rest point in
- * face coordinates.
- */
-const GLSL_JAW_WEIGHT = `
-float faceJawSeam(vec3 f) {
-  float ax = abs(f.x);
-  if (ax > ${n(FACE_JAW.halfWidth)}) return 0.0;
-  float qy = f.y - ${n(HINGE_F[1])};
-  float qz = f.z - ${n(HINGE_F[2])};
-  float phi = atan(qy, qz);
-  float k = min(1.0, (ax / ${n(FACE_MOUTH.cornerX)}) * (ax / ${n(FACE_MOUTH.cornerX)}));
-  float phiSeam = ${n(PHI_CENTRE)} + ${n(PHI_CORNER - PHI_CENTRE)} * k;
-  float delta = mix(${n(FACE_JAW.lipsDelta)}, ${n(FACE_JAW.cheekDelta)}, smoothstep(${n(FACE_JAW.deltaFrom)}, ${n(FACE_JAW.deltaTo)}, ax));
-  float wSeam = 1.0 - smoothstep(phiSeam - delta, phiSeam + delta, phi);
-  float wLow = smoothstep(${n(FACE_JAW.lowFrom)}, ${n(FACE_JAW.lowTo)}, phi);
-  float wBack = smoothstep(${n(FACE_JAW.backFrom)}, ${n(FACE_JAW.backTo)}, qz);
-  float wNeck = smoothstep(${n(NECK_FROM_F)}, ${n(NECK_TO_F)}, f.y);
-  return wSeam * wLow * wBack * wNeck;
-}
-float faceJawTaper(vec3 f) {
-  float ax = abs(f.x);
-  float k = min(1.0, (ax / ${n(FACE_MOUTH.cornerX)}) * (ax / ${n(FACE_MOUTH.cornerX)}));
-  float below = mix(${n(SEAM_F)}, ${n(CORNER_Y_F)}, k) - f.y;
-  float corner = mix(1.0, ${n(MT.corner)}, smoothstep(${n(MT.innerX)}, ${n(MT.outerX)}, ax));
-  return mix(corner, 1.0, smoothstep(0.0, ${n(MT.depth)}, below));
-}`;
-
-const VERTEX_PARS = [
-  'uniform float faceOn;',
-  'uniform float faceJaw;',
-  'varying float vFaceJaw;',
-  'varying vec3 vFaceF;',
-  'varying float vFacePosedY;',
-  GLSL_JAW_WEIGHT,
-].join('\n');
-
-/**
  * WHERE A POINT OF HER SKIN IS IN HER SCULPT, WHATEVER HAS SHAPED HER SINCE. The layer is drawn by a point's place on the
  * sculpt it was measured on. Until her face could be shaped that was the point's `position`: none of her shapes, her
  * build's field or her morphs reaches her head. A shaped face (`faceShapes.ts`, laid into `position` on the CPU) moves
@@ -498,319 +447,455 @@ const VERTEX_PARS = [
  */
 export const FACE_REST_DEFINE = 'FABRIC_REST_ATTRIBUTE';
 
-// After morphnormal_vertex, which in three's standard shader comes before begin_vertex: the weight and the angle are
-// worked out once here, at main()'s scope, and the normal turned; the point is turned after morphtarget_vertex, before
-// skinning, and where its place on her SCULPT then stands (its posed rest-frame y: the sculpt's point turned with the
-// jaw, not the shaped one, so a longer chin is not read as an open mouth) handed on. `vFaceJaw` carries the SEAM weight, untapered:
-// exactly 0 or 1 on the lips' own surfaces, so the fragment stage can tell them from the curtain. The varyings are
-// written whatever the switch says, so they are never undefined; nothing they hold reaches the picture with it off.
-const VERTEX_NORMAL = `
-    float faceTheta = 0.0;
-    #ifdef ${FACE_REST_DEFINE}
-    vec3 faceRestAt = fabricRest;
-    #else
-    vec3 faceRestAt = position;
-    #endif
-    vFaceF = faceRestAt * ${n(FACE_REST_SCALE)} + ${v3(F_OFFSET)};
-    vFaceJaw = 0.0;
-    vFacePosedY = vFaceF.y;
-    if (faceOn > 0.5) {
-      vFaceJaw = faceJawSeam(vFaceF);
-      faceTheta = faceJaw * ${n(FACE_JAW_MAX)} * vFaceJaw * faceJawTaper(vFaceF);
-      float faceCn = cos(faceTheta), faceSn = sin(faceTheta);
-      objectNormal.yz = vec2(objectNormal.y * faceCn - objectNormal.z * faceSn, objectNormal.y * faceSn + objectNormal.z * faceCn);
-    }`;
-const VERTEX_JAW = `
-    if (faceOn > 0.5 && faceTheta != 0.0) {
-      vec2 faceQ = transformed.yz - ${v2([HINGE_G[1], HINGE_G[2]])};
-      float faceCp = cos(faceTheta), faceSp = sin(faceTheta);
-      transformed.yz = ${v2([HINGE_G[1], HINGE_G[2]])} + vec2(faceQ.x * faceCp - faceQ.y * faceSp, faceQ.x * faceSp + faceQ.y * faceCp);
-      vec2 faceR = faceRestAt.yz - ${v2([HINGE_G[1], HINGE_G[2]])};
-      vFacePosedY = (${n(HINGE_G[1])} + faceR.x * faceCp - faceR.y * faceSp) * ${n(FACE_REST_SCALE)} + ${n(F_OFFSET[1])};
-    }`;
-
+/**
+ * The constants in the frames the shader works in, converted once for a body's face (`FaceSpec`): its frame takes its
+ * geometry into the face's design frame (her rest metres) by `scale`, a turn of `pitch` about x and `offset`; its own
+ * brows and lips are its spec's. Her own are worked out exactly as they always were (a pitch of 0 turns nothing).
+ */
+function derived(spec: FaceSpec) {
+  const FACE_BROWS = spec.brows, FACE_LIPS = spec.lips;
+  const FACE_REST_SCALE = spec.frame.scale, FACE_REST_OFFSET = spec.frame.offset;
+  const PITCH_C = Math.cos(spec.frame.pitch), PITCH_S = Math.sin(spec.frame.pitch);
+  const O = FACE_ORIGIN;
+  /** `position` (geometry units) to face coordinates: `f = position * FACE_REST_SCALE + F_OFFSET`. */
+  const F_OFFSET: V3 = [FACE_REST_OFFSET[0] - O[0], FACE_REST_OFFSET[1] - O[1], FACE_REST_OFFSET[2] - O[2]];
+  /** The hinge in face coordinates, and in geometry units (where the vertex stage turns `transformed`). */
+  const HINGE_F: V3 = [FACE_JAW_HINGE[0] - O[0], FACE_JAW_HINGE[1] - O[1], FACE_JAW_HINGE[2] - O[2]];
+  const HINGE_Q: V3 = [FACE_JAW_HINGE[0] - FACE_REST_OFFSET[0], FACE_JAW_HINGE[1] - FACE_REST_OFFSET[1], FACE_JAW_HINGE[2] - FACE_REST_OFFSET[2]];
+    const HINGE_G: V3 = [
+      HINGE_Q[0] / FACE_REST_SCALE,
+      (PITCH_C * HINGE_Q[1] + PITCH_S * HINGE_Q[2]) / FACE_REST_SCALE,
+      (-PITCH_S * HINGE_Q[1] + PITCH_C * HINGE_Q[2]) / FACE_REST_SCALE,
+    ];
+  /** The seam's angle about the hinge at the middle and at the corners. */
+  const PHI_CENTRE = Math.atan2(FACE_MOUTH.seamY - FACE_JAW_HINGE[1], FACE_MOUTH.seamZ - FACE_JAW_HINGE[2]);
+  const PHI_CORNER = Math.atan2(FACE_MOUTH.cornerY - FACE_JAW_HINGE[1], FACE_MOUTH.cornerZ - FACE_JAW_HINGE[2]);
+  const NECK_FROM_F = FACE_JAW.neckFrom - O[1];
+  const NECK_TO_F = FACE_JAW.neckTo - O[1];
+  const BOX_Y0_F = FACE_BOX.yFrom - O[1];
+  const BOX_Y1_F = FACE_BOX.yTo - O[1];
+  const BOX_Z_F = FACE_BOX.zFrom - O[2];
+  const INSIDE_Z_F = FACE_MOUTH_INSIDE.zFrom - O[2];
+  const SEAM_F = FACE_MOUTH.seamY - O[1];
+  /** The seam in face coordinates: its height and depth at the middle and at the corners. */
+  const SEAM_Z_F = FACE_MOUTH.seamZ - O[2];
+  const CORNER_Y_F = FACE_MOUTH.cornerY - O[1];
+  const CORNER_Z_F = FACE_MOUTH.cornerZ - O[2];
+  const LIP_Z_F = FACE_LIPS.zFrom - O[2];
+  const EYE_Z_F = FACE_EYES.zFrom - O[2];
+  const BROW_Z_F = FACE_BROWS.zFrom - O[2];
+  const eyeF = (e: EyeTable): EyeF => ({
+    inner: [e.inner[0] - O[0], e.inner[1] - O[1]],
+    outer: [e.outer[0] - O[0], e.outer[1] - O[1]],
+    centre: [e.centre[0] - O[0], e.centre[1] - O[1]],
+  });
+  const RIGHT_F = eyeF(FACE_EYES.right);
+  const LEFT_F = eyeF(FACE_EYES.left);
+  const EYE_R = FACE_EYES.radius;
+  const IRIS_ANGLE = Math.asin(FACE_EYES.iris / FACE_EYES.radius);
+  const EDGE_HALF = FACE_EYES.edge / 2;
+  const LIMBAL_RATIO: V3 = [0, 1, 2].map((i) => FACE_LOOK.limbal[i] / FACE_DEFAULTS.iris[i]) as unknown as V3;
+  /** The brows' quadratics in s (0 at the head, 1 at the tail), as a + b·s + c·s², height in face coordinates and thickness. */
+  const BROW_S_ARCH = (FACE_BROWS.arch[0] - FACE_BROWS.head[0]) / (FACE_BROWS.tail[0] - FACE_BROWS.head[0]);
+  function quadratic(v0: number, va: number, v1: number): readonly [number, number, number] {
+    // through (0, v0), (sa, va), (1, v1)
+    const sa = BROW_S_ARCH;
+    const c = ((va - v0) - (v1 - v0) * sa) / (sa * sa - sa);
+    return [v0, (v1 - v0) - c, c];
+  }
+  const BROW_Y = quadratic(FACE_BROWS.head[1] - O[1], FACE_BROWS.arch[1] - O[1], FACE_BROWS.tail[1] - O[1]);
+  const BROW_T = quadratic(FACE_BROWS.thickness[0], FACE_BROWS.thickness[1], FACE_BROWS.thickness[2]);
+  const BROW_HEAD_X = FACE_BROWS.head[0];
+  const BROW_SPAN = FACE_BROWS.tail[0] - FACE_BROWS.head[0];
+  const HAIR = FACE_BROWS.hairs;
+  const MI = FACE_MOUTH_INSIDE;
+  const MT = FACE_MOUTH_TAPER;
+  return { BOX_Y0_F, BOX_Y1_F, BOX_Z_F, BROW_HEAD_X, BROW_SPAN, BROW_S_ARCH, BROW_T, BROW_Y, BROW_Z_F, CORNER_Y_F, CORNER_Z_F, EDGE_HALF, EYE_R, EYE_Z_F, F_OFFSET, HAIR, HINGE_F, HINGE_G, HINGE_Q, INSIDE_Z_F, IRIS_ANGLE, LEFT_F, LIMBAL_RATIO, LIP_Z_F, MI, MT, NECK_FROM_F, NECK_TO_F, O, PHI_CENTRE, PHI_CORNER, RIGHT_F, SEAM_F, SEAM_Z_F };
+}
+// (her own, for the CPU mirrors below)
+const { BOX_Y0_F, BOX_Y1_F, BOX_Z_F, BROW_HEAD_X, BROW_SPAN, BROW_T, BROW_Y, BROW_Z_F, CORNER_Y_F, CORNER_Z_F, EDGE_HALF, EYE_R, EYE_Z_F, HINGE_F, INSIDE_Z_F, IRIS_ANGLE, LEFT_F, LIMBAL_RATIO, LIP_Z_F, MI, MT, NECK_FROM_F, NECK_TO_F, O, PHI_CENTRE, PHI_CORNER, RIGHT_F, SEAM_F, SEAM_Z_F } = derived(HER_FACE);
 const L = FACE_LIDS;
-const GLSL_FRAGMENT_FUNCTIONS = `
-float faceHash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
-float faceHash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 
-float faceLipAlpha(vec3 f) {
-  if (f.z <= ${n(LIP_Z_F)}) return 0.0;
-  float t = abs(f.x) / ${n(FACE_LIPS.halfWidth)};
-  if (t >= 1.0) return 0.0;
-  float bow = f.x / ${n(FACE_LIPS.bowWidth)};
-  float hu = ${n(FACE_LIPS.upper)} * (1.0 - pow(max(t, 1e-6), ${n(FACE_LIPS.upperPower)})) * (1.0 - ${n(FACE_LIPS.bowDip)} * exp(-bow * bow));
-  float hl = ${n(FACE_LIPS.lower)} * pow(max(1.0 - t * t, 1e-8), ${n(FACE_LIPS.lowerPower)});
-  float s = ${n(FACE_LIPS.soft / 2)};
-  return smoothstep(${n(SEAM_F)} - hl - s, ${n(SEAM_F)} - hl + s, f.y) * (1.0 - smoothstep(${n(SEAM_F)} + hu - s, ${n(SEAM_F)} + hu + s, f.y));
-}
+/** The face's shader lines for a body's face (`FaceSpec`), from the same numbers as the CPU mirrors. */
+function shaderFor(spec: FaceSpec): ShaderLines {
+  const FACE_BROWS = spec.brows, FACE_LIPS = spec.lips, FACE_LIDS = spec.lids;
+  const FACE_REST_SCALE = spec.frame.scale;
+  const { BOX_Y0_F, BOX_Y1_F, BOX_Z_F, BROW_HEAD_X, BROW_SPAN, BROW_T, BROW_Y, BROW_Z_F, CORNER_Y_F, CORNER_Z_F, EDGE_HALF, EYE_R, EYE_Z_F, F_OFFSET, HAIR, HINGE_F, HINGE_G, INSIDE_Z_F, IRIS_ANGLE, LEFT_F, LIMBAL_RATIO, LIP_Z_F, MI, MT, NECK_FROM_F, NECK_TO_F, PHI_CENTRE, PHI_CORNER, RIGHT_F, SEAM_F, SEAM_Z_F } = derived(spec);
+  // where a point of the sculpt stands in face coordinates, and (the jaw turned) its height: her own lines as they
+  // always were; a frame with a pitch turns the point about x first
+  const pc = Math.cos(spec.frame.pitch), ps = Math.sin(spec.frame.pitch), k = FACE_REST_SCALE;
+  const FACE_F_OF_REST = spec.frame.pitch === 0 ? `faceRestAt * ${n(FACE_REST_SCALE)} + ${v3(F_OFFSET)}`
+    : `vec3(faceRestAt.x * ${n(k)}, dot(${v2([k * pc, -k * ps])}, faceRestAt.yz), dot(${v2([k * ps, k * pc])}, faceRestAt.yz)) + ${v3(F_OFFSET)}`;
+  const FACE_POSED_Y = spec.frame.pitch === 0 ? `(${n(HINGE_G[1])} + faceR.x * faceCp - faceR.y * faceSp) * ${n(FACE_REST_SCALE)} + ${n(F_OFFSET[1])}`
+    : `dot(${v2([k * pc, -k * ps])}, ${v2([HINGE_G[1], HINGE_G[2]])} + vec2(faceR.x * faceCp - faceR.y * faceSp, faceR.x * faceSp + faceR.y * faceCp)) + ${n(F_OFFSET[1])}`;
+  // the seam weight (`faceJawSeam` below) and the corner taper (`faceJawWeight` is their product); `f` is the rest
+  // point in face coordinates
+  const GLSL_JAW_WEIGHT = `
+  float faceJawSeam(vec3 f) {
+    float ax = abs(f.x);
+    if (ax > ${n(FACE_JAW.halfWidth)}) return 0.0;
+    float qy = f.y - ${n(HINGE_F[1])};
+    float qz = f.z - ${n(HINGE_F[2])};
+    float phi = atan(qy, qz);
+    float k = min(1.0, (ax / ${n(FACE_MOUTH.cornerX)}) * (ax / ${n(FACE_MOUTH.cornerX)}));
+    float phiSeam = ${n(PHI_CENTRE)} + ${n(PHI_CORNER - PHI_CENTRE)} * k;
+    float delta = mix(${n(FACE_JAW.lipsDelta)}, ${n(FACE_JAW.cheekDelta)}, smoothstep(${n(FACE_JAW.deltaFrom)}, ${n(FACE_JAW.deltaTo)}, ax));
+    float wSeam = 1.0 - smoothstep(phiSeam - delta, phiSeam + delta, phi);
+    float wLow = smoothstep(${n(FACE_JAW.lowFrom)}, ${n(FACE_JAW.lowTo)}, phi);
+    float wBack = smoothstep(${n(FACE_JAW.backFrom)}, ${n(FACE_JAW.backTo)}, qz);
+    float wNeck = smoothstep(${n(NECK_FROM_F)}, ${n(NECK_TO_F)}, f.y);
+    return wSeam * wLow * wBack * wNeck;
+  }
+  float faceJawTaper(vec3 f) {
+    float ax = abs(f.x);
+    float k = min(1.0, (ax / ${n(FACE_MOUTH.cornerX)}) * (ax / ${n(FACE_MOUTH.cornerX)}));
+    float below = mix(${n(SEAM_F)}, ${n(CORNER_Y_F)}, k) - f.y;
+    float corner = mix(1.0, ${n(MT.corner)}, smoothstep(${n(MT.innerX)}, ${n(MT.outerX)}, ax));
+    return mix(corner, 1.0, smoothstep(0.0, ${n(MT.depth)}, below));
+  }`;
 
-// the lips' edges, analytically: the upper lip's is the seam (flat across, curving to the corners' height), the lower
-// lip's that seam point turned by the whole jaw times the corner taper, as the lower lip's own edge is
-float faceSeamK(float ax) { float k = ax / ${n(FACE_MOUTH.cornerX)}; return min(1.0, k * k); }
-float faceSeamUp(float ax) { return mix(${n(SEAM_F)}, ${n(CORNER_Y_F)}, faceSeamK(ax)); }
-float faceSeamLo(float ax, float jaw) {
-  float k = faceSeamK(ax);
-  float qy = mix(${n(SEAM_F)}, ${n(CORNER_Y_F)}, k) - ${n(HINGE_F[1])};
-  float qz = mix(${n(SEAM_Z_F)}, ${n(CORNER_Z_F)}, k) - ${n(HINGE_F[2])};
-  float th = jaw * ${n(FACE_JAW_MAX)} * mix(1.0, ${n(MT.corner)}, smoothstep(${n(MT.innerX)}, ${n(MT.outerX)}, ax));
-  return ${n(HINGE_F[1])} + qy * cos(th) - qz * sin(th);
-}
-// one edge of the lens (side +1 the top, -1 the bottom): the middle of the gap between the lips, give or take the share
-// of it the lens spans in this column
-float faceLensEdge(float ax, float jaw, float side) {
-  float up = faceSeamUp(ax), lo = faceSeamLo(ax, jaw);
-  float q = sqrt(max(1.0 - pow(ax / ${n(MI.lensHalfWidth)}, ${n(MI.lensPower)}), 0.0));
-  return 0.5 * (up + lo) + side * 0.5 * (up - lo) * q;
-}
-// how far inside the lens a posed point stands, in metres across its nearer edge (negative outside)
-float faceLensDistance(float ax, float y, float jaw) {
-  float mid = 0.5 * (faceSeamUp(ax) + faceSeamLo(ax, jaw));
-  float side = y > mid ? 1.0 : -1.0;
-  float b0 = faceLensEdge(ax, jaw, side);
-  float slope = (faceLensEdge(ax + ${n(MI.slopeStep)}, jaw, side) - b0) / ${n(MI.slopeStep)};
-  return min(side * (b0 - y) / sqrt(1.0 + slope * slope), ${n(MI.lensHalfWidth)} - ax);
-}
-// how much of the mouth's inside a fragment is: on the curtain, in the lens or its rim, in front, with the jaw open
-float faceMouthAmount(float w, vec3 f, float y, float jaw, out float dist, out float gap) {
-  float ax = abs(f.x);
-  gap = faceSeamUp(ax) - faceSeamLo(ax, jaw);
-  dist = faceLensDistance(ax, y, jaw);
-  float curtain = smoothstep(${n(MI.curtain[0])}, ${n(MI.curtain[1])}, w) * (1.0 - smoothstep(${n(MI.curtain[2])}, ${n(MI.curtain[3])}, w));
-  float lens = smoothstep(${n(-MI.edge / 2)}, ${n(MI.edge / 2)}, dist);
-  float below = step(y, 0.5 * (faceSeamUp(ax) + faceSeamLo(ax, jaw)));
-  float rim = smoothstep(${n(-MI.rim)}, ${n(-MI.rim / 2)}, dist) * (1.0 - smoothstep(${n(MI.lensHalfWidth - MI.rimTip)}, ${n(MI.lensHalfWidth - 0.0005)}, ax))
-    * (1.0 - below * smoothstep(${n(MI.rimLowFade[0])}, ${n(MI.rimLowFade[1])}, w));
-  return curtain * step(${n(INSIDE_Z_F)}, f.z) * max(lens, rim) * smoothstep(${n(MI.jawFrom)}, ${n(MI.jawTo)}, jaw);
-}
-// a row of teeth, d from its lip's edge: from..to at the middle, the far edge closing in toward |x| halfWidth
-float faceToothRow(float ax, float d, float gap, float from, float to, float halfWidth, float opensFrom, float opensTo, out float shade) {
-  float reach = sqrt(max(1.0 - (ax / halfWidth) * (ax / halfWidth), 0.0));
-  float far = from + (to - from) * reach;
-  float e = ${n(MI.toothEdge)};
-  shade = mix(${n(MI.toothShade.edge)}, 1.0, smoothstep(0.0, ${n(MI.toothShade.edgeWidth)}, min(d - from, far - d)))
-    * mix(1.0, ${n(MI.toothShade.corner)}, smoothstep(${n(MI.toothShade.cornerFrom)}, halfWidth, ax));
-  return smoothstep(from - e, from + e, d) * (1.0 - smoothstep(far - e, far + e, d)) * smoothstep(opensFrom, opensTo, gap);
-}
+  const VERTEX_PARS = [
+    'uniform float faceOn;',
+    'uniform float faceJaw;',
+    'varying float vFaceJaw;',
+    'varying vec3 vFaceF;',
+    'varying float vFacePosedY;',
+    GLSL_JAW_WEIGHT,
+  ].join('\n');
 
-vec4 faceHash42(vec2 p) {
-  vec4 p4 = fract(vec4(p.xyxy) * vec4(0.1031, 0.1030, 0.0973, 0.1099));
-  p4 += dot(p4, p4.wzxy + 33.33);
-  return fract((p4.xxyz + p4.yzzw) * p4.zywx);
-}
 
-// half the brow's thickness, a along it from the head point: the quadratic, rounded off at the head, pointed at the tail
-float faceBrowHalf(float a) {
-  if (a <= ${n(FACE_BROWS.headEnd)}) return 0.0; // exactly nothing before the head: pow() rounds a hair's breadth past 0
-  float s = a / ${n(BROW_SPAN)};
-  float th = ${n(BROW_T[0])} + ${n(BROW_T[1])} * s + ${n(BROW_T[2])} * s * s;
-  float capT = clamp((${n(FACE_BROWS.headEnd + FACE_BROWS.headRound)} - a) / ${n(FACE_BROWS.headRound)}, 0.0, 1.0);
-  float cap = pow(max(1.0 - pow(capT, ${n(FACE_BROWS.headPower)}), 0.0), ${n(1 / FACE_BROWS.headPower)});
-  float tail = clamp((${n(FACE_BROWS.tailEnd)} - s) / ${n(FACE_BROWS.tailEnd - FACE_BROWS.tailFrom)}, 0.0, 1.0);
-  return 0.5 * th * cap * tail;
-}
-// the band's cover, its edges grown further out by grow (0 for the band itself, the overhang for where hairs may still show)
-float faceBrowCover(vec3 f, float grow, out float a, out float across) {
-  a = abs(f.x) - ${n(BROW_HEAD_X)};
-  float s = a / ${n(BROW_SPAN)};
-  across = f.y - (${n(BROW_Y[0])} + ${n(BROW_Y[1])} * s + ${n(BROW_Y[2])} * s * s);
-  float hb = faceBrowHalf(a);
-  return smoothstep(-hb - grow - ${n(FACE_BROWS.edgeLow / 2)}, -hb - grow + ${n(FACE_BROWS.edgeLow / 2)}, across)
-    * (1.0 - smoothstep(hb + grow - ${n(FACE_BROWS.edgeHigh / 2)}, hb + grow + ${n(FACE_BROWS.edgeHigh / 2)}, across))
-    * smoothstep(0.0, 0.0004, hb);
-}
-float faceBrowLean(float s) { return mix(${n(HAIR.lean[0])}, ${n(HAIR.lean[1])}, pow(clamp(s, 0.0, 1.0), 0.8)); }
+  // After morphnormal_vertex, which in three's standard shader comes before begin_vertex: the weight and the angle are
+  // worked out once here, at main()'s scope, and the normal turned; the point is turned after morphtarget_vertex, before
+  // skinning, and where its place on her SCULPT then stands (its posed rest-frame y: the sculpt's point turned with the
+  // jaw, not the shaped one, so a longer chin is not read as an open mouth) handed on. `vFaceJaw` carries the SEAM weight, untapered:
+  // exactly 0 or 1 on the lips' own surfaces, so the fragment stage can tell them from the curtain. The varyings are
+  // written whatever the switch says, so they are never undefined; nothing they hold reaches the picture with it off.
+  const VERTEX_NORMAL = `
+      float faceTheta = 0.0;
+      #ifdef ${FACE_REST_DEFINE}
+      vec3 faceRestAt = fabricRest;
+      #else
+      vec3 faceRestAt = position;
+      #endif
+      vFaceF = ${FACE_F_OF_REST};
+      vFaceJaw = 0.0;
+      vFacePosedY = vFaceF.y;
+      if (faceOn > 0.5) {
+        vFaceJaw = faceJawSeam(vFaceF);
+        faceTheta = faceJaw * ${n(FACE_JAW_MAX)} * vFaceJaw * faceJawTaper(vFaceF);
+        float faceCn = cos(faceTheta), faceSn = sin(faceTheta);
+        objectNormal.yz = vec2(objectNormal.y * faceCn - objectNormal.z * faceSn, objectNormal.y * faceSn + objectNormal.z * faceCn);
+      }`;
+  const VERTEX_JAW = `
+      if (faceOn > 0.5 && faceTheta != 0.0) {
+        vec2 faceQ = transformed.yz - ${v2([HINGE_G[1], HINGE_G[2]])};
+        float faceCp = cos(faceTheta), faceSp = sin(faceTheta);
+        transformed.yz = ${v2([HINGE_G[1], HINGE_G[2]])} + vec2(faceQ.x * faceCp - faceQ.y * faceSp, faceQ.x * faceSp + faceQ.y * faceCp);
+        vec2 faceR = faceRestAt.yz - ${v2([HINGE_G[1], HINGE_G[2]])};
+        vFacePosedY = ${FACE_POSED_Y};
+      }`;
 
-// the hairs at a point (a along the brow, c across it), each a short segment from a cell of a jittered grid: how much of
-// a hair covers it (antialiased against the pixel's size, px) and that hair's darkness. A hair grows from its root along
-// its lean, so the roots that can reach a point lie behind it along the lean. The search walks the grid's own rows (or
-// columns, whichever the lean is nearer), every one of them in turn, and in each the cells either side of where the
-// line back along the lean crosses it: stepping a cell at a time along the lean instead skips cells, and a skipped
-// root draws its hair as dashes.
-float faceBrowHairs(vec2 p, float px, out float dark) {
-  float c = ${n(HAIR.cell)};
-  float th = faceBrowLean(p.x / ${n(BROW_SPAN)});
-  vec2 dir = vec2(cos(th), sin(th));
-  bool rows = dir.y > dir.x;
-  vec2 g = p / c;
-  float major = rows ? g.y : g.x, minor = rows ? g.x : g.y;
-  float slope = rows ? dir.x / dir.y : dir.y / dir.x;
-  float best = 0.0;
-  dark = 1.0;
-  for (int k = 0; k <= ${HAIR.reach}; k++) {
-    float line = floor(major) - float(k);
-    float xing = minor - (major - (line + 0.5)) * slope;
-    for (int l = -${HAIR.side}; l <= ${HAIR.side}; l++) {
-      vec2 cell = rows ? vec2(floor(xing) + float(l), line) : vec2(line, floor(xing) + float(l));
-      vec4 h = faceHash42(cell);
-      vec2 root = (cell + h.xy) * c;
-      float hb = faceBrowHalf(root.x);
-      float v = root.y / max(hb, 1e-5);
-      float sr = root.x / ${n(BROW_SPAN)};
-      float density = min(${n(HAIR.density.base)} + ${n(HAIR.density.lower)} * (1.0 - smoothstep(-0.6, 0.4, v)) + ${n(HAIR.density.head)} * (1.0 - smoothstep(0.1, 0.45, sr)), ${n(HAIR.density.max)});
-      if (hb < 0.0002 || abs(v) > 1.1 || h.z > density) continue;
-      float h5 = faceHash12(cell + vec2(17.0, 31.0));
-      float len = mix(${n(HAIR.lengthMin)}, ${n(HAIR.lengthMax)}, h.w);
-      float ang = faceBrowLean(sr) + (2.0 * h5 - 1.0) * ${n(HAIR.leanJitter)};
-      vec2 d = vec2(cos(ang), sin(ang));
-      vec2 dp = p - root;
-      float t = clamp(dot(dp, d), 0.0, len);
-      float dist = length(dp - d * t);
-      float hw = ${n(HAIR.halfWidth)} * (1.0 - 0.6 * t / len);
-      float w = max(hw, 0.5 * px);
-      float hit = (hw / w) * (1.0 - smoothstep(w - 0.5 * px, w + 0.5 * px, dist));
-      if (hit > best) { best = hit; dark = 1.0 + ${n(HAIR.dark)} * (2.0 * fract(h5 * 13.7) - 1.0); }
+  const L = FACE_LIDS;
+  const GLSL_FRAGMENT_FUNCTIONS = `
+  float faceHash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
+  float faceHash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+
+  float faceLipAlpha(vec3 f) {
+    if (f.z <= ${n(LIP_Z_F)}) return 0.0;
+    float t = abs(f.x) / ${n(FACE_LIPS.halfWidth)};
+    if (t >= 1.0) return 0.0;
+    float bow = f.x / ${n(FACE_LIPS.bowWidth)};
+    float hu = ${n(FACE_LIPS.upper)} * (1.0 - pow(max(t, 1e-6), ${n(FACE_LIPS.upperPower)})) * (1.0 - ${n(FACE_LIPS.bowDip)} * exp(-bow * bow));
+    float hl = ${n(FACE_LIPS.lower)} * pow(max(1.0 - t * t, 1e-8), ${n(FACE_LIPS.lowerPower)});
+    float s = ${n(FACE_LIPS.soft / 2)};
+    return smoothstep(${n(SEAM_F)} - hl - s, ${n(SEAM_F)} - hl + s, f.y) * (1.0 - smoothstep(${n(SEAM_F)} + hu - s, ${n(SEAM_F)} + hu + s, f.y));
+  }
+
+  // the lips' edges, analytically: the upper lip's is the seam (flat across, curving to the corners' height), the lower
+  // lip's that seam point turned by the whole jaw times the corner taper, as the lower lip's own edge is
+  float faceSeamK(float ax) { float k = ax / ${n(FACE_MOUTH.cornerX)}; return min(1.0, k * k); }
+  float faceSeamUp(float ax) { return mix(${n(SEAM_F)}, ${n(CORNER_Y_F)}, faceSeamK(ax)); }
+  float faceSeamLo(float ax, float jaw) {
+    float k = faceSeamK(ax);
+    float qy = mix(${n(SEAM_F)}, ${n(CORNER_Y_F)}, k) - ${n(HINGE_F[1])};
+    float qz = mix(${n(SEAM_Z_F)}, ${n(CORNER_Z_F)}, k) - ${n(HINGE_F[2])};
+    float th = jaw * ${n(FACE_JAW_MAX)} * mix(1.0, ${n(MT.corner)}, smoothstep(${n(MT.innerX)}, ${n(MT.outerX)}, ax));
+    return ${n(HINGE_F[1])} + qy * cos(th) - qz * sin(th);
+  }
+  // one edge of the lens (side +1 the top, -1 the bottom): the middle of the gap between the lips, give or take the share
+  // of it the lens spans in this column
+  float faceLensEdge(float ax, float jaw, float side) {
+    float up = faceSeamUp(ax), lo = faceSeamLo(ax, jaw);
+    float q = sqrt(max(1.0 - pow(ax / ${n(MI.lensHalfWidth)}, ${n(MI.lensPower)}), 0.0));
+    return 0.5 * (up + lo) + side * 0.5 * (up - lo) * q;
+  }
+  // how far inside the lens a posed point stands, in metres across its nearer edge (negative outside)
+  float faceLensDistance(float ax, float y, float jaw) {
+    float mid = 0.5 * (faceSeamUp(ax) + faceSeamLo(ax, jaw));
+    float side = y > mid ? 1.0 : -1.0;
+    float b0 = faceLensEdge(ax, jaw, side);
+    float slope = (faceLensEdge(ax + ${n(MI.slopeStep)}, jaw, side) - b0) / ${n(MI.slopeStep)};
+    return min(side * (b0 - y) / sqrt(1.0 + slope * slope), ${n(MI.lensHalfWidth)} - ax);
+  }
+  // how much of the mouth's inside a fragment is: on the curtain, in the lens or its rim, in front, with the jaw open
+  float faceMouthAmount(float w, vec3 f, float y, float jaw, out float dist, out float gap) {
+    float ax = abs(f.x);
+    gap = faceSeamUp(ax) - faceSeamLo(ax, jaw);
+    dist = faceLensDistance(ax, y, jaw);
+    float curtain = smoothstep(${n(MI.curtain[0])}, ${n(MI.curtain[1])}, w) * (1.0 - smoothstep(${n(MI.curtain[2])}, ${n(MI.curtain[3])}, w));
+    float lens = smoothstep(${n(-MI.edge / 2)}, ${n(MI.edge / 2)}, dist);
+    float below = step(y, 0.5 * (faceSeamUp(ax) + faceSeamLo(ax, jaw)));
+    float rim = smoothstep(${n(-MI.rim)}, ${n(-MI.rim / 2)}, dist) * (1.0 - smoothstep(${n(MI.lensHalfWidth - MI.rimTip)}, ${n(MI.lensHalfWidth - 0.0005)}, ax))
+      * (1.0 - below * smoothstep(${n(MI.rimLowFade[0])}, ${n(MI.rimLowFade[1])}, w));
+    return curtain * step(${n(INSIDE_Z_F)}, f.z) * max(lens, rim) * smoothstep(${n(MI.jawFrom)}, ${n(MI.jawTo)}, jaw);
+  }
+  // a row of teeth, d from its lip's edge: from..to at the middle, the far edge closing in toward |x| halfWidth
+  float faceToothRow(float ax, float d, float gap, float from, float to, float halfWidth, float opensFrom, float opensTo, out float shade) {
+    float reach = sqrt(max(1.0 - (ax / halfWidth) * (ax / halfWidth), 0.0));
+    float far = from + (to - from) * reach;
+    float e = ${n(MI.toothEdge)};
+    shade = mix(${n(MI.toothShade.edge)}, 1.0, smoothstep(0.0, ${n(MI.toothShade.edgeWidth)}, min(d - from, far - d)))
+      * mix(1.0, ${n(MI.toothShade.corner)}, smoothstep(${n(MI.toothShade.cornerFrom)}, halfWidth, ax));
+    return smoothstep(from - e, from + e, d) * (1.0 - smoothstep(far - e, far + e, d)) * smoothstep(opensFrom, opensTo, gap);
+  }
+
+  vec4 faceHash42(vec2 p) {
+    vec4 p4 = fract(vec4(p.xyxy) * vec4(0.1031, 0.1030, 0.0973, 0.1099));
+    p4 += dot(p4, p4.wzxy + 33.33);
+    return fract((p4.xxyz + p4.yzzw) * p4.zywx);
+  }
+
+  // half the brow's thickness, a along it from the head point: the quadratic, rounded off at the head, pointed at the tail
+  float faceBrowHalf(float a) {
+    if (a <= ${n(FACE_BROWS.headEnd)}) return 0.0; // exactly nothing before the head: pow() rounds a hair's breadth past 0
+    float s = a / ${n(BROW_SPAN)};
+    float th = ${n(BROW_T[0])} + ${n(BROW_T[1])} * s + ${n(BROW_T[2])} * s * s;
+    float capT = clamp((${n(FACE_BROWS.headEnd + FACE_BROWS.headRound)} - a) / ${n(FACE_BROWS.headRound)}, 0.0, 1.0);
+    float cap = pow(max(1.0 - pow(capT, ${n(FACE_BROWS.headPower)}), 0.0), ${n(1 / FACE_BROWS.headPower)});
+    float tail = clamp((${n(FACE_BROWS.tailEnd)} - s) / ${n(FACE_BROWS.tailEnd - FACE_BROWS.tailFrom)}, 0.0, 1.0);
+    return 0.5 * th * cap * tail;
+  }
+  // the band's cover, its edges grown further out by grow (0 for the band itself, the overhang for where hairs may still show)
+  float faceBrowCover(vec3 f, float grow, out float a, out float across) {
+    a = abs(f.x) - ${n(BROW_HEAD_X)};
+    float s = a / ${n(BROW_SPAN)};
+    across = f.y - (${n(BROW_Y[0])} + ${n(BROW_Y[1])} * s + ${n(BROW_Y[2])} * s * s);
+    float hb = faceBrowHalf(a);
+    return smoothstep(-hb - grow - ${n(FACE_BROWS.edgeLow / 2)}, -hb - grow + ${n(FACE_BROWS.edgeLow / 2)}, across)
+      * (1.0 - smoothstep(hb + grow - ${n(FACE_BROWS.edgeHigh / 2)}, hb + grow + ${n(FACE_BROWS.edgeHigh / 2)}, across))
+      * smoothstep(0.0, 0.0004, hb);
+  }
+  float faceBrowLean(float s) { return mix(${n(HAIR.lean[0])}, ${n(HAIR.lean[1])}, pow(clamp(s, 0.0, 1.0), 0.8)); }
+
+  // the hairs at a point (a along the brow, c across it), each a short segment from a cell of a jittered grid: how much of
+  // a hair covers it (antialiased against the pixel's size, px) and that hair's darkness. A hair grows from its root along
+  // its lean, so the roots that can reach a point lie behind it along the lean. The search walks the grid's own rows (or
+  // columns, whichever the lean is nearer), every one of them in turn, and in each the cells either side of where the
+  // line back along the lean crosses it: stepping a cell at a time along the lean instead skips cells, and a skipped
+  // root draws its hair as dashes.
+  float faceBrowHairs(vec2 p, float px, out float dark) {
+    float c = ${n(HAIR.cell)};
+    float th = faceBrowLean(p.x / ${n(BROW_SPAN)});
+    vec2 dir = vec2(cos(th), sin(th));
+    bool rows = dir.y > dir.x;
+    vec2 g = p / c;
+    float major = rows ? g.y : g.x, minor = rows ? g.x : g.y;
+    float slope = rows ? dir.x / dir.y : dir.y / dir.x;
+    float best = 0.0;
+    dark = 1.0;
+    for (int k = 0; k <= ${HAIR.reach}; k++) {
+      float line = floor(major) - float(k);
+      float xing = minor - (major - (line + 0.5)) * slope;
+      for (int l = -${HAIR.side}; l <= ${HAIR.side}; l++) {
+        vec2 cell = rows ? vec2(floor(xing) + float(l), line) : vec2(line, floor(xing) + float(l));
+        vec4 h = faceHash42(cell);
+        vec2 root = (cell + h.xy) * c;
+        float hb = faceBrowHalf(root.x);
+        float v = root.y / max(hb, 1e-5);
+        float sr = root.x / ${n(BROW_SPAN)};
+        float density = min(${n(HAIR.density.base)} + ${n(HAIR.density.lower)} * (1.0 - smoothstep(-0.6, 0.4, v)) + ${n(HAIR.density.head)} * (1.0 - smoothstep(0.1, 0.45, sr)), ${n(HAIR.density.max)});
+        if (hb < 0.0002 || abs(v) > 1.1 || h.z > density) continue;
+        float h5 = faceHash12(cell + vec2(17.0, 31.0));
+        float len = mix(${n(HAIR.lengthMin)}, ${n(HAIR.lengthMax)}, h.w);
+        float ang = faceBrowLean(sr) + (2.0 * h5 - 1.0) * ${n(HAIR.leanJitter)};
+        vec2 d = vec2(cos(ang), sin(ang));
+        vec2 dp = p - root;
+        float t = clamp(dot(dp, d), 0.0, len);
+        float dist = length(dp - d * t);
+        float hw = ${n(HAIR.halfWidth)} * (1.0 - 0.6 * t / len);
+        float w = max(hw, 0.5 * px);
+        float hit = (hw / w) * (1.0 - smoothstep(w - 0.5 * px, w + 0.5 * px, dist));
+        if (hit > best) { best = hit; dark = 1.0 + ${n(HAIR.dark)} * (2.0 * fract(h5 * 13.7) - 1.0); }
+      }
     }
+    return best;
   }
-  return best;
-}
 
-// one eye: its almond between the corners, the virtual eyeball behind it, the lid and the lashes
-void faceEye(vec2 p, vec2 inner, vec2 outer, vec2 centre, vec3 g, inout vec3 col, inout float wet) {
-  float u = 2.0 * (p.x - inner.x) / (outer.x - inner.x) - 1.0;
-  float base = mix(inner.y, outer.y, 0.5 * (u + 1.0));
-  float bulge = 1.0 - u * u;
-  float yUp = base + ${n(FACE_EYES.upperLid)} * bulge;
-  float yLo = base - ${n(FACE_EYES.lowerLid)} * bulge;
-  float yLid = mix(yUp, yLo + ${n(L.blinkGap)}, faceBlink);
-  float e = ${n(EDGE_HALF)};
-  float open = smoothstep(yLo - e, yLo + e, p.y) * (1.0 - smoothstep(yLid - e, yLid + e, p.y)) * smoothstep(${n(L.closeFrom)}, ${n(L.closeTo)}, yLid - yLo);
-  float lid = smoothstep(yLid - e, yLid + e, p.y) * (1.0 - smoothstep(yUp - e, yUp + e, p.y)) * smoothstep(0.0, ${n(L.blinkGap)}, yUp - yLid);
-  if (open > 0.0) {
-    vec3 eye = mix(${v3(FACE_LOOK.sclera)}, ${v3(FACE_LOOK.sclera.map((c, i) => c * FACE_LOOK.scleraCorner[i]))}, smoothstep(0.35, 1.0, abs(u)));
-    eye = mix(eye, ${v3(FACE_LOOK.caruncle)}, 1.0 - smoothstep(-0.9, -0.8, u));
-    vec2 d = p - centre;
-    float r2 = dot(d, d);
-    if (r2 < ${n(EYE_R * EYE_R)}) {
-      vec3 nrm = vec3(d, sqrt(${n(EYE_R * EYE_R)} - r2)) / ${n(EYE_R)};
-      float ang = acos(clamp(dot(nrm, g), -1.0, 1.0));
-      vec3 rt = cross(vec3(0.0, 1.0, 0.0), g);
-      rt = dot(rt, rt) > 1e-6 ? normalize(rt) : vec3(1.0, 0.0, 0.0);
-      vec3 up = cross(g, rt);
-      float a = atan(dot(nrm, up), dot(nrm, rt) + 1e-6);
-      float t = ang / ${n(IRIS_ANGLE)};
-      vec3 iris = mix(mix(faceIris * ${v3(AMBER_RATIO)}, faceIrisAmber.rgb, faceIrisAmber.w), faceIris, smoothstep(0.38, 0.62, t));
-      iris = mix(iris, mix(faceIris * ${v3(LIMBAL_RATIO)}, faceIrisRing, faceIrisAmber.w), smoothstep(0.80, 0.97, t));
-      float fib = (a + 3.14159265) * ${n(FACE_LOOK.fibres / (2 * Math.PI))};
-      float fi = floor(fib);
-      float h = mix(faceHash11(mod(fi, ${n(FACE_LOOK.fibres)})), faceHash11(mod(fi + 1.0, ${n(FACE_LOOK.fibres)})), smoothstep(0.3, 0.7, fract(fib)));
-      iris *= 1.0 + ${n(FACE_LOOK.fibreContrast)} * (2.0 * h - 1.0);
-      eye = mix(eye, iris, 1.0 - smoothstep(${n(IRIS_ANGLE)} - 0.03, ${n(IRIS_ANGLE)} + 0.03, ang));
-      float pa = asin(min(facePupil / ${n(EYE_R)}, 0.95));
-      eye = mix(eye, ${v3(FACE_LOOK.pupil)}, 1.0 - smoothstep(pa - 0.025, pa + 0.025, ang));
+  // one eye: its almond between the corners, the virtual eyeball behind it, the lid and the lashes
+  void faceEye(vec2 p, vec2 inner, vec2 outer, vec2 centre, vec3 g, inout vec3 col, inout float wet) {
+    float u = 2.0 * (p.x - inner.x) / (outer.x - inner.x) - 1.0;
+    float base = mix(inner.y, outer.y, 0.5 * (u + 1.0));
+    float bulge = 1.0 - u * u;
+    float yUp = base + ${n(FACE_EYES.upperLid)} * bulge;
+    float yLo = base - ${n(FACE_EYES.lowerLid)} * bulge;
+    float yLid = mix(yUp, yLo + ${n(L.blinkGap)}, faceBlink);
+    float e = ${n(EDGE_HALF)};
+    float open = smoothstep(yLo - e, yLo + e, p.y) * (1.0 - smoothstep(yLid - e, yLid + e, p.y)) * smoothstep(${n(L.closeFrom)}, ${n(L.closeTo)}, yLid - yLo);
+    float lid = smoothstep(yLid - e, yLid + e, p.y) * (1.0 - smoothstep(yUp - e, yUp + e, p.y)) * smoothstep(0.0, ${n(L.blinkGap)}, yUp - yLid);
+    if (open > 0.0) {
+      vec3 eye = mix(${v3(FACE_LOOK.sclera)}, ${v3(FACE_LOOK.sclera.map((c, i) => c * FACE_LOOK.scleraCorner[i]))}, smoothstep(0.35, 1.0, abs(u)));
+      eye = mix(eye, ${v3(FACE_LOOK.caruncle)}, 1.0 - smoothstep(-0.9, -0.8, u));
+      vec2 d = p - centre;
+      float r2 = dot(d, d);
+      if (r2 < ${n(EYE_R * EYE_R)}) {
+        vec3 nrm = vec3(d, sqrt(${n(EYE_R * EYE_R)} - r2)) / ${n(EYE_R)};
+        float ang = acos(clamp(dot(nrm, g), -1.0, 1.0));
+        vec3 rt = cross(vec3(0.0, 1.0, 0.0), g);
+        rt = dot(rt, rt) > 1e-6 ? normalize(rt) : vec3(1.0, 0.0, 0.0);
+        vec3 up = cross(g, rt);
+        float a = atan(dot(nrm, up), dot(nrm, rt) + 1e-6);
+        float t = ang / ${n(IRIS_ANGLE)};
+        vec3 iris = mix(mix(faceIris * ${v3(AMBER_RATIO)}, faceIrisAmber.rgb, faceIrisAmber.w), faceIris, smoothstep(0.38, 0.62, t));
+        iris = mix(iris, mix(faceIris * ${v3(LIMBAL_RATIO)}, faceIrisRing, faceIrisAmber.w), smoothstep(0.80, 0.97, t));
+        float fib = (a + 3.14159265) * ${n(FACE_LOOK.fibres / (2 * Math.PI))};
+        float fi = floor(fib);
+        float h = mix(faceHash11(mod(fi, ${n(FACE_LOOK.fibres)})), faceHash11(mod(fi + 1.0, ${n(FACE_LOOK.fibres)})), smoothstep(0.3, 0.7, fract(fib)));
+        iris *= 1.0 + ${n(FACE_LOOK.fibreContrast)} * (2.0 * h - 1.0);
+        eye = mix(eye, iris, 1.0 - smoothstep(${n(IRIS_ANGLE)} - 0.03, ${n(IRIS_ANGLE)} + 0.03, ang));
+        float pa = asin(min(facePupil / ${n(EYE_R)}, 0.95));
+        eye = mix(eye, ${v3(FACE_LOOK.pupil)}, 1.0 - smoothstep(pa - 0.025, pa + 0.025, ang));
+      }
+      eye *= 1.0 - ${n(L.shadowShade)} * smoothstep(yLid - ${n(L.shadow)}, yLid, p.y);
+      col = mix(col, eye, open);
+      wet = max(wet, open);
     }
-    eye *= 1.0 - ${n(L.shadowShade)} * smoothstep(yLid - ${n(L.shadow)}, yLid, p.y);
-    col = mix(col, eye, open);
-    wet = max(wet, open);
-  }
-  col *= 1.0 - ${n(L.lidShade)} * lid;
-  // lashes: along the lid's edge, a flick past the outer corner, and a fainter row under the lower lid
-  float f = ${n(L.feather)};
-  float th = ${n(L.lash)} + ${n(L.lashOuter)} * smoothstep(-0.2, 1.0, min(u, 1.0));
-  float upper = smoothstep(yLid - f, yLid + f, p.y) * (1.0 - smoothstep(yLid + th - f, yLid + th + f, p.y)) * smoothstep(-1.0, -0.8, u) * (1.0 - step(1.0, u));
-  float s = (u - 1.0) / ${n(L.flick)};
-  float flick = 0.0;
-  if (s >= 0.0 && s < 1.0) {
-    float yb = base + faceBlink * ${n(L.blinkGap)} + ${n(L.flickRise)} * s;
-    float tf = ${n(L.lash + L.lashOuter)} * (1.0 - s);
-    flick = smoothstep(yb - f, yb + f, p.y) * (1.0 - smoothstep(yb + tf - f, yb + tf + f, p.y));
-  }
-  float lower = smoothstep(yLo - ${n(L.lowerLash)} - f, yLo - ${n(L.lowerLash)} + f, p.y) * (1.0 - smoothstep(yLo - f, yLo + f, p.y))
-    * smoothstep(${n(L.lowerFrom)}, ${n(L.lowerFrom + 0.15)}, u) * (1.0 - smoothstep(0.9, 1.0, u)) * ${n(L.lowerAlpha)};
-  col = mix(col, ${v3(FACE_LOOK.lash)}, max(max(upper, flick) * ${n(L.lashAlpha)}, lower) * faceLashes);
-}`;
+    col *= 1.0 - ${n(L.lidShade)} * lid;
+    // lashes: along the lid's edge, a flick past the outer corner, and a fainter row under the lower lid
+    float f = ${n(L.feather)};
+    float th = ${n(L.lash)} + ${n(L.lashOuter)} * smoothstep(-0.2, 1.0, min(u, 1.0));
+    float upper = smoothstep(yLid - f, yLid + f, p.y) * (1.0 - smoothstep(yLid + th - f, yLid + th + f, p.y)) * smoothstep(-1.0, -0.8, u) * (1.0 - step(1.0, u));
+    float s = (u - 1.0) / ${n(L.flick)};
+    float flick = 0.0;
+    if (s >= 0.0 && s < 1.0) {
+      float yb = base + faceBlink * ${n(L.blinkGap)} + ${n(L.flickRise)} * s;
+      float tf = ${n(L.lash + L.lashOuter)} * (1.0 - s);
+      flick = smoothstep(yb - f, yb + f, p.y) * (1.0 - smoothstep(yb + tf - f, yb + tf + f, p.y));
+    }
+    float lower = smoothstep(yLo - ${n(L.lowerLash)} - f, yLo - ${n(L.lowerLash)} + f, p.y) * (1.0 - smoothstep(yLo - f, yLo + f, p.y))
+      * smoothstep(${n(L.lowerFrom)}, ${n(L.lowerFrom + 0.15)}, u) * (1.0 - smoothstep(0.9, 1.0, u)) * ${n(L.lowerAlpha)};
+    col = mix(col, ${v3(FACE_LOOK.lash)}, max(max(upper, flick) * ${n(L.lashAlpha)}, lower) * faceLashes);
+  }`;
 
-const FRAGMENT_PARS = [
-  'uniform float faceOn;',
-  'uniform float faceJaw;',
-  'uniform float faceBlink;',
-  'uniform vec3 faceGazeR;',
-  'uniform vec3 faceGazeL;',
-  'uniform float facePupil;',
-  'uniform vec3 faceIris;',
-  'uniform float faceBrow;',
-  'uniform vec3 faceBrowColour;',
-  'uniform float faceLips;',
-  'uniform float faceLashes;',
-  'uniform vec4 faceLipTint;',
-  'uniform vec4 faceIrisAmber;',
-  'uniform vec3 faceIrisRing;',
-  'varying float vFaceJaw;',
-  'varying vec3 vFaceF;',
-  'varying float vFacePosedY;',
-  GLSL_FRAGMENT_FUNCTIONS,
-].join('\n');
+  const FRAGMENT_PARS = [
+    'uniform float faceOn;',
+    'uniform float faceJaw;',
+    'uniform float faceBlink;',
+    'uniform vec3 faceGazeR;',
+    'uniform vec3 faceGazeL;',
+    'uniform float facePupil;',
+    'uniform vec3 faceIris;',
+    'uniform float faceBrow;',
+    'uniform vec3 faceBrowColour;',
+    'uniform float faceLips;',
+    'uniform float faceLashes;',
+    'uniform vec4 faceLipTint;',
+    'uniform vec4 faceIrisAmber;',
+    'uniform vec3 faceIrisRing;',
+    'varying float vFaceJaw;',
+    'varying vec3 vFaceF;',
+    'varying float vFacePosedY;',
+    GLSL_FRAGMENT_FUNCTIONS,
+  ].join('\n');
 
-// After color_fragment, so it lies over her texture, any vertex colour and any fabric painted on her. The three
-// amounts the roughness and normal hooks read are declared here, at main()'s scope, whatever the switch says. The size
-// of a pixel on her is measured before any branch that depends on where the fragment is, because a derivative is only
-// defined where neighbouring fragments take the same path; the switch is a uniform, so inside it is safe.
-const FRAGMENT_COLOUR = `
-    float faceWet = 0.0, faceLipMask = 0.0, faceInner = 0.0;
-    if (faceOn > 0.5) {
-      float facePx = max(max(fwidth(vFaceF.x), fwidth(vFaceF.y)), 1e-6);
-      if (abs(vFaceF.x) < ${n(FACE_BOX.halfWidth)} && vFaceF.y > ${n(BOX_Y0_F)} && vFaceF.y < ${n(BOX_Y1_F)} && vFaceF.z > ${n(BOX_Z_F)}) {
-        faceLipMask = faceLipAlpha(vFaceF);
-        diffuseColor.rgb *= mix(vec3(1.0), faceLipTint.rgb, faceLipMask * faceLips * (1.0 - faceLipTint.w));
-        float faceLipShade = clamp(dot(diffuseColor.rgb, ${v3(LUMA)}) / ${n(FACE_LIPS.skinLuminance)}, ${n(FACE_LIPS.shade[0])}, ${n(FACE_LIPS.shade[1])});
-        diffuseColor.rgb = mix(diffuseColor.rgb, faceLipTint.rgb * faceLipShade, faceLipMask * clamp(faceLips / ${n(FACE_LIPS.paintFull)}, 0.0, 1.0) * faceLipTint.w);
-        float faceDist, faceGap;
-        faceInner = faceMouthAmount(vFaceJaw, vFaceF, vFacePosedY, faceJaw, faceDist, faceGap);
-        if (faceInner > 0.0) {
-          float faceAx = abs(vFaceF.x), faceShadeU, faceShadeL;
-          float faceLens = smoothstep(${n(-MI.edge / 2)}, ${n(MI.edge / 2)}, faceDist);
-          vec3 faceM = mix(${v3(MI.red)}, ${v3(MI.dark)}, smoothstep(${n(MI.redFrom)}, ${n(MI.redTo)}, faceDist));
-          faceM = mix(faceM, ${v3(MI.lipInner)}, smoothstep(0.0, ${n(MI.rim / 2)}, -faceDist));
-          float faceUpper = ${n(MI.upperTeeth.share)} * faceToothRow(faceAx, faceSeamUp(faceAx) - vFacePosedY, faceGap, ${n(MI.upperTeeth.from)}, ${n(MI.upperTeeth.to)}, ${n(MI.upperTeeth.halfWidth)}, ${n(MI.upperTeeth.opensFrom)}, ${n(MI.upperTeeth.opensTo)}, faceShadeU);
-          float faceLower = ${n(MI.lowerTeeth.share)} * faceToothRow(faceAx, vFacePosedY - faceSeamLo(faceAx, faceJaw), faceGap, ${n(MI.lowerTeeth.from)}, ${n(MI.lowerTeeth.to)}, ${n(MI.lowerTeeth.halfWidth)}, ${n(MI.lowerTeeth.opensFrom)}, ${n(MI.lowerTeeth.opensTo)}, faceShadeL);
-          faceM = mix(faceM, ${v3(MI.teeth)} * faceShadeU, faceUpper * faceLens);
-          faceM = mix(faceM, ${v3(MI.teeth)} * faceShadeL, faceLower * faceLens);
-          faceM *= mix(1.0, ${n(MI.deepShade)}, smoothstep(${n(MI.deepFrom)}, ${n(MI.deepTo)}, faceDist));
-          diffuseColor.rgb = mix(diffuseColor.rgb, faceM, faceInner);
-        }
-        if (vFaceF.z > ${n(EYE_Z_F)}) {
-          if (vFaceF.x < 0.0) faceEye(vFaceF.xy, ${v2(RIGHT_F.inner)}, ${v2(RIGHT_F.outer)}, ${v2(RIGHT_F.centre)}, faceGazeR, diffuseColor.rgb, faceWet);
-          else faceEye(vFaceF.xy, ${v2(LEFT_F.inner)}, ${v2(LEFT_F.outer)}, ${v2(LEFT_F.centre)}, faceGazeL, diffuseColor.rgb, faceWet);
-        }
-        if (vFaceF.z > ${n(BROW_Z_F)}) {
-          float faceA, faceAcross;
-          float faceReach = faceBrowCover(vFaceF, ${n(HAIR.overhang)}, faceA, faceAcross);
-          if (faceReach > 0.0) {
-            float faceB = faceBrowCover(vFaceF, 0.0, faceA, faceAcross);
-            float faceDark;
-            float faceHair = faceBrowHairs(vec2(faceA, faceAcross), facePx, faceDark);
-            float faceFill = mix(${n(HAIR.fill[0])}, ${n(HAIR.fill[1])}, clamp(${n(2 * HAIR.halfWidth)} / facePx, 0.0, 1.0));
-            vec3 faceBC = faceBrowColour * mix(${n(HAIR.fillShade)}, faceDark, faceHair);
-            diffuseColor.rgb = mix(diffuseColor.rgb, faceBC, ${n(FACE_BROWS.alpha)} * faceBrow * max(faceB * mix(faceFill, 1.0, faceHair), faceReach * faceHair));
+  // After color_fragment, so it lies over her texture, any vertex colour and any fabric painted on her. The three
+  // amounts the roughness and normal hooks read are declared here, at main()'s scope, whatever the switch says. The size
+  // of a pixel on her is measured before any branch that depends on where the fragment is, because a derivative is only
+  // defined where neighbouring fragments take the same path; the switch is a uniform, so inside it is safe.
+  const FRAGMENT_COLOUR = `
+      float faceWet = 0.0, faceLipMask = 0.0, faceInner = 0.0;
+      if (faceOn > 0.5) {
+        float facePx = max(max(fwidth(vFaceF.x), fwidth(vFaceF.y)), 1e-6);
+        if (abs(vFaceF.x) < ${n(FACE_BOX.halfWidth)} && vFaceF.y > ${n(BOX_Y0_F)} && vFaceF.y < ${n(BOX_Y1_F)} && vFaceF.z > ${n(BOX_Z_F)}) {
+          faceLipMask = faceLipAlpha(vFaceF);
+          diffuseColor.rgb *= mix(vec3(1.0), faceLipTint.rgb, faceLipMask * faceLips * (1.0 - faceLipTint.w));
+          float faceLipShade = clamp(dot(diffuseColor.rgb, ${v3(LUMA)}) / ${n(FACE_LIPS.skinLuminance)}, ${n(FACE_LIPS.shade[0])}, ${n(FACE_LIPS.shade[1])});
+          diffuseColor.rgb = mix(diffuseColor.rgb, faceLipTint.rgb * faceLipShade, faceLipMask * clamp(faceLips / ${n(FACE_LIPS.paintFull)}, 0.0, 1.0) * faceLipTint.w);
+          float faceDist, faceGap;
+          faceInner = faceMouthAmount(vFaceJaw, vFaceF, vFacePosedY, faceJaw, faceDist, faceGap);
+          if (faceInner > 0.0) {
+            float faceAx = abs(vFaceF.x), faceShadeU, faceShadeL;
+            float faceLens = smoothstep(${n(-MI.edge / 2)}, ${n(MI.edge / 2)}, faceDist);
+            vec3 faceM = mix(${v3(MI.red)}, ${v3(MI.dark)}, smoothstep(${n(MI.redFrom)}, ${n(MI.redTo)}, faceDist));
+            faceM = mix(faceM, ${v3(MI.lipInner)}, smoothstep(0.0, ${n(MI.rim / 2)}, -faceDist));
+            float faceUpper = ${n(MI.upperTeeth.share)} * faceToothRow(faceAx, faceSeamUp(faceAx) - vFacePosedY, faceGap, ${n(MI.upperTeeth.from)}, ${n(MI.upperTeeth.to)}, ${n(MI.upperTeeth.halfWidth)}, ${n(MI.upperTeeth.opensFrom)}, ${n(MI.upperTeeth.opensTo)}, faceShadeU);
+            float faceLower = ${n(MI.lowerTeeth.share)} * faceToothRow(faceAx, vFacePosedY - faceSeamLo(faceAx, faceJaw), faceGap, ${n(MI.lowerTeeth.from)}, ${n(MI.lowerTeeth.to)}, ${n(MI.lowerTeeth.halfWidth)}, ${n(MI.lowerTeeth.opensFrom)}, ${n(MI.lowerTeeth.opensTo)}, faceShadeL);
+            faceM = mix(faceM, ${v3(MI.teeth)} * faceShadeU, faceUpper * faceLens);
+            faceM = mix(faceM, ${v3(MI.teeth)} * faceShadeL, faceLower * faceLens);
+            faceM *= mix(1.0, ${n(MI.deepShade)}, smoothstep(${n(MI.deepFrom)}, ${n(MI.deepTo)}, faceDist));
+            diffuseColor.rgb = mix(diffuseColor.rgb, faceM, faceInner);
+          }
+          if (vFaceF.z > ${n(EYE_Z_F)}) {
+            if (vFaceF.x < 0.0) faceEye(vFaceF.xy, ${v2(RIGHT_F.inner)}, ${v2(RIGHT_F.outer)}, ${v2(RIGHT_F.centre)}, faceGazeR, diffuseColor.rgb, faceWet);
+            else faceEye(vFaceF.xy, ${v2(LEFT_F.inner)}, ${v2(LEFT_F.outer)}, ${v2(LEFT_F.centre)}, faceGazeL, diffuseColor.rgb, faceWet);
+          }
+          if (vFaceF.z > ${n(BROW_Z_F)}) {
+            float faceA, faceAcross;
+            float faceReach = faceBrowCover(vFaceF, ${n(HAIR.overhang)}, faceA, faceAcross);
+            if (faceReach > 0.0) {
+              float faceB = faceBrowCover(vFaceF, 0.0, faceA, faceAcross);
+              float faceDark;
+              float faceHair = faceBrowHairs(vec2(faceA, faceAcross), facePx, faceDark);
+              float faceFill = mix(${n(HAIR.fill[0])}, ${n(HAIR.fill[1])}, clamp(${n(2 * HAIR.halfWidth)} / facePx, 0.0, 1.0));
+              vec3 faceBC = faceBrowColour * mix(${n(HAIR.fillShade)}, faceDark, faceHair);
+              diffuseColor.rgb = mix(diffuseColor.rgb, faceBC, ${n(FACE_BROWS.alpha)} * faceBrow * max(faceB * mix(faceFill, 1.0, faceHair), faceReach * faceHair));
+            }
           }
         }
-      }
-    }`;
-const FRAGMENT_ROUGHNESS = `
-    if (faceOn > 0.5) {
-      roughnessFactor = mix(roughnessFactor, ${n(FACE_LOOK.lipRoughness)}, faceLipMask);
-      roughnessFactor = mix(roughnessFactor, ${n(FACE_LOOK.insideRoughness)}, faceInner);
-      roughnessFactor = mix(roughnessFactor, ${n(FACE_LOOK.wetRoughness)}, faceWet);
-    }`;
-// After normal_fragment_maps: her skin's normal map (pores, the statue eye's own relief) clouds a wet eye white, so
-// there the normal goes back to the surface's own; three r185 declares `nonPerturbedNormal` in normal_fragment_begin,
-// before the maps, and the fabric patch reads it the same way. The mouth's inside faces the camera outright (view space
-// +z): its triangles are the lips stretched across the gap, each with its own half-turned vertex normals, and lit by
-// those they showed every triangle as a streak.
-const FRAGMENT_NORMAL = `
-    if (faceOn > 0.5) {
-      normal = normalize(mix(normal, nonPerturbedNormal, faceWet));
-      normal = normalize(mix(normal, vec3(0.0, 0.0, 1.0), faceInner));
-    }`;
-
-/** Patch a material once (idempotent); the face starts OFF. */
-export function patchFaceRig(material: THREE.Material): void {
-  patch(material);
+      }`;
+  const FRAGMENT_ROUGHNESS = `
+      if (faceOn > 0.5) {
+        roughnessFactor = mix(roughnessFactor, ${n(FACE_LOOK.lipRoughness)}, faceLipMask);
+        roughnessFactor = mix(roughnessFactor, ${n(FACE_LOOK.insideRoughness)}, faceInner);
+        roughnessFactor = mix(roughnessFactor, ${n(FACE_LOOK.wetRoughness)}, faceWet);
+      }`;
+  // After normal_fragment_maps: her skin's normal map (pores, the statue eye's own relief) clouds a wet eye white, so
+  // there the normal goes back to the surface's own; three r185 declares `nonPerturbedNormal` in normal_fragment_begin,
+  // before the maps, and the fabric patch reads it the same way. The mouth's inside faces the camera outright (view space
+  // +z): its triangles are the lips stretched across the gap, each with its own half-turned vertex normals, and lit by
+  // those they showed every triangle as a streak.
+  const FRAGMENT_NORMAL = `
+      if (faceOn > 0.5) {
+        normal = normalize(mix(normal, nonPerturbedNormal, faceWet));
+        normal = normalize(mix(normal, vec3(0.0, 0.0, 1.0), faceInner));
+      }`;
+  return { VERTEX_PARS, VERTEX_NORMAL, VERTEX_JAW, FRAGMENT_PARS, FRAGMENT_COLOUR, FRAGMENT_ROUGHNESS, FRAGMENT_NORMAL };
 }
+interface ShaderLines { readonly VERTEX_PARS: string; readonly VERTEX_NORMAL: string; readonly VERTEX_JAW: string; readonly FRAGMENT_PARS: string; readonly FRAGMENT_COLOUR: string; readonly FRAGMENT_ROUGHNESS: string; readonly FRAGMENT_NORMAL: string }
+const shaders = new Map<FaceSpec, ShaderLines>();
+// (the lines are written indented inside `shaderFor`; her program's text is as it was before, to the letter)
+const dedent = (t: string) => t.replace(/^ {2}/gm, '');
+const linesFor = (spec: FaceSpec): ShaderLines => {
+  let s = shaders.get(spec);
+  if (!s) { const raw = shaderFor(spec); s = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, dedent(v)])) as unknown as ShaderLines; shaders.set(spec, s); }
+  return s;
+};
 
-function patch(material: THREE.Material): Uniforms {
+
+/** Patch a material once (idempotent) with a body's face (hers unless said); the face starts OFF. */
+export function patchFaceRig(material: THREE.Material, spec: FaceSpec = HER_FACE): void {
+  patch(material, spec);
+}
+/** The face a material was patched with (null: none). */
+export function faceSpecOf(material: THREE.Material): FaceSpec | null {
+  return specOf.get(material) ?? null;
+}
+const specOf = new WeakMap<THREE.Material, FaceSpec>();
+
+function patch(material: THREE.Material, spec: FaceSpec = HER_FACE): Uniforms {
   const known = patched.get(material);
   if (known) return known;
+  const FACE_DEFAULTS = spec.defaults as typeof HER_FACE.defaults & { readonly iris: V3; readonly browColour: V3 }, FACE_LIPS = spec.lips as typeof HER_FACE.lips & { readonly tint: V3 };
+  const { VERTEX_PARS, VERTEX_NORMAL, VERTEX_JAW, FRAGMENT_PARS, FRAGMENT_COLOUR, FRAGMENT_ROUGHNESS, FRAGMENT_NORMAL } = linesFor(spec);
   const uniforms: Uniforms = {
     faceOn: { value: 0 },
     faceJaw: { value: 0 },
@@ -839,9 +924,12 @@ function patch(material: THREE.Material): Uniforms {
       .replace('#include <roughnessmap_fragment>', () => `#include <roughnessmap_fragment>${FRAGMENT_ROUGHNESS}`)
       .replace('#include <normal_fragment_maps>', () => `#include <normal_fragment_maps>${FRAGMENT_NORMAL}`);
   };
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|face-rig-v3`; };
+  // (her own program's key as it always was; another body's face is another program)
+  const tag = spec === HER_FACE ? '' : `-${spec.frame.id}`;
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|face-rig-v3${tag}`; };
   material.needsUpdate = true;
   patched.set(material, uniforms);
+  specOf.set(material, spec);
   return uniforms;
 }
 
@@ -852,8 +940,9 @@ function patch(material: THREE.Material): Uniforms {
  */
 export function setFaceRig(material: THREE.Material, state: FaceRigState | null): void {
   if (!state && !patched.has(material)) return; // nothing to take off a material never patched
-  const u = patch(material);
-  const s = state ? settingOf(state) : null;
+  const u = patch(material), spec = specOf.get(material) ?? HER_FACE;
+  const FACE_DEFAULTS = spec.defaults as typeof HER_FACE.defaults & { readonly iris: V3; readonly browColour: V3 }, FACE_LIPS = spec.lips as typeof HER_FACE.lips & { readonly tint: V3 };
+  const s = state ? settingOf(state, spec) : null;
   u.faceOn.value = s ? 1 : 0;
   u.faceJaw.value = s ? s.jaw : 0;
   u.faceBlink.value = s ? s.blink : 0;
@@ -886,9 +975,9 @@ const local = new THREE.Vector3();
  * its unposed child `Bone_015`, which moves with it) and one to the neck, so with the head turned against the neck the
  * answer is the head's, which is what the eyes ride. Null if the mesh has no such bone.
  */
-export function restFromWorld(mesh: THREE.SkinnedMesh, world: THREE.Vector3, out?: [number, number, number]): [number, number, number] | null {
+export function restFromWorld(mesh: THREE.SkinnedMesh, world: THREE.Vector3, out?: [number, number, number], frame: FaceFrame = HER_FACE.frame): [number, number, number] | null {
   const skeleton = mesh.skeleton;
-  const b = skeleton ? skeleton.bones.findIndex((bone) => bone.name === FACE_HEAD_BONE) : -1;
+  const b = skeleton ? skeleton.bones.findIndex((bone) => bone.name === frame.headBone) : -1;
   if (b < 0 || !skeleton.boneInverses[b]) return null;
   skin.multiplyMatrices(mesh.matrixWorld, mesh.bindMatrixInverse)
     .multiply(skeleton.bones[b].matrixWorld)
@@ -897,9 +986,14 @@ export function restFromWorld(mesh: THREE.SkinnedMesh, world: THREE.Vector3, out
   if (skin.determinant() === 0) return null;
   local.copy(world).applyMatrix4(skin.invert());
   const r = out ?? [0, 0, 0];
-  r[0] = FACE_REST_SCALE * local.x + FACE_REST_OFFSET[0];
-  r[1] = FACE_REST_SCALE * local.y + FACE_REST_OFFSET[1];
-  r[2] = FACE_REST_SCALE * local.z + FACE_REST_OFFSET[2];
+  if (frame.pitch === 0) {
+    r[0] = frame.scale * local.x + frame.offset[0];
+    r[1] = frame.scale * local.y + frame.offset[1];
+    r[2] = frame.scale * local.z + frame.offset[2];
+    return r;
+  }
+  const q = faceRestOf(frame, [local.x, local.y, local.z]);
+  r[0] = q[0]; r[1] = q[1]; r[2] = q[2];
   return r;
 }
 

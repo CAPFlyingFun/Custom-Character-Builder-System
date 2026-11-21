@@ -35,7 +35,8 @@ import { breathAt, breathVolumes, layBreathTable } from './breathSkin';
 import { MOTION_SHAPES, LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, standingShape, type LineMode } from './levelLine';
 import { ensureRest, ensureSkinFabric, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
-import { FACE_REST_OFFSET, FACE_REST_SCALE, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
+import { FACE_REST_OFFSET, FACE_REST_SCALE, HER_FACE, faceSpecOf, patchFaceRig, restFromWorld, setFaceRig, type FaceRigState } from './faceRig';
+import { MALE_FACE } from './maleFace';
 import { DRAW_LIFT, REST_SCALE, RoomGarment } from './garment/roomGarment';
 import { ClothSkirt } from './clothSkirt';
 import { CLOTH_LAYERS, ClothUnder, besideCloth, cinchUnder, coveredBy, holdInside, underTop } from './clothLayers';
@@ -1751,15 +1752,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   const headPointsOf = new WeakMap<THREE.SkinnedMesh, HeadPoints>();
   function layFaceFields(): void {
     const ids = faceSlidersMoved(head.face), b = bodyOf();
-    if (!ids.length || !b || !recovered) return;
+    if (!ids.length || !b || !faceMaterial) return;
+    // (her rest metres, or his body's taken into them by his face's frame: maleFace.ts)
+    const frame = faceSpecOf(faceMaterial)?.frame;
     for (const s of shaped) {
       if (s.mesh !== b.mesh && !hairMeshes.includes(s.mesh)) continue;
       for (const id of ids) {
         const name = `${FACE_FIELD_PREFIX}${id}`;
         if (s.fields.fields.has(name)) continue;
         let points = headPointsOf.get(s.mesh);
-        if (!points) { points = headPoints(s.fields.basePos); headPointsOf.set(s.mesh, points); }
-        addShapeField(s.fields, name, faceFieldOn(id, s.fields.basePos, s.fields.baseNrm, points));
+        if (!points) { points = headPoints(s.fields.basePos, frame); headPointsOf.set(s.mesh, points); }
+        addShapeField(s.fields, name, faceFieldOn(id, s.fields.basePos, s.fields.baseNrm, points, frame));
       }
     }
     if (faceMaterial === b.material) ensureSkinFabric(b.mesh, b.material, { layers: PAINT_LAYER_COUNT, rest: shaped.find((x) => x.mesh === b.mesh)?.fields ?? null });
@@ -1782,7 +1785,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const b = bodyOf();
     if (!faceMaterial || !b || b.material !== faceMaterial || !model?.visible) return;
     model.updateMatrixWorld(true);
-    const cam = faceMotion.mode === 'camera' ? restFromWorld(b.mesh, camera.position, cameraRest) : null;
+    const cam = faceMotion.mode === 'camera' ? restFromWorld(b.mesh, camera.position, cameraRest, faceSpecOf(faceMaterial)?.frame) : null;
     faceMotion.step(dt, cam);
     setFaceRig(faceMaterial, faceOn ? { jaw: faceMotion.jaw, gazeRight: faceMotion.gazeRight, gazeLeft: faceMotion.gazeLeft, blink: faceMotion.blink, ...faceLookNow } : null);
   }
@@ -9123,8 +9126,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       applySkin();
       // and her hair, made for her approved v2 body
       loadHair();
-      // and her face, on her approved v2 body only (its measurements are that file's)
-      { const b = bodyOf(); faceMaterial = recovered && b ? b.material : null; if (faceMaterial) patchFaceRig(faceMaterial); }
+      // and her face, on her approved v2 body (its measurements are that file's); and his, the same design through his
+      // frame, with brows, lashes and lips of his own (maleFace.ts)
+      { const b = bodyOf(), his = isMaleModel(SARAH_LAB_MODELS[modelIndex].id); faceMaterial = (recovered || his) && b ? b.material : null; if (faceMaterial) patchFaceRig(faceMaterial, his ? MALE_FACE : HER_FACE); }
       // she stays out of sight until what she has on is on: never undressed, then dressed a moment later
       loadedModel.visible = !recovered;
       three.add(loadedModel);
@@ -11778,7 +11782,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           }
           const b = bodyOf(); model?.updateMatrixWorld(true);
           // where the camera is in her head's rest frame (metres), and where the face's own probe point (her nose tip) lands in the world
-          const cam = b ? restFromWorld(b.mesh, camera.position) : null;
+          const cam = b ? restFromWorld(b.mesh, camera.position, undefined, (faceMaterial && faceSpecOf(faceMaterial)?.frame) || undefined) : null;
           const skinFields = b ? shaped.find((x) => x.mesh === b.mesh)?.fields : undefined;
           return {
             on: faceOn, laid: !!faceMaterial, mode: faceMotion.mode, jaw: faceMotion.jaw, blink: faceMotion.blink, gazeRight: [...faceMotion.gazeRight], gazeLeft: [...faceMotion.gazeLeft], cameraRest: cam, cameraWorld: camera.position.toArray(),

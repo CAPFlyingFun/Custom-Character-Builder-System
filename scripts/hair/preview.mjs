@@ -9,6 +9,7 @@
  *        [--colour '#rrggbb'] [--shorter 0..1] [--size 360] [--span 0.5] [--centre-y 1.47] [--yaws 0,40,90,180,-40]
  *
  * (`--span` metres across a view and `--centre-y` its middle's height: `--span 0.26 --centre-y 1.58` is her head close.)
+ * `--body male`: on HIS head (`head.mjs` `BODIES.male`), in his own skin's grey (his picture is not read).
  *
  * `--style` bakes the style first (to `preview-out/<id>[-light].glb`). `--colour` re-tints the texture's tone to SEE a
  * style in another colour (the real colour is the material's, `hairMaterial.ts`). `--shorter` sets the length morph.
@@ -74,29 +75,51 @@ export async function loadHairFile(file, { shorter = 0, colour = null } = {}) {
   };
 }
 
+/**
+ * A body read plainly (his: `loadBody` reads hers, with her arms' and her shapes' own checks): its skin's points through
+ * its first bone's world and inverse bind, as a hair file's are, its normals, its triangles.
+ */
+async function plainBody(file) {
+  const io = await gltfIo(), doc = await io.read(file), root = doc.getRoot(), prim = root.listMeshes()[0].listPrimitives()[0];
+  const skin = root.listSkins()[0], j0 = skin.listJoints()[0].getWorldMatrix(), ib = Array.from(skin.getInverseBindMatrices().getArray().slice(0, 16));
+  const T = new Array(16).fill(0);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) T[c * 4 + r] += j0[k * 4 + r] * ib[c * 4 + k];
+  const P = prim.getAttribute('POSITION'), N = prim.getAttribute('NORMAL'), n = P.getCount(), rest = new Float32Array(n * 3), normal = new Float32Array(n * 3), e = [], m = [];
+  for (let v = 0; v < n; v++) {
+    P.getElement(v, e); N.getElement(v, m);
+    for (let c = 0; c < 3; c++) rest[v * 3 + c] = T[c] * e[0] + T[4 + c] * e[1] + T[8 + c] * e[2] + T[12 + c];
+    const l = Math.hypot(m[0], m[1], m[2]) || 1; for (let c = 0; c < 3; c++) normal[v * 3 + c] = m[c] / l;
+  }
+  return { rest, normal, index: Uint32Array.from(prim.getIndices().getArray()), skin: null, uv: null };
+}
+
 /** Her head and shoulders from five sides with what is given to wear. */
-export function hairViews(body, extra = [], size = 360, { span = 0.5, centreY = 1.47, yaws = [0, 40, 90, 180, -40] } = {}) {
+export function hairViews(body, extra = [], size = 360, { span = 0.5, centreY = 1.47, yaws = [0, 40, 90, 180, -40], centre = null } = {}) {
   const skin = skinMesh(body, { index: within(body, { yFrom: 1.12, xFrom: -0.24, xTo: 0.24 }) });
-  return beside(yaws.map((yaw) => draw({ width: size, height: Math.round(size * 1.3), yaw, pitch: 4, centre: [0, centreY, -0.06], span, meshes: [skin, ...extra] })));
+  return beside(yaws.map((yaw) => draw({ width: size, height: Math.round(size * 1.3), yaw, pitch: 4, centre: centre ?? [0, centreY, -0.06], span, meshes: [skin, ...extra] })));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const id = option('style', ''), light = process.argv.includes('--light'), size = Number(option('size', 360));
+  const { BODIES, fromRest } = await import('./head.mjs'), who = BODIES[option('body', 'female')];
+  if (!who) throw new Error(`preview: no body ${option('body', '')}`);
   let file = option('file', '');
   if (id) {
-    const { loadStyle, buildStyle } = await import('./bake.mjs'), { loadHead, BODY_FILE } = await import('./head.mjs');
+    const { loadStyle, buildStyle } = await import('./bake.mjs'), { loadHead } = await import('./head.mjs');
     const { paintAtlas } = await import('./texture.mjs'), { writeHair } = await import('./glb.mjs');
     mkdirSync('preview-out', { recursive: true });
-    file = `preview-out/${id}${light ? '-light' : ''}.glb`;
-    const style = await loadStyle(id), head = await loadHead(BODY_FILE), built = await buildStyle(style, { head, light });
+    file = `preview-out/${who === BODIES.male ? 'male-' : ''}${id}${light ? '-light' : ''}.glb`;
+    const style = await loadStyle(id), head = await loadHead(who.file, who.id), built = await buildStyle(style, { head, light });
     const { webp } = await paintAtlas(1024);
-    const r = await writeHair({ bodyFile: BODY_FILE, target: file, built: built.long.out, parts: built.long.parts, shorter: built.short?.out ?? null, webp, texSize: 1024, style: id });
+    const r = await writeHair({ bodyFile: who.file, target: file, built: built.long.out, parts: built.long.parts, shorter: built.short?.out ?? null, webp, texSize: 1024, style: id, body: who.id });
     console.log(`${file}: ${r.vertices} vertices, ${r.triangles} triangles${built.report ? `; ${built.report}` : ''}`);
   }
   if (!file) throw new Error('preview: --style <id> or --file <glb>');
   const out = option('out', `preview-out/${id || 'hair'}.png`);
-  const body = await loadBody(), hair = await loadHairFile(file, { shorter: Number(option('shorter', 0)), colour: option('colour', null) });
-  const yaws = option('yaws', '') ? option('yaws', '').split(',').map(Number) : undefined;
-  await savePng(out, hairViews(body, [hair], size, { span: Number(option('span', 0.5)), centreY: Number(option('centre-y', 1.47)), yaws }));
+  const male = who === BODIES.male;
+  const body = male ? await plainBody(who.file) : await loadBody(), hair = await loadHairFile(file, { shorter: Number(option('shorter', 0)), colour: option('colour', null) });
+  const yaws = option('yaws', '') ? option('yaws', '').split(',').map(Number) : undefined, centreY = Number(option('centre-y', 1.47));
+  // (his pictures are in his own geometry: the middle of a view is the same place of the style's frame, taken there)
+  await savePng(out, hairViews(body, [hair], size, { span: Number(option('span', 0.5)), centreY, yaws, centre: male ? fromRest(who, [0, centreY, -0.06]) : null }));
   console.log(out);
 }

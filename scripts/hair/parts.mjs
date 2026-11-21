@@ -3,18 +3,20 @@
  * each of its parts (`kit.part`), how many of its DRAWN points lie more than a millimetre under her skin and how deep
  * the deepest is. What a person writing a style runs between looks, to find which part is in her.
  *
- *   node scripts/hair/parts.mjs <id> [--light] [--short]
+ *   node scripts/hair/parts.mjs <id> [--light] [--short] [--body male]
  *
  * A point counts when a triangle uses it and its alpha draws (0.42 and over, the material's cut). `--short` builds the
  * style at its shortest. The aim is none under her skin: `tests/hairStyles.test.ts` holds a baked file to 0.5 mm.
  */
-import { loadHead } from './head.mjs';
+import { BODIES, loadHead } from './head.mjs';
 import { makeKit } from './kit.mjs';
 import { loadStyle } from './bake.mjs';
 
 const id = process.argv[2];
 if (!id) { console.error('node scripts/hair/parts.mjs <id> [--light] [--short]'); process.exit(1); }
-const head = await loadHead(), style = await loadStyle(id);
+const bi = process.argv.indexOf('--body'), who = BODIES[bi > 0 ? process.argv[bi + 1] : 'female'];
+if (!who) throw new Error('parts: --body female or male');
+const head = await loadHead(who.file, who.id), style = await loadStyle(id);
 const kit = makeKit(head, { light: process.argv.includes('--light'), length: process.argv.includes('--short') ? 0 : 1 });
 style.build(kit);
 const used = new Uint8Array(kit.out.pos.length / 3);
