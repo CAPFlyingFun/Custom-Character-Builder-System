@@ -1770,20 +1770,36 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   light skin and the full one alike: turned (3,827 and 3,969 points, 33 mm at the most) the top of her calf was drawn
   in thin with a hook behind her knee; not turned it is full, and the front of her knee is round at RECLINE's bend, at
   0 and 150%. Her knees' smoothing (`BIRTH_KNEES_FIELD`) stays: without it the back of her knee is torn.
-- **SEATED, HER THIGHS MEET BESIDE HER, NOT OVER HER** (Joshua, 2026-11-20, from under the stool at 0 to 200%: "at 0%
-  belly size there is no pelvis, lol, it's all hidden"; of two ways offered -- her knees opened wider at small bellies, or
-  his angles kept and her thighs made to meet properly -- "I'd do 2 first… it's the better long term fix… it's okay if
-  the legs alter shape to fit the belly a little"). Seated her knees part by her belly's size (`humanSeated.ts`
-  `PREGNANT_SIT_SETTLED.kneeSpread`, his: 7 degrees each at 0%, 17 at 200%), and at the small end her inner thighs swung
-  in over her middle. Now in SIT, once she is seated (not while she moves into it or out: `sitRoomHere`), the birth poses'
-  room between her thighs is laid (`birthRoom.ts`: none of her inner thighs nearer her middle than standing, none within
-  4 cm of her vulva) and her groin's smoothing on it (`birthNormals.ts`, as RECLINE has it) -- `keepBirthRoom`. The
-  probe's `sitRoom(on, normals)`. With the birth poses' own numbers (pushed 20 to 26 mm) he saw no change ("still no
-  visible change… try widening it and flattening more the thighs up next to the pelvis/opening"): SIT has a room of its
-  own, `birthRoom.ts` `SIT_ROOM` (her inner thighs held 7.5 cm off her middle within 9 cm of her crotch, eased off by 19,
-  smoothed 14 times; `createBirthRoom`'s `tune`). MEASURED in the room (light skin, 1x): pushed up to 70 mm at 0% and 139
-  at 100% (far down her thighs' roots under her seat); at 0% her thighs stand apart over her pubic bone and her opening,
-  from the front and from his low view, their inner sides flattened; from behind and her side as before.
+- **SEATED, HER BODY IS ONE PIECE AND EACH LEG ANOTHER, AS IN RECLINE AND SQUAT** (Joshua, 2026-11-20, from under the
+  stool at 0 to 200%: "at 0% belly size there is no pelvis, lol, it's all hidden"; "it's okay if the legs alter shape to
+  fit the belly a little"; 2026-11-21, of a room between her thighs laid alone: "The belly looks like a flat piece of skin
+  in front… it is not blended yet from standing to sitting… don't push until correctly fixed"; and "you can render
+  standing to sitting and see… what angle and when it messes up"). `SarahLabScene.ts` `sitWay`, `sitWeightsShare`,
+  `sitTenths`, `sitRoomHere`, `keepBirthRoom`.
+  - WHERE IT WENT WRONG, MEASURED in the room going from standing to seated at 0% (the probe's `sitReading`: each hip's
+    bend, her legs' spread, how far her inner thighs near her crotch have come inside where they stand standing): fine to
+    about 55 degrees of her hips' bend; by 75 the tops of her thighs rise over her groin and cover her mound and her vulva,
+    her lower belly ending in a flat ledge (seated: 84 degrees). Her inner thighs come NO nearer her middle than standing
+    (1 mm at the most): it is her skinning -- the skin of her groin is half her thighs' -- not her thighs closing.
+  - SO SEATED SHE WEARS WHAT RECLINE AND SQUAT WEAR: "the leotard" (`birthWeights.ts`: her belly, mound and vulva her
+    pelvis's, each leg its thigh's, across a soft band at each leg opening); her hips turned round in that band, not
+    averaged (`hipTurn.ts`; eased in by her thigh's share of a point, `SIT_HIP_EASE` 0.15 -- turned from a fiftieth at
+    once, a dashed hairline across her belly's flank at 100%, MEASURED; `tests/hipTurnEase.test.ts`), her belly held to
+    her body as RECLINE has it; and her groin smoothed (`birthNormals.ts`, with no half-turn, her hips being turned).
+  - FROM STANDING TO SEATED AND BACK: the leotard's weights all at once as she sets off (standing, weights move nothing),
+    and its fields worked out ONCE on her SEATED pose as she sets off (`sitAsSeated`; kept as she stands again) and laid
+    as far as she has sat, in `SIT_LAY_STEPS` (10) steps -- each her fields laid again (MEASURED: 25 ms a step on the build
+    machine; working them out 1.1 to 1.7 s, once, as she sets off -- as RECLINE's are as it is pressed). The weights
+    eased in by tenths instead tore a ragged line along each groin crease on the way (her weights blended past four bones
+    a point and the smallest dropped, point by point): MEASURED, and not done.
+  - TRIED FIRST AND TAKEN OUT: the birth poses' room between her thighs laid in SIT (`birthRoom.ts`; no change he could
+    see), then a room of its own twice as wide (`SIT_ROOM`, 7.5 cm off her middle) -- pushed every point of her inner
+    thighs to one plane and stretched her mound between: his "flat piece of skin". The probe can still lay one
+    (`sitRoom(true, normals, tune)`; `sitRoomOn` false).
+  - MEASURED in the room 2026-11-21 (light skin, 1x, nothing worn): seated at 0, 50, 100, 150 and 200% from her front,
+    his low view, her three-quarter and her side: her lower belly runs into her mound and her vulva, her thighs beside
+    them, at every size; going from standing to seated and back at 0%, pictured at each second: smooth throughout; with
+    her seated correctives (`bellySeat`, `bellySeatV2`) on and off at 100 and 200%: as good either way, left on.
 - MEASURED in the room, both poses at 200 and 150% on the light skin and 200% on the full one: round, no line down her
   belly's sides, no patch. LEFT, AND NAMED: faint ripples low on her belly's front in SQUAT at 200%.
 - After anything changes the hold, her soft belly's share or her navel's lay: `tests/bellyHold.test.ts`,

@@ -55,9 +55,10 @@ const BELLY_HOLD_HERS = BELLY_HOLD;
 export interface HipTurn {
   /**
    * `turn`: whether her hips are turned (RECLINE); `hold`: how much of her belly is held to her body (0 to 1: `bellyHold`)
-   * -- with no turn and no hold there is nothing to lay.
+   * -- with no turn and no hold there is nothing to lay. `ease` (0: none, as RECLINE has it): the turn eased in from
+   * `HIP_TURN.least` of a thigh's share of a point to `ease`, and out the same at the thigh's own end.
    */
-  compute(pos: ArrayLike<number>, nrm: ArrayLike<number>, turn?: boolean, hold?: number): { index: Uint32Array; pos: Float32Array; nrm: Float32Array };
+  compute(pos: ArrayLike<number>, nrm: ArrayLike<number>, turn?: boolean, hold?: number, ease?: number): { index: Uint32Array; pos: Float32Array; nrm: Float32Array };
   /** what the last compute did: points turned each leg, the hip's bend each leg (degrees), and the furthest any moved (mm) */
   readonly stats: { turned: number[]; bendDeg: number[]; mostMm: number; held?: number[] };
 }
@@ -124,7 +125,7 @@ export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], 
   const stats = { turned: [] as number[], bendDeg: [] as number[], mostMm: 0, held: [] as number[] };
   return {
     stats,
-    compute(pos, nrm, turn = true, hold = 0) {
+    compute(pos, nrm, turn = true, hold = 0, ease = 0) {
       const sk = mesh.skeleton;
       for (let q = 0; q < sk.bones.length; q++) S[q].multiplyMatrices(mesh.bindMatrixInverse, tmp.multiplyMatrices(sk.bones[q].matrixWorld, sk.boneInverses[q])).multiply(mesh.bindMatrix);
       const mInf = mesh.morphTargetInfluences, mPos = g.morphAttributes.position, rel = g.morphTargetsRelative;
@@ -158,7 +159,7 @@ export function createHipTurn(mesh: THREE.SkinnedMesh, hips: readonly number[], 
           // the hip's own turn as this point's body sees it: from where her body carries it to where her thigh would
           qrel.copy(qt).multiply(qb.clone().invert());
           const bend = (2 * Math.acos(Math.min(1, Math.abs(qrel.w))) * 180) / Math.PI; bendSum += bend; bendN++;
-          const turned0 = turns ? smoothstep(HIP_TURN.from, HIP_TURN.full, bend) * smoothstep(jointZ + HIP_TURN.behind, jointZ + HIP_TURN.front, vr.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(toRest).z) : 0;
+          const turned0 = turns ? smoothstep(HIP_TURN.from, HIP_TURN.full, bend) * smoothstep(jointZ + HIP_TURN.behind, jointZ + HIP_TURN.front, vr.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(toRest).z) * (ease > HIP_TURN.least ? smoothstep(HIP_TURN.least, ease, s) * smoothstep(1 - HIP_TURN.least, 1 - ease, s) : 1) : 0;
           const fade = turned0 + (1 - turned0) * held;
           if (fade <= 0) continue;
           // turned: where her body carries it, then its share of the hip's turn round her hip joint
