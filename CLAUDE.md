@@ -1840,6 +1840,29 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     her seated correctives (`bellySeat`, `bellySeatV2`) on and off at 100 and 200%: as good either way, left on.
 - MEASURED in the room, both poses at 200 and 150% on the light skin and 200% on the full one: round, no line down her
   belly's sides, no patch. LEFT, AND NAMED: faint ripples low on her belly's front in SQUAT at 200%.
+- **IN SQUAT AND RECLINE TOO, HER BUMP IS CARRIED AS SHE STANDS, AND HER THIGHS GIVE WAY TO IT** (Joshua, 2026-11-21: "fix
+  the pinch issues… while preserving her belly shape regardless of pose. If anything, the thighs adjust its shape a
+  little, but never the belly"; of the pictures, "Recline and now your last Squat pose looked great"). Seated's carry
+  (`sitBelly.ts`, above: her standing bump, one turn and carry, the 1 cm sag at 200%) is laid in both birth poses as well
+  (`birthBellyOn`; worked out on her pose as it is, not her seated one), and the hip turn, her groin's and knees' smoothing
+  and her room are kept off it by its footprint, as seated. Before, a crease pinched across the lower front of her bump
+  in SQUAT at 80% and its underside sank into her thighs at 165 and 200%; it keeps its egg shape now. RECLINE was turned
+  0.08 to 0.23 degrees (MEASURED): it looks as it did.
+  - HER THIGHS GIVE WAY (`bellyContact.ts`, field `shape:bellyContact`, laid wherever her bump is carried, last of her
+    pose's fields): a point of her thigh (its leg bones carry half of it or more, none of her bump's footprint) that stands
+    behind the nearest point of her bump's skin, or within `gap` (2 mm), where the two face each other, is put out along
+    her bump's facing to `gap` off it, the move spread over her thigh round it (never less where it was asked for) and
+    taken back to her rest shape through each point's own blended bones. Her bump is never moved. GAME TUNING:
+    `BELLY_CONTACT`.
+  - MEASURED in the room (light skin, 1x, nothing worn): in SQUAT at 80 and 200% and RECLINE at 80, 165 and 200% with
+    the carry, no point of her thigh in her bump -- it moves nothing there. SEATED it does: at 73% 144 to 182 points of
+    her thighs, 2.4 mm at the most; at 100% 309 to 330, 12 mm. Her bump's points under the top of a thigh (the 1 cm grid
+    above): 15 (7.7 mm) and 24 (10.2 mm) without, 10 (6.2) and 11 (5.1) with -- halved, not gone (what is left is points
+    of her thigh it does not take: under half a leg's, or in her bump's footprint). Pictured seated at 73 and 100% from
+    his view, close under her bump and her side, with and without: no edge on her thigh, no change to the eye.
+  - A BIRTH: RECLINE at 150%, at 0:30, 1:00 and 1:17 from her front, her side and below, with the carry and without:
+    the same, nothing through her belly, her baby's head in her opening's middle (`headInMouth` across 0.0 and -0.15 cm).
+  - The probe's `bellyContact(on, tune, birth)` (`birth`: the carry in SQUAT and RECLINE). `tests/bellyContact.test.ts`.
 - After anything changes the hold, her soft belly's share or her navel's lay: `tests/bellyHold.test.ts`,
   `tests/softBelly.test.ts`, `tests/softBody.test.ts`; then RECLINE and SQUAT at 100, 150 and 200% from her
   three-quarter and her front, close on her navel, and standing at 200%.
