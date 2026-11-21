@@ -1794,20 +1794,36 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     bump. MEASURED in the room: the hold moves 3,750 to 3,850 points of her belly at 150 and 200%, up to 47 mm; at 100%
     none over 1.2 mm; her side profile the same either way. Pictured from his view at 100, 150 and 200%, v0.9.65,
     v0.9.66 and without the hold: no crescent; the lower belly runs down into her groin as it does at 100%.
-  - OVER HER UNDER-BELLY LINE HER BUMP IS v0.9.65's: CARRIED BY HER OWN WEIGHTS (Joshua, 2026-11-21, of the hold taken off:
-    "before looked better as it kept the rounder belly and also sat lower… from the lower belly edge up is how it was,
-    below the belly into the pelvis/opening, keep your fix"). `sitBelly.ts`, field `shape:sitBelly`: each point where
-    her file's own weights put it seated, taken back through the leotard's (as `hipTurn.ts` does), laid by how far over
-    the under-belly leggings' line it stands (`bottomCut.hoopInside`, as a low skirt's ring): all of it from 1 cm over
-    that line, none from 2.5 cm under (`SIT_BELLY`, GAME TUNING: his pick of A, 2.5 cm over to 1 cm under, and this; 1.5
-    and 2 cm lower again were drawn with a hard ledge under her bump from below). Her hips' turn and her groin's
-    smoothing are kept off the same points by the same share (`SitBelly.under`): worked out with the leotard on, they
-    moved her bump up to 52 and 20 mm. A field moves her points, not her weights: no tear where the two carries meet.
-    MEASURED in the room at 100 and 200%: over the line within 1.2 to 2.6 mm of v0.9.65 at 99 in 100 points, under it
-    within 1.4 mm of v0.9.66; at 200% the lowest of her bump's front edge 60.1 cm off the floor in both, at her middle
-    and 6 and 10 cm off it, and from there back to her body the same curve but for her crease's last 5 cm (v0.9.65's
-    skin there pulled up between her thighs). Pictured going from standing to seated and back at 200%, seated at 0%:
-    smooth. The probe's `sitBelly(on, { whole, none, normals })`, `sitBellyMask()`. `tests/sitBelly.test.ts`.
+  - HER BUMP KEEPS ITS STANDING SHAPE, CARRIED AS ONE PIECE, A LITTLE LOWER IN ITS MIDDLE (Joshua, 2026-11-21: "before
+    looked better as it kept the rounder belly and also sat lower… below the belly into the pelvis/opening, keep your
+    fix"; then, of v0.9.67: "lower the belly more and maybe right in the middle of the belly a slight sag/downwards dip";
+    "make sure the belly shape from the side and front doesn't change, 73% is changing from the front view like 200%
+    did"; "fix the hips, the skin is not closing leaving some gaps"). `sitBelly.ts`, field `shape:sitBelly`: each point
+    of her bump where it stands STANDING (her own weights, her standing bones read for a moment, her seated correctives
+    left out), moved by the one turn and carry that best take the top of her bump from standing to seated (`rigidFit`:
+    her own weights, which give her thighs none of it there; MEASURED 1.1 to 2.3 degrees), let down under its middle
+    (`SIT_BELLY.sag` 1 cm at 200%, a bell 8 cm either side of her middle, all of it at its lowest and none half-way up
+    it), taken back through the leotard's weights. Laid by her bump's FOOTPRINT -- how far her 200% bump moves each
+    point from her 0% belly over the most it moves any, 0.15 to 0.5 (her mound is 0.12, MEASURED down her middle) --
+    times her bump's size (none at 0%, all from 50%, `grow`). Her hips' turn and her groin's smoothing are kept off it by
+    the same share (`SitBelly.under`). GAME TUNING all.
+    - v0.9.67 HAD laid her OWN weights' place by how far over the under-belly line a point stands (`hoopInside`): her
+      thighs' share of her bump's lower sides pulled them, and the line ran across her lower back and her hips, where her
+      own weights and the leotard's differ and its value steps between her leg's skin and her trunk's -- a ragged tear
+      across the top of her seat (pictured at 200% from behind with the field on and off). The footprint touches nothing
+      behind her (MEASURED: none of its points behind her rest middle).
+    - 2 cm of sag let her bump over her mound at 200% from in front and low (past his red line, just over it); her flat
+      belly carried so at 0% stood forward of her mound in a fold (44 mm at the most): hence 1 cm, and `grow`.
+    - MEASURED in the room (light skin, 1x; her points against her standing points): her bump's shape, any two of its
+      points' distance apart against standing, p50 / p95 0.4 / 1.7 mm at 50%, 0.8 / 2.7 at 73%, 1.0 / 4.1 at 100%,
+      2.1 / 11.4 at 150%, 2.4 / 18.2 at 200% (the sag); v0.9.65 1.2 / 4.0 to 8.7 / 26, v0.9.66 4.0 / 21 to 13.8 / 60. The
+      lowest of her bump 58.1, 58.0, 57.8, 57.8 and 57.8 cm off the floor at 50, 73, 100, 150 and 200% (v0.9.65 57.7 to
+      60.1, v0.9.66 59.1 to 62.8). Her bump's points under the top of a thigh (a 1 cm grid of her thighs' tops): 12 (7 mm
+      at the most) at 73%, 25 (10 mm) at 100%, none at 50, 150 and 200% (v0.9.65 more at each). PICTURED at 0, 50, 73,
+      100, 150 and 200% from his view, in front low, close under her bump, her side and behind; and going from standing
+      to seated and back at 200%: no tear behind her, her mound and vulva under her bump at every size.
+    - The probe's `sitBelly(on, { from, to, sag, sagHigh, sagWide, grow, normals })`, `sitBellyMask()` (her footprint
+      as laid). `tests/sitBelly.test.ts`.
   - FROM STANDING TO SEATED AND BACK: the leotard's weights all at once as she sets off (standing, weights move nothing),
     and its fields worked out ONCE on her SEATED pose as she sets off (`sitAsSeated`; kept as she stands again) and laid
     as far as she has sat, in `SIT_LAY_STEPS` (10) steps -- each her fields laid again (MEASURED: 25 ms a step on the build

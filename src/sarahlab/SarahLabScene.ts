@@ -1583,6 +1583,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let walked = 0;
   const poseOut: MutableJointTurn[] = Array.from({ length: Math.max(HUMAN_POSE_TURNS, SEATED_TURNS) }, newJointTurn);
   const standOut: MutableJointTurn[] = Array.from({ length: Math.max(HUMAN_POSE_TURNS, SEATED_TURNS) }, newJointTurn), blendOut: MutableJointTurn[] = [];
+  /** (her standing pose's turns, read while her seated bump is laid: `keepBirthRoom`) */
+  const bellyStandOut: MutableJointTurn[] = Array.from({ length: Math.max(HUMAN_POSE_TURNS, SEATED_TURNS) }, newJointTurn);
   /**
    * 0 standing, 1 seated: how far she has sat (Joshua, 2026-10-28: "a smooth procedural standing to sitting that lasts
    * about 5s"). SIT from STAND, and STAND from SIT, move it over SIT_SECONDS (`sitMoving`); every other pose switch sets it.
@@ -7135,19 +7137,17 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     model.updateMatrixWorld(true);
     const g = b.mesh.geometry;
     const map = new Map(bare);
-    // SEATED, HER BUMP FIRST, CARRIED AS HER OWN WEIGHTS CARRY IT (sitBelly.ts), over her under-belly line (the
-    // under-belly leggings' own, as a skirt's ring is laid on it: `fabricPanel.hoopOn`), on her bare shape
-    if (sitting && sitBelly && sitBellyOn && sitWeightsOn && birthWeights && fabric) {
+    // SEATED, HER BUMP FIRST: AS SHE STANDS, CARRIED AS ONE PIECE (sitBelly.ts) -- her bones stood up for a moment to
+    // read her standing bump, then sat again; on her bare shape
+    if (sitting && sitBelly && sitBellyOn && sitWeightsOn && birthWeights && rig) {
+      rig.apply(turnsFor('stand', bellyStandOut)); model.updateMatrixWorld(true); sitBelly.holdStanding();
+      rig.apply(asSeated ? turnsFor('sit', poseOut) : currentTurns()); model.updateMatrixWorld(true);
       const Pb = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, Nb = (g.getAttribute('normal') as THREE.BufferAttribute).array as Float32Array;
-      const shapedNow = new Float32Array(Pb.length), vv = new THREE.Vector3();
-      for (let i = 0; i < Pb.length / 3; i++) { THREE.Mesh.prototype.getVertexPosition.call(b.mesh, i, vv); shapedNow[i * 3] = vv.x; shapedNow[i * 3 + 1] = vv.y; shapedNow[i * 3 + 2] = vv.z; }
-      const inside = fabric.hoopOn(SKIRT_UNDER_BAND, shapedNow);
-      if (inside) {
-        map.set(SIT_BELLY_FIELD, sitBelly.compute(Pb, Nb, inside, { index: birthWeights.ownIndex, weight: birthWeights.ownWeight }));
-        sb.fields = { ...sb.fields, fields: new Map(map), last: '' };
-        applyLook();
-        model.updateMatrixWorld(true);
-      }
+      const dict = b.mesh.morphTargetDictionary ?? {}, seat = new Set([dict[SEAT_TARGET], dict[SEAT_V2_TARGET]].filter((x): x is number => x !== undefined));
+      map.set(SIT_BELLY_FIELD, sitBelly.compute(Pb, Nb, { index: birthWeights.ownIndex, weight: birthWeights.ownWeight }, bump / 100, seat));
+      sb.fields = { ...sb.fields, fields: new Map(map), last: '' };
+      applyLook();
+      model.updateMatrixWorld(true);
     }
     // her hips turned round first, on her bare shape: what follows smooths her as turned
     const turnHere = sitting ? sitHipHere() : hipTurnHere(), heldHere = sitting ? sitHeldHere() : bellyHeldHere();
@@ -9420,7 +9420,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               }
               birthKnees = centres.length ? createBirthNormals(bm!, babyFrame.meshToRest, herTris, [], undefined, undefined, undefined, { centres, near: KNEE_SMOOTH.near, far: KNEE_SMOOTH.far, passes: KNEE_SMOOTH.passes, lambda: KNEE_SMOOTH.lambda, bones: pairs, restore: kneeRestore }) : null;
             } catch (error) { console.error('[sarahlab] her knees could not be smoothed', error); birthKnees = null; }
-            try { const jt = measure?.joints; hipTurn = jt ? createHipTurn(bm!, [jt.hipL, jt.hipR], [jt.hipL, jt.hipR, jt.kneeL, jt.kneeR], babyFrame.meshToRest) : null; sitBelly = jt ? createSitBelly(bm!, 0.89974678) : null; } catch (error) { console.error('[sarahlab] her hips could not be turned', error); hipTurn = null; }
+            try { const jt = measure?.joints; hipTurn = jt ? createHipTurn(bm!, [jt.hipL, jt.hipR], [jt.hipL, jt.hipR, jt.kneeL, jt.kneeR], babyFrame.meshToRest) : null; sitBelly = jt ? createSitBelly(bm!, 0.89974678, { to: 'belly200', from: BELLY_TARGET }, [jt.hipL, jt.hipR, jt.kneeL, jt.kneeR, jt.ankleL, jt.ankleR]) : null; } catch (error) { console.error('[sarahlab] her hips could not be turned', error); hipTurn = null; }
             try { const jt = measure?.joints; kneeTurn = jt ? createKneeTurn(bm!, [[jt.hipL, jt.kneeL], [jt.hipR, jt.kneeR]]) : null; } catch (error) { console.error('[sarahlab] her knees could not be turned', error); kneeTurn = null; }
             try { const jt = measure?.joints; birthContact = jt ? createBirthContact(bm!, babyFrame.meshToRest, herTris, [[jt.hipL, jt.kneeL], [jt.hipR, jt.kneeR]]) : null; } catch (error) { console.error('[sarahlab] her calves could not be pressed to her thighs', error); birthContact = null; }
             try { const jt = measure?.joints; birthRoom = jt ? createBirthRoom(bm!, babyFrame.meshToRest, herTris, jt.pelvis, jt.hipL, jt.hipR) : null; const toRestNow = babyFrame.meshToRest; sitRoomMake = jt ? (tune) => createBirthRoom(bm!, toRestNow, herTris, jt.pelvis, jt.hipL, jt.hipR, tune) : null; sitRoom = sitRoomMake?.({}) ?? null; } catch (error) { console.error('[sarahlab] her birth-pose room could not be made', error); birthRoom = null; }
@@ -11315,8 +11315,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           if (reader) { const P = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array; reader.compute(P); }
           return { pose, sitAmount: +sitAmount.toFixed(3), sitMoving, layMs: +sitLayMs.toFixed(1), keepMs: +keepMs.toFixed(1), bend, spread: +legSpread().toFixed(1), insideMm: reader ? +(reader.largest * 1000).toFixed(1) : null, parts: reader ? Object.fromEntries(Object.entries(reader.parts).map(([k2, v2]) => [k2, +(v2 * 1000).toFixed(1)])) : null };
         },
-        sitBelly: (on?: boolean, tune?: { whole?: number; none?: number; normals?: boolean }) => { if (tune) { if (tune.whole !== undefined) SIT_BELLY.whole = tune.whole; if (tune.none !== undefined) SIT_BELLY.none = tune.none; if (tune.normals !== undefined) sitBellyUnderNormals = tune.normals; birthRoomFor = ''; } if (on !== undefined && on !== sitBellyOn) { sitBellyOn = on; birthRoomFor = ''; } if (tune || on !== undefined) applyLook(); const sf = bodyOf() ? shaped.find((x) => x.mesh === bodyOf()!.mesh)?.fields : undefined; return { on: sitBellyOn, ...(sitBelly?.stats ?? {}), inField: sf?.fields.get(SIT_BELLY_FIELD)?.index.length ?? 0, laidW: sf?.laid?.get(SIT_BELLY_FIELD) ?? 0, hip: sf?.fields.get(HIP_TURN_FIELD)?.index.length ?? 0, normals: sf?.fields.get(BIRTH_NORMALS_FIELD)?.index.length ?? 0 }; },
-        sitBellyMask: () => { const L = sitBelly?.last; if (!L?.mask || !L.inside) return null; const enc = (a: Float32Array) => { const bytes = new Uint8Array(a.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); }; return { mask: enc(L.mask), inside: enc(L.inside) }; },
+        sitBelly: (on?: boolean, tune?: { from?: number; to?: number; sag?: number; sagHigh?: number; sagWide?: number; grow?: number; normals?: boolean }) => { if (tune) { for (const k of ['from', 'to', 'sag', 'sagHigh', 'sagWide', 'grow'] as const) if (tune[k] !== undefined) SIT_BELLY[k] = tune[k]!; if (tune.normals !== undefined) sitBellyUnderNormals = tune.normals; birthRoomFor = ''; } if (on !== undefined && on !== sitBellyOn) { sitBellyOn = on; birthRoomFor = ''; } if (tune || on !== undefined) applyLook(); const sf = bodyOf() ? shaped.find((x) => x.mesh === bodyOf()!.mesh)?.fields : undefined; return { on: sitBellyOn, ...(sitBelly?.stats ?? {}), inField: sf?.fields.get(SIT_BELLY_FIELD)?.index.length ?? 0, laidW: sf?.laid?.get(SIT_BELLY_FIELD) ?? 0, hip: sf?.fields.get(HIP_TURN_FIELD)?.index.length ?? 0, normals: sf?.fields.get(BIRTH_NORMALS_FIELD)?.index.length ?? 0 }; },
+        sitBellyMask: () => { if (!sitBelly) return null; const a = sitBelly.footprint, bytes = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return { mask: btoa(s) }; },
         sitWeights: (on?: boolean) => { if (on !== undefined && on !== sitWeightsOn) { sitWeightsOn = on; birthRoomFor = ''; applyLook(); } return { on: sitWeightsOn, share: sitWeightsShare() }; },
         seatShapes: (on?: boolean) => { if (on !== undefined && on !== seatShapesOn) { seatShapesOn = on; applyLook(); applyMotion(); } return seatShapesOn; },
         paintBridgeOff: (off: boolean) => { fabric?.bridgeLeftOff(!!off); return !!off; },
