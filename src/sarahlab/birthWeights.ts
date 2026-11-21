@@ -85,12 +85,33 @@ export const BIRTH_WEIGHTS = Object.freeze({
   reskinUp: 0.3,
 });
 
+/**
+ * SEATED, THE SIDE AND THE BACK OF HER HIPS KEEP HER OWN WEIGHTS (Joshua, 2026-11-21, of her seated side profile at 0 and
+ * 100%, the leotard's beside her own weights: the leotard's crossed out, her own ticked -- "keep the fix on… looks
+ * better"). The leotard's leg opening runs up the side of her hip to her hip bone (`openFront`), and seated, her thighs
+ * drawn up 84 degrees, the skin on its leg side swung up with her thigh: a hollow ran diagonally across the side of her
+ * hip, and the lower part of her buttock was drawn forward under her, so her seat stood as an upright wall with its
+ * fullest point 24 cm over the stool and its foot 7 cm further forward (MEASURED in the room at 100%, sections of her
+ * posed skin 3 to 15 cm out from her middle). Her own weights there swing her side and her seat with her thigh as one
+ * shape, and her seat rests along the stool. So seated (`apply`'s `keep`), each point keeps `keepOf` of its own weights
+ * (0 none .. 1 all): her FRONT -- her belly, her mound, her vulva, the creases of her groin -- is still the leotard's
+ * (that is what keeps her thighs off her mound: Joshua, 2026-11-20, "at 0% belly size there is no pelvis"); behind her
+ * hip joints (from `backFrom` in front of them, all by `backFull` behind them) and out at her sides (from `sideFrom`, all
+ * by `sideFull` out from her middle, while no more than `sideFront` in front of her hip joints, all within
+ * `sideFrontFull`) her own; and the strip behind her vulva (within `midFull` of her middle, gone by `midTo`; near her
+ * crotch only, out to `midNear`, gone by `midFar`) the leotard's. Metres, her rest frame. GAME TUNING.
+ */
+export const SIT_KEEP = { backFrom: -0.02, backFull: 0.03, sideFrom: 0.1, sideFull: 0.14, sideFront: 0.08, sideFrontFull: 0.03, midFull: 0.03, midTo: 0.05, midNear: 0.1, midFar: 0.15 };
+
 const smooth = (a: number, b: number, v: number) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export interface BirthWeights {
   /** hand `share` (0 none .. 1 all) of each thigh's weight in the mask to her pelvis; true when anything changed */
   /** `back`: how much of her lower buttocks goes to her pelvis too (0..1; the pose's: absent, `backShare`) */
-  apply(share: number, back?: number): boolean;
+  /** `keep`: seated, the side and the back of her hips keep their own weights (`SIT_KEEP`) */
+  apply(share: number, back?: number, keep?: boolean): boolean;
+  /** how much of a point keeps its own weights seated (0..1, `SIT_KEEP`) */
+  keepOf(i: number): number;
   /** how many of her points the mask touches at all */
   readonly touched: number;
   /** how much of a point the mask hands to her pelvis (0..1, the larger side) */
@@ -240,7 +261,21 @@ export function createBirthWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
     nbStart.push(nbList.length);
   }
   const NB = bones.size, boneOf = [...bones.keys()];
-  let shareNow = 0, backNow = -1;
+  let shareNow = 0, backNow = -1, keepNow = false, keepSig = '';
+  // SEATED, how much of each point keeps its own weights (`SIT_KEEP`; worked out again when its numbers change)
+  const keepOf = new Float32Array(n);
+  const layKeep = () => {
+    const sig = JSON.stringify(SIT_KEEP); if (sig === keepSig) return false; keepSig = sig;
+    const K = SIT_KEEP, hz = (hip[0].z + hip[1].z) / 2;
+    for (let i = 0; i < n; i++) {
+      if (!inReskin[i]) { keepOf[i] = 0; continue; }
+      const x = Math.abs(restAll[i * 3]), y = restAll[i * 3 + 1], z = restAll[i * 3 + 2], ahead = z - hz;
+      const back = smooth(-K.backFrom, -K.backFull, ahead), side = smooth(K.sideFrom, K.sideFull, x) * smooth(K.sideFront, K.sideFrontFull, ahead);
+      const mid = smooth(K.midTo, K.midFull, x) * smooth(K.midFar, K.midNear, Math.hypot(y - crotch.y, z - crotch.z));
+      keepOf[i] = Math.max(back, side) * (1 - mid);
+    }
+    return true;
+  };
   const I = si.array as ArrayLike<number> & { [k: number]: number }, W = sw.array as ArrayLike<number> & { [k: number]: number };
   const normalized = sw.normalized, scale = normalized ? (W instanceof Uint8Array ? 255 : W instanceof Uint16Array ? 65535 : 1) : 1;
   return {
@@ -250,10 +285,12 @@ export function createBirthWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
     debug: { hip: hip.map((h) => h.toArray().map((x) => +x.toFixed(3))), knee: knee.map((h) => h.toArray().map((x) => +x.toFixed(3))), crotch: crotch.toArray().map((x) => +x.toFixed(3)), planes },
     legDistance: (i: number) => legDist[i],
     maskOf: (i: number) => B.reskin ? (inReskin[i] ? 1 - legOf[i] : 0) : Math.max(mask[i * 2] + maskBack[i * 2] * Math.max(0, backNow), mask[i * 2 + 1] + maskBack[i * 2 + 1] * Math.max(0, backNow)),
-    apply(share: number, back: number = B.backShare): boolean {
+    keepOf: (i: number) => { layKeep(); return keepOf[i]; },
+    apply(share: number, back: number = B.backShare, keep = false): boolean {
       share = Math.max(0, Math.min(1, share)); back = Math.max(0, Math.min(1, back));
-      if (share === shareNow && back === backNow) return false;
-      shareNow = share; backNow = back;
+      const relaid = keep && layKeep();
+      if (share === shareNow && back === backNow && keep === keepNow && !relaid) return false;
+      shareNow = share; backNow = back; keepNow = keep;
       const w = [0, 0, 0, 0], ix = [0, 0, 0, 0];
       for (let i = 0; i < n; i++) {
         if (B.reskin) {
@@ -266,8 +303,9 @@ export function createBirthWeights(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix
           const target = new Map(acc), th = thighs[sideOf[i]];
           target.set(th, (target.get(th) ?? 0) + pw * legOf[i]); target.set(pelvis, (target.get(pelvis) ?? 0) + pw * (1 - legOf[i]));
           const mix = new Map<number, number>();
-          for (let c = 0; c < 4; c++) { const b = ownI[i * 4 + c], wv = ownW[i * 4 + c]; if (wv > 0) mix.set(b, (mix.get(b) ?? 0) + wv * (1 - share)); }
-          for (const [b, wv] of target) mix.set(b, (mix.get(b) ?? 0) + wv * share);
+          const sh = keep ? share * (1 - keepOf[i]) : share;
+          for (let c = 0; c < 4; c++) { const b = ownI[i * 4 + c], wv = ownW[i * 4 + c]; if (wv > 0) mix.set(b, (mix.get(b) ?? 0) + wv * (1 - sh)); }
+          for (const [b, wv] of target) mix.set(b, (mix.get(b) ?? 0) + wv * sh);
           const top = [...mix].filter(([, wv]) => wv > 1e-5).sort((a, b) => b[1] - a[1]).slice(0, 4), sum = top.reduce((m, [, wv]) => m + wv, 0) || 1;
           for (let c = 0; c < 4; c++) { const e = top[c]; I[i * 4 + c] = e ? e[0] : 0; const wv = e ? e[1] / sum : 0; W[i * 4 + c] = normalized && scale > 1 ? Math.round(wv * scale) : wv; }
           continue;

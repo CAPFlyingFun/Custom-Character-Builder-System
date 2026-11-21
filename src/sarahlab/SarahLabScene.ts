@@ -151,7 +151,7 @@ import { createVulvaPatch, VULVA_OPEN, VULVA_TRY, type VulvaPatch } from './vulv
 import { BIRTH_THIGHS_FIELD, birthThighsField } from './birthThighs';
 import { BIRTH_SEAT_FIELD, birthSeatField } from './birthSeat';
 import { BIRTH_GAP_FIELD, birthGapField, birthGapInfo, birthGapUnderMask } from './birthGap';
-import { BIRTH_WEIGHTS, createBirthWeights, type BirthWeights } from './birthWeights';
+import { BIRTH_WEIGHTS, SIT_KEEP, createBirthWeights, type BirthWeights } from './birthWeights';
 import { createAnkleWeights, type AnkleWeights } from './ankleWeights';
 import { createFingerWeights, type FingerWeights } from './fingerWeights';
 import { splitFingers, type FingerSplit, type V3 as SplitV3 } from '../actor/fingerSplit';
@@ -921,6 +921,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let sitBelly: SitBelly | null = null, sitBellyOn = true, sitBellyUnderNormals = true;
   /** in SQUAT and RECLINE her bump is carried as she stands too (`birthBellyOn`), and her thighs give way to it seated and there (bellyContact.ts) */
   let birthBellyOn = true, bellyContact: BellyContact | null = null, bellyContactOn = true;
+  /** seated, the side and the back of her hips keep her own weights (birthWeights.ts `SIT_KEEP`) */
+  let sitKeepOn = true;
   /** her groin lit as it is bent (birthNormals.ts), and whether it is on */
   let birthNormals: BirthNormals | null = null, birthNormalsOn = true;
   /** her middle kept with her pelvis in a birth position (birthWeights.ts), and a probe's override of how much */
@@ -2759,7 +2761,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     // Joshua, 2026-10-30, of RECLINE with it: "Looks a lot better"); the rebuilt area reads her weights again
     // (in SQUAT her lower buttocks stay with her pelvis too, hanging between her heels -- with her thighs they were drawn
     // forward into two hollows with her middle pinched between, Joshua 2026-10-31; RECLINE keeps them with her thighs)
-    if (birthWeights?.apply(birthMaskOverride ?? (isBirthPose(pose) ? BIRTH_WEIGHTS.share : sitWeightsShare()), pose === 'squat' ? squatBack : BIRTH_WEIGHTS.backShare)) vulva?.resyncWeights();
+    // (seated, the side and the back of her hips keep her own weights: `SIT_KEEP`)
+    if (birthWeights?.apply(birthMaskOverride ?? (isBirthPose(pose) ? BIRTH_WEIGHTS.share : sitWeightsShare()), pose === 'squat' ? squatBack : BIRTH_WEIGHTS.backShare, sitKeepOn && !isBirthPose(pose))) vulva?.resyncWeights();
     // and her heels with her feet, not half with her shins (ankleWeights.ts; Joshua, 2026-11-04: pointed flat on the mat
     // sat back, the back of her ankle crumpled)
     ankleWeights?.apply(isBirthPose(pose) && ankleWeightsOn ? 1 : 0);
@@ -7123,7 +7126,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const sitting = sitRoomHere();
     if (!sitting && (!isBirthPose(pose) || (!birthRoomOn && !birthNormalsOn && !birthKneesOn))) { birthRoomFor = ''; return; }
     const shapeKey = sb.fields.last.split('|').filter((k) => !k.startsWith(BIRTH_ROOM_FIELD) && !k.startsWith(BIRTH_NORMALS_FIELD) && !k.startsWith(BIRTH_KNEES_FIELD) && !k.startsWith(BIRTH_CONTACT_FIELD) && !k.startsWith(KNEE_TURN_FIELD) && !k.startsWith(HIP_TURN_FIELD) && !k.startsWith(SIT_BELLY_FIELD) && !k.startsWith(BELLY_CONTACT_FIELD)).join('|');
-    const sig = `${sitting ? 'sit' : pose}|${sitting}|${sitRoomOn}${sitNormalsOn}${sitHipOn}${sitHoldOn}${sitWeightsOn}${sitBellyOn}${birthBellyOn}${bellyContactOn}|${JSON.stringify(birthTweak)}|${Math.round(bump)}|${birthRoomOn}|${birthNormalsOn}|${birthKneesOn}|${birthContactOn}|${kneeTurnOn}|${hipTurnOn}|${bellyHoldOn}${bellyHoldSquat}|${birthMaskOverride}|${shapeKey}`;
+    const sig = `${sitting ? 'sit' : pose}|${sitting}|${sitRoomOn}${sitNormalsOn}${sitHipOn}${sitHoldOn}${sitWeightsOn}${sitBellyOn}${birthBellyOn}${bellyContactOn}${sitKeepOn}${JSON.stringify(SIT_KEEP)}|${JSON.stringify(birthTweak)}|${Math.round(bump)}|${birthRoomOn}|${birthNormalsOn}|${birthKneesOn}|${birthContactOn}|${kneeTurnOn}|${hipTurnOn}|${bellyHoldOn}${bellyHoldSquat}|${birthMaskOverride}|${shapeKey}`;
     if (sig === birthRoomFor) return;
     birthRoomFor = sig;
     const keepAt = performance.now();
@@ -11334,6 +11337,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         sitBelly: (on?: boolean, tune?: { from?: number; to?: number; sag?: number; sagHigh?: number; sagWide?: number; grow?: number; normals?: boolean }) => { if (tune) { for (const k of ['from', 'to', 'sag', 'sagHigh', 'sagWide', 'grow'] as const) if (tune[k] !== undefined) SIT_BELLY[k] = tune[k]!; if (tune.normals !== undefined) sitBellyUnderNormals = tune.normals; birthRoomFor = ''; } if (on !== undefined && on !== sitBellyOn) { sitBellyOn = on; birthRoomFor = ''; } if (tune || on !== undefined) applyLook(); const sf = bodyOf() ? shaped.find((x) => x.mesh === bodyOf()!.mesh)?.fields : undefined; return { on: sitBellyOn, ...(sitBelly?.stats ?? {}), inField: sf?.fields.get(SIT_BELLY_FIELD)?.index.length ?? 0, laidW: sf?.laid?.get(SIT_BELLY_FIELD) ?? 0, hip: sf?.fields.get(HIP_TURN_FIELD)?.index.length ?? 0, normals: sf?.fields.get(BIRTH_NORMALS_FIELD)?.index.length ?? 0 }; },
         bellyContact: (on?: boolean, tune?: Partial<typeof BELLY_CONTACT>, birth?: boolean) => { if (tune) { Object.assign(BELLY_CONTACT, tune); birthRoomFor = ''; } if (on !== undefined && on !== bellyContactOn) { bellyContactOn = on; birthRoomFor = ''; } if (birth !== undefined && birth !== birthBellyOn) { birthBellyOn = birth; birthRoomFor = ''; } if (tune || on !== undefined || birth !== undefined) applyLook(); return { on: bellyContactOn, birth: birthBellyOn, ...(bellyContact?.stats ?? {}), sitBelly: sitBelly?.stats ?? null }; },
         sitBellyMask: () => { if (!sitBelly) return null; const a = sitBelly.footprint, bytes = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return { mask: btoa(s) }; },
+        sitKeep: (on?: boolean, tune?: Partial<typeof SIT_KEEP>) => { if (tune) { Object.assign(SIT_KEEP, tune); birthRoomFor = ''; } if (on !== undefined) { sitKeepOn = on; birthRoomFor = ''; } if (tune || on !== undefined) applyLook(); return { on: sitKeepOn, ...SIT_KEEP }; },
         sitWeights: (on?: boolean) => { if (on !== undefined && on !== sitWeightsOn) { sitWeightsOn = on; birthRoomFor = ''; applyLook(); } return { on: sitWeightsOn, share: sitWeightsShare() }; },
         seatShapes: (on?: boolean) => { if (on !== undefined && on !== seatShapesOn) { seatShapesOn = on; applyLook(); applyMotion(); } return seatShapesOn; },
         paintBridgeOff: (off: boolean) => { fabric?.bridgeLeftOff(!!off); return !!off; },

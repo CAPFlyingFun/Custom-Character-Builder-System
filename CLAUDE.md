@@ -1824,6 +1824,20 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
       to seated and back at 200%: no tear behind her, her mound and vulva under her bump at every size.
     - The probe's `sitBelly(on, { from, to, sag, sagHigh, sagWide, grow, normals })`, `sitBellyMask()` (her footprint
       as laid). `tests/sitBelly.test.ts`.
+  - SEATED, THE SIDE AND THE BACK OF HER HIPS KEEP HER OWN WEIGHTS (Joshua, 2026-11-21, of her seated side profile at 0
+    and 100%, the leotard's beside her own weights: the leotard's crossed out, her own ticked -- "keep the fix on… looks
+    better"; `birthWeights.ts` `SIT_KEEP`, `apply`'s `keep`, `keepOf`). The leotard's leg opening runs up the side of her
+    hip, and seated the skin on its leg side swung up with her thigh: a hollow diagonally across the side of her hip, and
+    her seat an upright wall, its fullest point 24 cm over the stool and its foot 7 cm further forward (MEASURED, sections
+    of her posed skin at 100%). Now behind her hip joints (from 2 cm in front, all by 3 cm behind) and out at her sides
+    (from 10 cm out, all by 14, no more than 8 cm in front of her hip joints) her skin keeps her own weights; her front --
+    belly, mound, vulva, the creases of her groin -- and the strip behind her vulva (within 3 to 5 cm of her middle, near
+    her crotch) stay the leotard's. SQUAT and RECLINE are as they were (no `keep`). GAME TUNING. MEASURED in the room
+    (light skin, 1x, nothing worn): her seat's points where her own weights put them (its lowest 47.8 cm off the floor,
+    46.4 with the leotard's); her bump's points under the top of a thigh 11 (7.6 mm) at 73% and 14 (7.6) at 100% (10 and
+    11 before). PICTURED at 0, 50, 100, 150 and 200% from her side, her three-quarter behind, his view and close under
+    her bump: the side profile of her own weights, her mound and vulva in view as before; going from standing to seated
+    and back at 100%: smooth. The probe's `sitKeep(on, tune)`. `tests/sitKeep.test.ts`.
   - FROM STANDING TO SEATED AND BACK: the leotard's weights all at once as she sets off (standing, weights move nothing),
     and its fields worked out ONCE on her SEATED pose as she sets off (`sitAsSeated`; kept as she stands again) and laid
     as far as she has sat, in `SIT_LAY_STEPS` (10) steps -- each her fields laid again (MEASURED: 25 ms a step on the build
