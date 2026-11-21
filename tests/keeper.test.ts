@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { KEPT_CACHE, NOT_AHEAD, fetchedAhead, inShell, stamped, unchanging, type KeepList } from '../src/pwa/keepList';
 import { SARAH_LAB_MODELS, SARAH_LAB_MODELS_OFF_MENU } from '../src/sarahlab/sarahLabTool';
-import { HAIR_STYLES } from '../src/sarahlab/hairStyles';
+import { HAIR_STYLES, MALE_HAIR_STYLES } from '../src/sarahlab/hairStyles';
 import { createKeeper, kindOf, type Asked, type KeptCaches } from '../src/pwa/keeper';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -264,7 +264,7 @@ describe('the site\'s own files', () => {
     }
     // every hairstyle she can wear is fetched ahead; its light twin, a game's, is not, nor the file her first style was
     // baked from, which only the story's bake reads now
-    for (const h of HAIR_STYLES) { expect(files).toContain(h.file); expect(fetchedAhead(h.file), h.id).toBe(true); expect(files).toContain(h.lightFile); expect(fetchedAhead(h.lightFile), h.id).toBe(false); }
+    for (const h of [...HAIR_STYLES, ...MALE_HAIR_STYLES]) { expect(files).toContain(h.file); expect(fetchedAhead(h.file), h.id).toBe(true); expect(files).toContain(h.lightFile); expect(fetchedAhead(h.lightFile), h.id).toBe(false); }
     expect(files).toContain('models/sarah-v2-hair.glb'); expect(fetchedAhead('models/sarah-v2-hair.glb')).toBe(false);
     expect(fetchedAhead('models/sarah-v2-body-slim-ktx2.glb')).toBe(false);
     // (the bodies hers was built from are gone from the site: Joshua, 2026-11-19, "delete all the other female models")

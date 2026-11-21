@@ -51,9 +51,10 @@ export const NOT_AHEAD: readonly RegExp[] = Object.freeze([
   // a file no part of the room asks for (a badge). (The bodies her approved one was built from were here until
   // 2026-11-19, when they were taken out of the site: "delete all the other female models".)
   /^models\/badge\.glb$/,
-  // each hairstyle's LIGHT twin, for a game with many characters: the room wears the full file. And the file her first
-  // hairstyle was baked from, which only the story's bake reads now (`hairStyles.ts`: the room wears the toolkit's)
-  /^models\/hair\/[a-z0-9-]+-light\.glb$/, /^models\/sarah-v2-hair\.glb$/,
+  // each hairstyle's LIGHT twin, hers and his (`models/hair/male/`), for a game with many characters: the room wears the
+  // full file. And the file her first hairstyle was baked from, which only the story's bake reads now (`hairStyles.ts`:
+  // the room wears the toolkit's)
+  /^models\/hair\/(male\/)?[a-z0-9-]+-light\.glb$/, /^models\/sarah-v2-hair\.glb$/,
   // the Home Screen's own (the browser asks for them when it wants them, without a revision)
   /^icons\//, /^manifest\.webmanifest$/,
 ]);
