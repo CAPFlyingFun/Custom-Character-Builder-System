@@ -2041,6 +2041,23 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   file has none; at 100% unheld his belly was squashed flat). MEASURED in the room, SQUAT: 0% as before; 100% and 200%
   round over his thighs from his side and three-quarter, about 4,700 points held a side, 82 mm moved at the most at 200%.
   The probe's `maleHold(on, numbers)`. LEFT: a firm fold where the underside of a 200% belly meets his thighs.
+- **HIS BELLY IS CARRIED BY HIS PELVIS, AND KEEPS ITS SIDE PROFILE IN SQUAT** (Joshua, 2026-11-20: "Is it possible for the
+  male model to keep the same side profile of the belly from 0-200% while squatting? It still appears to be off and
+  flatten the bottom"; `SarahLabScene.ts` `MALE_BELLY_CARRY`, `carryMaleBelly`). SUPERSEDES THE HOLD ABOVE, which is off
+  (`maleHoldOn` false; the probe's `maleHold(true)` puts it back). Where his belly's own shape is (`maleBellyFoot`: what it
+  moves him at 100%, none under 2 mm, all from 15 mm) his thighs' share of his skin is handed to his PELVIS bone, by his
+  belly's size: none at 0% -- his file's weights exactly, as he has always been -- all from 50%; the skinWeight attribute
+  is written again from his file's own copy whenever that share changes, in every pose. His groin's smoothing (MALE_GROIN)
+  is kept off the same points by the same share: it smoothed the bulge's underside away. GAME TUNING.
+  - WHAT WAS TRIED FIRST, MEASURED in the room (light skin, 1x), each taken out: the hold given the belly's footprint (his
+    body's bones evened in from round it: a boxy belly with seams where one bone's share gave way to the next); the
+    bulge alone carried by ONE turn, his belly's own (as good as none: the squash is where his skinning carries the skin
+    UNDER the bulge, not how it turns the bulge); all of it by one rigid carry (his groin's skin pulled up into a sheet).
+  - A FAULT FOUND ON THE WAY, in v0.9.64 as live: in SQUAT his hands rest on his hips, and at 100 and 200% the hold carried
+    a piece of his flank up with them in a flap (his file gives his arm bones a share of his flank, and the hold evened
+    it inward). Gone with the hold.
+  - MEASURED in the room (light skin, 1x, his boxer briefs): SQUAT at 0, 50, 100 and 200% from his side and three-quarter
+    -- round over his thighs, its underside curved as standing; standing and walking at 200%. `maleCarry(on)` switches it.
 - **HIS CLOTHES: HIS OWN OUTFITS, PAINTED** (Joshua, 2026-11-20: "start on some clothing options for the male model"; the
   order he passed: his underwear first, so he never loads bare, then the painted basics, then the cloth tee, then cuts of
   his own). The outfit editor's paint is laid on him as on her (`SarahLabScene.ts`: his skin given an all-nothing

@@ -387,6 +387,18 @@ export const MALE_GROIN = Object.freeze({ below: 0.07, near: 0.08, far: 0.17, pa
 const MALE_HOLD_FIELD = 'shape:maleHold';
 /** How far from his arm's bones his arm's skin reaches, for his clothes (`bodyRegions.mapBody`'s `armReach`; metres, GAME TUNING: his upper arm's radius is about 7.5 cm). */
 const MALE_ARM_REACH = 0.085;
+/**
+ * HIS BELLY IS CARRIED BY HIS PELVIS, NOT HIS THIGHS (Joshua, 2026-11-20: "Is it possible for the male model to keep the
+ * same side profile of the belly from 0-200% while squatting? It still appears to be off and flatten the bottom").
+ * His file gives the skin low on his belly up to half to his thighs (MEASURED: `layMaleBelly`), and a squat draws them up
+ * 120 degrees: his belly's underside went with them, and the hold below (MALE_HOLD) -- his body's bones evened in from
+ * round it -- left it boxy, with seams where one bone's share gave way to the next. So where his belly's own shape is
+ * (`maleBellyFoot`: what it moves him at 100%, none under `foot[0]`, all from `foot[1]`, metres) his thighs' share is
+ * handed to his pelvis, by his belly's size: none at 0% -- his file's own weights, as he has always been -- all from
+ * `full` (the belly slider's %). In SQUAT at 100 and 200% his belly is round over his thighs, as standing; his groin's
+ * smoothing (MALE_GROIN) is kept off it the same way. GAME TUNING.
+ */
+export const MALE_BELLY_CARRY = Object.freeze({ foot: [0.002, 0.015] as const, full: 50 });
 export const MALE_HOLD = Object.freeze({ near: 0.1, far: 0.22, most: 0.5, mostNone: 0.85,
   /** by his belly's size (the belly slider's %): none at 0, all from `full` -- his belly is none in his file, hers 100% */
   full: 50 });
@@ -6973,10 +6985,41 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** on (Joshua, 2026-11-19, of its before and after: "Good to switch his squat fix on"); the probe's `maleGroin(false)` takes it off */
   let maleGroinOn = true;
   /** his belly held to his body in SQUAT (MALE_HOLD; the probe's `maleHold(false)` takes it off) */
-  let maleHip: HipTurn | null = null, maleHoldOn = true, maleHoldFull: number = MALE_HOLD.full;
+  // (the hold is v0.9.62's and off since MALE_BELLY_CARRY: the probe's `maleHold(true)` puts it back)
+  let maleHip: HipTurn | null = null, maleHoldOn = false, maleHoldFull: number = MALE_HOLD.full;
+  // MALE_BELLY_CARRY: where his belly is (0 to 1 a point), his file's own weights there, and the share handed over now
+  let maleBellyFoot: Float32Array | null = null, maleFileWeights: { index: Float32Array; weight: Float32Array } | null = null, maleCarried = 0, maleCarryOn = true;
+  /** his thighs' share where his belly is handed to his pelvis, `share` of the way (MALE_BELLY_CARRY) */
+  function carryMaleBelly(share: number): void {
+    const m = maleGroinMesh, j = measure?.joints; if (!m || !j || !maleBellyFoot) return;
+    const g = m.geometry, SI = g.getAttribute('skinIndex') as THREE.BufferAttribute, SW = g.getAttribute('skinWeight') as THREE.BufferAttribute;
+    if (!maleFileWeights) {
+      const index = new Float32Array(maleBellyFoot.length * 4), weight = new Float32Array(maleBellyFoot.length * 4);
+      for (let i = 0; i < maleBellyFoot.length; i++) for (let k = 0; k < 4; k++) { index[i * 4 + k] = SI.getComponent(i, k); weight[i * 4 + k] = SW.getComponent(i, k); }
+      maleFileWeights = { index, weight };
+    }
+    const thighs = new Set([j.hipL, j.hipR]), fw = maleFileWeights, idx = [0, 0, 0, 0], w = [0, 0, 0, 0];
+    for (let i = 0; i < maleBellyFoot.length; i++) {
+      if (!(maleBellyFoot[i] > 0)) continue;
+      const f = Math.min(1, maleBellyFoot[i] * share);
+      for (let k = 0; k < 4; k++) { idx[k] = fw.index[i * 4 + k]; w[k] = fw.weight[i * 4 + k]; }
+      let give = 0;
+      for (let k = 0; k < 4; k++) if (thighs.has(idx[k]) && w[k] > 0) { const d = w[k] * f; w[k] -= d; give += d; }
+      if (give > 0) {
+        // (into his pelvis's own slot, or the lightest of the four's)
+        let slot = idx.indexOf(j.pelvis);
+        if (slot < 0) { let lo = Infinity; for (let k = 0; k < 4; k++) if (w[k] < lo) { lo = w[k]; slot = k; } give += w[slot]; idx[slot] = j.pelvis; w[slot] = 0; }
+        w[slot] += give;
+      }
+      for (let k = 0; k < 4; k++) { SI.setComponent(i, k, idx[k]); SW.setComponent(i, k, w[k]); }
+    }
+    SI.needsUpdate = true; SW.needsUpdate = true; maleCarried = share;
+  }
   const maleHeld = (): number => { if (!maleHoldOn || !maleHip || pose !== 'squat') return 0; const t = maleHoldFull <= 0 ? 1 : Math.min(1, Math.max(0, bump / maleHoldFull)); return t * t * (3 - 2 * t); };
   function keepMaleSquat(): void {
     if (!maleGroin || !maleGroinMesh || !model) return;
+    // (his belly's carry by its size, in every pose: MALE_BELLY_CARRY)
+    { const t = maleCarryOn ? Math.min(1, Math.max(0, bump / MALE_BELLY_CARRY.full)) : 0, share = t * t * (3 - 2 * t); if (Math.abs(share - maleCarried) > 1e-3) { carryMaleBelly(share); maleGroinFor = '-'; } }
     const sb = shaped.find((x) => x.mesh === maleGroinMesh); if (!sb) return;
     const hold = maleHeld(), want = (maleGroinOn || hold > 0) && pose === 'squat';
     const mine = (k: string) => k.startsWith(MALE_GROIN_FIELD) || k.startsWith(MALE_HOLD_FIELD);
@@ -7001,7 +7044,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (maleGroinOn) {
       model.updateMatrixWorld(true); maleGroinMesh.skeleton.update();
       const [P, N] = at();
-      map.set(MALE_GROIN_FIELD, maleGroin.compute(P, N));
+      const groin = maleGroin.compute(P, N);
+      // (none of it where his belly is carried by his pelvis: it smoothed the bulge's underside away -- MALE_BELLY_CARRY)
+      if (maleBellyFoot && maleCarried > 0) for (let k = 0; k < groin.index.length; k++) { const keep = 1 - Math.min(1, maleBellyFoot[groin.index[k]] * maleCarried); for (let c = 0; c < 3; c++) { groin.pos[k * 3 + c] *= keep; groin.nrm[k * 3 + c] *= keep; } }
+      map.set(MALE_GROIN_FIELD, groin);
     }
     sb.fields = { ...sb.fields, fields: map, last: '' };
     applyLook();
@@ -7116,7 +7162,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const nrm = index.flatMap((i) => [n1[i * 3] - n0[i * 3], n1[i * 3 + 1] - n0[i * 3 + 1], n1[i * 3 + 2] - n0[i * 3 + 2]]);
       addShapeField(fields, name, { index: Uint32Array.from(index), pos: Float32Array.from(pos), nrm: Float32Array.from(nrm) });
     };
-    lay(MALE_BELLY_FIELD, maleBellyField(rest, trunk));
+    const bellyMove = maleBellyField(rest, trunk);
+    lay(MALE_BELLY_FIELD, bellyMove);
+    // where his belly is, for its carry (MALE_BELLY_CARRY)
+    { const [a, b] = MALE_BELLY_CARRY.foot; maleBellyFoot = new Float32Array(n); maleFileWeights = null; maleCarried = 0;
+      for (let i = 0; i < n; i++) { const t = Math.min(1, Math.max(0, (Math.hypot(bellyMove[i * 3], bellyMove[i * 3 + 1], bellyMove[i * 3 + 2]) - a) / (b - a))); maleBellyFoot[i] = t * t * (3 - 2 * t); } }
     if (Number.isFinite(front)) lay(MALE_OUTIE_FIELD, maleOutieField(rest, front));
     hasBelly = true;
     // his groin's smoothing in SQUAT, round the point between his hip joints, under them (MALE_GROIN)
@@ -11088,6 +11138,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         evenRough: (on: boolean) => { applyRoughness(on); return { on, loaded: !!roughEven }; },
         // (a probe's) his groin's smoothing in SQUAT off or on
         maleHold: (on?: boolean, numbers?: Partial<typeof MALE_HOLD>) => { if (numbers && maleGroinMesh && measure) { const jt = measure.joints, root = model ?? maleGroinMesh, tr = restOfMesh(maleGroinMesh, root); maleHip = createHipTurn(maleGroinMesh, [jt.hipL, jt.hipR], [jt.hipL, jt.hipR, jt.kneeL, jt.kneeR], tr, { perMetre: 1 / new THREE.Vector3().setFromMatrixScale(tr).x, hold: { ...MALE_HOLD, ...numbers } }); maleGroinFor = '-'; } if (on !== undefined && on !== maleHoldOn) { maleHoldOn = on; maleGroinFor = '-'; } if (numbers?.full !== undefined) { maleHoldFull = numbers.full; maleGroinFor = '-'; } return { on: maleHoldOn, here: maleHeld(), stats: maleHip?.stats ?? null }; },
+        // (MALE_BELLY_CARRY switched, and how much of it is laid now)
+        maleCarry: (on?: boolean) => { if (on !== undefined && on !== maleCarryOn) { maleCarryOn = on; } return { on: maleCarryOn, share: maleCarried, points: maleBellyFoot ? maleBellyFoot.reduce((c, f) => c + (f > 0 ? 1 : 0), 0) : 0 }; },
         maleGroin: (on?: boolean) => { if (on !== undefined && on !== maleGroinOn) { maleGroinOn = on; maleGroinFor = '-'; } return { on: maleGroinOn, laid: !!maleGroin, watched: maleGroin?.watched ?? 0, folded: maleGroin?.folded ?? null }; },
         hairDepth: (patch: { strength?: number; groove?: number }) => { if (patch.strength != null) hairStrength = patch.strength; if (patch.groove != null) hairGroove = patch.groove; deepenHair(hairMeshes); return { strength: hairStrength, groove: hairGroove, meshes: hairMeshes.length }; },
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
