@@ -914,7 +914,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let birthRoom: BirthRoom | null = null, sitRoom: BirthRoom | null = null, birthRoomOn = false, birthRoomFor = '', sitRoomOn = false, sitNormalsOn = true;
   /** (a probe's) SIT's room made again with numbers of its own; her hips turned and her belly held in SIT; her seated correctives */
   let keepMs = 0;
-  let sitRoomMake: ((tune: Partial<Record<keyof typeof BIRTH_ROOM, number>>) => BirthRoom | null) | null = null, sitHipOn = true, sitHoldOn = true, seatShapesOn = true, sitWeightsOn = true, sitAsSeated = false, sitShareLaid = -1, sitLayMs = 0;
+  let sitRoomMake: ((tune: Partial<Record<keyof typeof BIRTH_ROOM, number>>) => BirthRoom | null) | null = null, sitHipOn = true, sitHoldOn = false, seatShapesOn = true, sitWeightsOn = true, sitAsSeated = false, sitShareLaid = -1, sitLayMs = 0;
   /** her groin lit as it is bent (birthNormals.ts), and whether it is on */
   let birthNormals: BirthNormals | null = null, birthNormalsOn = true;
   /** her middle kept with her pelvis in a birth position (birthWeights.ts), and a probe's override of how much */
@@ -1552,7 +1552,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // her hips turned round, not averaged, in RECLINE (hipTurn.ts; SQUAT is as Joshua likes it)
   let hipTurn: HipTurn | null = null, hipTurnOn = true;
   const hipTurnHere = (): boolean => pose === 'recline' && hipTurnOn && !!hipTurn;
-  /** seated, her hips turned and her belly held as RECLINE has them (`sitRoomHere`) */
+  /** seated, her hips turned as RECLINE has them; her belly held as well only if a probe asks (`sitHoldOn`) */
   const sitHipHere = (): boolean => sitHipOn && !!hipTurn && sitRoomHere();
   const sitHeldHere = (): number => (sitHoldOn && !!hipTurn && sitRoomHere() ? bellyHold(bump) : 0);
   /** how much of SIT's own fields is laid: all of it seated, and on the way there or back as far as she has sat */
@@ -7084,7 +7084,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * wears what RECLINE and SQUAT wear --
    * - "the leotard" (birthWeights.ts): her belly, mound and vulva carried by her pelvis, each leg by its thigh, across a
    *   soft band at each leg opening;
-   * - her hips turned round, not averaged, in that band (hipTurn.ts, `SIT_HIP_EASE`), and her belly held to her body;
+   * - her hips turned round, not averaged, in that band (hipTurn.ts, `SIT_HIP_EASE`) -- and her belly NOT held to her
+   *   body as RECLINE's is (`sitHoldOn` false; Joshua, 2026-11-21, of v0.9.66 at 150 and 200%: "after 100%, you can see
+   *   it changed the front profile and the sides of the belly is like sucked in… the side profile is good, it's the
+   *   front profile"): the leotard already keeps her belly off her thighs, and the hold, which carries her belly's far
+   *   skin by her body's bones evened (`BELLY_HOLD`, from 100% to all of it at 150%), drew the lower sides of her bump in
+   *   toward her middle, up to 47 mm, and left her side profile as it was (MEASURED in the room);
    * - her groin smoothed (birthNormals.ts, as RECLINE's: no half-turn with the hips turned);
    * -- the leotard's weights all at once as she sets off (standing, her weights move nothing; eased in by tenths they tore
    * a ragged line along each groin crease on the way: blended past four bones a point, the smallest dropped point by point,

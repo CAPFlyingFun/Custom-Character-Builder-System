@@ -1784,8 +1784,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   - SO SEATED SHE WEARS WHAT RECLINE AND SQUAT WEAR: "the leotard" (`birthWeights.ts`: her belly, mound and vulva her
     pelvis's, each leg its thigh's, across a soft band at each leg opening); her hips turned round in that band, not
     averaged (`hipTurn.ts`; eased in by her thigh's share of a point, `SIT_HIP_EASE` 0.15 -- turned from a fiftieth at
-    once, a dashed hairline across her belly's flank at 100%, MEASURED; `tests/hipTurnEase.test.ts`), her belly held to
-    her body as RECLINE has it; and her groin smoothed (`birthNormals.ts`, with no half-turn, her hips being turned).
+    once, a dashed hairline across her belly's flank at 100%, MEASURED; `tests/hipTurnEase.test.ts`); and her groin
+    smoothed (`birthNormals.ts`, with no half-turn, her hips being turned).
+  - HER BELLY IS NOT HELD SEATED, AS RECLINE'S IS (`sitHoldOn` false; Joshua, 2026-11-21, of v0.9.66 at 150 and 200% from
+    his phone, low in front: "100% and below is good, after 100%, you can see it changed the front profile and the sides
+    of the belly is like sucked in… the side profile is good, it's the front profile"). v0.9.66 held it (`BELLY_HOLD`:
+    none to 100%, all from 150%): her bump's far skin carried by her body's bones evened, which lean with her spine
+    seated, while the leotard keeps what is under it with her pelvis -- a crescent tucked in along the lower sides of her
+    bump. MEASURED in the room: the hold moves 3,750 to 3,850 points of her belly at 150 and 200%, up to 47 mm; at 100%
+    none over 1.2 mm; her side profile the same either way. Pictured from his view at 100, 150 and 200%, v0.9.65,
+    v0.9.66 and without the hold: no crescent; the lower belly runs down into her groin as it does at 100%.
   - FROM STANDING TO SEATED AND BACK: the leotard's weights all at once as she sets off (standing, weights move nothing),
     and its fields worked out ONCE on her SEATED pose as she sets off (`sitAsSeated`; kept as she stands again) and laid
     as far as she has sat, in `SIT_LAY_STEPS` (10) steps -- each her fields laid again (MEASURED: 25 ms a step on the build
