@@ -50,6 +50,13 @@ export const BIRTH_ROOM = Object.freeze({
   smoothPasses: 8,
 });
 
+/**
+ * SEATED (Joshua, 2026-11-20, of the birth poses' numbers laid in SIT: "still no visible change… try widening it and
+ * flattening more the thighs up next to the pelvis/opening"): her inner thighs held back from her middle twice as wide
+ * round her crotch and over a wider band of her thighs' roots. GAME TUNING.
+ */
+export const SIT_ROOM = Object.freeze({ open: 0.075, openNear: 0.09, openFar: 0.19, smoothPasses: 14 });
+
 export interface BirthRoomField { readonly index: Uint32Array; readonly pos: Float32Array; readonly nrm: Float32Array }
 
 export interface BirthRoom {
@@ -63,11 +70,12 @@ export interface BirthRoom {
   readonly parts: { side: number; back: number; bend: number };
 }
 
-export function createBirthRoom(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix4, indices: ArrayLike<number>, pelvis: number, thighL: number, thighR: number): BirthRoom | null {
+/** `tune`: numbers of its own for a pose that wants more room than a birth's (SIT: `SIT_ROOM`) */
+export function createBirthRoom(mesh: THREE.SkinnedMesh, toRest: THREE.Matrix4, indices: ArrayLike<number>, pelvis: number, thighL: number, thighR: number, tune: Partial<Record<keyof typeof BIRTH_ROOM, number>> = {}): BirthRoom | null {
   const g = mesh.geometry as THREE.BufferGeometry;
   const si = g.getAttribute('skinIndex') as THREE.BufferAttribute | undefined, sw = g.getAttribute('skinWeight') as THREE.BufferAttribute | undefined, pa = g.getAttribute('position');
   if (!si || !sw || !pa) return null;
-  const n = pa.count, B = BIRTH_ROOM, rest = new Float32Array(n * 3), v = new THREE.Vector3();
+  const n = pa.count, B = { ...BIRTH_ROOM, ...tune }, rest = new Float32Array(n * 3), v = new THREE.Vector3();
   for (let i = 0; i < n; i++) v.set(pa.getX(i), pa.getY(i), pa.getZ(i)).applyMatrix4(toRest).toArray(rest, i * 3);
   const c = birthAreaCentre(rest);
   if (!c) return null;

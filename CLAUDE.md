@@ -1778,8 +1778,12 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   in over her middle. Now in SIT, once she is seated (not while she moves into it or out: `sitRoomHere`), the birth poses'
   room between her thighs is laid (`birthRoom.ts`: none of her inner thighs nearer her middle than standing, none within
   4 cm of her vulva) and her groin's smoothing on it (`birthNormals.ts`, as RECLINE has it) -- `keepBirthRoom`. The
-  probe's `sitRoom(on, normals)`. MEASURED in the room (light skin, 1x): pushed up to 20 to 26 mm; at 0% her thighs part
-  in a V over her pubic bone from the front and from his low view; 100 and 200% as before. NOT YET: his opinion.
+  probe's `sitRoom(on, normals)`. With the birth poses' own numbers (pushed 20 to 26 mm) he saw no change ("still no
+  visible change… try widening it and flattening more the thighs up next to the pelvis/opening"): SIT has a room of its
+  own, `birthRoom.ts` `SIT_ROOM` (her inner thighs held 7.5 cm off her middle within 9 cm of her crotch, eased off by 19,
+  smoothed 14 times; `createBirthRoom`'s `tune`). MEASURED in the room (light skin, 1x): pushed up to 70 mm at 0% and 139
+  at 100% (far down her thighs' roots under her seat); at 0% her thighs stand apart over her pubic bone and her opening,
+  from the front and from his low view, their inner sides flattened; from behind and her side as before.
 - MEASURED in the room, both poses at 200 and 150% on the light skin and 200% on the full one: round, no line down her
   belly's sides, no patch. LEFT, AND NAMED: faint ripples low on her belly's front in SQUAT at 200%.
 - After anything changes the hold, her soft belly's share or her navel's lay: `tests/bellyHold.test.ts`,
