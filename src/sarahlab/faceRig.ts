@@ -279,13 +279,60 @@ type Wide<T> = T extends number ? number : T extends string ? string : T extends
  * bone its face rides (`restFromWorld`).
  */
 export interface FaceFrame { readonly id: string; readonly scale: number; readonly pitch: number; readonly offset: V3; readonly headBone: string }
-/** A body's face: its frame, and its brows, lips, lashes and defaults (hers, or its own). */
+/** A body's face: its frame, and its brows, lips, lashes and defaults (hers, or its own); a beard's design if it has one. */
 export interface FaceSpec {
   readonly frame: FaceFrame;
   readonly brows: Wide<typeof FACE_BROWS>;
   readonly lips: Wide<typeof FACE_LIPS>;
   readonly lids: Wide<typeof FACE_LIDS>;
   readonly defaults: Wide<typeof FACE_DEFAULTS>;
+  /** Facial hair (his: `maleFace.ts`); absent, none is ever drawn and nothing of it is in the program. */
+  readonly beard?: BeardDesign;
+}
+
+/** The kinds of facial hair (`BeardDesign.styles`): 'none' draws nothing. */
+export const BEARD_STYLE_IDS = ['none', 'stubble', 'short', 'full', 'mustache', 'goatee'] as const;
+export type BeardStyleId = typeof BEARD_STYLE_IDS[number];
+/** One kind of facial hair: which areas it covers (0..1 each), how far its edges are grown, and its hair. */
+export interface BeardStyle {
+  /** The cheeks, jaw, chin and upper lip down to the neckline; the upper lip alone; the chin and round the mouth. */
+  readonly full: number; readonly mustache: number; readonly chin: number;
+  /** 0..1: its cheek line raised and its neckline lowered by `BeardDesign.grow`'s. */
+  readonly grow: number;
+  /** How solid the hair is between the drawn hairs (0..1), a hair's length and its grid's cell (metres), the share of cells with a hair. */
+  readonly fill: number; readonly length: number; readonly cell: number; readonly density: number;
+  /** 0..1: how much its fill is broken into grain (stubble's, most), at `BeardDesign.grainCell`. */
+  readonly grain: number;
+}
+/**
+ * FACIAL HAIR, drawn on the skin as the brows are: an AREA in her rest metres (the face's design frame) made of a cheek
+ * line, a back edge in front of the ear, a neckline and, for a mustache and a goatee, the upper lip and the chin -- its
+ * edges wavered by a smooth noise so they are not cut lines -- and HAIRS drawn in a chart of the lower face (a sphere's
+ * angles about `chart.centre`, `chart.radius` metres to a radian), each a short stroke growing down it, the mustache's
+ * leaning out from his philtrum. It is a layer on his skin: it rides his jaw, his face's shapes and his skin.
+ */
+export interface BeardDesign {
+  readonly chart: { readonly centre: V3; readonly radius: number };
+  /** The cheek line: y at |x| `inner[0]` and below (`inner[1]`), rising to `outer[1]` by |x| `outer[0]` (the sideburn). */
+  readonly cheek: { readonly inner: readonly [number, number]; readonly outer: readonly [number, number] };
+  /** In front of the ear: z over `low` below y `from`, over `high` from y `to`. */
+  readonly back: { readonly low: number; readonly high: number; readonly from: number; readonly to: number };
+  /** The neckline: the plane (in y and z) through `front` [y, z] on the midline, facing up and forward along `normal`. */
+  readonly neck: { readonly front: readonly [number, number]; readonly normal: readonly [number, number] };
+  /** The mustache: |x| under `halfWidth`, y from `bottom` to `top`. */
+  readonly mustache: { readonly halfWidth: number; readonly bottom: number; readonly top: number };
+  /** The chin: |x| under `halfWidth`, y under `top`, z over `depth` (not far back under the jaw). */
+  readonly chin: { readonly halfWidth: number; readonly top: number; readonly depth: number };
+  /** Its edges' softness and their waver (metres), the waver's cell (metres), and how far `grow` moves the cheek line up and the neckline down. */
+  readonly edge: number; readonly waver: number; readonly waverCell: number; readonly grainCell: number;
+  readonly grow: { readonly cheek: number; readonly neck: number };
+  /** A hair's half-width at its root (metres), the hairs' darkness give or take, how much lighter the fill is than a hair, and how much a hair leans (radians: the mustache's out, the rest's). */
+  readonly hair: { readonly halfWidth: number; readonly dark: number; readonly fillShade: number; readonly leanMustache: number; readonly lean: number; readonly jitter: number };
+  /** Its roughness (matte), at its fullest. */
+  readonly roughness: number;
+  readonly styles: { readonly [K in Exclude<BeardStyleId, 'none'>]: BeardStyle };
+  /** Its colour when none is chosen (LINEAR). */
+  readonly colour: V3;
 }
 /** Her face: her own frame (no pitch) and design. */
 export const HER_FACE: FaceSpec = Object.freeze({
@@ -338,6 +385,8 @@ export interface FaceRigState {
    * her own tint (`FACE_LIPS.tint`) multiplies her skin exactly as before.
    */
   readonly lipTint?: readonly [number, number, number];
+  /** Facial hair, on a face with a beard design (`FaceSpec.beard`): its kind, how much of it (0..1), its colour (LINEAR; absent, the design's). */
+  readonly beard?: { readonly style: BeardStyleId; readonly amount?: number; readonly colour?: readonly [number, number, number] };
 }
 
 /** A state reduced to what both the shader and the CPU read: every amount clamped, every direction unit. */
@@ -357,6 +406,8 @@ interface Setting {
   readonly irisRing: V3 | null;
   /** null: her own tint. */
   readonly lipTint: V3 | null;
+  /** null: none. */
+  readonly beard: { readonly style: BeardStyle; readonly amount: number; readonly colour: V3 } | null;
 }
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 const amount = (x: number | undefined, fallback: number): number => (x !== undefined && Number.isFinite(x) ? clamp(x, 0, 1) : fallback);
@@ -385,7 +436,14 @@ function settingOf(state: FaceRigState, spec: FaceSpec = HER_FACE): Setting {
     lashes: amount(state.lashes, FACE_DEFAULTS.lashes),
     ...pickedIris(state, FACE_DEFAULTS.iris),
     lipTint: state.lipTint ? colour(state.lipTint, FACE_LIPS.tint) : null,
+    beard: beardOf(state, spec),
   };
+}
+/** The facial hair a state asks of a face that has a design for it (none on a face without one, or for 'none'). */
+function beardOf(state: FaceRigState, spec: FaceSpec): Setting['beard'] {
+  const b = state.beard, d = spec.beard;
+  if (!b || !d || b.style === 'none' || !(b.style in d.styles)) return null;
+  return { style: d.styles[b.style as Exclude<BeardStyleId, 'none'>], amount: amount(b.amount, 1), colour: colour(b.colour, d.colour) };
 }
 /** A collar and a ring are drawn only as a pair (one alone would be half of one look, half of another). */
 function pickedIris(state: FaceRigState, iris: V3 = FACE_DEFAULTS.iris): { irisAmber: V3 | null; irisRing: V3 | null } {
@@ -432,6 +490,12 @@ interface Uniforms {
   /** rgb: a chosen collar; w: 1 when the iris's collar and ring are chosen, 0 for the base's ratios. */
   readonly faceIrisAmber: THREE.IUniform<THREE.Vector4>;
   readonly faceIrisRing: THREE.IUniform<THREE.Vector3>;
+  /** A face with a beard design only: the areas (full, mustache, chin) and grow; fill, length, cell, density; rgb its colour, w how much (0: none). */
+  readonly faceBeardArea?: THREE.IUniform<THREE.Vector4>;
+  readonly faceBeardHair?: THREE.IUniform<THREE.Vector4>;
+  readonly faceBeardColour?: THREE.IUniform<THREE.Vector4>;
+  /** x its grain. */
+  readonly faceBeardLook?: THREE.IUniform<THREE.Vector4>;
 }
 const patched = new WeakMap<THREE.Material, Uniforms>();
 
@@ -868,7 +932,108 @@ function shaderFor(spec: FaceSpec): ShaderLines {
         normal = normalize(mix(normal, nonPerturbedNormal, faceWet));
         normal = normalize(mix(normal, vec3(0.0, 0.0, 1.0), faceInner));
       }`;
-  return { VERTEX_PARS, VERTEX_NORMAL, VERTEX_JAW, FRAGMENT_PARS, FRAGMENT_COLOUR, FRAGMENT_ROUGHNESS, FRAGMENT_NORMAL };
+  if (!spec.beard) return { VERTEX_PARS, VERTEX_NORMAL, VERTEX_JAW, FRAGMENT_PARS, FRAGMENT_COLOUR, FRAGMENT_ROUGHNESS, FRAGMENT_NORMAL };
+  // FACIAL HAIR (a face with a beard design only: hers has none, and her program's text is as it was): its functions and
+  // uniforms after the rest, its colour laid last in the face's own branch, outside the eyes' and mouth's box (a beard
+  // reaches under the chin and back to the ear), and its matte roughness
+  const B = beardLines(spec.beard);
+  const close = FRAGMENT_COLOUR.lastIndexOf('\n      }');
+  return {
+    VERTEX_PARS, VERTEX_NORMAL, VERTEX_JAW,
+    FRAGMENT_PARS: `${FRAGMENT_PARS}\n${B.pars}`,
+    FRAGMENT_COLOUR: `\n      float faceBeardA = 0.0;${FRAGMENT_COLOUR.slice(0, close)}${B.colour}${FRAGMENT_COLOUR.slice(close)}`,
+    FRAGMENT_ROUGHNESS: `${FRAGMENT_ROUGHNESS}${B.roughness}`,
+    FRAGMENT_NORMAL,
+  };
+}
+
+/** The facial hair's shader lines from its design (`BeardDesign`), in the face's coordinates (`rest - FACE_ORIGIN`). */
+function beardLines(d: BeardDesign): { pars: string; colour: string; roughness: string } {
+  const O = FACE_ORIGIN, C = d.chart.centre, nl = Math.hypot(d.neck.normal[0], d.neck.normal[1]), N = [d.neck.normal[0] / nl, d.neck.normal[1] / nl];
+  const reach = Math.ceil(Math.max(...Object.values(d.styles).map((st) => st.length / st.cell))) + 1;
+  const pars = [
+    'uniform vec4 faceBeardArea;',
+    'uniform vec4 faceBeardHair;',
+    'uniform vec4 faceBeardColour;',
+    'uniform vec4 faceBeardLook;',
+    `
+  // a smooth value noise, 0..1, a cell a unit
+  float faceBeardNoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(faceHash12(i), faceHash12(i + vec2(1.0, 0.0)), f.x), mix(faceHash12(i + vec2(0.0, 1.0)), faceHash12(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  // where facial hair is (0..1), at a point r of the face (her rest metres), and the point in the hair's chart
+  float faceBeardWhere(vec3 r, out vec2 chart) {
+    float ax = abs(r.x);
+    vec3 q = r - ${v3(C)};
+    float el = atan(q.y, length(q.xz));
+    chart = vec2(atan(q.x, q.z) * cos(el), el) * ${n(d.chart.radius)};
+    float wv = (faceBeardNoise(chart / ${n(d.waverCell)}) - 0.5) * ${n(2 * d.waver)};
+    float e = ${n(d.edge)};
+    float yTop = mix(${n(d.cheek.inner[1])}, ${n(d.cheek.outer[1])}, smoothstep(${n(d.cheek.inner[0])}, ${n(d.cheek.outer[0])}, ax)) + faceBeardArea.w * ${n(d.grow.cheek)};
+    float zBack = mix(${n(d.back.low)}, ${n(d.back.high)}, smoothstep(${n(d.back.from)}, ${n(d.back.to)}, r.y));
+    float neck = dot(r.yz - ${v2(d.neck.front)}, ${v2(N)}) + faceBeardArea.w * ${n(d.grow.neck)};
+    float below = smoothstep(-e, e, yTop - r.y + wv), front = smoothstep(-e, e, r.z - zBack + wv), above = smoothstep(-e, e, neck + wv);
+    float must = smoothstep(-e, e, ${n(d.mustache.halfWidth)} - ax + wv) * smoothstep(-e, e, ${n(d.mustache.top)} - r.y + 0.5 * wv) * smoothstep(-e, e, r.y - ${n(d.mustache.bottom)});
+    // (a full area takes in the upper lip as well: the cheek line runs down to the mouth's corners, under his nose's wings)
+    float full = max(below * front * above, must);
+    float chin = smoothstep(-e, e, ${n(d.chin.halfWidth)} - ax + wv) * smoothstep(-e, e, ${n(d.chin.top)} - r.y) * above * smoothstep(-e, e, r.z - ${n(d.chin.depth)} + wv);
+    return max(full * faceBeardArea.x, max(must * faceBeardArea.y, chin * faceBeardArea.z));
+  }
+  // the hairs at a point of the chart (y flipped: they grow toward +y, down his face), as the brows' are: how much of a
+  // hair covers it, antialiased against the pixel's size px, and that hair's darkness. A hair grows from a root in a cell
+  // of a jittered grid (faceBeardHair.z a side; faceBeardHair.w the share of cells with one) for up to faceBeardHair.y,
+  // leaning by lean; the roots that reach a point lie up the chart from it, so the search walks the rows above
+  float faceBeardHairs(vec2 p, float px, float lean, out float dark) {
+    float c = faceBeardHair.z, len = faceBeardHair.y;
+    vec2 g = p / c;
+    float slope = tan(lean);
+    float best = 0.0;
+    dark = 1.0;
+    for (int k = 0; k <= ${reach}; k++) {
+      float line = floor(g.y) - float(k);
+      float xing = g.x - (g.y - (line + 0.5)) * slope;
+      for (int l = -1; l <= 1; l++) {
+        vec2 cell = vec2(floor(xing) + float(l), line);
+        vec4 h = faceHash42(cell + vec2(71.0, 13.0));
+        if (h.z > faceBeardHair.w) continue;
+        vec2 root = (cell + h.xy) * c;
+        float L = len * mix(0.55, 1.0, h.w);
+        float a = lean + (faceHash12(cell + vec2(5.0, 9.0)) - 0.5) * ${n(2 * d.hair.jitter)};
+        vec2 dir = vec2(sin(a), cos(a));
+        vec2 dp = p - root;
+        float t = clamp(dot(dp, dir), 0.0, L);
+        float hw = ${n(d.hair.halfWidth)} * (1.0 - 0.5 * t / L);
+        float w = max(hw, 0.5 * px);
+        float hit = (hw / w) * (1.0 - smoothstep(w - 0.5 * px, w + 0.5 * px, length(dp - dir * t)));
+        if (hit > best) { best = hit; dark = 1.0 + ${n(d.hair.dark)} * (2.0 * fract(h.w * 31.7) - 1.0); }
+      }
+    }
+    return best;
+  }`,
+  ].join('\n');
+  const colour = `
+        if (faceBeardColour.w > 0.0 && vFaceF.y < ${n(d.cheek.outer[1] + d.grow.cheek + 0.01 - O[1])} && vFaceF.z > ${n(Math.min(d.back.low, d.back.high) - 0.01 - O[2])} && abs(vFaceF.x) < ${n(0.1)}) {
+          vec3 faceR = vFaceF + ${v3(O)};
+          vec2 faceChart;
+          float faceArea = faceBeardWhere(faceR, faceChart) * (1.0 - faceLipMask) * (1.0 - faceInner);
+          if (faceArea > 0.0) {
+            float faceBpx = max(max(fwidth(faceChart.x), fwidth(faceChart.y)), 1e-6);
+            // (over the upper lip a hair leans out from the middle, as a mustache grows; elsewhere nearly straight down)
+            float faceLean = clamp(faceR.x / 0.004, -1.0, 1.0);
+            faceLean *= mix(${n(d.hair.lean)}, ${n(d.hair.leanMustache)}, (1.0 - smoothstep(${n(d.mustache.halfWidth - 0.004)}, ${n(d.mustache.halfWidth + 0.002)}, abs(faceR.x))) * smoothstep(${n(d.mustache.bottom)}, ${n(d.mustache.bottom + 0.004)}, faceR.y));
+            float faceDarkB;
+            float faceHairB = faceBeardHairs(vec2(faceChart.x, -faceChart.y), faceBpx, faceLean, faceDarkB);
+            float faceFillB = faceBeardHair.x * mix(0.8, 1.0, faceBeardNoise(faceChart / 0.0015)) * mix(1.0 - faceBeardLook.x, 1.0 + 0.5 * faceBeardLook.x, faceBeardNoise(faceChart / ${n(d.grainCell)}));
+            vec3 faceBC = faceBeardColour.rgb * mix(${n(d.hair.fillShade)}, faceDarkB, faceHairB);
+            faceBeardA = faceArea * faceBeardColour.w * max(faceFillB, faceHairB);
+            diffuseColor.rgb = mix(diffuseColor.rgb, faceBC, faceBeardA);
+          }
+        }`;
+  const roughness = `
+      if (faceOn > 0.5) roughnessFactor = mix(roughnessFactor, ${n(d.roughness)}, faceBeardA);`;
+  return { pars, colour, roughness };
 }
 interface ShaderLines { readonly VERTEX_PARS: string; readonly VERTEX_NORMAL: string; readonly VERTEX_JAW: string; readonly FRAGMENT_PARS: string; readonly FRAGMENT_COLOUR: string; readonly FRAGMENT_ROUGHNESS: string; readonly FRAGMENT_NORMAL: string }
 const shaders = new Map<FaceSpec, ShaderLines>();
@@ -911,6 +1076,7 @@ function patch(material: THREE.Material, spec: FaceSpec = HER_FACE): Uniforms {
     faceLipTint: { value: new THREE.Vector4(...FACE_LIPS.tint, 0) },
     faceIrisAmber: { value: new THREE.Vector4(...FACE_LOOK.amber, 0) },
     faceIrisRing: { value: new THREE.Vector3(...FACE_LOOK.limbal) },
+    ...(spec.beard ? { faceBeardArea: { value: new THREE.Vector4() }, faceBeardHair: { value: new THREE.Vector4() }, faceBeardColour: { value: new THREE.Vector4() }, faceBeardLook: { value: new THREE.Vector4() } } : {}),
   };
   const previous = material.onBeforeCompile, cacheKey = material.customProgramCacheKey;
   material.onBeforeCompile = function (shader, renderer) {
@@ -958,6 +1124,13 @@ export function setFaceRig(material: THREE.Material, state: FaceRigState | null)
   u.faceLipTint.value.set(...(lip ?? FACE_LIPS.tint), lip ? 1 : 0);
   u.faceIrisAmber.value.set(...(amber ?? FACE_LOOK.amber), amber ? 1 : 0);
   u.faceIrisRing.value.set(...(ring ?? FACE_LOOK.limbal));
+  if (u.faceBeardArea && u.faceBeardHair && u.faceBeardColour) {
+    const b = s?.beard;
+    u.faceBeardArea.value.set(b ? b.style.full : 0, b ? b.style.mustache : 0, b ? b.style.chin : 0, b ? b.style.grow : 0);
+    u.faceBeardHair.value.set(b ? b.style.fill : 0, b ? b.style.length : 0.001, b ? b.style.cell : 0.001, b ? b.style.density * b.amount : 0);
+    u.faceBeardColour.value.set(...(b ? b.colour : [0, 0, 0] as const), b ? b.amount : 0);
+    u.faceBeardLook?.value.set(b ? b.style.grain : 0, 0, 0, 0);
+  }
 }
 
 // ------------------------------------------------------------------------------------------------------------------

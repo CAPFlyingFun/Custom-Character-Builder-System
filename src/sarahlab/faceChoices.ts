@@ -85,3 +85,16 @@ export function faceSliderLine(name: string, v: number): string {
 export function faceGroupLine(group: string, changed: number): string {
   return changed > 0 ? `${group} · ${changed} changed` : group;
 }
+
+/** His facial hair's kinds as the FACIAL HAIR chips name them (`faceRig.ts` `BEARD_STYLE_IDS`, in its order). */
+export const BEARD_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  none: 'None', stubble: 'Stubble', short: 'Short beard', full: 'Full beard', mustache: 'Mustache', goatee: 'Goatee',
+});
+/** "BEARD · thickness 80%", or "BEARD · none". */
+export function beardLine(style: string, percent: number): string {
+  const p = Math.round(Math.max(0, Math.min(100, percent)));
+  return style === 'none' ? 'BEARD · none' : `BEARD · ${BEARD_NAMES[style] ?? style} · ${p === 0 ? 'none' : `${p}% thick`}`;
+}
+export function beardColourLine(colour: string | null): string {
+  return `BEARD COLOUR · ${colour ? (swatchOf(HAIR_COLOURS, colour)?.name ?? `custom ${colour.toLowerCase()}`) : 'matches his hair'}`;
+}

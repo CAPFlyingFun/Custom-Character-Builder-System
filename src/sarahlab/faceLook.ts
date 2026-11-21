@@ -16,7 +16,7 @@
  * Pure but for its import of `faceRig.ts`'s types and mirror.
  */
 import { colourLinear, HEAD_DEFAULT, type HeadLook } from './headLook';
-import { FACE_DEFAULTS, faceIrisColour, type FaceRigState } from './faceRig';
+import { BEARD_STYLE_IDS, FACE_DEFAULTS, faceIrisColour, type BeardStyleId, type FaceRigState } from './faceRig';
 
 type Rgb = [number, number, number];
 export interface FaceSwatch { readonly id: string; readonly name: string; readonly colour: string }
@@ -129,7 +129,14 @@ export function faceRigLook(head: HeadLook, browFromHair: string | null): Partia
   if (head.lips.colour) out.lipTint = colourLinear(head.lips.colour);
   if (head.lips.amount !== HEAD_DEFAULT.lips.amount) out.lips = head.lips.amount;
   if (head.lashes !== HEAD_DEFAULT.lashes) out.lashes = head.lashes;
+  // his facial hair: its own colour, else his brows' (which follow his hair's), else the design's own
+  const beard = head.beard;
+  if (beard && isBeardStyle(beard.style) && beard.style !== 'none') {
+    const colour = beard.colour ?? brow;
+    out.beard = { style: beard.style, amount: beard.amount, ...(colour ? { colour: colourLinear(colour) } : {}) };
+  }
   return out;
 }
+const isBeardStyle = (id: string): id is BeardStyleId => (BEARD_STYLE_IDS as readonly string[]).includes(id);
 /** (Her own amounts are the rig's: `HEAD_DEFAULT` and `FACE_DEFAULTS` agree, which a test holds.) */
 export const OWN_AMOUNTS = { brow: FACE_DEFAULTS.brow, lips: FACE_DEFAULTS.lips, lashes: FACE_DEFAULTS.lashes } as const;

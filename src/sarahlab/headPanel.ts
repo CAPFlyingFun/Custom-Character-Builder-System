@@ -8,8 +8,11 @@
  *   BROWS        COLOUR (match her hair, or custom), AMOUNT
  *   LASHES       AMOUNT
  *   LIPS         SHADE swatches, AMOUNT
+ *   FACIAL HAIR  (his: `hooks.beard`) STYLE chips, THICKNESS, COLOUR (match his hair, the list, custom)
  *   FACE SHAPE   FACE TYPE chips, then her sliders in a <details> a group, RESET FACE
- *   RESET HEAD   every part back to `HEAD_DEFAULT`
+ *   RESET HEAD   every part back to the body's own head (`hooks.own`; `HEAD_DEFAULT`)
+ *
+ * On HIM (`hooks.male`) its lines say "his" where they say "her".
  *
  * It is modelled on `garmentPanel.ts` and keeps its conventions: a slider is a LINE (`data-field`) and, right after it, its
  * range input (a probe finds one by `[data-field="..."] + input`); a slider reports each move with `final` false and its
@@ -28,13 +31,14 @@
  * Plain DOM: no three.js, no room.
  */
 import {
-  browColourLine, browsLine, eyeColourLine, faceGroupLine, faceSliderLine, hairColourLine, hairLengthLine, lashesLine, lipColourLine, lipsLine,
+  BEARD_NAMES, beardColourLine, beardLine, browColourLine, browsLine, eyeColourLine, faceGroupLine, faceSliderLine, hairColourLine, hairLengthLine, lashesLine, lipColourLine, lipsLine,
 } from './faceChoices';
+import { BEARD_STYLE_IDS } from './faceRig';
 import { EYE_COLOURS, LIP_COLOURS, type FaceSwatch } from './faceLook';
 import { FACE_SLIDERS, FACE_TYPES, type FaceGroup } from './faceShapes';
 import { HAIR_COLOURS } from './hairColours';
 import { HAIR_STYLES, HAIR_STYLE_NONE, type HairStyle } from './hairStyles';
-import { HEAD_DEFAULT, isDefaultHead, lookColour, type FaceShapeLook, type HeadLook, type LookColour } from './headLook';
+import { BEARD_NONE, HEAD_DEFAULT, isDefaultHead, lookColour, type FaceShapeLook, type HeadLook, type LookColour } from './headLook';
 
 /** What the panel reads and drives; it never imports the room. */
 export interface HeadPanelHooks {
@@ -44,6 +48,12 @@ export interface HeadPanelHooks {
   change(next: HeadLook, final: boolean): void;
   /** The hairstyles on offer; absent, `HAIR_STYLES`. */
   styles?(): readonly HairStyle[];
+  /** The body's own head, what RESET HEAD gives back; absent, `HEAD_DEFAULT`. */
+  own?(): HeadLook;
+  /** Whether FACIAL HAIR is offered (a face with a design for it: his); absent, not. */
+  beard?(): boolean;
+  /** Whether the body is his (the lines say "his"); absent, hers. */
+  male?(): boolean;
 }
 
 /** `data-field` of each line (its slider follows it) and of each swatch row, for a probe. A face slider's is `${faceSlider}<id>`. */
@@ -56,6 +66,8 @@ export const HEAD_PANEL_FIELD = Object.freeze({
   lashes: 'sarahlab-head-lashes',
   lipColour: 'sarahlab-head-lip-colour',
   lipAmount: 'sarahlab-head-lip-amount',
+  beardAmount: 'sarahlab-head-beard-amount',
+  beardColour: 'sarahlab-head-beard-colour',
   faceSlider: 'sarahlab-head-face-',
 });
 
@@ -69,6 +81,8 @@ export const HEAD_PANEL_ACTION = Object.freeze({
   eyeColour: 'sarahlab:head:eye-colour:',
   browColour: 'sarahlab:head:brow-colour:',
   lipColour: 'sarahlab:head:lip-colour:',
+  beardStyle: 'sarahlab:head:beard-style:',
+  beardColour: 'sarahlab:head:beard-colour:',
   faceType: 'sarahlab:head:face-type:',
   resetFace: 'sarahlab:head:reset-face',
   resetHead: 'sarahlab:head:reset-head',
@@ -139,9 +153,9 @@ interface SliderSpec {
 interface Slider { readonly spec: SliderSpec; readonly line: HTMLDivElement; readonly input: HTMLInputElement }
 
 /** Which colour part a swatch row sets. */
-type ColourPart = 'hair' | 'eyes' | 'brows' | 'lips';
-const withColour = (l: HeadLook, part: ColourPart, colour: LookColour): HeadLook => ({ ...l, [part]: { ...l[part], colour } }) as HeadLook;
-const colourOf = (l: HeadLook, part: ColourPart): LookColour => l[part].colour;
+type ColourPart = 'hair' | 'eyes' | 'brows' | 'lips' | 'beard';
+const withColour = (l: HeadLook, part: ColourPart, colour: LookColour): HeadLook => ({ ...l, [part]: { ...(part === 'beard' ? l.beard ?? BEARD_NONE : l[part]), colour } }) as HeadLook;
+const colourOf = (l: HeadLook, part: ColourPart): LookColour => (part === 'beard' ? l.beard?.colour ?? null : l[part].colour);
 
 const pct = (u: number): number => Math.round(u * 100);
 
@@ -162,6 +176,11 @@ const SLIDERS: readonly SliderSpec[] = [
   {
     field: HEAD_PANEL_FIELD.lipAmount, name: 'Lip colour amount', min: 0, max: 100,
     get: (l) => pct(l.lips.amount), set: (l, x) => ({ ...l, lips: { ...l.lips, amount: x / 100 } }), line: (x) => lipsLine(x),
+  },
+  {
+    field: HEAD_PANEL_FIELD.beardAmount, name: 'Beard thickness', min: 0, max: 100,
+    get: (l) => pct((l.beard ?? BEARD_NONE).amount), set: (l, x) => ({ ...l, beard: { ...(l.beard ?? BEARD_NONE), amount: x / 100 } }),
+    line: (x, l) => beardLine((l.beard ?? BEARD_NONE).style, x), enabled: (l) => (l.beard ?? BEARD_NONE).style !== 'none',
   },
 ];
 
@@ -213,6 +232,8 @@ export class HeadPanel {
   private readonly groups: { readonly group: FaceGroup; readonly summary: HTMLElement; readonly ids: readonly string[] }[] = [];
   private resetFace!: HTMLButtonElement;
   private resetHead!: HTMLButtonElement;
+  private readonly beardSection: HTMLDivElement;
+  private readonly beardChips: { readonly id: string; readonly button: HTMLButtonElement }[] = [];
   private readonly lifted = (e: Event): void => this.release(pointerOf(e), e.type === 'pointercancel');
 
   constructor(hooks: HeadPanelHooks) {
@@ -222,7 +243,7 @@ export class HeadPanel {
     this.element.dataset.role = HEAD_PANEL_ROLE.panel;
     this.element.style.cssText = 'box-sizing:border-box;min-width:0;max-width:100%';
     const body = el('div', BODY_CSS);
-    const [length, browAmount, lashes, lipAmount] = SLIDERS;
+    const [length, browAmount, lashes, lipAmount, beardAmount] = SLIDERS;
 
     // HAIR
     const hair = this.section('HAIR', 'hair');
@@ -239,6 +260,15 @@ export class HeadPanel {
     // LIPS
     const lips = this.section('LIPS', 'lips');
     lips.append(...this.swatchRow('lips', HEAD_PANEL_FIELD.lipColour, HEAD_PANEL_ACTION.lipColour, LIP_COLOURS, 'her own', lipColourLine), ...this.sliderParts(lipAmount));
+    // FACIAL HAIR (his)
+    this.beardSection = this.section('FACIAL HAIR', 'beard');
+    const beardRow = el('div', ROW_CSS);
+    for (const id of BEARD_STYLE_IDS) {
+      const button = this.chip(BEARD_NAMES[id] ?? id, `${HEAD_PANEL_ACTION.beardStyle}${id}`, (l) => ({ ...l, beard: { ...(l.beard ?? BEARD_NONE), style: id } }), true);
+      this.beardChips.push({ id, button });
+      beardRow.appendChild(button);
+    }
+    this.beardSection.append(this.caption('STYLE'), beardRow, ...this.sliderParts(beardAmount), ...this.swatchRow('beard', HEAD_PANEL_FIELD.beardColour, HEAD_PANEL_ACTION.beardColour, HAIR_COLOURS, 'match his hair', beardColourLine));
     // FACE SHAPE
     const face = this.section('FACE SHAPE', 'face');
     face.append(this.caption('FACE TYPE'), this.typeRow(), ...this.faceGroups());
@@ -248,10 +278,10 @@ export class HeadPanel {
     face.appendChild(faceFoot);
     // RESET HEAD
     const foot = el('div', `${ROW_CSS};padding-top:8px;border-top:1px solid var(--sl-line,#ffffff1f)`);
-    this.resetHead = this.chip('RESET HEAD', HEAD_PANEL_ACTION.resetHead, () => HEAD_DEFAULT, false);
+    this.resetHead = this.chip('RESET HEAD', HEAD_PANEL_ACTION.resetHead, () => this.own(), false);
     foot.appendChild(this.resetHead);
 
-    body.append(hair, eyes, brows, lashSection, lips, face, foot);
+    body.append(hair, eyes, brows, lashSection, lips, this.beardSection, face, foot);
     this.element.appendChild(body);
 
     // the room behind never hears it: no orbit from a drag on it, no shortcut from a key in it
@@ -364,6 +394,7 @@ export class HeadPanel {
       return b;
     };
     const own = swatch('own', ownTitle === 'her own' ? 'her own' : ownTitle, 'transparent', '/');
+    own.dataset.title = own.title;
     own.addEventListener('click', (e) => this.pick(e, part, null));
     const entries = list.map((s) => {
       const button = swatch(s.id, s.name, s.colour);
@@ -473,16 +504,24 @@ export class HeadPanel {
     const oneLength = s.field === HEAD_PANEL_FIELD.hairLength && known && look.hair.style !== HAIR_STYLE_NONE && this.styles().find((h) => h.id === look.hair.style)?.hasLength === false;
     const noHair = s.field === HEAD_PANEL_FIELD.hairLength && look.hair.style === HAIR_STYLE_NONE;
     const off = oneLength || noHair;
-    const text = s.field === HEAD_PANEL_FIELD.hairLength ? hairLengthLine(x, noHair ? 'none' : oneLength ? 'one-length' : 'on') : s.line(x, look);
+    const text = this.said(s.field === HEAD_PANEL_FIELD.hairLength ? hairLengthLine(x, noHair ? 'none' : oneLength ? 'one-length' : 'on') : s.line(x, look));
     if (c.line.textContent !== text) {
       c.line.textContent = text;
       c.input.setAttribute('aria-valuetext', text);
     }
-    if (c.input.disabled !== off) c.input.disabled = off;
+    const disabled = off || (s.enabled ? !s.enabled(look) : false);
+    if (c.input.disabled !== disabled) c.input.disabled = disabled;
   }
 
   private styles(): readonly HairStyle[] {
     return this.hooks.styles ? this.hooks.styles() : HAIR_STYLES;
+  }
+  private own(): HeadLook {
+    return this.hooks.own ? this.hooks.own() : HEAD_DEFAULT;
+  }
+  /** A line as the body has it: "his" for "her" on him. */
+  private said(text: string): string {
+    return this.hooks.male?.() ? text.replace(/\bher\b/g, 'his') : text;
   }
 
   private show(look: HeadLook): void {
@@ -503,8 +542,10 @@ export class HeadPanel {
 
     for (const r of this.rows) {
       const colour = colourOf(look, r.part);
-      const text = r.say(colour);
+      const text = this.said(r.say(colour));
       if (r.line.textContent !== text) r.line.textContent = text;
+      const ownTitle = this.said(r.own.dataset.title ?? r.own.title);
+      if (r.own.title !== ownTitle) { r.own.title = ownTitle; r.own.setAttribute('aria-label', ownTitle); }
       lit(r.own, colour === null, true);
       let onList = false;
       for (const { colour: c, button } of r.list) { const on = colour !== null && c === colour.toLowerCase(); onList ||= on; lit(button, on, true); }
@@ -526,7 +567,11 @@ export class HeadPanel {
     }
     this.resetFace.hidden = moved === 0 && Object.values(look.face).every((v) => v === 0);
     this.resetFace.style.display = this.resetFace.hidden ? 'none' : '';
-    this.resetHead.hidden = isDefaultHead(look);
+    this.resetHead.hidden = isDefaultHead(look, this.own());
     this.resetHead.style.display = this.resetHead.hidden ? 'none' : '';
+    const beard = this.hooks.beard?.() ?? false, style = (look.beard ?? BEARD_NONE).style;
+    this.beardSection.hidden = !beard;
+    this.beardSection.style.display = beard ? 'flex' : 'none';
+    for (const { id, button } of this.beardChips) lit(button, style === id);
   }
 }

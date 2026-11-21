@@ -2203,9 +2203,51 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   - NOT DONE: his tee in his poses (squat, seated, walking) looked at; its sleeves stand a little off his arms (the
     draft's ease is hers); a cuff's edge at the long sleeve's wrist.
 - NOT DONE: his own pelvis bone; true briefs; loose shorts and trousers;
-  his head's parts; RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
+  RECLINE floats (her bed is not drawn either); his NAVEL setting kept in a save.
 - After anything changes him: `tests/maleBase.test.ts`, `tests/maleBelly.test.ts`, `tests/sarahBase.test.ts`; then the room:
   MALE, his belly at 0, 100 and 200% from his side and front, T-POSE from his back, X-RAY from his side.
+
+## His head: face, eyes, facial hair and hair
+
+- **HIS FACE IS HERS DRAWN THROUGH A FRAME FITTED TO HIS** (Joshua, 2026-11-21: "Let's work on hair, face, and eye options for
+  the male model now"). The face layer (`faceRig.ts`) is numbers measured on her sculpt in her rest metres; a body's face is a
+  `FaceSpec`: a FRAME taking its geometry into her rest metres (`rest = scale · turnX(pitch) · position + offset`, a turn about
+  x alone, the jaw's own axis, so the jaw turns the same in both) and brows, lashes, lips and defaults of its own. HER
+  PROGRAM'S TEXT IS AS IT WAS TO THE LETTER (`HER_FACE`; the lines are built by `shaderFor(spec)`, its key `|face-rig-v3`);
+  his is another program (`|face-rig-v3-male`).
+  - HIS FRAME, MEASURED 2026-11-21 (`maleFace.ts` `MALE_FACE_FIT`): her face, brow to chin, nose to ears, fitted onto his by
+    an iterative closest-point fit allowing a scale, a turn about x and a carry: `his = 1.0234 · turnX(-4.35°) · hers +
+    (0.0096, -0.0225, 0.1978)`, half her points within 1.41 mm of his skin; his nose's tip, not fitted to, falls 2.0 mm from
+    hers. Her eyes' centres fall in his sockets, her lips' seam on his. His head bone is `Bone_017`.
+  - HIS BROWS, LASHES AND LIPS (GAME TUNING by eye): brows lower and flatter, fuller, a squarer head, dark brown; lashes
+    shorter, no flick; lips their own colour nearer his skin's, his upper lip a little thinner. Eyes, their colours, blinking,
+    looking, the mouth's inside and the jaw are hers as they are.
+  - HIS FACE'S SHAPES: the same sliders and face types, laid through his frame (`faceShapeFields.ts` `headPoints`, `faceFieldOn`'s
+    `frame`: a move and a normal's turn taken back out by the frame's turn).
+- **HIS FACIAL HAIR** (his answer to stubble, a short beard, a full beard, a mustache and a goatee: "All sounds good"):
+  `FaceSpec.beard` (`BeardDesign`, `maleFace.ts` `BEARD`), PAINTED IN THE FACE LAYER as the brows are, so it rides his jaw, his
+  face's shapes and his skin. Its AREA is lines MEASURED on his face in her rest metres (the underside of his chin at y 1.478,
+  his jaw's angle (0.060, 1.526, -0.066), the front of his ear z -0.087 to -0.099) -- a cheek line, a back edge in front of his
+  ear, a neckline plane, the upper lip and the chin -- its edges wavered by a smooth noise; its HAIRS short strokes in a chart of
+  his lower face (a sphere's angles about a point inside his jaw), growing down it, a mustache's leaning out from his philtrum,
+  over a fill broken into grain (stubble's most). Six kinds (`BEARD_STYLE_IDS`: none, stubble, short, full, mustache, goatee),
+  a THICKNESS and a COLOUR (null: his brows', which follow his hair's). A face with no design (hers) has none of it in its
+  program. GAME TUNING but where MEASURED. NOT DONE: no volume (a full beard is painted, not a shell: from his side his jaw's
+  outline is his skin's).
+- **HIS HEAD IS HIS OWN LOOK**: `headLook.ts` `HEAD_DEFAULT_MALE` (a crew cut in a dark brown '#3b2a20', clean-shaven); the
+  room keeps a head for each body (`headForBody`): switching body shows that body's head. A look's `beard` is kept only when
+  there is some; a save of his untouched head writes nothing (`savedHead(head, male)`, `headOf(body, male)`), and a colour a
+  save names -- even null, the toolkit's copper -- is what was chosen. The FACE tab (`headPanel.ts`) shows FACIAL HAIR where the
+  face has a design for it (`hooks.beard`), his hairstyles (`hooks.styles`), RESET HEAD to his own head (`hooks.own`), and its
+  lines say "his" (`hooks.male`).
+- **HIS HAIRSTYLES** (his: "keep the variety"): built by the hair toolkit ON HIS HEAD (`--body male`: `scripts/hair/head.mjs`
+  `BODIES.male`, his head read into her rest metres by his face's frame, so a style is drawn in one frame for either head; the
+  file written back into his geometry and onto his skeleton). `hairStyles.ts` `MALE_HAIR_STYLES`: six men's cuts (crew, buzz,
+  side part, slicked back, curly top, man bun) and her six as he wears them, each `models/hair/male/<id>.glb` and its light
+  twin. Her six's files are byte for byte as they were (a style chooses his numbers by `kit.head.body.id`).
+- After anything changes his head: `tests/maleHead.test.ts`, `tests/faceRig.test.ts`, `tests/faceShapeFields.test.ts`,
+  `tests/headLook.test.ts`, `tests/headPanel.test.ts`, `tests/hairStyles.test.ts`; then the room: MALE, his face from his front,
+  three-quarter and side, each kind of facial hair, a face type, a hairstyle of each kind.
 
 ## Verification
 

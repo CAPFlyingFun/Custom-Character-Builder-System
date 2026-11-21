@@ -50,7 +50,26 @@ export const HAIR_STYLES: readonly HairStyle[] = Object.freeze([
   { id: 'bob', name: 'Bob', file: 'models/hair/bob.glb', lightFile: 'models/hair/bob-light.glb', hasLength: true },
 ].map((s) => Object.freeze(s)));
 
-/** A style by id; undefined for 'none' or one not known. */
-export function hairStyle(id: string): HairStyle | undefined {
-  return HAIR_STYLES.find((s) => s.id === id);
+/**
+ * HIS HAIRSTYLES (the male base model; Joshua, 2026-11-21: "Let's work on hair, face, and eye options for the male model
+ * now"; of men's cuts and hers on him: "All sounds good… keep the variety"). Built by the same toolkit on HIS head
+ * (`node scripts/hair/bake.mjs --style <id> --body male`) into `models/hair/male/`, bound to his skeleton: six men's cuts,
+ * then her six as he wears them (the same styles, laid on his head, neck and back).
+ */
+const his = (id: string, name: string): HairStyle => Object.freeze({ id, name, file: `models/hair/male/${id}.glb`, lightFile: `models/hair/male/${id}-light.glb`, hasLength: true });
+export const MALE_HAIR_STYLES: readonly HairStyle[] = Object.freeze([
+  his('crew', 'Crew cut'),
+  his('buzz', 'Buzz cut'),
+  his('side-part', 'Side part'),
+  his('slicked-back', 'Slicked back'),
+  his('curly-top', 'Curly top'),
+  his('man-bun', 'Man bun'),
+  ...HAIR_STYLES.map((s) => his(s.id, s.name)),
+]);
+/** The styles a body wears: his, or hers. */
+export const hairStylesFor = (male: boolean): readonly HairStyle[] => (male ? MALE_HAIR_STYLES : HAIR_STYLES);
+
+/** A style by id (hers unless said); undefined for 'none' or one not known. */
+export function hairStyle(id: string, male = false): HairStyle | undefined {
+  return hairStylesFor(male).find((s) => s.id === id);
 }

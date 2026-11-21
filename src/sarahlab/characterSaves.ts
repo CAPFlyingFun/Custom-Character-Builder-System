@@ -38,7 +38,7 @@ import type { RandomRule, RandomRules } from '../actor/bodyRandom';
 import { builtToJson, sanitizeBuilt, type BuiltPieces } from './strapData';
 import { readTint } from './fabricTint';
 import { readPregnancy, type Pregnancy } from './pregnancy';
-import { HEAD_DEFAULT, isDefaultHead, normaliseHead, type HeadLook } from './headLook';
+import { headDefault, isDefaultHead, normaliseHead, type HeadLook } from './headLook';
 import {
   GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, sameGarment, type GarmentRecord, type GarmentSettings,
 } from './garment/settings';
@@ -72,13 +72,15 @@ export interface SavedBody {
    */
   readonly head?: HeadLook;
 }
-/** A saved body's head: what it kept, or the head she had before a head could be chosen. */
-export function headOf(body: SavedBody | null | undefined): HeadLook {
-  return body?.head ? normaliseHead(body.head) : HEAD_DEFAULT;
+/** A saved body's head: what it kept, or the head she had before a head could be chosen (his own, for the male base model). */
+export function headOf(body: SavedBody | null | undefined, male = false): HeadLook {
+  const own = headDefault(male);
+  return body?.head ? normaliseHead(body.head, own) : own;
 }
-/** A head as a save keeps it: nothing at all when it is `HEAD_DEFAULT` (a save from before and a save of an untouched head are the same text). */
-export function savedHead(head: HeadLook): { readonly head?: HeadLook } {
-  return isDefaultHead(head) ? {} : { head: normaliseHead(head) };
+/** A head as a save keeps it: nothing at all when it is the body's own head (a save from before and a save of an untouched head are the same text). */
+export function savedHead(head: HeadLook, male = false): { readonly head?: HeadLook } {
+  const own = headDefault(male);
+  return isDefaultHead(head, own) ? {} : { head: normaliseHead(head, own) };
 }
 
 export interface SavedLayer {

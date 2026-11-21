@@ -54,9 +54,9 @@ import { GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, tailorK
 import { GarmentPanel } from './garmentPanel';
 import { FaceMotion } from './faceMotion';
 import { HAIR_DEPTH, HAIR_HEIGHT_MAP, HAIR_NORMAL_MAP, patchHairMaterial, prepareHairMap, setHairColour, setHairDepth } from './hairMaterial';
-import { HAIR_LENGTH_MORPH, HAIR_STYLE_NONE, hairStyle } from './hairStyles';
+import { HAIR_LENGTH_MORPH, HAIR_STYLE_NONE, hairStyle, hairStylesFor } from './hairStyles';
 import { browFromHair } from './hairColours';
-import { HAIR_STYLE_FIRST, HEAD_DEFAULT, normaliseHead, type HeadLook } from './headLook';
+import { HAIR_STYLE_FIRST, HEAD_DEFAULT, headDefault, normaliseHead, type HeadLook } from './headLook';
 import { faceRigLook } from './faceLook';
 import { FACE_FIELD_PREFIX, faceFieldOn, faceFieldWeights, faceSlidersMoved, headPoints, type HeadPoints } from './faceShapeFields';
 import { HeadPanel } from './headPanel';
@@ -1672,6 +1672,20 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   // colours and the shape of her face are drawn from; a character's save keeps it with her body (`characterSaves.ts`).
   // `HEAD_DEFAULT` is the head she always had, drawn exactly as before any of it could be chosen.
   let head: HeadLook = HEAD_DEFAULT;
+  /**
+   * HIS HEAD IS HIS OWN (the male base model, 2026-11-21): the room keeps a head for each body, and the one shown is the
+   * body's -- his crew cut is not put on her, nor her ponytail on him (`HEAD_DEFAULT_MALE`). `headMale` says whose `head` is.
+   */
+  let headMale = false;
+  const headsBy = new Map<boolean, HeadLook>();
+  /** The head of the body now loaded (his or hers), the other kept for when it comes back. Draws nothing: what loads it does. */
+  function headForBody(male: boolean): void {
+    if (male === headMale) return;
+    headsBy.set(headMale, head);
+    headMale = male;
+    head = headsBy.get(male) ?? headDefault(male);
+    faceLookNow = faceRigLook(head, head.hair.colour ? browFromHair(head.hair.colour) : null);
+  }
   /** What `head` sets on her face's layer (`faceLook.ts`): worked out when the look changes, read every frame. */
   let faceLookNow: Partial<FaceRigState> = {};
   let headPanel: HeadPanel | null = null;
@@ -1707,14 +1721,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     releaseRecoveredMeshes(old);
   }
   function loadHair(): void {
-    const b = bodyOf();
-    if (!b || !recovered) return;
+    const b = bodyOf(), male = isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+    if (!b || !(recovered || male)) return;
     const request = ++hairRequest;
-    const style = hairStyle(head.hair.style);
+    // (his hairstyles are his files, on his skeleton: hairStyles.ts MALE_HAIR_STYLES)
+    const style = hairStyle(head.hair.style, male);
     // (no hair, or a style this build does not have -- a save from a later one: none, and nothing fetched)
     if (!style) { dropHair(); hairLoading = false; refresh(); return; }
     hairLoading = true;
-    const file = storyBaking && style.id === HAIR_STYLE_FIRST ? SARAH_V2_HAIR_MODEL : style.file;
+    const file = storyBaking && !male && style.id === HAIR_STYLE_FIRST ? SARAH_V2_HAIR_MODEL : style.file;
     void assets.loadModel(file, () => new THREE.Object3D()).then((root) => {
       if (request !== hairRequest) { release(root); return; }
       hairLoading = false;
@@ -1773,7 +1788,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   function setHead(next: HeadLook): void {
     const was = head;
-    head = normaliseHead(next);
+    head = normaliseHead(next, headDefault(headMale));
     faceLookNow = faceRigLook(head, head.hair.colour ? browFromHair(head.hair.colour) : null);
     if (head.hair.style !== was.hair.style) loadHair();
     layHair();
@@ -4007,7 +4022,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     characters = characterPanel({
       read: () => book.read(),
       write: (b) => book.write(b),
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head) }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head, headMale) }),
       clothes: () => currentClothes(),
       wornFrom: () => wornFrom,
       putOnBody: (saved) => {
@@ -4018,8 +4033,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         pregnancy = pregnancyOf(saved); babyDirty = true; babyFitAt = -Infinity;
         refine = saved.refine;
         randomRules = saved.random;
-        // her head as the character has it (one saved before a head could be chosen: the head she had)
-        setHead(headOf(saved));
+        // her head as the character has it (one saved before a head could be chosen: the head she had), or his
+        { const male = isMaleModel(saved.model); if (male !== headMale) { headsBy.set(headMale, head); headMale = male; } setHead(headOf(saved, male)); }
         const index = SARAH_LAB_MODELS.findIndex((m) => m.id === saved.model);
         if (index >= 0 && index !== modelIndex) {
           modelIndex = index;
@@ -4063,7 +4078,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       read: () => book.read(),
       write: (b) => { book.write(b); characters?.refresh(); },
       clothes: clothesNow,
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head) }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head, headMale) }),
       characterName: () => characters?.name() ?? '',
       builtins: () => OUTFITS.filter((o) => (o.his ? isMaleModel(SARAH_LAB_MODELS[modelIndex].id) : o.paint ? recovered : o.name !== 'none')).map((o) => o.name),
       // her own outfit first, then the rest in the room's order
@@ -4235,7 +4250,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       faceMouthInput = slider(SARAH_LAB_FIELD.faceMouth, 0, (v) => { faceMotion.mouth = v / 100; }, 100, 'face');
       // her head's look (headPanel.ts): her hair's style, length and colour, her eyes', brows' and lips' colours, her
       // lashes and the shape of her face. The room owns the look; the panel shows it and hands back each change whole
-      headPanel = new HeadPanel({ look: () => head, change: (next) => { setHead(next); refresh(); } });
+      headPanel = new HeadPanel({
+        look: () => head, change: (next) => { setHead(next); refresh(); },
+        // his hairstyles and his own head on him; FACIAL HAIR where the face has a design for it (his)
+        styles: () => hairStylesFor(headMale), own: () => headDefault(headMale), male: () => headMale,
+        beard: () => !!(faceMaterial && faceSpecOf(faceMaterial)?.beard),
+      });
       right.appendChild(headPanel.element);
     }
     // ------------------------------------------------------------ FACE: her skin's map (skinChoices.ts, skinPaint.ts)
@@ -9124,7 +9144,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       });
       // and the skin chosen in FACE goes on (a candidate fetched once is kept for a body loaded again)
       applySkin();
-      // and her hair, made for her approved v2 body
+      // her head, or his (the room keeps one for each body), and its hair, made for that body
+      headForBody(isMaleModel(SARAH_LAB_MODELS[modelIndex].id));
       loadHair();
       // and her face, on her approved v2 body (its measurements are that file's); and his, the same design through his
       // frame, with brows, lashes and lips of his own (maleFace.ts)
@@ -11777,7 +11798,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
             if (set.talking !== undefined) faceMotion.talking = set.talking;
             if (set.mouth !== undefined) faceMotion.mouth = set.mouth;
             // her head's look, whole (`headLook.ts`: what is missing or wrong is `HEAD_DEFAULT`'s)
-            if (set.head !== undefined) setHead(normaliseHead(set.head));
+            if (set.head !== undefined) setHead(normaliseHead(set.head, headDefault(headMale)));
             refresh();
           }
           const b = bodyOf(); model?.updateMatrixWorld(true);
