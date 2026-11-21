@@ -1770,6 +1770,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   light skin and the full one alike: turned (3,827 and 3,969 points, 33 mm at the most) the top of her calf was drawn
   in thin with a hook behind her knee; not turned it is full, and the front of her knee is round at RECLINE's bend, at
   0 and 150%. Her knees' smoothing (`BIRTH_KNEES_FIELD`) stays: without it the back of her knee is torn.
+- **SEATED, HER THIGHS MEET BESIDE HER, NOT OVER HER** (Joshua, 2026-11-20, from under the stool at 0 to 200%: "at 0%
+  belly size there is no pelvis, lol, it's all hidden"; of two ways offered -- her knees opened wider at small bellies, or
+  his angles kept and her thighs made to meet properly -- "I'd do 2 first… it's the better long term fix… it's okay if
+  the legs alter shape to fit the belly a little"). Seated her knees part by her belly's size (`humanSeated.ts`
+  `PREGNANT_SIT_SETTLED.kneeSpread`, his: 7 degrees each at 0%, 17 at 200%), and at the small end her inner thighs swung
+  in over her middle. Now in SIT, once she is seated (not while she moves into it or out: `sitRoomHere`), the birth poses'
+  room between her thighs is laid (`birthRoom.ts`: none of her inner thighs nearer her middle than standing, none within
+  4 cm of her vulva) and her groin's smoothing on it (`birthNormals.ts`, as RECLINE has it) -- `keepBirthRoom`. The
+  probe's `sitRoom(on, normals)`. MEASURED in the room (light skin, 1x): pushed up to 20 to 26 mm; at 0% her thighs part
+  in a V over her pubic bone from the front and from his low view; 100 and 200% as before. NOT YET: his opinion.
 - MEASURED in the room, both poses at 200 and 150% on the light skin and 200% on the full one: round, no line down her
   belly's sides, no patch. LEFT, AND NAMED: faint ripples low on her belly's front in SQUAT at 200%.
 - After anything changes the hold, her soft belly's share or her navel's lay: `tests/bellyHold.test.ts`,
