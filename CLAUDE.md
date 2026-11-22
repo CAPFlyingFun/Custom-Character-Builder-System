@@ -2240,6 +2240,10 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   save names -- even null, the toolkit's copper -- is what was chosen. The FACE tab (`headPanel.ts`) shows FACIAL HAIR where the
   face has a design for it (`hooks.beard`), his hairstyles (`hooks.styles`), RESET HEAD to his own head (`hooks.own`), and its
   lines say "his" (`hooks.male`).
+- **HIS MUSTACHE IS A CRESCENT, HIS GOATEE'S CHIN TAPERS** (`BeardDesign.mustache.corner`, `chin.topHalfWidth`): square,
+  each read as a block stuck on his face (pictured in the room 2026-11-21). The mustache's top comes down from 2.5 cm
+  under his nose to 6 mm over its bottom at its ends, from 0.3 of its half-width out; the chin patch is 3.2 cm wide under
+  his lower lip and 5.4 cm at its foot, over 2.2 cm of height. GAME TUNING.
 - **HIS HAIRSTYLES** (his: "keep the variety"): built by the hair toolkit ON HIS HEAD (`--body male`: `scripts/hair/head.mjs`
   `BODIES.male`, his head read into her rest metres by his face's frame, so a style is drawn in one frame for either head; the
   file written back into his geometry and onto his skeleton). `hairStyles.ts` `MALE_HAIR_STYLES`: six men's cuts (crew, buzz,
@@ -2264,11 +2268,18 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     (his back of head about 2 cm shallower, his neck thicker, his upper back further back). The ponytail's and the braid's
     fall come 2.2 cm in at his nape (none from 1.40 m down: brought in there, the tail lay up to 5.8 mm under his upper
     back); the long loose hair's falls lie on his shoulders (at her reach they stood off them like wings); the bob's crown
-    rounded over his head (it peaked).
+    rounded over his head (it peaked). THE WAVY PONYTAIL FALLS DOWN HIS BACK (her way, over his shoulder, his wider and
+    higher shoulder stood it off him in a slab, its locks apart, and from behind it stuck out sideways: pictured in the
+    room) -- its tail's own path for him, side [1, 0, 0], no transport.
   - MEASURED off the room 2026-11-21 (`fit.mjs --body male`, each of the 24 files at its longest and shortest): none of it
     under his skin but one point of the side part's cap at his right ear's front, 0.50 mm, at the alpha cutoff. Triangles:
     the man bun 29,312 (its coils' and combed locks' segments cut to stay under 30,000), the curly top 18,720 in curls.
   - His twelve full files are fetched ahead (12.3 MB), his light twins not (`keepList.ts` `NOT_AHEAD`, `male/` in the rule).
+  - MEASURED in the room 2026-11-21 (light skin, 1x, no error on the page): each of the twelve on him from his
+    three-quarter and his back, the crew from four sides, each style pictured only once the room says it is worn
+    (`face` probe: `hair.worn` its id, not `loading` -- a picture taken a few seconds after a style is asked for shows
+    the one before it); the five kinds of facial hair; the SQUARE face with a short beard and the side part from his
+    front, three-quarter and side.
   - NOT DONE, AND NAMED: the man bun's bun is a smooth ball from behind and its sides' combed locks barely show; the side
     part's fringe stands in a few spikes from his side; a few dark pixels at his ear's outer edge in the buzz and crew from
     his front; the light files' hairlines step more than the full ones'; the bob on him is a little lumpy at its front.

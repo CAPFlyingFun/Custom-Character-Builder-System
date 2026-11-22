@@ -67,8 +67,10 @@ const BEARD: BeardDesign = {
   back: { low: -0.078, high: -0.086, from: 1.535, to: 1.56 },
   // the neckline: on his midline a finger over his Adam's apple, rising back to under his jaw's angle
   neck: { front: [1.462, -0.04], normal: [0.631, 0.776] },
-  mustache: { halfWidth: 0.030, bottom: 1.512, top: 1.537 },
-  chin: { halfWidth: 0.027, top: 1.512, depth: -0.03 },
+  // the mustache a crescent: 2.5 cm deep under his nose, 6 mm at its ends by his mouth's corners; the chin's patch 3.2 cm
+  // wide under his lower lip, 5.4 at its foot (GAME TUNING: square, both read as blocks -- pictured in the room 2026-11-21)
+  mustache: { halfWidth: 0.030, bottom: 1.512, top: 1.537, corner: 0.006 },
+  chin: { halfWidth: 0.027, topHalfWidth: 0.016, top: 1.512, depth: -0.03 },
   edge: 0.0018, waver: 0.0012, waverCell: 0.004, grainCell: 0.0006,
   grow: { cheek: 0.006, neck: 0.008 },
   hair: { halfWidth: 0.00004, dark: 0.18, fillShade: 1.06, leanMustache: 0.55, lean: 0.08, jitter: 0.25 },

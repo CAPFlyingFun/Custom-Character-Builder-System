@@ -65,12 +65,17 @@ export default {
     // on him the elastic is set 3 mm further out: at 1.6 cm two of its points were 1.4 to 1.7 mm under his nape's skin
     // (MEASURED, parts.mjs --body male)
     const TIE_OUT = add(f.gatherOnScalp, mul(f.TIE, his ? 0.019 : 0.016));
-    const path = [TIE_OUT, ...[[0.078, 1.465, -0.135], [0.124, 1.40, -0.040], [0.112, 1.355, -0.004], [0.100, 1.30, 0.060], [0.092, 1.245, 0.070]].map(P)];
+    // ON HIM IT FALLS DOWN HIS BACK: carried over his shoulder her way, his wider, higher shoulder stood it off him in a
+    // flat slab with its locks apart, and from behind it stuck out sideways (pictured in the room, 2026-11-21). GAME
+    // TUNING: his upper back about 2.4 cm further back than hers at 1.40 m (`onHim`'s table), the axis 2.5 cm off it.
+    const path = his
+      ? [TIE_OUT, add(TIE_OUT, [0.004, -0.030, -0.018]), [0.022, 1.43, -0.245], [0.016, 1.36, -0.250], [0.010, 1.30, -0.245]]
+      : [TIE_OUT, ...[[0.078, 1.465, -0.135], [0.124, 1.40, -0.040], [0.112, 1.355, -0.004], [0.100, 1.30, 0.060], [0.092, 1.245, 0.070]].map(P)];
     // fuller in its middle (GAME TUNING to her picture)
     const radiusAt = (s) => (s < 0.15 ? 0.013 + (0.03 - 0.013) * smoothstep(0, 0.15, s) : s < 0.6 ? 0.03 + 0.006 * Math.sin(Math.PI * (s - 0.15) / 0.45) : 0.03 * (1 - 0.65 * smoothstep(0.6, 1.0, s)));
     const tl = kit.tailAxis({
-      path, samples: kit.pick(48, 18), radiusAt, upTo: kit.long(1, 0.5), side: [0, 1, 0], transport: true, margin: 0.002, reach: 0.09,
-      sway: (s) => [0, 0, 0.004 * Math.sin(2 * Math.PI * 1.6 * s) * smoothstep(0.3, 0.7, s)],
+      path, samples: kit.pick(48, 18), radiusAt, upTo: kit.long(1, 0.5), side: his ? [1, 0, 0] : [0, 1, 0], transport: !his, margin: 0.002, reach: 0.09,
+      sway: his ? (s) => [0.004 * Math.sin(2 * Math.PI * 1.6 * s) * smoothstep(0.3, 0.7, s), 0, 0] : (s) => [0, 0, 0.004 * Math.sin(2 * Math.PI * 1.6 * s) * smoothstep(0.3, 0.7, s)],
     });
     const headTail = kit.tailWeights(f.gatherOnScalp, 0.05, 0.4, 0.75, 0.25);
     const tailAt = (p, s) => ridesSkin(kit.head, p, headTail(s), s);

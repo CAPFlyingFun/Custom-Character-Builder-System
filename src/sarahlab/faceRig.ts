@@ -319,10 +319,16 @@ export interface BeardDesign {
   readonly back: { readonly low: number; readonly high: number; readonly from: number; readonly to: number };
   /** The neckline: the plane (in y and z) through `front` [y, z] on the midline, facing up and forward along `normal`. */
   readonly neck: { readonly front: readonly [number, number]; readonly normal: readonly [number, number] };
-  /** The mustache: |x| under `halfWidth`, y from `bottom` to `top`. */
-  readonly mustache: { readonly halfWidth: number; readonly bottom: number; readonly top: number };
-  /** The chin: |x| under `halfWidth`, y under `top`, z over `depth` (not far back under the jaw). */
-  readonly chin: { readonly halfWidth: number; readonly top: number; readonly depth: number };
+  /**
+   * The mustache: |x| under `halfWidth`, y from `bottom` to `top` in its middle, its top coming down to `corner` over its
+   * bottom at its ends (a crescent over the upper lip, not a box: square, it read as a block stuck on his lip).
+   */
+  readonly mustache: { readonly halfWidth: number; readonly bottom: number; readonly top: number; readonly corner: number };
+  /**
+   * The chin: |x| under `halfWidth` at the chin's foot and `topHalfWidth` under the lower lip, y under `top`, z over
+   * `depth` (not far back under the jaw).
+   */
+  readonly chin: { readonly halfWidth: number; readonly topHalfWidth: number; readonly top: number; readonly depth: number };
   /** Its edges' softness and their waver (metres), the waver's cell (metres), and how far `grow` moves the cheek line up and the neckline down. */
   readonly edge: number; readonly waver: number; readonly waverCell: number; readonly grainCell: number;
   readonly grow: { readonly cheek: number; readonly neck: number };
@@ -975,10 +981,12 @@ function beardLines(d: BeardDesign): { pars: string; colour: string; roughness: 
     float zBack = mix(${n(d.back.low)}, ${n(d.back.high)}, smoothstep(${n(d.back.from)}, ${n(d.back.to)}, r.y));
     float neck = dot(r.yz - ${v2(d.neck.front)}, ${v2(N)}) + faceBeardArea.w * ${n(d.grow.neck)};
     float below = smoothstep(-e, e, yTop - r.y + wv), front = smoothstep(-e, e, r.z - zBack + wv), above = smoothstep(-e, e, neck + wv);
-    float must = smoothstep(-e, e, ${n(d.mustache.halfWidth)} - ax + wv) * smoothstep(-e, e, ${n(d.mustache.top)} - r.y + 0.5 * wv) * smoothstep(-e, e, r.y - ${n(d.mustache.bottom)});
+    float mTop = mix(${n(d.mustache.top)}, ${n(d.mustache.bottom + d.mustache.corner)}, smoothstep(${n(0.3 * d.mustache.halfWidth)}, ${n(d.mustache.halfWidth)}, ax));
+    float must = smoothstep(-e, e, ${n(d.mustache.halfWidth)} - ax + wv) * smoothstep(-e, e, mTop - r.y + 0.5 * wv) * smoothstep(-e, e, r.y - ${n(d.mustache.bottom)});
     // (a full area takes in the upper lip as well: the cheek line runs down to the mouth's corners, under his nose's wings)
     float full = max(below * front * above, must);
-    float chin = smoothstep(-e, e, ${n(d.chin.halfWidth)} - ax + wv) * smoothstep(-e, e, ${n(d.chin.top)} - r.y) * above * smoothstep(-e, e, r.z - ${n(d.chin.depth)} + wv);
+    float cW = mix(${n(d.chin.topHalfWidth)}, ${n(d.chin.halfWidth)}, smoothstep(${n(d.chin.top)}, ${n(d.chin.top - 0.022)}, r.y));
+    float chin = smoothstep(-e, e, cW - ax + wv) * smoothstep(-e, e, ${n(d.chin.top)} - r.y) * above * smoothstep(-e, e, r.z - ${n(d.chin.depth)} + wv);
     return max(full * faceBeardArea.x, max(must * faceBeardArea.y, chin * faceBeardArea.z));
   }
   // the hairs at a point of the chart (y flipped: they grow toward +y, down his face), as the brows' are: how much of a
