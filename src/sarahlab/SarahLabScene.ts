@@ -1912,6 +1912,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     }
     const b = bodyOf();
     if (b && skinFetched && b.material.map === skinFetched.texture && skinId === skinFetched.id) applySkin(true);
+    if (b && hisEven && b.material.map === hisEven && pictureLost(hisEven.image)) applySkin(true);
     // (her even roughness is fetched, not her file's: fetched again if it was dropped)
     if (roughEven && pictureLost(roughEven.image)) { roughEven.dispose(); roughEven = null; applyRoughness(roughWanted); }
   }
@@ -1930,6 +1931,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function applySkin(fresh = false): void {
     const b = bodyOf();
     if (!b) return;
+    // HIS BODY WEARS HIS OWN SKIN, AND NOTHING OF HERS (a fault found and told, 2026-11-21: the FACE tab's skins are all
+    // pictures of HER body, laid out on her UVs; put on him as he loaded, beside the fetch of his own even skin, whichever
+    // landed last was worn -- and hers usually did: pieces of her skin scattered over him, a brown speck under his left
+    // eye, a strip down his forehead, patches on his jaw and neck. MEASURED: his map was still sarah-v2-skin-even-2048.webp
+    // 8 seconds after he loaded). The choice made in FACE is hers and waits for her: it is not moved, and goes back on
+    // when she does.
+    if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) { ++skinRequest; wearHisSkin(b, fresh); return; }
+    // (his skin, kept for a body loaded again, is not left in graphics memory while she is shown)
+    hisEven?.dispose();
     const own = ownMap(b.material), request = ++skinRequest;
     const wear = (t: THREE.Texture | null, id: SkinId) => {
       dropPainter();
@@ -1963,6 +1973,36 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       wear(texture, choice.id);
       freeFetched(texture);
       skinFetched = { id: choice.id, texture };
+    });
+  }
+  /** His even skin (scripts/evenSkin.mjs on his file), fetched once and kept for a body loaded again. */
+  let hisEven: THREE.Texture | null = null, hisEvenLoading = false;
+  /**
+   * HIS EVEN SKIN as hers is (one skin colour, his own details kept -- Meshy's colour picture had dark slits where its
+   * islands meet, seen on his chest and arms). Put on only while the body it was asked for is still the one shown; her
+   * fetched skin is never laid on him and never let go for him (`skinFetched` stays hers).
+   */
+  function wearHisSkin(b: { readonly material: THREE.MeshStandardMaterial }, fresh = false): void {
+    dropPainter();
+    const own = ownMap(b.material);
+    const lay = () => {
+      const now = bodyOf();
+      if (!hisEven || disposed || !now || now.material !== b.material || !isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) return;
+      if (b.material.map !== hisEven) { b.material.map = hisEven; b.material.needsUpdate = true; }
+      if (own && own !== hisEven) own.dispose();
+      skinState = 'ready'; refresh();
+    };
+    if (fresh && hisEven) { hisEven.dispose(); hisEven = null; }
+    if (hisEven) { lay(); return; }
+    // (until it lands he wears his file's own map: never one of hers)
+    if (b.material.map !== own) { b.material.map = own; b.material.needsUpdate = true; }
+    if (hisEvenLoading) return;
+    hisEvenLoading = true; skinState = 'loading'; refresh();
+    void assets.loadTexture(MALE_EVEN_SKIN).then((t) => {
+      hisEvenLoading = false;
+      if (!t || disposed) { t?.dispose(); skinState = t ? 'ready' : 'failed'; refresh(); return; }
+      hisEven = likeOwn(t, own);
+      lay();
     });
   }
   /** Her even roughness (skinChoices.ts `SKIN_EVEN_ROUGHNESS`), fetched once; her file's own put back for ORIGINAL. */
@@ -2497,6 +2537,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       buttons.model.style.display = new URLSearchParams(globalThis.location?.search ?? '').get('probe') === 'cloth' ? '' : 'none';
     }
     if (buttons.maleNavel) buttons.maleNavel.style.display = isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? '' : 'none';
+    // (FACE's SKIN and UPLOAD SKIN are pictures of HER body: not offered on his -- `wearHisSkin`)
+    for (const b of [buttons.skin, buttons.skinUpload]) if (b) b.style.display = isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? 'none' : '';
     for (const sex of ['female', 'male'] as const) {
       const b = buttons[`base-${sex}`];
       if (!b) continue;
@@ -9074,11 +9116,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           try { buildRig = prepareBuildRig(m, s.fields.basePos, measure.joints, metresPerUnitOf(m, loadedModel)); } catch (error) { console.error('[sarahlab] his build could not be measured; BUILD is off', error); buildRig = null; }
         }
       }
-      // HIS SKIN EVEN as hers is (scripts/evenSkin.mjs on his file: one skin colour, his own details kept -- Meshy's colour
-      // picture had dark slits where its islands meet, seen on his chest and arms)
+      // HIS SKIN EVEN as hers is: put on by applySkin, below, as for every body loaded (`wearHisSkin`; fetched here
+      // beside it, the two raced and her chosen skin was often the one he wore)
       if (isMaleModel(SARAH_LAB_MODELS[modelIndex].id)) {
         const sm = findSkinnedMesh(loadedModel), mat = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial;
-        if (mat) void assets.loadTexture(MALE_EVEN_SKIN).then((t) => { if (!t || disposed || model !== loadedModel) { t?.dispose(); return; } const own = mat.map; mat.map = likeOwn(t, own); mat.needsUpdate = true; own?.dispose(); });
         // and his skin's fine relief over it, laid triplanar on his rest place (skinDetail.ts; his Local Texture Lab's maths)
         if (sm && mat) void assets.loadTexture(SKIN_DETAIL_MAP).then((t) => {
           if (!t || disposed || model !== loadedModel) { t?.dispose(); return; }
@@ -11773,7 +11814,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           return [im.width, im.height];
         },
         // FACE's SKIN as the button sets it (a candidate's file fetched the first time), and what she wears now
-        skinChoice: (id?: SkinId) => { if (id) { skinId = id; applySkin(); } return { chosen: skinId, worn: skinWorn, state: skinState, painted: !!painted, map: bodyOf()?.material.map?.name ?? null, size: (bodyOf()?.material.map?.image as { width?: number } | undefined)?.width ?? null }; },
+        skinChoice: (id?: SkinId) => { if (id) { skinId = id; applySkin(); } return { chosen: skinId, worn: skinWorn, state: skinState, painted: !!painted, map: bodyOf()?.material.map?.name ?? null, src: ((bodyOf()?.material.map?.image as { src?: string } | undefined)?.src ?? '').split('/').pop()?.split('?')[0] ?? null, size: (bodyOf()?.material.map?.image as { width?: number } | undefined)?.width ?? null }; },
         // a stroke of FACE's brush through screen points (CSS pixels), PAINT SKIN switched on for it; what changed
         skinStroke: async (points: readonly (readonly [number, number])[], set?: Partial<typeof brush>) => {
           skinPaintOn = true; Object.assign(brush, set ?? {});

@@ -2117,6 +2117,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   her skin's program, take the relief too (`setSkinDetail`). PICTURED in the room: before, her belly glossy over a matte
   groin; after, one sheen. `tests/skinDetail.test.ts`.
 - His organs (a prostate, no womb or ovaries), the pregnancy controls hidden for him, and his EVEN skin are done.
+- **HIS BODY WEARS HIS OWN SKIN, AND NOTHING OF HERS** (a fault Joshua found, 2026-11-21: "John shows pieces of her skin
+  scattered over him: a brown speck under his left eye, a strip down his forehead, patches on his jaw and neck"). FACE's
+  SKIN choices are pictures of HER body on her UVs; `applySkin` put the chosen one on him as he loaded while the room
+  fetched his own even skin beside it, and whichever landed last was worn -- hers, at once, when she had been shown first
+  (her fetched skin is kept for a body loaded again). Now `applySkin` gives a male body his own (`wearHisSkin`,
+  `MALE_EVEN_SKIN`, fetched once and kept as `hisEven`; his file's own map until it lands, never one of hers), SKIN and
+  UPLOAD SKIN are not offered on him, and her choice waits for her. MEASURED in the room (light skin, 1x; the probe's
+  `skinChoice().src`, the picture's file): she opened in `sarah-v2-skin-even-2048.webp`; switched to him,
+  `male-base-skin-even-2048.webp` at once and every second for 16 s; back to her, hers; to him again, his for 8 s.
+  Pictured: his face and three-quarter, no piece of her skin.
 - **HIS BUILD** (Joshua, 2026-11-19: "get the sliders to work… minus the breasts"): HEIGHT & PROPORTIONS work on him as on her
   (`prepareBuildRig` on his rest, his bones by role, his geometry's units told by his rest frame: `metresPerUnitOf` --
   taken as his geometry's height over 1.70 m first, his height read 1.56 m; now 1.70). WALK is his too. BELLY SHAPE and
