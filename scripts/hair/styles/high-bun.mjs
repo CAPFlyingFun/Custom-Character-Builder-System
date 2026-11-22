@@ -12,7 +12,7 @@
  * The kit has no bun builder: `bun` below is local to this style (it could move into the kit as `kit.bun`).
  */
 import { add, cross, mul, smoothstep, sub, unit } from '../vec.mjs';
-import { CRANIUM, HAIRLINE } from './ponytail.mjs';
+import { CRANIUM, HAIRLINE, HIS_CRANIUM, HIS_HAIRLINE, onHim } from './ponytail.mjs';
 
 /** Up and back from her cranium's middle: where a high ponytail's tie would sit (GAME TUNING; the scalp is found by a ray). */
 const GATHER = [0, 0.80, -0.60];
@@ -26,7 +26,8 @@ export default {
   name: 'High bun',
   build(kit) {
     const rnd = kit.random(20261115);
-    const f = kit.frame({ centre: CRANIUM, gather: GATHER, hairline: HAIRLINE });
+    const his = kit.head.body.id === 'male', P = his ? onHim : (p) => p;
+    const f = kit.frame({ centre: his ? HIS_CRANIUM : CRANIUM, gather: GATHER, hairline: his ? HIS_HAIRLINE : HAIRLINE });
     // the cap's rows run up toward the bun from the nape, the temples and the forehead; phiMax well past the nape
     const capped = kit.cap(f, {
       phiMax: 3.0, thick: { base: 0.0075, crown: 0.0085, sides: 0.0095, gather: 0.011 }, clear: 0.003,
@@ -87,8 +88,8 @@ export default {
     // ---------------------------------------------------------------------------------------------------------------
     // THE WISPS: one in front of each ear, three at her nape
     const hold = (p) => kit.head.keepOff(p, 0.004, 0.025);
-    const wisp = (lines, { lift = 0.004, off = 0.006, w = 0.011, seg = 12, v = 0 }) => kit.lock({
-      lines, seg: kit.pick(seg * 2, seg), centre: f.C,
+    const wisp = (raw, { lift = 0.004, off = 0.006, w = 0.011, seg = 12, v = 0 }) => kit.lock({
+      lines: raw.map(P), seg: kit.pick(seg * 2, seg), centre: f.C,
       place: (raw, s) => capped.overHair(raw, 0.0015 + lift * smoothstep(0, 0.3, s), off + 0.004 * smoothstep(0.2, 0.6, s)),
       width: (s) => kit.pick(w, w * 2.2) * (0.6 + 0.4 * smoothstep(0, 0.15, s)) * (1 - 0.75 * smoothstep(0.55, 1, s)),
       variant: v % 4, crossVariant: (v + 2) % 4, crossFrom: 0.2, crossTo: 0.8, hold,

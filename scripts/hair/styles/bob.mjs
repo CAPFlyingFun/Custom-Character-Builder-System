@@ -20,7 +20,7 @@
  * they stay on her neck's side and do not cut into it when she turns her head.
  */
 import { add, mul, smoothstep } from '../vec.mjs';
-import { CRANIUM, HAIRLINE } from './ponytail.mjs';
+import { CRANIUM, HAIRLINE, HIS_CRANIUM, HIS_HAIRLINE, onHim } from './ponytail.mjs';
 
 /** Where her part runs, metres to her left of her middle (Joshua's brief: about 2.5 cm; GAME TUNING). */
 const PART_X = 0.025;
@@ -36,7 +36,7 @@ const TURN_UNDER = 0.013;
 /** The most of her neck's weight the lowest ends take (GAME TUNING). */
 const NECK_SHARE = 0.4;
 /** The axis her head's azimuths are measured round (x, z); y is up (MEASURED: her cranium's middle). */
-const AXIS = [0, CRANIUM[2]];
+const HER_AXIS = [0, CRANIUM[2]];
 /** Heights her profile is read at, top to bottom (metres). */
 const Y_TOP = 1.66, Y_STEP = 0.02;
 
@@ -45,7 +45,11 @@ export default {
   name: 'Bob',
   build(kit) {
     const rnd = kit.random(20261115);
-    const f = kit.frame({ centre: CRANIUM, gather: [0, 1, 0.05], hairline: HAIRLINE });
+    const his = kit.head.body.id === 'male', P = his ? onHim : (p) => p;
+    const f = kit.frame({ centre: his ? HIS_CRANIUM : CRANIUM, gather: [0, 1, 0.05], hairline: his ? HIS_HAIRLINE : HAIRLINE });
+    // on him the roots are laid by `overHair` on his own scalp and not moved by `onHim` (moved in at his crown, their
+    // reach came to a peak over his head, GAME TUNING by eye)
+    const AXIS = his ? [0, HIS_CRANIUM[2]] : HER_AXIS;
     const partLine = (c) => {
       const s = c.s, onTop = smoothstep(1.62, 1.66, s[1]) * smoothstep(-0.12, -0.02, s[2]);
       return 1 - 0.4 * onTop * Math.exp(-Math.pow((s[0] - PART_X) / 0.0035, 2));
@@ -84,20 +88,24 @@ export default {
         const gap = GAP[0] + (GAP[1] - GAP[0]) * Math.abs(Math.sin(theta));
         // the profile, from the top of her head down to the hem
         const guide = [];
-        const root = [PART_X + sgn * (0.003 + 0.014 * Math.abs(Math.sin(theta))), 1.680, AXIS[1] + 0.05 * Math.cos(theta)];
+        const root = (his ? (q) => q : P)([PART_X + sgn * (0.003 + 0.014 * Math.abs(Math.sin(theta))), 1.680, AXIS[1] + 0.05 * Math.cos(theta)]);
         guide.push(root);
-        guide.push([PART_X + sgn * (0.006 + 0.035 * Math.abs(Math.sin(theta))), 1.668, AXIS[1] + 0.07 * Math.cos(theta)]);
+        guide.push((his ? (q) => q : P)([PART_X + sgn * (0.006 + 0.035 * Math.abs(Math.sin(theta))), 1.668, AXIS[1] + 0.07 * Math.cos(theta)]));
         const rows = 8;
         for (let k = 0; k <= rows; k++) {
           const y = 1.640 + (hem - 1.640) * (k / rows);
           const under = TURN_UNDER * smoothstep(hem + 0.04, hem, y);
-          const r = widestAbove(theta, y) + gap - under;
+          // on him the gap closes toward his crown, so the top rounds over his head and does not stand off it in a ridge
+          // (GAME TUNING, by eye on his front and back views)
+          const r = widestAbove(theta, y) + (his ? gap * (0.25 + 0.75 * smoothstep(1.645, 1.585, y)) : gap) - under;
           guide.push([AXIS[0] + Math.sin(theta) * r, y, AXIS[1] + Math.cos(theta) * r]);
         }
         const seg = kit.pick(34, 13), w = kit.pick(0.022, 0.05) * (0.9 + 0.2 * rnd());
         kit.lock({
           lines: guide, seg, centre: f.C,
-          place: (raw, s) => (raw[1] > 1.63 ? capped.overHair(raw, 0.002 + 0.0015 * (c % 3), 0.006) : raw),
+          // on him the upper sides are lifted further off his head, which is narrower at its top than hers, so the bob rounds
+          // over his crown instead of coming to a ridge (GAME TUNING, by eye on his front and back views)
+          place: (raw, s) => (raw[1] > 1.63 ? capped.overHair(raw, his ? 0.002 + 0.0015 * (c % 3) + 0.011 * Math.abs(Math.sin(theta)) * smoothstep(1.63, 1.655, raw[1]) * (1 - smoothstep(1.67, 1.69, raw[1])) : 0.002 + 0.0015 * (c % 3), 0.006) : raw),
           width: (s) => w * (0.7 + 0.3 * smoothstep(0, 0.1, s)) * (1 - 0.12 * smoothstep(0.85, 1, s)),
           variant: c % 4, crossVariant: (c + 2) % 4, crossFrom: 0.25, crossTo: 0.93, hold: (p) => kit.head.keepOff(p, 0.004, 0.025),
           weightsAt: (p) => {

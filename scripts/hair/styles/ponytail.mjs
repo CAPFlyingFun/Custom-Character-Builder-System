@@ -16,6 +16,65 @@ export const HAIRLINE = [
 ];
 /** The middle of her cranium (MEASURED). */
 export const CRANIUM = [0.0, 1.600, -0.078];
+/**
+ * HIS HEAD (the male base model, `kit.head.body.id === 'male'`). Her styles' fixed points are hers; on him each is moved
+ * by `onHim`, and his own hairline and cranium are used. Her numbers above are untouched, so her bakes are as they were.
+ *
+ * His hairline from his forehead round his LEFT side to his nape (his right mirrored): GAME TUNING, laid on his scalp by
+ * the numbers MEASURED in the hair brief -- the middle of his forehead a little over his brow's crease, higher at the
+ * temples (a slight M), a short sideburn to the middle of his ear's front (y 1.565), up over his ear and down behind it
+ * to a nape line about y 1.505. Its azimuth about his cranium only grows along it, as the cap's look-up needs. Its
+ * point up his ear's front stands AHEAD of his ear (z -0.088; his ear's front is at -0.087 to -0.099): at -0.094 the cap
+ * covered the root of his ear's front and lay 0.86 mm under his skin there (MEASURED by `fit.mjs --body male`, 2026-11-21).
+ */
+export const HIS_HAIRLINE = [
+  [0.000, 1.664, 0.004], [0.020, 1.667, 0.000], [0.036, 1.672, -0.010], [0.052, 1.656, -0.024],
+  [0.064, 1.628, -0.046], [0.071, 1.598, -0.068], [0.075, 1.566, -0.082], [0.079, 1.600, -0.088],
+  [0.077, 1.625, -0.108], [0.073, 1.610, -0.128], [0.066, 1.560, -0.138], [0.050, 1.515, -0.142], [0.000, 1.505, -0.146],
+];
+/** The middle of his cranium (the brief's, checked by rays from inside his head; GAME TUNING to a centimetre). */
+export const HIS_CRANIUM = [0.0, 1.600, -0.070];
+/**
+ * How much further out his outermost surface is than hers (metres), seen from the upright axis x 0, z -0.075, at
+ * azimuths 0 (front) to 180 (back) in 30-degree steps (mirrored for his right), by height from 1.69 m down to 1.12 m in
+ * 3 cm steps. MEASURED 2026-11-21 on both bodies' files read into this frame (`head.nearest` within 1.5 mm, marched in
+ * from 26 cm out). His back of head is about 2 cm shallower, his neck thicker, his upper back further back, his chest
+ * flatter than her bust.
+ */
+const HIS_Y0 = 1.69, HIS_DY = 0.03;
+const HIS_REACH = [
+  [-0.013, -0.013, -0.014, -0.015, -0.018, -0.027, -0.030],
+  [-0.004, -0.006, -0.005, -0.005, -0.009, -0.019, -0.024],
+  [-0.001, -0.002, -0.001, -0.001, -0.006, -0.016, -0.022],
+  [0.001, 0.001, 0.001, -0.001, -0.004, -0.014, -0.020],
+  [0.004, 0.000, 0.000, 0.001, -0.002, -0.010, -0.019],
+  [-0.003, -0.001, 0.003, 0.002, 0.005, 0.005, -0.008],
+  [-0.001, 0.003, 0.004, 0.011, 0.009, 0.013, 0.002],
+  [0.060, 0.018, 0.015, 0.022, 0.013, 0.015, 0.009],
+  [0.017, 0.017, 0.020, 0.020, 0.048, 0.023, 0.013],
+  [0.000, 0.000, 0.010, 0.025, 0.027, 0.033, 0.019],
+  [-0.015, -0.012, -0.011, -0.007, 0.040, 0.034, 0.026],
+  [-0.024, -0.027, -0.029, 0.014, 0.042, 0.039, 0.035],
+  [-0.034, -0.053, -0.019, 0.014, 0.047, 0.042, 0.040],
+  [-0.040, -0.070, -0.021, 0.014, 0.055, 0.047, 0.045],
+  [-0.038, -0.069, -0.020, -0.030, 0.065, 0.053, 0.046],
+  [-0.052, -0.051, -0.009, -0.050, 0.111, 0.064, 0.052],
+  [-0.086, -0.046, -0.010, -0.055, 0.121, 0.068, 0.052],
+  [-0.120, -0.080, -0.017, -0.061, 0.135, 0.073, 0.057],
+  [-0.147, -0.105, -0.034, 0.019, 0.139, 0.076, 0.066],
+  [-0.169, -0.127, -0.054, -0.113, 0.062, 0.073, 0.068],
+];
+/** A point of one of her styles moved onto him: out (or in) from the axis by how much further out his surface is there. */
+export function onHim(p) {
+  const dx = p[0], dz = p[2] + 0.075, r = Math.hypot(dx, dz);
+  if (r < 1e-6) return [p[0], p[1], p[2]];
+  const a = (Math.atan2(Math.abs(dx), dz) * 180) / Math.PI / 30, i = Math.min(5, Math.floor(a)), u = Math.min(1, a - i);
+  const b = Math.min(HIS_REACH.length - 1, Math.max(0, (HIS_Y0 - p[1]) / HIS_DY)), k = Math.min(HIS_REACH.length - 2, Math.floor(b)), v = b - k;
+  const row = (j) => HIS_REACH[j][i] * (1 - u) + HIS_REACH[j][i + 1] * u;
+  const d = row(k) * (1 - v) + row(k + 1) * v, t = (r + d) / r;
+  return [dx * t, p[1], dz * t - 0.075];
+}
+
 /** How much of its path the shortest ponytail keeps: to the base of her neck (GAME TUNING; MEASURED end y about 1.43 m). */
 const SHORTEST = 0.62;
 
@@ -23,13 +82,19 @@ export default {
   id: 'ponytail',
   name: 'Ponytail',
   build(kit) {
-    const f = kit.frame({ centre: CRANIUM, gather: [0, 0.018, -1], hairline: HAIRLINE });
+    const his = kit.head.body.id === 'male', P = his ? onHim : (p) => p;
+    // on him the tie sits about 2 cm further forward (his head is shallower behind): the fall is brought in with it so
+    // it lies on his nape and upper back (GAME TUNING, by eye on his preview from the side) -- all of it at his nape,
+    // none of it from 1.40 m down, where his upper back stands further back than hers (brought in there, the tail's
+    // end lay 1.2 mm under his skin, and the light file's 5.8 mm: MEASURED by `fit.mjs --body male`, 2026-11-21)
+    const HIS_TAIL_IN = [0, 0, 0.022], tailIn = (p) => add(onHim(p), mul(HIS_TAIL_IN, smoothstep(1.40, 1.50, p[1])));
+    const f = kit.frame({ centre: his ? HIS_CRANIUM : CRANIUM, gather: [0, 0.018, -1], hairline: his ? HIS_HAIRLINE : HAIRLINE });
     const capped = kit.cap(f, kit.pick({}, { around: 60, along: 28, shells: [0.0045] }));
 
     const rnd = kit.random(20261024);
     const TIE_OUT = add(f.gatherOnScalp, mul(f.TIE, 0.019));
     // out of the elastic a little back and down, over her nape, onto her upper back between her shoulder blades
-    const path = [TIE_OUT, add(TIE_OUT, [0, -0.022, -0.034]), [0, 1.530, -0.236], [0, 1.450, -0.238], [0, 1.380, -0.233], [0, 1.305, -0.224]];
+    const path = [TIE_OUT, add(TIE_OUT, [0, -0.022, -0.034]), ...[[0, 1.530, -0.236], [0, 1.450, -0.238], [0, 1.380, -0.233], [0, 1.305, -0.224]].map(his ? tailIn : P)];
     const radiusAt = (s) => (s < 0.2 ? 0.0145 + (0.036 - 0.0145) * smoothstep(0, 0.2, s) : s < 0.6 ? 0.036 - 0.003 * smoothstep(0.2, 0.6, s) : 0.033 * (1 - 0.8 * smoothstep(0.6, 1.0, s)));
     const tl = kit.tailAxis({
       path, samples: kit.pick(40, 16), radiusAt, upTo: kit.long(1, SHORTEST),
@@ -58,7 +123,7 @@ export default {
         const widen = kit.pick(1, 2.2);
         for (const [li, layer] of layers.entries()) for (let c = 0; c < layer.count; c++) {
           const q = c / (layer.count - 1), j = () => (rnd() - 0.5);
-          const lines = [layer.roots(q), ...layer.guide(q)].map((p) => [side * (p[0] + 0.002 * j()), p[1] + 0.002 * j(), p[2] + 0.002 * j()]);
+          const lines = [layer.roots(q), ...layer.guide(q)].map((p) => [side * (p[0] + 0.002 * j()), p[1] + 0.002 * j(), p[2] + 0.002 * j()]).map(P);
           const seg = kit.pick(li === 0 ? 34 : 20, li === 0 ? 12 : 8);
           kit.lock({
             lines, seg, centre: f.C,

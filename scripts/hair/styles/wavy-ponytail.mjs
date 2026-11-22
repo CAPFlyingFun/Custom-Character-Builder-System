@@ -9,7 +9,7 @@
  * Its SHORTEST (`shorter` at 1): the tail ends on top of her shoulder, and the face strands are a little shorter.
  */
 import { add, cross, lerp3, mul, smoothstep, sub, unit } from '../vec.mjs';
-import { CRANIUM, HAIRLINE } from './ponytail.mjs';
+import { CRANIUM, HAIRLINE, HIS_CRANIUM, HIS_HAIRLINE, onHim } from './ponytail.mjs';
 
 /** Where her part runs, metres to her left of her middle (GAME TUNING, read off her picture). */
 const PART_X = 0.028;
@@ -20,7 +20,8 @@ export default {
   build(kit) {
     const rnd = kit.random(20261114);
     // gathered low at her nape, a little to her left (where the tail leaves for her shoulder)
-    const f = kit.frame({ centre: CRANIUM, gather: [0.30, -0.62, -1], hairline: HAIRLINE });
+    const his = kit.head.body.id === 'male', P = his ? onHim : (p) => p;
+    const f = kit.frame({ centre: his ? HIS_CRANIUM : CRANIUM, gather: [0.30, -0.62, -1], hairline: his ? HIS_HAIRLINE : HAIRLINE });
     // fuller than the ponytail on top and at her sides: loose hair, not pulled tight; the part a darker line where the
     // hair turns away from it
     const partLine = (c) => {
@@ -45,7 +46,7 @@ export default {
         const mid = [sideX * (0.75 + 0.2 * a), 1.635 - 0.02 * a, -0.05 - 0.04 * a];
         const low = [sideX * (0.8 - 0.1 * a), 1.565 - 0.02 * a, -0.115 - 0.02 * a];
         const tieNear = add(f.gatherOnScalp, [0.012 * side, 0.02, 0.01]);
-        const lines = kit.waveLine([root, mid, low, tieNear], { samples: 14, amp: (s) => 0.003 * smoothstep(0.1, 0.4, s), turns: 2.2, across: [0, 1, 0], phase: rnd() });
+        const lines = kit.waveLine([P(root), P(mid), P(low), tieNear], { samples: 14, amp: (s) => 0.003 * smoothstep(0.1, 0.4, s), turns: 2.2, across: [0, 1, 0], phase: rnd() });
         const seg = kit.pick(22, 9), w = kit.pick(0.026, 0.05) * (0.85 + 0.3 * rnd());
         kit.lock({
           lines, seg, centre: f.C,
@@ -61,8 +62,10 @@ export default {
     // THE TAIL: out of the elastic, round her left side and forward over her left shoulder onto her collarbone and chest.
     // Her picture's tail is WAVES, not a rope (the lead, round 2): about two and a half big soft S-waves down it, each
     // swinging 2 to 2.5 cm side to side, the last curling in at the tip, four to six locks to be told apart in it.
-    const TIE_OUT = add(f.gatherOnScalp, mul(f.TIE, 0.016));
-    const path = [TIE_OUT, [0.078, 1.465, -0.135], [0.124, 1.40, -0.040], [0.112, 1.355, -0.004], [0.100, 1.30, 0.060], [0.092, 1.245, 0.070]];
+    // on him the elastic is set 3 mm further out: at 1.6 cm two of its points were 1.4 to 1.7 mm under his nape's skin
+    // (MEASURED, parts.mjs --body male)
+    const TIE_OUT = add(f.gatherOnScalp, mul(f.TIE, his ? 0.019 : 0.016));
+    const path = [TIE_OUT, ...[[0.078, 1.465, -0.135], [0.124, 1.40, -0.040], [0.112, 1.355, -0.004], [0.100, 1.30, 0.060], [0.092, 1.245, 0.070]].map(P)];
     // fuller in its middle (GAME TUNING to her picture)
     const radiusAt = (s) => (s < 0.15 ? 0.013 + (0.03 - 0.013) * smoothstep(0, 0.15, s) : s < 0.6 ? 0.03 + 0.006 * Math.sin(Math.PI * (s - 0.15) / 0.45) : 0.03 * (1 - 0.65 * smoothstep(0.6, 1.0, s)));
     const tl = kit.tailAxis({
@@ -90,7 +93,7 @@ export default {
           const lines = kit.waveLine([
             [side * (PART_X * (side > 0 ? 1.2 : -0.6) + 0.02), 1.664, 0.002 - 0.01 * q], [side * 0.058, 1.642, -0.004 - 0.008 * q],
             [x + side * 0.010, 1.595, -0.004 - 0.01 * q], [x + side * 0.012, 1.55, -0.008 - 0.008 * q], [x + side * 0.006, end, -0.012 - 0.006 * q],
-          ], { samples: 40, amp: (s) => (longer ? 0.011 : 0.009) * smoothstep(0.42, 0.58, s), turns: longer ? 3.8 : 3.4, across: [side, 0, 0.55], phase: rnd() * 0.25 });
+          ].map(P), { samples: 40, amp: (s) => (longer ? 0.011 : 0.009) * smoothstep(0.42, 0.58, s), turns: longer ? 3.8 : 3.4, across: [side, 0, 0.55], phase: rnd() * 0.25 });
           const seg = kit.pick(48, 16), w = kit.pick(0.03, 0.05) * (0.85 + 0.3 * rnd());
           kit.lock({
             lines, seg, centre: f.C,

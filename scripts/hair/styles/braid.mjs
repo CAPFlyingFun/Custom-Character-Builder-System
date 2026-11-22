@@ -15,7 +15,7 @@
  */
 import { add, cross, mul, smoothstep, sub, unit } from '../vec.mjs';
 import { CAP_V } from '../kit.mjs';
-import { CRANIUM, HAIRLINE } from './ponytail.mjs';
+import { CRANIUM, HAIRLINE, HIS_CRANIUM, HIS_HAIRLINE, onHim } from './ponytail.mjs';
 
 /** How much of its path the shortest braid keeps (GAME TUNING; MEASURED tip at about y 1.40). */
 const SHORTEST = 0.36;
@@ -32,7 +32,11 @@ export default {
   build(kit) {
     const rnd = kit.random(20261115);
     // gathered low at the back of her head, in her middle
-    const f = kit.frame({ centre: CRANIUM, gather: [0, -0.42, -1], hairline: HAIRLINE });
+    const his = kit.head.body.id === 'male', P = his ? onHim : (p) => p;
+    // on him the tie sits about 2 cm further forward (his head is shallower behind): the fall is brought in with it so
+    // it lies on his nape and upper back (GAME TUNING, by eye on his preview from the side)
+    const HIS_TAIL_IN = [0, 0, 0.022];
+    const f = kit.frame({ centre: his ? HIS_CRANIUM : CRANIUM, gather: [0, -0.42, -1], hairline: his ? HIS_HAIRLINE : HAIRLINE });
     // smooth and drawn back; a darker line down her middle part
     const partLine = (c) => {
       const s = c.s, onTop = smoothstep(1.62, 1.66, s[1]) * smoothstep(-0.12, -0.04, s[2]);
@@ -46,7 +50,7 @@ export default {
 
     // THE BRAID'S AXIS: out of the gather, down over her nape, along the middle of her back
     const TOP = add(f.gatherOnScalp, mul(f.TIE, 0.012));
-    const path = [TOP, add(TOP, [0, -0.04, -0.022]), [0, 1.45, -0.175], [0, 1.37, -0.19], [0, 1.29, -0.19], [0, 1.20, -0.185]];
+    const path = [TOP, add(TOP, [0, -0.04, -0.022]), ...[[0, 1.45, -0.175], [0, 1.37, -0.19], [0, 1.29, -0.19], [0, 1.20, -0.185]].map(his ? (p) => add(onHim(p), HIS_TAIL_IN) : P)];
     const taper = (s) => 1 - 0.42 * smoothstep(0.15, 1, s);
     const grow = (s) => 0.35 + 0.65 * smoothstep(0, 0.07, s);
     const radiusAt = (s) => (SIDE + ROPE) * taper(s) * grow(s);
@@ -114,7 +118,7 @@ export default {
           const lines = kit.waveLine([
             [side * 0.050, 1.648, -0.008 - 0.008 * q], [side * 0.064, 1.615, -0.014 - 0.006 * q], [side * 0.068, 1.575, -0.016 - 0.006 * q],
             [side * 0.066, kit.long(1.535, 1.545) - 0.012 * q, -0.014 - 0.006 * q],
-          ], { samples: 14, amp: (s) => 0.003 * smoothstep(0.3, 0.7, s), turns: 1.8, across: [side, 0, 0.5], phase: rnd() });
+          ].map(P), { samples: 14, amp: (s) => 0.003 * smoothstep(0.3, 0.7, s), turns: 1.8, across: [side, 0, 0.5], phase: rnd() });
           const w = kit.pick(0.008, 0.014) * (0.85 + 0.3 * rnd());
           kit.lock({
             lines, seg: kit.pick(18, 8), centre: f.C,
