@@ -2245,6 +2245,33 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   file written back into his geometry and onto his skeleton). `hairStyles.ts` `MALE_HAIR_STYLES`: six men's cuts (crew, buzz,
   side part, slicked back, curly top, man bun) and her six as he wears them, each `models/hair/male/<id>.glb` and its light
   twin. Her six's files are byte for byte as they were (a style chooses his numbers by `kit.head.body.id`).
+  - A MAN'S HAIRLINE COVERS HIS TEMPLE AND COMES DOWN AS A SIDEBURN (the first cuts ran in one diagonal from his forehead to
+    behind his ear: a bare temple, read as receded). Each cut's hairline goes back about 1.2 cm from his forehead's corner,
+    straight down in front of his ear to a sideburn about 1.2 cm wide to mid-ear (y 1.565), AHEAD of his ear's front (z
+    -0.087 to -0.099; up it at z -0.088 to -0.090 -- further back, the cap lay up to 0.86 mm under the root of his ear,
+    MEASURED by `fit.mjs --body male`), over the ear and down behind it to his nape. `buzz.mjs` `MALE_HAIRLINE` (the crew's
+    too), `side-part.mjs` `HIS_HAIRLINE` (the slicked back's), `curly-top.mjs` `CURLY_HAIRLINE`, `man-bun.mjs`
+    `MALE_HAIRLINE`, `ponytail.mjs` `HIS_HAIRLINE` (her five others' on him). GAME TUNING on his MEASURED landmarks.
+  - THE CAP MUST REACH WHAT THE HAIRLINE KEEPS: the hairline is a mask on the cap, and the cap is a grid round its gather out
+    to `phiMax`; at 2.75 the curly top's grid stopped above his temples and its new hairline kept nothing there (3.13 now,
+    as the side part's).
+  - A HAIRLINE CUT ALONG A CURVE, NOT A STAIRCASE: the kit's alpha fades over about 5 mm of hairline distance, one cell of
+    the cap, so the alpha test cut along the cells. His cuts scale the frame's `hairMask` (buzz and crew `softEdge` 0.5 and
+    0.25 light; the side part and slicked back 0.4 and 0.2, divided by the line's slope where it runs upright): about 2.5
+    cells, the line where it was. The kit is as it was, so hers are.
+  - HER SIX ON HIM (`ponytail.mjs` `onHim`): each of her fixed points moved out or in from the head's upright axis by how
+    much further out his surface is than hers, a table MEASURED on both bodies' files every 30 degrees and 3 cm of height
+    (his back of head about 2 cm shallower, his neck thicker, his upper back further back). The ponytail's and the braid's
+    fall come 2.2 cm in at his nape (none from 1.40 m down: brought in there, the tail lay up to 5.8 mm under his upper
+    back); the long loose hair's falls lie on his shoulders (at her reach they stood off them like wings); the bob's crown
+    rounded over his head (it peaked).
+  - MEASURED off the room 2026-11-21 (`fit.mjs --body male`, each of the 24 files at its longest and shortest): none of it
+    under his skin but one point of the side part's cap at his right ear's front, 0.50 mm, at the alpha cutoff. Triangles:
+    the man bun 29,312 (its coils' and combed locks' segments cut to stay under 30,000), the curly top 18,720 in curls.
+  - His twelve full files are fetched ahead (12.3 MB), his light twins not (`keepList.ts` `NOT_AHEAD`, `male/` in the rule).
+  - NOT DONE, AND NAMED: the man bun's bun is a smooth ball from behind and its sides' combed locks barely show; the side
+    part's fringe stands in a few spikes from his side; a few dark pixels at his ear's outer edge in the buzz and crew from
+    his front; the light files' hairlines step more than the full ones'; the bob on him is a little lumpy at its front.
 - After anything changes his head: `tests/maleHead.test.ts`, `tests/faceRig.test.ts`, `tests/faceShapeFields.test.ts`,
   `tests/headLook.test.ts`, `tests/headPanel.test.ts`, `tests/hairStyles.test.ts`; then the room: MALE, his face from his front,
   three-quarter and side, each kind of facial hair, a face type, a hairstyle of each kind.
