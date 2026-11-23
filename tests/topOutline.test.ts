@@ -15,11 +15,11 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
-  ARMSCYE, ARMSCYES, CAMI_FALL, NECK_STYLES, TOP_OUTLINES, armscyeAt, armscyeGate, armscyePath, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, smoothMax, topCut, topCutSpec, topFrame,
+  ARMSCYE, ARMSCYES, BANDEAU, CAMI_FALL, NECK_STYLES, TOP_OUTLINES, armscyeAt, bandeauPath, armscyeGate, armscyePath, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, smoothMax, topCut, topCutSpec, topFrame,
   type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind,
 } from '../src/sarahlab/topCut';
 import { loadBody } from '../scripts/preview/body.mjs';
-import { COVERAGE_TEMPLATES, OUTLINE_NECK, dialsFor, templateCut, wornParams, type CoverageParams } from '../src/sarahlab/paintTemplates';
+import { COVERAGE_TEMPLATES, OUTLINE_NECK, dialsFor, templateCut, withDial, wornParams, type CoverageParams } from '../src/sarahlab/paintTemplates';
 import { readBody } from '../scripts/sarahV2SideLock.mjs';
 import type { BodyMap } from '../src/sarahlab/bodyRegions';
 
@@ -411,6 +411,27 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     }
   }, 60_000);
 
+  it('MEASURED: a bandeau covers her areolas and keeps off the row that joins her arm\'s skin to her trunk\'s', async () => {
+    // (2026-11-23: its areolas 17.5 mm inside it, the row 10.1 mm outside at the back of her armpit, 19 cm under her neck
+    // joint. The painted line at her sides, 14.7 cm under, was inside that row by 26 mm: her arm's skin bare beside cloth)
+    const cut = topCut(topCutSpec({ ...t('bandeau') }, frame, 0.56), frame);
+    const row = new Set<number>();
+    for (let k = 0; k + 2 < index.length; k += 3) {
+      const v = [index[k], index[k + 1], index[k + 2]], a = v.map((i) => arm[i] > 0.5);
+      if (a.some(Boolean) && !a.every(Boolean)) for (const i of v) if (!(arm[i] > 0.5)) row.add(i);
+    }
+    let worst = -Infinity;
+    for (const v of row) worst = Math.max(worst, cutAt(cut, rest[v * 3], rest[v * 3 + 1], rest[v * 3 + 2], 0));
+    expect(worst / MM).toBeLessThan(-5);
+    const body = await loadBody(), P = body.rest, neckY = frame.neckY, col = (v: number) => body.skin!.texel(body.uv[v * 2], body.uv[v * 2 + 1]);
+    const chest: number[] = [];
+    for (let v = 0; v < P.length / 3; v++) if (!(body.armShare[v] > 0.5) && P[v * 3 + 1] > neckY - 0.2 && P[v * 3 + 1] < neckY - 0.06 && P[v * 3 + 2] > 0) chest.push(v);
+    const rg = chest.map((v) => col(v)[0] - col(v)[1]).sort((a, b) => a - b), median = rg[rg.length >> 1];
+    const areola = chest.filter((v) => col(v)[0] - col(v)[1] > median + 0.03);
+    expect(areola.length).toBeGreaterThan(500);
+    expect(Math.min(...areola.map((v) => cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 0))) / MM).toBeGreaterThan(10);
+  }, 60_000);
+
   it('the paths have no corner: over any 3 mm of them they turn no more than a smooth curve does', () => {
     // (the tightest turn drawn is a camisole's, 8.4 mm round, where its top edge leaves the strap: about 20 degrees in 3 mm,
     // the 3 mm steps taken a point late up to 27; a corner would be 90)
@@ -433,9 +454,12 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
 describe('the outline tops\' templates', () => {
   const map = { region: new Uint8Array(0), arm: new Float32Array(0), rest: null, trunkLength: 0.5, neckRadius: 0.05, facing: 1 } as unknown as BodyMap;
   const frame = topFrame({ rest: [0, 0.7, 0.1, 0, 1.45, 0.1, 0.2, 1.4, 0.1, 0, 0.7, -0.1, 0, 1.45, -0.1, 0.2, 1.4, -0.1], index: [0, 1, 2, 3, 4, 5], unitsPerMetre: 1, joints: { neck: [0, 1.4, 0], hipL: [0.1, 0.9, 0], hipR: [-0.1, 0.9, 0], shoulderL: [0.15, 1.36, 0], elbowL: [0.3, 1.15, 0], wristL: [0.45, 0.96, 0], shoulderR: [-0.15, 1.36, 0], elbowR: [-0.3, 1.15, 0], wristR: [-0.45, 0.96, 0] } });
-  it('are drawn: tank, sports bra, camisole, mock neck and crop tee; crop and bandeau are as they were', () => {
-    for (const id of ['tank', 'sportsBra', 'camisole', 'mockNeck', 'cropTee']) expect(isCutTop(t(id)), id).toBe(true);
-    for (const id of ['crop', 'bandeau']) { expect(isCutTop(t(id)), id).toBe(false); expect(t(id).top, id).toBeUndefined(); }
+  it('are drawn: tank, sports bra, camisole, mock neck, crop tee, and since 2026-11-23 the crop top, the maternity tee and the bandeau', () => {
+    for (const id of ['tank', 'sportsBra', 'camisole', 'mockNeck', 'cropTee', 'crop', 'maternity', 'bandeau']) expect(isCutTop(t(id)), id).toBe(true);
+    // (the crop top and the maternity tee are tees whose hems are their own, each in the neck it was painted with)
+    expect(templateCut(map, t('crop'), frame)!.spec.style).toBe('scoop');
+    expect(templateCut(map, t('maternity'), frame)!.spec.style).toBe('square');
+    expect(templateCut(map, t('crop'), frame)!.spec.hemY).toBeCloseTo(0.9 + 0.62 * 0.5, 9);
     expect(templateCut(map, t('cropTee'), frame)!.spec.outline).toBeUndefined();
     expect(templateCut(map, t('cropTee'), frame)!.spec.hemY).toBeCloseTo(0.9 + 0.32 * 0.5, 9);
     // (its own hem, `LINES.hemSportsBra`: a little under her bust's line, its band clear of its back armhole's foot)
@@ -450,7 +474,33 @@ describe('the outline tops\' templates', () => {
     expect(dialsFor(t('mockNeck'))).toEqual([]);
     expect(dialsFor(t('sportsBra'))).toEqual(['hem', 'neck']);
     expect(dialsFor(t('cropTee'))).toEqual(['hem', 'neck', 'sleeve']);
+    expect(dialsFor(t('maternity'))).toEqual(['hem', 'neck', 'sleeve']);
+    // (strapless: its TOP EDGE and its HEM, no SLEEVE)
+    expect(dialsFor(t('bandeau'))).toEqual(['hem', 'neck']);
     expect(t('tank').neckFront).toBe(OUTLINE_NECK.tank);
+  });
+  it('a bandeau: its top edge straight across her front, under her arms behind, the two meeting ahead of her middle; its own hem', () => {
+    const cut = templateCut(map, t('bandeau'), frame)!, B = cut.spec.bandeau!;
+    expect(cut.spec.outline).toBeUndefined();
+    expect(cut.spec.sleeve).toBeLessThan(0);
+    // (his numbers: its top edge 0.82 over her front, 0.7 over her back; at her sides no higher than under her arm)
+    expect(B.front).toBeCloseTo(0.9 + 0.82 * 0.5, 9); expect(B.back).toBeCloseTo(0.9 + 0.7 * 0.5, 9);
+    expect(B.side).toBeCloseTo(Math.min(0.9 + 0.72 * 0.5, frame.neckY - BANDEAU.underArm), 9);
+    expect(cut.spec.hemY).toBeCloseTo(0.9 + 0.56 * 0.5, 9);
+    expect(B.ahead).toBeCloseTo(BANDEAU.ahead, 9);
+    // (its drawings meet that far ahead of her middle depth: the cut's own frame carries it, which the shader reads)
+    expect(cut.frame.zMid[0]).toBeCloseTo(frame.zMid[0] + BANDEAU.ahead, 6);
+    const y = (path: readonly (readonly [number, number])[], x: number) => { for (let k = 0; k + 1 < path.length; k++) { const [ax, ay] = path[k], [bx, by] = path[k + 1]; if (x >= ax && x <= bx && bx > ax) return ay + ((by - ay) * (x - ax)) / (bx - ax); } return NaN; };
+    const front = bandeauPath(cut.spec, frame, true), back = bandeauPath(cut.spec, frame, false);
+    for (const x of [0, 0.05, 0.1, -0.15]) expect(y(front, frame.mid + x), `front ${x}`).toBeCloseTo(B.front, 9);
+    expect(y(back, frame.mid)).toBeCloseTo(B.back, 6);
+    for (const x of [BANDEAU.backOut, BANDEAU.backOut + 0.03, -BANDEAU.backOut - 0.05]) expect(y(back, frame.mid + x), `back ${x}`).toBeCloseTo(B.side, 6);
+    // smooth: no more than 6 degrees' turn from one piece of 1.5 mm to the next (a curve of 1.5 cm's radius)
+    const dir = (k: number) => Math.atan2(back[k + 1][1] - back[k][1], back[k + 1][0] - back[k][0]);
+    for (let k = 0; k + 2 < back.length; k++) expect(Math.abs(dir(k + 1) - dir(k)) * 180 / Math.PI, String(k)).toBeLessThan(6);
+    // its NECKLINE / TOP EDGE moves its front and its back
+    const lower = templateCut(map, withDial(t('bandeau'), 'neck', 0.78), frame)!.spec.bandeau!;
+    expect(lower.front).toBeCloseTo(0.9 + 0.78 * 0.5, 9); expect(lower.back).toBeCloseTo(0.9 + 0.66 * 0.5, 9);
   });
   it('a tank or sports bra saved before today opens drawn, with all the numbers it was saved with', () => {
     // as v0.9.26 saved them: no `top`, their old strap numbers, a tank's NECKLINE moved to 78%

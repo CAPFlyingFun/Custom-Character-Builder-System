@@ -256,10 +256,10 @@ export function findOutfit(book: CharacterBook, name: string): OutfitSave | unde
 const json = (v: unknown) => JSON.stringify(v ?? null);
 /**
  * A layer's template without its shirt length: the length is the character's own (`shirtLength`), not the outfit's make.
- * Nor, on a waistband that follows her belly (`CoverageParams.follow`), its rises: they are her belly's, and what moved
- * them on top is the make.
+ * Nor, on a piece that follows her belly (`CoverageParams.follow`: a waistband's rises, a tee's hem), what follows: it
+ * is her belly's, and what moved it on top is the make.
  */
-const make = (t: SavedLayer['template']) => json(t ? { id: t.id, params: { ...t.params, length: null, ...(t.params.follow ? { riseFront: null, riseSide: null, riseBack: null } : {}) } } : null);
+const make = (t: SavedLayer['template']) => json(t ? { id: t.id, params: { ...t.params, length: null, ...(t.params.follow ? { riseFront: null, riseSide: null, riseBack: null, hemFront: null, hemBack: null } : {}) } } : null);
 /** Two outfits built the same way: same outfit, same templates and dials, same hand-painted masks, layer for layer. */
 function sameMake(a: SavedClothes, b: SavedClothes): boolean {
   if (a.outfit !== b.outfit) return false;

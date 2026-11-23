@@ -138,6 +138,7 @@ export function topFrame(input: TopFrameInput): TopFrame {
   const cols = Math.round((2 * TOP_CUT.halfWidth * U) / cell), rows = Math.round(((TOP_CUT.below + TOP_CUT.above) * U) / cell);
   // her front-most and back-most skin over every cell: each triangle laid flat on the picture
   const front = new Float32Array(cols * rows).fill(-Infinity), back = new Float32Array(cols * rows).fill(Infinity);
+
   // her shoulders' ridge: the highest crossing of any of her triangles' sides with each line of constant distance from
   // her middle, under the cap (her head is above it)
   const ridgeStep = 0.0025 * U, ridgeN = Math.ceil((TOP_CUT.halfWidth * U) / ridgeStep) + 1, cap = neckY + TOP_CUT.ridgeCap * U;
@@ -245,7 +246,27 @@ export interface TopCutSpec {
   readonly collarY?: number;
   /** A CHEST CUTOUT (`CHEST_CUTOUT`) in her front's drawing (her units): its shape, its middle's height, its half width and half height. Absent: none. */
   readonly cutout?: { readonly shape: CutoutShape; readonly y: number; readonly hw: number; readonly hh: number };
+  /** A BANDEAU (`BANDEAU`): no neck opening and no straps, its top edge at these heights over her front's and her back's middle and at her sides (her units). Absent: none. */
+  readonly bandeau?: { readonly front: number; readonly side: number; readonly back: number; readonly backFlat: number; readonly backOut: number; readonly ahead: number };
 }
+/**
+ * A BANDEAU (Joshua, 2026-11-23, of the painted bandeau's ragged edges: "Fix the Bandeau…"; "The default numbers for
+ * the Bandeau is fine… only fix the ragged edges"; "Only if the edges and make it look better", with a picture of one: a
+ * band round her, its top edge straight across her bust, under her arms at her sides): strapless, drawn as a tee's neck
+ * opening is, by her front's and her back's drawings, and its hem its own.
+ * - Her front's is its TOP EDGE (`topFront`, the NECKLINE / TOP EDGE slider) straight across her.
+ * - Her back's is `topBack` across her back's middle out to `backFlat`, and down by `backOut` to UNDER HER ARMS: no higher
+ *   than `underArm` under her neck joint at her sides (and `topSide`, when that is lower).
+ * - The two meet `ahead` of her middle depth (`blend` either way): her bust and the front of her chest stand further
+ *   forward and wear her front's line, the hollow of her armpit and her sides less far and wear her back's. So the top
+ *   edge runs straight across her bust and comes down round the side of it to under her arm.
+ * MEASURED on her body file (2026-11-23): the row of her triangles that joins her arm's skin to her trunk's comes down to
+ * 17.3 cm under her neck joint at the back of her armpit, its front 1 to 3 cm ahead of her middle depth 11 to 12 cm
+ * under it; the painted line (`topSide` 0.72 at her sides, 14.7 cm under) crossed it -- her arm's skin bare beside
+ * cloth, the edge ragged along that row. `underArm` is the outlines' armholes' own foot (`TOP_OUTLINES` `armDrop`).
+ * GAME TUNING (metres) but where said.
+ */
+export const BANDEAU = Object.freeze({ backFlat: 0.04, backOut: 0.105, underArm: 0.19, ahead: 0.065, blend: 0.015 });
 
 /**
  * THE OUTLINES, by kind (Joshua, 2026-11-14: "finish all 10 remaining shirt tops"; his sheet's 06, 07, 11 and 13). Metres
@@ -285,8 +306,8 @@ export const TOP_OUTLINES = Object.freeze({
   mockNeck: Object.freeze({ strapIn: 0.1, strapOut: 0.1, armX: 0.15, armDrop: 0.183, armLimit: 0.106, neck: 'crew' as NeckStyle, front: 'collar', back: 'collar', collar: 0.062, corner: 0.01, depth: 0 }),
 });
 export type TopOutlineKind = keyof typeof TOP_OUTLINES;
-/** The drawn tops that are not a tee's neck opening, sleeves and level hem alone: the outlines, and the boxy crop tee (a crew tee with a hem of its own). */
-export type CutTopKind = TopOutlineKind | 'cropTee' | 'catsuit';
+/** The drawn tops that are not a tee's neck opening, sleeves and level hem alone: the outlines, a tee with a hem of its own (the boxy crop tee, the crop top, the maternity tee), the catsuit and the bandeau. */
+export type CutTopKind = TopOutlineKind | 'cropTee' | 'catsuit' | 'bandeau';
 /**
  * THE CATSUIT (Joshua, 2026-11-20, of the full bodysuit: "look at the catsuit's edges (neck, arms, feet) and neckline"): a
  * drawn top with no hem -- its neck opening and its sleeves drawn as a tee's are -- and no leg openings of its own: its
@@ -389,7 +410,7 @@ export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFron
   // its leg openings' field, `paintTemplates.designedField`)
   if (isOnePiece(p)) return true;
   // (a kind of its own -- the outlines and the crop tee -- is drawn whatever else a look saved before said of it)
-  if (p.top && (p.top === 'cropTee' || p.top === 'catsuit' || p.top in TOP_OUTLINES)) return true;
+  if (p.top && (p.top === 'cropTee' || p.top === 'catsuit' || p.top === 'bandeau' || p.top in TOP_OUTLINES)) return true;
   return p.hemFront !== null && p.neckFront !== null && p.length !== null && !(p.strap > 0) && p.topFront === null && p.riseFront === null;
 }
 
@@ -398,8 +419,9 @@ export function isCutTop(p: Pick<CoverageParams, 'hemFront' | 'strap' | 'topFron
  * of her neck) give the rim, its SLEEVE (0 her shoulder joint, 1 her wrist) the sleeves' ends, `hemTrunk` (her hem on
  * her trunk) the hem.
  */
-export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null; readonly top?: CutTopKind | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null; readonly cutout?: CutoutParams | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | 'sleeve'> & { readonly band?: Partial<TopBands> | null; readonly top?: CutTopKind | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null; readonly cutout?: CutoutParams | null; readonly topFront?: number | null; readonly topSide?: number | null; readonly topBack?: number | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
   if (p.top && p.top in TOP_OUTLINES) return outlineSpec(p, p.top as TopOutlineKind, frame, hemTrunk);
+  if (p.top === 'bandeau') return bandeauSpec(p, frame, hemTrunk);
   const shape = p.neckShape ?? p.neckStyle, style: NeckStyle = (shape in NECK_STYLES ? shape : 'crew') as NeckStyle, S = NECK_STYLES[style], U = frame.unitsPerMetre;
   const trunk = frame.neckY - frame.hipY, collarY = collarAt(p.neckFront, frame), dipY = frame.hipY + (p.neckFront ?? 1) * trunk;
   const wide = Math.max(NECK_RANGE.width[0], Math.min(NECK_RANGE.width[1], p.neckWide ?? 1));
@@ -413,6 +435,34 @@ export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | '
     hemY: hemTrunk === null ? -Infinity : frame.hipY + hemTrunk * trunk,
     bands: { neck: (p.band?.neck ?? TEE_BANDS.neck) * U, sleeve: (p.band?.sleeve ?? TEE_BANDS.sleeve) * U, hem: (p.band?.hem ?? TEE_BANDS.hem) * U },
   };
+}
+/** A bandeau's spec on her: its top edge's three heights (its NECKLINE / TOP EDGE moves its front and its back), its hem; no sleeves, no neck opening. */
+function bandeauSpec(p: { readonly band?: Partial<TopBands> | null; readonly topFront?: number | null; readonly topSide?: number | null; readonly topBack?: number | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+  const U = frame.unitsPerMetre, trunk = frame.neckY - frame.hipY, at = (t: number) => frame.hipY + t * trunk;
+  const front = p.topFront ?? 0.82, back = p.topBack ?? front, side = Math.min(at(Math.min(front, p.topSide ?? front)), frame.neckY - BANDEAU.underArm * U);
+  return {
+    style: 'crew', half: 0, dipY: at(front), sleeve: -U,
+    hemY: hemTrunk === null ? -Infinity : at(hemTrunk),
+    bands: { neck: (p.band?.neck ?? OUTLINE_BANDS.neck) * U, sleeve: 0, hem: (p.band?.hem ?? OUTLINE_BANDS.hem) * U },
+    sideBlend: BANDEAU.blend * U,
+    bandeau: { front: at(front), side, back: at(back), backFlat: BANDEAU.backFlat * U, backOut: BANDEAU.backOut * U, ahead: BANDEAU.ahead * U },
+  };
+}
+/**
+ * A bandeau's top edge as one of her drawings' paths, left to right (her units): her front's straight across; her back's
+ * from under her arm far out, up to her back's height across her middle, and down again. Above it is the opening.
+ */
+export function bandeauPath(spec: TopCutSpec, frame: TopFrame, front: boolean): P2[] {
+  const B = spec.bandeau!, U = frame.unitsPerMetre, step = 0.0015 * U, range = TOP_CUT.range * U, x0 = frame.x0 - range * 4, x1 = frame.x0 + frame.cols * frame.cell + range * 4;
+  if (front) return [[x0, B.front], [x1, B.front]];
+  const yAt = (x: number) => { const t = Math.max(0, Math.min(1, (x - B.backFlat) / (B.backOut - B.backFlat))); return B.back + (B.side - B.back) * (0.5 - 0.5 * Math.cos(Math.PI * t)); };
+  const n = Math.max(8, Math.ceil(B.backOut / step)), half: P2[] = [];
+  for (let j = 0; j <= n; j++) { const x = (B.backOut * j) / n; half.push([x, yAt(x)]); }
+  const out: P2[] = [[x0, B.side]];
+  for (let k = half.length - 1; k >= 1; k--) out.push([frame.mid - half[k][0], half[k][1]]);
+  for (const q of half) out.push([frame.mid + q[0], q[1]]);
+  out.push([x1, B.side]);
+  return out;
 }
 /** An outline's spec on her: its own numbers, its NECKLINE (the front's depth, or a camisole's top edge) and its hem; no sleeves. */
 function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Partial<TopBands> | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null; readonly cutout?: CutoutParams | null }, kind: TopOutlineKind, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
@@ -541,6 +591,7 @@ function cutOut(dist: Float32Array, c: NonNullable<TopCutSpec['cutout']>, frame:
 }
 function drawRim(spec: TopCutSpec, frame: TopFrame, front: boolean): Float32Array {
   if (spec.outline) return pathDistances(outlinePath(spec, frame, front), frame);
+  if (spec.bandeau) return pathDistances(bandeauPath(spec, frame, front), frame);
   const { cols, cell } = frame, U = frame.unitsPerMetre, range = TOP_CUT.range * U;
   // (a COLLAR: level round her neck, front and back alike -- all of her under it is the garment)
   if (spec.collarY !== undefined) return pathDistances([[frame.x0 - range * 4, spec.collarY], [frame.x0 + cols * cell + range * 4, spec.collarY]], frame);
@@ -786,7 +837,9 @@ function cubic(a: P2, b: P2, c: P2, d: P2, step: number): P2[] {
 /** A top's drawings, ready to look up: her front's, her back's, and for an outline her side's (its armscye, `ARMSCYE`). */
 export interface TopCut { readonly spec: TopCutSpec; readonly frame: TopFrame; readonly front: Float32Array; readonly back: Float32Array; readonly side?: Float32Array | null }
 export function topCut(spec: TopCutSpec, frame: TopFrame): TopCut {
-  return { spec, frame, front: drawCut(spec, frame, true), back: drawCut(spec, frame, false), side: spec.outline?.side ? pathDistances(armscyePath(frame, spec.outline.side.curve), frame) : null };
+  // (a bandeau's two drawings meet `ahead` of her middle depth: `BANDEAU`)
+  const at = spec.bandeau && spec.bandeau.ahead ? { ...frame, zMid: frame.zMid.map((z) => z + spec.bandeau!.ahead), zLo: frame.zLo + spec.bandeau.ahead, zHi: frame.zHi + spec.bandeau.ahead } : frame;
+  return { spec, frame: at, front: drawCut(spec, frame, true), back: drawCut(spec, frame, false), side: spec.outline?.side ? pathDistances(armscyePath(frame, spec.outline.side.curve), frame) : null };
 }
 /**
  * Her side's drawing at a place (her units; + covered): the armscye's say, come in over `ARMSCYE.feather` past `gate`;

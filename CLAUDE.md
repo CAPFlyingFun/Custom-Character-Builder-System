@@ -365,6 +365,42 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `tests/topDetails.test.ts`, `tests/topCut.test.ts`, `tests/stylePictures.test.ts`; then the room: the four outlines
   from her front, three-quarter, side and back, and the sports bra's and the crop tee's hems at 0%.
 
+## The crop top, the maternity tee and the bandeau, drawn; two tees' hems follow her belly
+
+- **THEIR EDGES ARE DRAWN** (Joshua, 2026-11-23, his pictures on his phone of their painted edges: "For the cropped top,
+  it's jagged for some reason. (Fix)"; the maternity tee "had bad edges as well"; "Fix the Bandeau… only fix the ragged
+  edges… make it look better", with a picture of a bandeau). Until then all three were paint a value a vertex.
+  - THE CROP TOP AND THE MATERNITY TEE are tees whose hem is their own (`top: 'cropTee'`, as the boxy crop tee: level on
+    her as she is shaped, no drape under it), in the neck each was painted with: the crop top's a scoop at 0.86 (a crew
+    under 0.94 was painted as a scoop, `isScoop`), the maternity tee's a SQUARE at 0.94 (painted, a crew's line level
+    across her chest: wide and shallow). A look saved before keeps its numbers and wears that neck (`wornParams`).
+  - THE BANDEAU (`topCut.BANDEAU`, `bandeauPath`, `top: 'bandeau'`): strapless, its hem its own. Her front's drawing is
+    its TOP EDGE (`topFront`, 0.82) straight across her; her back's `topBack` (0.7) across her back's middle, eased down
+    by 10.5 cm out to UNDER HER ARM (19 cm under her neck joint: `underArm`); and the two drawings meet 6.5 cm AHEAD of
+    her middle depth (`ahead`: the cut's own frame carries its middle depth moved forward, which is what the shader
+    reads), so her bust wears the front's line and the hollow of her armpit and her sides the back's: straight across
+    her bust and down round the side of it to under her arm. Its sliders as they were (HEM / BELLY 0.56, NECKLINE / TOP
+    EDGE 0.82); SLEEVE is not offered. MEASURED on her body file (`tests/topOutline.test.ts`): her areolas 17.5 mm
+    inside it; the row of her triangles that joins her arm's skin to her trunk's 10.1 mm outside it. THE PAINTED LINE
+    (`topSide` 0.72 at her sides, 14.7 cm under her neck joint, by where a point stands round her) CROSSED THAT ROW by
+    26 mm at the back of her armpit -- her arm's skin bare beside cloth, the edge ragged along her triangles there; and
+    drawn along it, the same (66 mm). TRIED AND TAKEN OUT the same afternoon: a line down from 6 to 12.5 cm out (her
+    areolas bare, pictured); raised 2 cm as he first said (her areolas still 5 mm bare, the arm row inside it).
+- **THE BOXY CROP TEE'S AND THE MATERNITY TEE'S HEM FOLLOW HER BELLY, as the under-belly leggings' waistband does**
+  (Joshua, 2026-11-23, his five settings of each on Blaze, pictured; of the maternity tee: "I changed my mind… Yes,
+  follow the belly"). `paintTemplates.ts` `BELLY_FOLLOW` (a table of his settings for each following dial, by template:
+  `followDials`, `followedValues`), `followedAt(id, …)`, `withDialAt(id, …)`, `withFollow(id, …)`, and FOLLOWS BELLY on
+  each. HEM / BELLY: the boxy crop tee 0.29, 0.33, 0.42, 0.53, 0.59; the maternity tee 0.19, 0.12, 0.02, 0.02, 0.02 at
+  0, 50, 100, 150 and 200% (GAME TUNING, his). Their NECKLINE and SLEEVE stay where they are set. A follow keeps what a
+  slider moved each dial by under the dial's own id (`{ hem: … }`; v0.9.74's waistband's `front` / `back` still read).
+  AN OUTFIT THAT SETS ONE OF THOSE DIALS ITSELF -- the grey crop tee's hem (0.42) over his sheet's leggings and under the
+  skirts -- keeps the outfit's number at every size, as before; FOLLOWS BELLY puts it on his settings. MEASURED in the
+  room (light skin, 1x): the crop tee's HEM / BELLY read 0.29, 0.31, 0.33, 0.38, 0.42, 0.47, 0.53, 0.56, 0.59 at 0 to
+  200% by 25s, the maternity tee's 0.19, 0.15, 0.12, 0.07, 0.02 and 0.02 on; one laying (a hem's new cut drawn, her
+  paint laid) 64 to 77 ms on the build machine, at most every 250 ms while her belly is dragged.
+- After anything changes them: `tests/underBellyFollow.test.ts`, `tests/topOutline.test.ts`, `tests/topCut.test.ts`;
+  then the room: the bandeau at 0, 100 and 200% from her front, three-quarter, side and back; the two tees at 0 to 200%.
+
 ## The cloth tops
 
 - **Ten of the painted tops as the cloth tee, ADDED beside them** (Joshua, 2026-11-16: "Can we instead convert all the

@@ -59,7 +59,7 @@ import { HEM_LIFT_FLAT, HEM_LIFT_RIBBED, TunicDrape } from './tunicDrape';
 import { AUTO_DETAIL, type DetailOverride, type SavedClothes } from './characterSaves';
 import {
   BAND_SHADE, COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, DRAWN_NECK, GARMENT_SETS, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, cutLayer, designedField, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
-  templateCut, templateDetail, withDial, wornParams, canFollow, followedAt, withDialAt, withFollow, type CoverageDial, type CoverageParams, type DesignedField, type PieceKind,
+  templateCut, templateDetail, withDial, wornParams, canFollow, followDials, followedAt, withDialAt, withFollow, type CoverageDial, type CoverageParams, type DesignedField, type PieceKind,
 } from './paintTemplates';
 
 /** A drawn top's cut as the editor keeps it: what it is cut to (its key), the cut, and what is drawn on it. */
@@ -947,7 +947,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     p.checkpoint(i);
     // a shirt keeps the length chosen for shirts
     // (a waistband that follows her belly, at her belly's size)
-    const withLength = followedAt(params.length !== null ? withDial(params, 'length', shirtLength) : params, belly());
+    const withLength = followedAt(id, params.length !== null ? withDial(params, 'length', shirtLength) : params, belly());
     templates[i] = { id, params: withLength };
     p.setLayer(i, coverage(map, withLength, cutOf(withLength)?.cut ?? null));
     ensurePaintFabric(); refreshTargets(); touched();
@@ -961,7 +961,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     if (!body || !map?.rest || !map.joints) return null;
     if (frameOf?.mesh !== body) {
       const index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array, J = map.joints;
-      const frame = index ? topFrame({ rest: map.rest, index, unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR } }) : null;
+      const frame = index ? topFrame({ rest: map.rest, index, unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }}) : null;
       frameOf = { mesh: body, frame };
       for (const t of cutTextures.values()) t.dispose();
       cuts.clear(); cutTextures.clear(); wornCut = null;
@@ -1087,7 +1087,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const i = layer(), t = i >= 0 ? templates[i] : null, p = bodyPaint(), map = regionMap();
     if (!t || !p || !map) return;
     if (dial === 'length') shirtLength = paintedShirtLength(value);
-    templates[i] = { id: t.id, params: withDialAt(t.params, dial, value, belly()) };
+    templates[i] = { id: t.id, params: withDialAt(t.id, t.params, dial, value, belly()) };
     p.setLayer(i, coverage(map, templates[i]!.params, cutOf(templates[i]!.params)?.cut ?? null));
     sync(); draw(); touched();
   }
@@ -1096,7 +1096,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const i = layer(), t = i >= 0 ? templates[i] : null, p = bodyPaint(), map = regionMap();
     if (!t || !p || !map || !canFollow(t.id)) return;
     p.checkpoint(i);
-    templates[i] = { id: t.id, params: withFollow(t.params, !t.params.follow, belly()) };
+    templates[i] = { id: t.id, params: withFollow(t.id, t.params, !t.params.follow, belly()) };
     p.setLayer(i, coverage(map, templates[i]!.params, cutOf(templates[i]!.params)?.cut ?? null));
     sync(); draw(); touched();
   }
@@ -1121,8 +1121,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
       const t = templates[i];
       if (!t?.params.follow) continue;
-      const q = followedAt(t.params, b);
-      if (Math.abs((q.riseFront ?? 0) - (t.params.riseFront ?? 0)) < 1e-4 && Math.abs((q.riseBack ?? 0) - (t.params.riseBack ?? 0)) < 1e-4 && Math.abs((q.riseSide ?? 0) - (t.params.riseSide ?? 0)) < 1e-4) continue;
+      const q = followedAt(t.id, t.params, b);
+      if (followDials(t.id).every((d) => Math.abs(dialValue(q, d) - dialValue(t.params, d)) < 1e-4)) continue;
       templates[i] = { id: t.id, params: q };
       p.setLayer(i, coverage(map, q, cutOf(q)?.cut ?? null));
       moved = true;
@@ -1275,7 +1275,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (follows) press(followButton, !!tpl!.params.follow);
       for (const [id, d] of dials) {
         d.wrap.style.display = used.includes(id) ? 'flex' : 'none';
-        if (tpl) { const v = dialValue(tpl.params, id); d.input.value = String(v); d.label.textContent = `${COVERAGE_DIALS.find((x) => x.id === id)!.name} · ${v.toFixed(2)}${tpl.params.follow && (id === 'rise' || id === 'riseBack') ? ' · follows belly' : ''}`; }
+        if (tpl) { const v = dialValue(tpl.params, id); d.input.value = String(v); d.label.textContent = `${COVERAGE_DIALS.find((x) => x.id === id)!.name} · ${v.toFixed(2)}${tpl.params.follow && (followDials(tpl.id) as readonly string[]).includes(id) ? ' · follows belly' : ''}`; }
       }
     }
     removeRow.style.display = (onLayer && kindOf(i)) || (!onLayer && !!hooks.takeOff) ? 'flex' : 'none';
@@ -2087,9 +2087,12 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         let params = t.params.length !== null ? withDial(t.params, 'length', shirtLength) : t.params;
         if (want.cutout !== undefined) params = { ...params, cutout: want.cutout };
         if (want.neckShape) params = { ...params, neckShape: want.neckShape, neckFront: DRAWN_NECK[want.neckShape] };
-        // (an outfit's rise on a waistband that follows her belly is a move on top of his settings; then it is laid at her belly's size)
-        for (const [dial, value] of Object.entries(want.dials ?? {}) as [CoverageDial['id'], number][]) if (Number.isFinite(value)) params = withDialAt(params, dial, value, belly());
-        params = followedAt(params, belly());
+        // (a template that follows her belly is laid at her belly's size -- unless the outfit sets one of its following
+        // dials itself, the grey crop tee's hem over his sheet's leggings: that piece keeps the outfit's number at every
+        // size, as it always did, and FOLLOWS BELLY puts it back on his settings)
+        const own = Object.entries(want.dials ?? {}).filter(([, v]) => Number.isFinite(v)) as [CoverageDial['id'], number][];
+        for (const [dial, value] of own) params = withDial(params, dial, value);
+        params = own.some(([d]) => (followDials(t.id) as readonly string[]).includes(d)) ? withFollow(t.id, params, false, 0) : followedAt(t.id, params, belly());
         templates[i] = { id: t.id, params };
         p.setLayer(i, coverage(map, params, cutOf(params)?.cut ?? null));
         // (a drawn top's bands in a colour of their own: its trim, not matched)
@@ -2142,7 +2145,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (l) {
         // (what a look saved before its template gained a field does not say is the template's own: `wornParams`)
         // (and a waistband that follows her belly, at her belly's size)
-        const params = l.template ? followedAt(wornParams(l.template.id, l.template.params), belly()) : null;
+        const params = l.template ? followedAt(l.template.id, wornParams(l.template.id, l.template.params), belly()) : null;
         templates[i] = l.template && params ? { id: l.template.id, params } : null;
         p.setLayer(i, params ? coverage(map, params, cutOf(params)?.cut ?? null) : Float32Array.from(base64ToBytes(l.mask), (b) => b / 255));
         paintChoices[i] = l.choice;

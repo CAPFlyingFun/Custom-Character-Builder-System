@@ -163,11 +163,12 @@ describe('a top\'s cut: its numbers from a template\'s sliders', () => {
     const drawn = COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params)).map((t) => t.id);
     // (and, since his sheet's outlines, the tank, the camisole, the mock neck, the crop tee and the sports bra: `tests/topOutline.test.ts`)
     // (...and the five with something drawn on them, the raglan, the henley, the polo, the wrap and the button-up: `tests/topDetails.test.ts`)
-    expect(drawn).toEqual(['tank', 'camisole', 'mockNeck', 'cropTee', 'sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong', 'teeRaglan', 'henley', 'polo', 'wrap', 'buttonUp', 'sportsBra', 'bodysuitFull', 'catsuitCutout', 'bodysuit', 'swimsuit']);
+    expect(drawn).toEqual(['tank', 'camisole', 'mockNeck', 'cropTee', 'sleeveless', 'teeShort', 'teeU', 'teeV', 'teeScoop', 'teeSquare', 'teeRinger', 'teeThreeQuarter', 'teeLong', 'teeRaglan', 'henley', 'polo', 'wrap', 'buttonUp', 'crop', 'maternity', 'sportsBra', 'bandeau', 'bodysuitFull', 'catsuitCutout', 'bodysuit', 'swimsuit']);
+    // (the crop top, the maternity tee and the bandeau since 2026-11-23: their painted edges were ragged)
     // (the leotard and the swimsuit since 2026-11-16: ONE-PIECES, a top's cut with no hem and their leg openings a field's: `isOnePiece`)
     expect(COVERAGE_TEMPLATES.filter((t) => isOnePiece(t.params)).map((t) => t.id)).toEqual(['bodysuit', 'swimsuit']);
     for (const t of COVERAGE_TEMPLATES.filter((t) => isOnePiece(t.params))) { expect(dialsFor(t.params), t.id).not.toContain('legCut'); expect(designedField(t.params, 0), t.id).toBeNull(); }
-    for (const id of ['crop', 'maternity', 'bandeau', 'leggingsFull', 'athleticBottom']) expect(drawn, id).not.toContain(id);
+    for (const id of ['leggingsFull', 'athleticBottom']) expect(drawn, id).not.toContain(id);
   });
 });
 
@@ -476,7 +477,6 @@ describe('a drawn top\'s template', () => {
     expect(cut.spec.style).toBe('v');
     expect(cut.spec.sleeve).toBeCloseTo(0.32 * 0.5, 9);
     expect(Number.isFinite(cut.spec.hemY)).toBe(true);
-    expect(templateCut(map, t('crop'), d.frame)).toBeNull();
     expect(templateCut(map, t('leggingsFull'), d.frame)).toBeNull();
     expect(templateCut(map, t('teeV'), null)).toBeNull();
   });

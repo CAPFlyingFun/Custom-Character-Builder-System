@@ -112,8 +112,9 @@ export interface CoverageParams {
   readonly length: number | null;
   /**
    * A DRAWN top of a kind of its own (`topCut.TOP_OUTLINES`, Joshua's sheet of 2026-11-14): 'tank', 'sportsBra',
-   * 'camisole', 'mockNeck' -- straps, armholes, a racerback, a straight top edge or a mock neck, sleeveless -- or 'cropTee',
-   * a crew tee whose hem is `hemFront` (above her navel) instead of a LENGTH. Absent: what the fields above say.
+   * 'camisole', 'mockNeck' -- straps, armholes, a racerback, a straight top edge or a mock neck, sleeveless -- 'cropTee',
+   * a tee whose hem is `hemFront` instead of a LENGTH (the boxy crop tee, the crop top, the maternity tee), 'bandeau',
+   * strapless (`topCut.BANDEAU`), or 'catsuit'. Absent: what the fields above say.
    * Its strap, armhole and neckBack numbers are its outline's, not the old `strap` / `strapIn` / `armhole` / `neckBack`.
    */
   readonly top?: CutTopKind | null;
@@ -142,11 +143,12 @@ export interface CoverageParams {
   /** A DRAWN bottom's waistband's BOWL (`bottomCut.waistLine`): how long its front is held low before it climbs to her sides; none is the plain sweep. */
   readonly lowBowl?: number | null;
   /**
-   * THE WAISTBAND FOLLOWS HER BELLY (an under-belly waistband's: `UNDER_BELLY_FOLLOW`): its WAISTBAND (FRONT) and HIPS &
-   * BACK RISE are his settings at her belly's size, read between them, and what a slider has moved each by on top
-   * (`front`, `back`: trunk fractions). Absent or null: they stay where they are set.
+   * IT FOLLOWS HER BELLY (`BELLY_FOLLOW`: the under-belly leggings' waistband, the boxy crop tee's and the maternity tee's
+   * hem): each dial its template's table names is his setting at her belly's size, read between them, and what its
+   * slider has moved it by on top -- kept here by the dial's id (trunk fractions; v0.9.74 kept the waistband's two as
+   * `front` and `back`). Absent or null: the dials stay where they are set.
    */
-  readonly follow?: { readonly front: number; readonly back: number } | null;
+  readonly follow?: Readonly<Partial<Record<FollowDial | 'front' | 'back', number>>> | null;
 }
 
 const NONE: CoverageParams = Object.freeze({ riseFront: null, riseSide: null, riseBack: null, riseFrontWidth: 1, legStart: 0, legEnd: 0, feet: false, hemFront: null, hemBack: null, neckFront: null, neckBack: null, sleeve: -1, topFront: null, topBack: null, topSide: null, strap: 0, strapIn: 0, armhole: null, neckStyle: 'crew', legCut: null, length: null });
@@ -488,8 +490,34 @@ export const UNDER_BELLY_FOLLOW: readonly { readonly belly: number; readonly fro
   { belly: 150, front: -0.04, back: 0.27 },
   { belly: 200, front: -0.05, back: 0.24 },
 ].map((k) => Object.freeze(k)));
-/** A waistband following her belly with nothing moved on top: his settings as they are. */
-const FOLLOW_AS_SET = Object.freeze({ front: 0, back: 0 });
+/** The dials a template's numbers can follow her belly by. */
+export type FollowDial = 'rise' | 'riseBack' | 'hem';
+/**
+ * WHAT FOLLOWS HER BELLY, by template: for each dial, his settings at her belly's sizes (the belly slider's %), read on
+ * the straight line between two and held at the ends. GAME TUNING, his, each set by eye on his phone on his character
+ * Blaze (2026-11-23):
+ * - the under-belly leggings' WAISTBAND (FRONT) and HIPS & BACK RISE (`UNDER_BELLY_FOLLOW`);
+ * - the boxy crop tee's HEM / BELLY ("we can do the same boxy cropped Tee shirt as well"): 0.29, 0.33, 0.42, 0.53, 0.59;
+ * - the maternity tee's HEM / BELLY ("I changed my mind on the Maternity T-shirt. Yes, follow the belly"): 0.19, 0.12,
+ *   0.02, 0.02, 0.02. Its NECKLINE (0.94) and SLEEVE (0.32), and the crop tee's (0.91, 0.62 on Blaze), he left the same at
+ *   every size: they stay where they are set.
+ */
+export const BELLY_FOLLOW: Readonly<Record<string, Readonly<Partial<Record<FollowDial, readonly (readonly [number, number])[]>>>>> = Object.freeze({
+  leggingsUnder: Object.freeze({ rise: UNDER_BELLY_FOLLOW.map((k) => [k.belly, k.front] as const), riseBack: UNDER_BELLY_FOLLOW.map((k) => [k.belly, k.back] as const) }),
+  cropTee: Object.freeze({ hem: Object.freeze([[0, 0.29], [50, 0.33], [100, 0.42], [150, 0.53], [200, 0.59]] as const) }),
+  maternity: Object.freeze({ hem: Object.freeze([[0, 0.19], [50, 0.12], [100, 0.02], [150, 0.02], [200, 0.02]] as const) }),
+});
+/** One of his tables read at a belly's size (%): straight between two of his settings, held at the ends. */
+function readFollow(k: readonly (readonly [number, number])[], bellyPct: number): number {
+  const b = Number.isFinite(bellyPct) ? bellyPct : 0;
+  if (b <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) if (b <= k[i][0]) return k[i - 1][1] + ((k[i][1] - k[i - 1][1]) * (b - k[i - 1][0])) / (k[i][0] - k[i - 1][0]);
+  return k[k.length - 1][1];
+}
+/** A template following her belly with nothing moved on top: his settings as they are. */
+const followAsSet = (id: string): Readonly<Partial<Record<FollowDial, number>>> => Object.freeze(Object.fromEntries(Object.keys(BELLY_FOLLOW[id] ?? {}).map((d) => [d, 0])));
+/** What a follow says a dial has been moved by on top of his settings (v0.9.74's waistband kept its two as `front` and `back`). */
+const movedBy = (f: NonNullable<CoverageParams['follow']>, dial: FollowDial): number => f[dial] ?? (dial === 'rise' ? f.front : dial === 'riseBack' ? f.back : undefined) ?? 0;
 /** His WAISTBAND (FRONT) and HIPS & BACK RISE at a belly's size (%), between his settings (`UNDER_BELLY_FOLLOW`). */
 export function followedRises(bellyPct: number): { readonly front: number; readonly back: number } {
   const k = UNDER_BELLY_FOLLOW, b = Number.isFinite(bellyPct) ? bellyPct : 0;
@@ -529,7 +557,7 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // wide is the edging? Make it half as thick... Looks too wide, or better yet, make it adjustable once it's working
   // properly" -- 3 cm it was, 1.5 it is; GAME TUNING)
   // (its waistband follows her belly's size: `UNDER_BELLY_FOLLOW`, 2026-11-23)
-  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0, { lowBand: UNDER_BELLY_BANDS, lowBowl: UNDER_BELLY_BOWL, follow: FOLLOW_AS_SET })],
+  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0, { lowBand: UNDER_BELLY_BANDS, lowBowl: UNDER_BELLY_BOWL, follow: followAsSet('leggingsUnder') })],
   // (his 05: a high rise, its legs' ends on her calves' fullest. It was the over-belly rise to 0.78 of her leg until
   // 2026-11-15; MEASURED off his sheet, 0.70 of the way from his figure's crotch to her ankle, which is 0.72 of her
   // leg's line. A look saved before keeps the numbers it was saved with)
@@ -566,7 +594,8 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // (his 11: sleeveless, armholes cut in to leave her shoulders' points bare, a collar standing 3 cm up her neck)
   ['mockNeck', 'Mock-neck top', 'Shirts', upper(LINES.hemHip, LINES.hemHip, 1, -1, { ...SHIRT, neckFront: null, top: 'mockNeck' })],
   // (his 14: a crew tee, short sleeves, a level hem cropped above her navel)
-  ['cropTee', 'Boxy crop tee', 'Shirts', upper(LINES.hemCropTee, LINES.hemCropTee, DRAWN_NECK.crew, 0.28, { top: 'cropTee' })],
+  // (its hem follows her belly: `BELLY_FOLLOW`, 2026-11-23)
+  ['cropTee', 'Boxy crop tee', 'Shirts', upper(LINES.hemCropTee, LINES.hemCropTee, DRAWN_NECK.crew, 0.28, { top: 'cropTee', follow: followAsSet('cropTee') })],
   // THE DRAWN TOPS (`topCut.ts`; Joshua, 2026-11-14, from his sheet of sixteen tops): shirts with a level hem and no
   // straps. Their neck opening is a drawn curve, their sleeves' ends and hem flat cuts, each with its band
   ['sleeveless', 'Sleeveless shirt', 'Shirts', upper(LINES.hemHip, LINES.hemHip, DRAWN_NECK.crew, 0.07, SHIRT)],
@@ -591,11 +620,18 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   ['polo', 'Polo shirt', 'Shirts', detailed('polo')],
   ['wrap', 'Wrap top', 'Shirts', detailed('wrap')],
   ['buttonUp', 'Button-up shirt', 'Shirts', detailed('buttonUp')],
-  ['crop', 'Crop top', 'Shirts', upper(LINES.hemCrop, LINES.hemCrop - 0.04, LINES.neckScoop, 0.25)],
-  ['maternity', 'Maternity T-shirt', 'Shirts', upper(LINES.hemMaternity, LINES.hemHip + 0.06, LINES.neckCrew, 0.32)],
+  // THE CROP TOP AND THE MATERNITY TEE, DRAWN (Joshua, 2026-11-23, of their ragged painted edges: "For the cropped top,
+  // it's jagged for some reason. (Fix)"; "Fix the Maternity T-Shirt… found out it had bad edges as well"): a tee whose
+  // hem is its own, as the boxy crop tee's is (`topCut` 'cropTee': level on her as she is shaped, no drape under it),
+  // its neck opening, sleeves and hem drawn. Each keeps the neck it was painted with: the crop top's a scoop (a crew
+  // under 0.94 was a scoop painted, `isScoop`), the maternity tee's a wide, shallow one straight across her chest -- a
+  // square neck at its depth. The maternity tee's hem follows her belly (`BELLY_FOLLOW`).
+  ['crop', 'Crop top', 'Shirts', upper(LINES.hemCrop, LINES.hemCrop - 0.04, LINES.neckScoop, 0.25, { top: 'cropTee', neckStyle: 'scoop' })],
+  ['maternity', 'Maternity T-shirt', 'Shirts', upper(LINES.hemMaternity, LINES.hemHip + 0.06, LINES.neckCrew, 0.32, { top: 'cropTee', neckStyle: 'square', follow: followAsSet('maternity') })],
   // (his 07: a scoop between wide straps, a racerback, a wide band under her bust; drawn, `TOP_OUTLINES.sportsBra`)
   ['sportsBra', 'Sports bra', 'Bras & bands', upper(LINES.hemSportsBra, LINES.bandBack, OUTLINE_NECK.sportsBra, -1, { strapIn: 0.85, strap: 0.65, neckBack: 0.86, armhole: LINES.armhole - 0.02, band: SPORTS_BRA_BANDS, top: 'sportsBra' }), 'sportsBra'],
-  ['bandeau', 'Bandeau', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckCrew, -1, { topFront: LINES.bandeauTop, topSide: LINES.bandeauSide, topBack: LINES.bandTopBack })],
+  // (strapless, its top edge one line round her and its hem its own, both drawn: `topCut.BANDEAU`, 2026-11-23)
+  ['bandeau', 'Bandeau', 'Bras & bands', upper(LINES.underbust, LINES.bandBack, LINES.neckCrew, -1, { topFront: LINES.bandeauTop, topSide: LINES.bandeauSide, topBack: LINES.bandTopBack, top: 'bandeau' })],
   // (the catsuit: its neck and its sleeves drawn, its legs ending in a drawn ring at her ankles -- `topCut.isCatsuit`)
   ['bodysuitFull', 'Full bodysuit', 'Other', { ...upper(-1, -1, DRAWN_NECK.crew, 1.0), ...FULL, legEnd: 1.0, top: 'catsuit' }],
   // (and with a chest cutout, a diamond at the top of her cleavage: `topCut.CHEST_CUTOUT`)
@@ -690,7 +726,7 @@ export function dialsFor(p: CoverageParams): CoverageDial['id'][] {
   if (p.neckFront !== null) out.push(...(takesTurtleneck(p) ? ['neckline', 'neckWidth'] as const : ['neck'] as const));
   if (takesTurtleneck(p) && p.cutout) out.push('cutoutWidth', 'cutoutHeight', 'cutoutDrop');
   // (a top of an outline is sleeveless: its armholes are its own)
-  if (p.hemFront !== null && !(p.top && p.top in TOP_OUTLINES)) out.push('sleeve');
+  if (p.hemFront !== null && !(p.top && (p.top in TOP_OUTLINES || p.top === 'bandeau'))) out.push('sleeve');
   return out;
 }
 
@@ -737,33 +773,44 @@ export function withDial(p: CoverageParams, dial: CoverageDial['id'], value: num
 }
 
 /** A dial's value held to its slider's range. */
-const onDial = (dial: 'rise' | 'riseBack', v: number): number => { const d = COVERAGE_DIALS.find((x) => x.id === dial)!; return Math.min(d.max, Math.max(d.min, v)); };
+const onDial = (dial: CoverageDial['id'], v: number): number => { const d = COVERAGE_DIALS.find((x) => x.id === dial)!; return Math.min(d.max, Math.max(d.min, v)); };
+/** The dials of a template that can follow her belly (`BELLY_FOLLOW`), none for any other. */
+export const followDials = (templateId: string): readonly FollowDial[] => Object.keys(BELLY_FOLLOW[templateId] ?? {}) as FollowDial[];
+/** Whether a template can follow her belly. */
+export const canFollow = (templateId: string): boolean => followDials(templateId).length > 0;
+/** His settings of a template's following dials at a belly's size (%). */
+export function followedValues(templateId: string, bellyPct: number): Partial<Record<FollowDial, number>> {
+  const t = BELLY_FOLLOW[templateId] ?? {}, out: Partial<Record<FollowDial, number>> = {};
+  for (const d of followDials(templateId)) out[d] = readFollow(t[d]!, bellyPct);
+  return out;
+}
 /**
- * A waistband that FOLLOWS HER BELLY (`CoverageParams.follow`) laid at a belly's size (%): his settings there and what its
- * sliders moved it by on top, each held to its slider's range, its sides moving with its back as HIPS & BACK RISE moves
- * them (`withDial`). A waistband that does not follow is as it is.
+ * A template that FOLLOWS HER BELLY (`CoverageParams.follow`) laid at a belly's size (%): his settings there and what its
+ * sliders moved them by on top, each held to its slider's range (a waistband's sides move with its back, as HIPS & BACK
+ * RISE moves them: `withDial`). One that does not follow is as it is.
  */
-export function followedAt(p: CoverageParams, bellyPct: number): CoverageParams {
+export function followedAt(templateId: string, p: CoverageParams, bellyPct: number): CoverageParams {
   if (!p.follow) return p;
-  const at = followedRises(bellyPct);
-  return withDial(withDial(p, 'rise', onDial('rise', at.front + p.follow.front)), 'riseBack', onDial('riseBack', at.back + p.follow.back));
+  const at = followedValues(templateId, bellyPct);
+  let q = p;
+  for (const d of followDials(templateId)) q = withDial(q, d, onDial(d, at[d]! + movedBy(p.follow, d)));
+  return q;
 }
 /**
- * A slider moved on a waistband that follows her belly: the waistband there, and what it is moved by on top of his
- * settings kept for every other size of her belly. Any other dial, or one that does not follow, as `withDial`.
+ * A slider moved on a template that follows her belly: it is there, and what it is moved by on top of his settings is
+ * kept for every other size of her belly. Any other dial, or a template that does not follow, as `withDial`.
  */
-export function withDialAt(p: CoverageParams, dial: CoverageDial['id'], value: number, bellyPct: number): CoverageParams {
-  const q = withDial(p, dial, value);
-  if (!p.follow || (dial !== 'rise' && dial !== 'riseBack')) return q;
-  const at = followedRises(bellyPct);
-  return { ...q, follow: dial === 'rise' ? { ...p.follow, front: value - at.front } : { ...p.follow, back: value - at.back } };
+export function withDialAt(templateId: string, p: CoverageParams, dial: CoverageDial['id'], value: number, bellyPct: number): CoverageParams {
+  const q = withDial(p, dial, value), dials = followDials(templateId);
+  if (!p.follow || !(dials as readonly string[]).includes(dial)) return q;
+  const at = followedValues(templateId, bellyPct), moved: Partial<Record<FollowDial, number>> = {};
+  for (const d of dials) moved[d] = d === dial ? value - at[d]! : movedBy(p.follow, d);
+  return { ...q, follow: moved };
 }
-/** FOLLOWS HER BELLY switched on (his settings as they are, nothing moved on top) or off (the waistband stays where it is). */
-export function withFollow(p: CoverageParams, on: boolean, bellyPct: number): CoverageParams {
-  return on ? followedAt({ ...p, follow: FOLLOW_AS_SET }, bellyPct) : { ...p, follow: null };
+/** FOLLOWS BELLY switched on (his settings as they are, nothing moved on top) or off (it stays where it is). */
+export function withFollow(templateId: string, p: CoverageParams, on: boolean, bellyPct: number): CoverageParams {
+  return on && canFollow(templateId) ? followedAt(templateId, { ...p, follow: followAsSet(templateId) }, bellyPct) : { ...p, follow: null };
 }
-/** Whether a template's waistband can follow her belly (its own parameters do). */
-export const canFollow = (templateId: string): boolean => !!COVERAGE_TEMPLATES.find((x) => x.id === templateId)?.params.follow;
 
 /**
  * How soft a template's edge is, in trunk or limb fractions (about two centimetres on her). Wider than her triangles,
@@ -956,9 +1003,12 @@ export function templateDetail(p: Pick<CoverageParams, 'detail'>, cut: TopCut): 
 export function wornParams(id: string, saved: CoverageParams): CoverageParams {
   const t = COVERAGE_TEMPLATES.find((x) => x.id === id);
   if (!t) return saved;
-  // (a waistband that can follow her belly, saved before it could: as the template has it -- following -- unless its
-  // rises were set by hand, which it keeps, still where they were set: A SAVED LOOK KEEPS ITS NUMBERS)
-  if (t.params.follow && saved.follow === undefined && (saved.riseFront !== t.params.riseFront || saved.riseBack !== t.params.riseBack)) saved = { ...saved, follow: null };
+  // (a template that can follow her belly, saved before it could: as the template has it -- following -- unless a dial
+  // that follows was set by hand, which it keeps, still where it was set: A SAVED LOOK KEEPS ITS NUMBERS)
+  if (t.params.follow && saved.follow === undefined && followDials(id).some((d) => dialValue({ ...t.params, ...saved }, d) !== dialValue(t.params, d))) saved = { ...saved, follow: null };
+  // (a top saved before its edges were drawn -- the crop top, the maternity tee, 2026-11-23 -- says the neck style it
+  // was painted with, 'crew' for both; drawn, it is the style its template has now, the neck it showed painted)
+  if (t.params.top && saved.top === undefined && saved.neckStyle !== t.params.neckStyle) saved = { ...saved, neckStyle: t.params.neckStyle };
   const own = t.params, deep = own.lowBand?.waist !== undefined && own.lowBand.waist > 0.03 && saved.lowBand === undefined && (saved.riseFront !== own.riseFront || saved.riseSide !== own.riseSide || saved.riseBack !== own.riseBack);
   if (!deep) return { ...own, ...saved };
   const { waist: _itsOwnRises, ...bands } = own.lowBand!;
