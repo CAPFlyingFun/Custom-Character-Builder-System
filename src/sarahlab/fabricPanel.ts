@@ -59,7 +59,7 @@ import { HEM_LIFT_FLAT, HEM_LIFT_RIBBED, TunicDrape } from './tunicDrape';
 import { AUTO_DETAIL, type DetailOverride, type SavedClothes } from './characterSaves';
 import {
   BAND_SHADE, COVERAGE_DIALS, COVERAGE_TEMPLATES, DEFAULT_SHIRT_LENGTH, DRAWN_NECK, GARMENT_SETS, PIECE_KIND_NAMES, TEMPLATE_GROUPS, coverage, cutLayer, designedField, dialValue, dialsFor, paintedShirtLength, PAINTED_SHIRT_DRAPE, pieceKind, shirtHem,
-  templateCut, templateDetail, withDial, wornParams, type CoverageDial, type CoverageParams, type DesignedField, type PieceKind,
+  templateCut, templateDetail, withDial, wornParams, canFollow, followedAt, withDialAt, withFollow, type CoverageDial, type CoverageParams, type DesignedField, type PieceKind,
 } from './paintTemplates';
 
 /** A drawn top's cut as the editor keeps it: what it is cut to (its key), the cut, and what is drawn on it. */
@@ -137,6 +137,8 @@ export const FABRIC_ACTION = Object.freeze({
   trimCustom: 'sarahlab:fabric:trim-colour:custom',
   /** UPLOAD IMAGE: a picture of his own for the piece selected (`pictureStore.ts`). */
   image: 'sarahlab:fabric:image',
+  /** FOLLOWS BELLY: an under-belly waistband laid at her belly's size, by his settings (`paintTemplates.UNDER_BELLY_FOLLOW`), or left where it is set. */
+  follow: 'sarahlab:fabric:follow',
   /** A paint layer up (over the one above it) or down. */
   layerUp: 'sarahlab:fabric:layer-up',
   layerDown: 'sarahlab:fabric:layer-down',
@@ -181,6 +183,11 @@ export interface Piece {
 
 export interface FabricHooks {
   meshes(): readonly THREE.SkinnedMesh[];
+  /**
+   * Her belly's size as the belly slider has it (%): a waistband that FOLLOWS HER BELLY (`CoverageParams.follow`,
+   * `paintTemplates.UNDER_BELLY_FOLLOW`) is laid at it. Missing: 0.
+   */
+  bellyPct?(): number;
   /** Her skin: the mesh carrying `_cloth_cover`, or null before she is in. */
   body(): THREE.SkinnedMesh | null;
   /** What she has on now, by material name. */
@@ -543,6 +550,12 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
   cutoutRow.append(...cutoutButtons.values());
   const cutoutBox = el('div', 'display:flex;flex-direction:column;gap:4px'); cutoutBox.append(heading('CHEST CUTOUT'), cutoutRow);
   dialBox.append(cutoutBox);
+  // FOLLOWS BELLY (an under-belly waistband's): its WAISTBAND (FRONT) and HIPS & BACK RISE his settings at her belly's
+  // size, the two sliders moving it on top; off, it stays where they set it
+  const followButton = button('FOLLOWS BELLY', FABRIC_ACTION.follow, () => toggleFollow());
+  followButton.style.minHeight = '32px'; followButton.style.padding = '4px 8px'; followButton.style.fontSize = '11px';
+  const followBox = el('div', 'display:flex;gap:4px;flex-wrap:wrap;align-items:center'); followBox.append(followButton);
+  dialBox.append(followBox);
   for (const d of dials.values()) dialBox.append(d.wrap);
   // STYLE AS PICTURES: the styles of one kind of piece in a row that scrolls sideways, each a small picture of its cut on
   // her with its name under it; a tap puts it on the piece. The kinds are a row of four above it (the piece's own kind is
@@ -933,7 +946,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     if (!p || !map || i < 0) return;
     p.checkpoint(i);
     // a shirt keeps the length chosen for shirts
-    const withLength = params.length !== null ? withDial(params, 'length', shirtLength) : params;
+    // (a waistband that follows her belly, at her belly's size)
+    const withLength = followedAt(params.length !== null ? withDial(params, 'length', shirtLength) : params, belly());
     templates[i] = { id, params: withLength };
     p.setLayer(i, coverage(map, withLength, cutOf(withLength)?.cut ?? null));
     ensurePaintFabric(); refreshTargets(); touched();
@@ -1073,9 +1087,47 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const i = layer(), t = i >= 0 ? templates[i] : null, p = bodyPaint(), map = regionMap();
     if (!t || !p || !map) return;
     if (dial === 'length') shirtLength = paintedShirtLength(value);
-    templates[i] = { id: t.id, params: withDial(t.params, dial, value) };
+    templates[i] = { id: t.id, params: withDialAt(t.params, dial, value, belly()) };
     p.setLayer(i, coverage(map, templates[i]!.params, cutOf(templates[i]!.params)?.cut ?? null));
     sync(); draw(); touched();
+  }
+  /** FOLLOWS BELLY on (his settings at her belly's size, nothing moved on top) or off (where it is now, kept). */
+  function toggleFollow(): void {
+    const i = layer(), t = i >= 0 ? templates[i] : null, p = bodyPaint(), map = regionMap();
+    if (!t || !p || !map || !canFollow(t.id)) return;
+    p.checkpoint(i);
+    templates[i] = { id: t.id, params: withFollow(t.params, !t.params.follow, belly()) };
+    p.setLayer(i, coverage(map, templates[i]!.params, cutOf(templates[i]!.params)?.cut ?? null));
+    sync(); draw(); touched();
+  }
+  /** Her belly's size (%), as the belly slider has it. */
+  const belly = (): number => hooks.bellyPct?.() ?? 0;
+  /**
+   * A WAISTBAND THAT FOLLOWS HER BELLY, laid again as her belly changes: at most every `FOLLOW_EVERY_MS` while the
+   * slider is dragged, and at the size it comes to rest on. Not a change by hand: a look is not touched by it. (A laying
+   * is 37 to 52 ms on the build machine -- MEASURED 2026-11-23 -- so it is not laid each frame while her belly moves.)
+   */
+  const FOLLOW_EVERY_MS = 250;
+  let followAt = NaN, followLaid = -Infinity;
+  function layFollow(): void {
+    const b = belly();
+    if (b === followAt) return;
+    const now = performance.now();
+    if (now - followLaid < FOLLOW_EVERY_MS) return;
+    const p = paint, map = p ? regionMap() : null;
+    followAt = b; followLaid = now;
+    if (!p || !map) return;
+    let moved = false;
+    for (let i = 0; i < PAINT_LAYER_COUNT; i++) {
+      const t = templates[i];
+      if (!t?.params.follow) continue;
+      const q = followedAt(t.params, b);
+      if (Math.abs((q.riseFront ?? 0) - (t.params.riseFront ?? 0)) < 1e-4 && Math.abs((q.riseBack ?? 0) - (t.params.riseBack ?? 0)) < 1e-4 && Math.abs((q.riseSide ?? 0) - (t.params.riseSide ?? 0)) < 1e-4) continue;
+      templates[i] = { id: t.id, params: q };
+      p.setLayer(i, coverage(map, q, cutOf(q)?.cut ?? null));
+      moved = true;
+    }
+    if (moved) { sync(); draw(); }
   }
 
   let regionCache: { mesh: THREE.Mesh; map: BodyMap | null } | null = null;
@@ -1218,9 +1270,12 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (shaped) { const on = neckShapeOf(tpl!.params); for (const [k, b] of neckShapeButtons) press(b, k === on); }
       cutoutBox.style.display = shaped ? 'flex' : 'none';
       if (shaped) { const on = tpl!.params.cutout?.shape ?? 'none'; for (const [k, b] of cutoutButtons) press(b, k === on); }
+      const follows = !!tpl && canFollow(tpl.id);
+      followBox.style.display = follows ? 'flex' : 'none';
+      if (follows) press(followButton, !!tpl!.params.follow);
       for (const [id, d] of dials) {
         d.wrap.style.display = used.includes(id) ? 'flex' : 'none';
-        if (tpl) { const v = dialValue(tpl.params, id); d.input.value = String(v); d.label.textContent = `${COVERAGE_DIALS.find((x) => x.id === id)!.name} · ${v.toFixed(2)}`; }
+        if (tpl) { const v = dialValue(tpl.params, id); d.input.value = String(v); d.label.textContent = `${COVERAGE_DIALS.find((x) => x.id === id)!.name} · ${v.toFixed(2)}${tpl.params.follow && (id === 'rise' || id === 'riseBack') ? ' · follows belly' : ''}`; }
       }
     }
     removeRow.style.display = (onLayer && kindOf(i)) || (!onLayer && !!hooks.takeOff) ? 'flex' : 'none';
@@ -2032,7 +2087,9 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
         let params = t.params.length !== null ? withDial(t.params, 'length', shirtLength) : t.params;
         if (want.cutout !== undefined) params = { ...params, cutout: want.cutout };
         if (want.neckShape) params = { ...params, neckShape: want.neckShape, neckFront: DRAWN_NECK[want.neckShape] };
-        for (const [dial, value] of Object.entries(want.dials ?? {}) as [CoverageDial['id'], number][]) if (Number.isFinite(value)) params = withDial(params, dial, value);
+        // (an outfit's rise on a waistband that follows her belly is a move on top of his settings; then it is laid at her belly's size)
+        for (const [dial, value] of Object.entries(want.dials ?? {}) as [CoverageDial['id'], number][]) if (Number.isFinite(value)) params = withDialAt(params, dial, value, belly());
+        params = followedAt(params, belly());
         templates[i] = { id: t.id, params };
         p.setLayer(i, coverage(map, params, cutOf(params)?.cut ?? null));
         // (a drawn top's bands in a colour of their own: its trim, not matched)
@@ -2084,7 +2141,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       const l = saved.layers[i] ?? null;
       if (l) {
         // (what a look saved before its template gained a field does not say is the template's own: `wornParams`)
-        const params = l.template ? wornParams(l.template.id, l.template.params) : null;
+        // (and a waistband that follows her belly, at her belly's size)
+        const params = l.template ? followedAt(wornParams(l.template.id, l.template.params), belly()) : null;
         templates[i] = l.template && params ? { id: l.template.id, params } : null;
         p.setLayer(i, params ? coverage(map, params, cutOf(params)?.cut ?? null) : Float32Array.from(base64ToBytes(l.mask), (b) => b / 255));
         paintChoices[i] = l.choice;
@@ -2124,7 +2182,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     setMatched: () => setMatch,
     clearAll,
     navelFlatten,
-    frame() { bridge?.update(); drape?.update(); layHang(); layUnder(); laySlip(); layCutArms(); layLowSlip(); layLowLegs(); layLowSwing(); layLowBand(); },
+    frame() { layFollow(); bridge?.update(); drape?.update(); layHang(); layUnder(); laySlip(); layCutArms(); layLowSlip(); layLowLegs(); layLowSwing(); layLowBand(); },
     slipState() {
       const body = hooks.body();
       if (!slip || slip.mesh !== body) return null;

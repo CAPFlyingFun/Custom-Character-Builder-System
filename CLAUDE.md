@@ -1166,6 +1166,23 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   the raw number, the room by the number over its slope.
 - A CLOTH SKIRT UNDER HER BELLY HANGS FROM THIS LINE (`bottomCut.hoopInside`: how far inside the hoop each point of her
   skin is, as `planeAt` tells a pixel; "The skirts": its ring is laid where that is 8 mm).
+- **ITS HEIGHT FOLLOWS HER BELLY SLIDER** (Joshua, 2026-11-23: "Is there a way when doing under the belly leggings for it
+  to automatically adjust the height so instead of programming each % in, it does it automatically with the slider?";
+  `paintTemplates.ts` `UNDER_BELLY_FOLLOW`, `followedAt`, `CoverageParams.follow`). His five settings, set by eye on his
+  character Blaze: WAISTBAND (FRONT) 0.13, -0.03, -0.06, -0.04, -0.05 and HIPS & BACK RISE 0.37, 0.33, 0.30, 0.27, 0.24 at
+  her belly slider's 0, 50, 100, 150 and 200% (GAME TUNING, his), read on the straight line between two, held at the
+  ends. The two sliders move it ON TOP of his settings, and what they moved it by is kept at every size
+  (`withDialAt`); FOLLOWS BELLY (a chip over them, `FABRIC_ACTION.follow`) off leaves it where it is (`withFollow`).
+  The panel lays it again as her belly changes, at most every 250 ms while the slider is dragged (a laying is 37
+  to 52 ms on the build machine) and at the size it rests on (`fabricPanel.ts` `layFollow`, the room's `bellyPct` hook): not a change by hand. A LOOK SAVED BEFORE keeps
+  its numbers: untouched it follows; with its rises set by hand it keeps them, FOLLOWS BELLY off, until it is pressed
+  (`wornParams`). Her outfit is the same make at any size of her belly (`characterSaves` `make` leaves a following
+  waistband's rises out). The skirt's ring (`hoopOn`) is laid on the style's own line as before. MEASURED in the room
+  (light skin, 1x, no error on the page): its two sliders read 0.13 / 0.37, 0.05 / 0.35, -0.03 / 0.33, -0.06 / 0.30,
+  -0.05 / 0.29, -0.04 / 0.27 and -0.05 / 0.24 at 0, 25, 50, 100, 125, 150 and 200%; WAISTBAND (FRONT) moved 0.05 up at
+  100% read 0.18 at 0% and 0.01 at 150%; FOLLOWS BELLY off at 150% stayed 0.01 / 0.27 at 50%, and on again was his 50%'s.
+  Pictured from her side and three-quarter at 0, 50, 100, 150 and 200%: just under her belly at each.
+  `tests/underBellyFollow.test.ts`.
 - After anything changes the hoop: `tests/bottomCut.test.ts`, `tests/skirtLine.test.ts`; then the room at 0, 100, 150
   and 200% from her front, the side view he marked and behind-below -- and a low skirt at 100 and 200%.
 

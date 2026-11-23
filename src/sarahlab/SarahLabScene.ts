@@ -4276,6 +4276,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       return share;
     };
     fabric = fabricPanel({
+      // (her belly slider's %: an under-belly waistband follows it, `paintTemplates.UNDER_BELLY_FOLLOW`)
+      bellyPct: () => bump,
       // (and her skirt, a garment of its own: `syncSkirt`)
       meshes: () => [...skinned, ...(skirtRoom ? [skirtRoom.mesh as unknown as THREE.SkinnedMesh] : []), ...(garmentRoom && isMaleModel(SARAH_LAB_MODELS[modelIndex].id) ? [garmentRoom.cloth.mesh as unknown as THREE.SkinnedMesh] : [])],
       body: () => skinned.find(m => !!m.geometry.getAttribute('_cloth_cover')) ?? null,

@@ -141,6 +141,12 @@ export interface CoverageParams {
   readonly lowBand?: Partial<LowBands> | null;
   /** A DRAWN bottom's waistband's BOWL (`bottomCut.waistLine`): how long its front is held low before it climbs to her sides; none is the plain sweep. */
   readonly lowBowl?: number | null;
+  /**
+   * THE WAISTBAND FOLLOWS HER BELLY (an under-belly waistband's: `UNDER_BELLY_FOLLOW`): its WAISTBAND (FRONT) and HIPS &
+   * BACK RISE are his settings at her belly's size, read between them, and what a slider has moved each by on top
+   * (`front`, `back`: trunk fractions). Absent or null: they stay where they are set.
+   */
+  readonly follow?: { readonly front: number; readonly back: number } | null;
 }
 
 const NONE: CoverageParams = Object.freeze({ riseFront: null, riseSide: null, riseBack: null, riseFrontWidth: 1, legStart: 0, legEnd: 0, feet: false, hemFront: null, hemBack: null, neckFront: null, neckBack: null, sleeve: -1, topFront: null, topBack: null, topSide: null, strap: 0, strapIn: 0, armhole: null, neckStyle: 'crew', legCut: null, length: null });
@@ -468,6 +474,36 @@ const HIGH_RISE_BANDS = Object.freeze({ waist: HIGH_RISE_WAIST }), LOW_RISE_BAND
 /** The under-belly waistband's bowl (`bottomCut.waistLine`; GAME TUNING to his yellow U over it at 0 and at 100%, 2026-11-15). */
 const UNDER_BELLY_BOWL = 0.7;
 /**
+ * THE UNDER-BELLY WAISTBAND FOLLOWS HER BELLY (Joshua, 2026-11-23: "Is there a way when doing under the belly leggings for
+ * it to automatically adjust the height so instead of programming each % in, it does it automatically with the slider?
+ * Here are the numbers I used for the Under-Belly Legging at 0/50/100/150/200%"). His five settings, set by eye on his
+ * phone on his character Blaze (pictured at each size): WAISTBAND (FRONT) and HIPS & BACK RISE at each of her belly's
+ * sizes (the belly slider's %). Between two sizes each is read on the straight line between their settings; under 0 and
+ * over 200, at the end's. GAME TUNING, his.
+ */
+export const UNDER_BELLY_FOLLOW: readonly { readonly belly: number; readonly front: number; readonly back: number }[] = Object.freeze([
+  { belly: 0, front: 0.13, back: 0.37 },
+  { belly: 50, front: -0.03, back: 0.33 },
+  { belly: 100, front: -0.06, back: 0.30 },
+  { belly: 150, front: -0.04, back: 0.27 },
+  { belly: 200, front: -0.05, back: 0.24 },
+].map((k) => Object.freeze(k)));
+/** A waistband following her belly with nothing moved on top: his settings as they are. */
+const FOLLOW_AS_SET = Object.freeze({ front: 0, back: 0 });
+/** His WAISTBAND (FRONT) and HIPS & BACK RISE at a belly's size (%), between his settings (`UNDER_BELLY_FOLLOW`). */
+export function followedRises(bellyPct: number): { readonly front: number; readonly back: number } {
+  const k = UNDER_BELLY_FOLLOW, b = Number.isFinite(bellyPct) ? bellyPct : 0;
+  if (b <= k[0].belly) return { front: k[0].front, back: k[0].back };
+  for (let i = 1; i < k.length; i++) {
+    if (b <= k[i].belly) {
+      const t = (b - k[i - 1].belly) / (k[i].belly - k[i - 1].belly);
+      return { front: k[i - 1].front + (k[i].front - k[i - 1].front) * t, back: k[i - 1].back + (k[i].back - k[i - 1].back) * t };
+    }
+  }
+  const last = k[k.length - 1];
+  return { front: last.front, back: last.back };
+}
+/**
  * HIS UNDERWEAR'S LINE AND BANDS (GAME TUNING, on the trunk as `RISES`): a low rise -- under his navel in front, over
  * the top of his seat behind -- and a 3.5 cm elastic waistband with a 1 cm hem.
  */
@@ -492,7 +528,8 @@ export const COVERAGE_TEMPLATES: readonly CoverageTemplate[] = Object.freeze(([
   // (its edging half as deep as a waistband's: Joshua, 2026-11-15, of it pictured in black from under her belly: "How
   // wide is the edging? Make it half as thick... Looks too wide, or better yet, make it adjustable once it's working
   // properly" -- 3 cm it was, 1.5 it is; GAME TUNING)
-  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0, { lowBand: UNDER_BELLY_BANDS, lowBowl: UNDER_BELLY_BOWL })],
+  // (its waistband follows her belly's size: `UNDER_BELLY_FOLLOW`, 2026-11-23)
+  ['leggingsUnder', 'Under-belly leggings', 'Leggings', lower(RISES.underBelly, 1.0, { lowBand: UNDER_BELLY_BANDS, lowBowl: UNDER_BELLY_BOWL, follow: FOLLOW_AS_SET })],
   // (his 05: a high rise, its legs' ends on her calves' fullest. It was the over-belly rise to 0.78 of her leg until
   // 2026-11-15; MEASURED off his sheet, 0.70 of the way from his figure's crotch to her ankle, which is 0.72 of her
   // leg's line. A look saved before keeps the numbers it was saved with)
@@ -699,6 +736,35 @@ export function withDial(p: CoverageParams, dial: CoverageDial['id'], value: num
   }
 }
 
+/** A dial's value held to its slider's range. */
+const onDial = (dial: 'rise' | 'riseBack', v: number): number => { const d = COVERAGE_DIALS.find((x) => x.id === dial)!; return Math.min(d.max, Math.max(d.min, v)); };
+/**
+ * A waistband that FOLLOWS HER BELLY (`CoverageParams.follow`) laid at a belly's size (%): his settings there and what its
+ * sliders moved it by on top, each held to its slider's range, its sides moving with its back as HIPS & BACK RISE moves
+ * them (`withDial`). A waistband that does not follow is as it is.
+ */
+export function followedAt(p: CoverageParams, bellyPct: number): CoverageParams {
+  if (!p.follow) return p;
+  const at = followedRises(bellyPct);
+  return withDial(withDial(p, 'rise', onDial('rise', at.front + p.follow.front)), 'riseBack', onDial('riseBack', at.back + p.follow.back));
+}
+/**
+ * A slider moved on a waistband that follows her belly: the waistband there, and what it is moved by on top of his
+ * settings kept for every other size of her belly. Any other dial, or one that does not follow, as `withDial`.
+ */
+export function withDialAt(p: CoverageParams, dial: CoverageDial['id'], value: number, bellyPct: number): CoverageParams {
+  const q = withDial(p, dial, value);
+  if (!p.follow || (dial !== 'rise' && dial !== 'riseBack')) return q;
+  const at = followedRises(bellyPct);
+  return { ...q, follow: dial === 'rise' ? { ...p.follow, front: value - at.front } : { ...p.follow, back: value - at.back } };
+}
+/** FOLLOWS HER BELLY switched on (his settings as they are, nothing moved on top) or off (the waistband stays where it is). */
+export function withFollow(p: CoverageParams, on: boolean, bellyPct: number): CoverageParams {
+  return on ? followedAt({ ...p, follow: FOLLOW_AS_SET }, bellyPct) : { ...p, follow: null };
+}
+/** Whether a template's waistband can follow her belly (its own parameters do). */
+export const canFollow = (templateId: string): boolean => !!COVERAGE_TEMPLATES.find((x) => x.id === templateId)?.params.follow;
+
 /**
  * How soft a template's edge is, in trunk or limb fractions (about two centimetres on her). Wider than her triangles,
  * so the edge is a smooth line across them rather than a staircase along them (Joshua, 2026-10-20: "a few spots where
@@ -890,6 +956,9 @@ export function templateDetail(p: Pick<CoverageParams, 'detail'>, cut: TopCut): 
 export function wornParams(id: string, saved: CoverageParams): CoverageParams {
   const t = COVERAGE_TEMPLATES.find((x) => x.id === id);
   if (!t) return saved;
+  // (a waistband that can follow her belly, saved before it could: as the template has it -- following -- unless its
+  // rises were set by hand, which it keeps, still where they were set: A SAVED LOOK KEEPS ITS NUMBERS)
+  if (t.params.follow && saved.follow === undefined && (saved.riseFront !== t.params.riseFront || saved.riseBack !== t.params.riseBack)) saved = { ...saved, follow: null };
   const own = t.params, deep = own.lowBand?.waist !== undefined && own.lowBand.waist > 0.03 && saved.lowBand === undefined && (saved.riseFront !== own.riseFront || saved.riseSide !== own.riseSide || saved.riseBack !== own.riseBack);
   if (!deep) return { ...own, ...saved };
   const { waist: _itsOwnRises, ...bands } = own.lowBand!;
