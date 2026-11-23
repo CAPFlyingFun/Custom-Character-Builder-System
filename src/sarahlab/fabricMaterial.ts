@@ -162,6 +162,13 @@ export interface FabricCut {
    * its drape's band and stays at its rest height, as approved.
    */
   readonly ownHem?: boolean;
+  /**
+   * A BANDEAU's top edge (`topCut.BANDEAU`): its front's height, its sides' and back's, nothing, and how far round her
+   * its front's height reaches (`BANDEAU.frontReach`). Worked out at each pixel from where it stands round her -- its
+   * place's way out from her middle, against her side seam's depth (the picture's middle depth, which a bandeau's cut
+   * lays there) -- in place of her front's and her back's drawings. Absent: drawn by its drawings.
+   */
+  readonly round?: readonly [number, number, number, number] | null;
 }
 
 interface Patched { readonly uniforms: Record<string, THREE.IUniform>; readonly layers: number; readonly masked: boolean; readonly cut: boolean; details: boolean; low: boolean }
@@ -206,7 +213,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     fabricCutArmL: { value: new THREE.Vector4(0, -1, 0, 0) }, fabricCutArmR: { value: new THREE.Vector4(0, -1, 0, 0) }, fabricCutLimb: { value: new THREE.Vector4(0, -1, -1e9, 1) },
     fabricCutSeam: { value: new THREE.Vector2(0, 1) },
     // (an outline's armscye: off while its rounding, w, is 0)
-    fabricCutSide: { value: new THREE.Vector4(0, 0, 1, 0) }, fabricCutStart: { value: new THREE.Vector3(0, 1e9, 0) },
+    fabricCutSide: { value: new THREE.Vector4(0, 0, 1, 0) }, fabricCutRound: { value: new THREE.Vector4(0, 0, 0, 0) }, fabricCutStart: { value: new THREE.Vector3(0, 1e9, 0) },
     // (1: the hem is the top's own edge, level on her as she is shaped -- `FabricCut.ownHem`)
     fabricCutHem: { value: 0 },
   });
@@ -494,7 +501,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       // where the paint's ramp crosses one half, antialiased over about a pixel
       ...(cut ? ['float fabricEdge(float m) { float w = max(fwidth(m) * 0.75, 0.002); return smoothstep(0.5 - w, 0.5 + w, m); }',
         'uniform sampler2D fabricCutMap;', 'uniform vec4 fabricCutRect;', 'uniform vec4 fabricCutDepth;', 'uniform vec4 fabricCutLimb;', 'uniform vec2 fabricCutSeam;',
-        'uniform vec4 fabricCutSide;', 'uniform vec3 fabricCutStart;', 'uniform float fabricCutHem;',
+        'uniform vec4 fabricCutSide;', 'uniform vec3 fabricCutStart;', 'uniform float fabricCutHem;', ...(masked ? ['uniform vec4 fabricCutRound;'] : []),
         ...idx.flatMap((i) => [`uniform float fabricCutOn${i};`, `uniform vec4 fabricCutBand${i};`, `uniform vec4 fabricCutEdge${i};`]),
         // a top's cut at this pixel's own place (topCut.ts `cutAt`): x, how far inside its neck opening's rim -- looked
         // up where the pixel stands about her frame (its rest place and its movement off her frame, `fabricSlip`), in her
@@ -509,6 +516,13 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           vec4 c = texture2D(fabricCutMap, (place.xy - fabricCutRect.xy) * fabricCutRect.zw);
           float side = smoothstep(-fabricCutDepth.z, fabricCutDepth.z, place.z * fabricCutLimb.w - (fabricCutDepth.x + c.b * fabricCutDepth.y));
           float neck = (mix(c.g, c.r, side) * 255.0 - 127.5) / 127.5 * fabricCutDepth.w;
+          // (A BANDEAU: its top edge a line round her body, at where the place stands round her -- out from her middle,
+          // against her side seam's depth, which its picture keeps as her middle depth: topCut.ts BANDEAU, bandeauHeight)
+          if (fabricCutRound.w > 0.0) {
+            vec2 rd = vec2(place.x - fabricCutLimb.x, place.z * fabricCutLimb.w - (fabricCutDepth.x + c.b * fabricCutDepth.y));
+            float around = 0.5 + 0.5 * rd.y / max(length(rd), 1e-6);
+            neck = clamp(mix(fabricCutRound.y, fabricCutRound.x, smoothstep(0.5, fabricCutRound.w, around)) - place.y, -fabricCutDepth.w, fabricCutDepth.w);
+          }
           if (fabricCutSide.w > 0.0) {
             float so = abs(place.x - fabricCutLimb.x), ss = fabricCutStart.y - fabricCutStart.z * max(0.0, so - fabricCutStart.x);
             float sw = smoothstep(fabricCutSide.y - fabricCutSide.z, fabricCutSide.y + fabricCutSide.z, so) * (1.0 - smoothstep(ss - fabricCutSide.z, ss + fabricCutSide.z, place.y));
@@ -820,6 +834,7 @@ export function setFabricCut(material: THREE.Material, cut: FabricCut | null): v
   (u.fabricCutSide.value as THREE.Vector4).fromArray(cut.side ?? [0, 0, 1, 0]);
   (u.fabricCutStart.value as THREE.Vector3).fromArray(cut.start ?? [0, 1e9, 0]);
   u.fabricCutHem.value = cut.ownHem ? 1 : 0;
+  if (u.fabricCutRound) (u.fabricCutRound.value as THREE.Vector4).fromArray(cut.round ?? [0, 0, 0, 0]);
 }
 /**
  * Each sleeve's end as her arm's bone carries it now (her left arm's, her right's): four numbers each, as

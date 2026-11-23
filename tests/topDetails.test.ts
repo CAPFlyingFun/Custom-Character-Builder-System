@@ -235,10 +235,14 @@ describe('a top\'s details in the shader', () => {
     // (...and before a top's own hem was level on her as she is shaped: d27c39a7… and 23dfa6e1…)
     // (...and before which of her skin a pixel is was read inside the triangle the pixel is drawn for: 04c1d084… her
     // skin's; a sheet does not ask)
-    // (2026-11-19: her paint unpacked two layers to a number, `bodyPaint.PAINT_PACK`, for six layers)
-    expect(compiled(true, 3, null).hash).toBe('60f831b4ca8a567a0aa1b1c282665f5df1528a66473d1d20945ce0fd739807c0');
+    // (2026-11-19: her paint unpacked two layers to a number, `bodyPaint.PAINT_PACK`, for six layers: 60f831b4…)
+    // (2026-11-23: a bandeau's top edge, a line round her worked out at each pixel, `fabricCutRound`)
+    expect(compiled(true, 3, null).hash).toBe('c864c777b5c264abc65d6c41fc7dac903be10dbf024bc06c8328d90203fc364b');
     expect(compiled(false, 1, null).hash).toBe('3fac908ee59b894ad4cb7ae0f0ab5d217cc4f17ad16bccba7bce24f571e8b005');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
+    // A BANDEAU's top edge is a line round her, worked out at each pixel where it stands round her (topCut.ts `BANDEAU`)
+    expect(compiled(true, 3, null).fragmentShader).toContain('float around = 0.5 + 0.5 * rd.y / max(length(rd), 1e-6);');
+    expect(compiled(false, 1, null).fragmentShader).not.toContain('fabricCutRound');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
     // shoulder joints -- and rounds the corner between it and her front's and back's (topCut.ts `armscyeAt`, `smoothMax`);
     // a sheet across her front (her cleavage bridge) reads her front's drawing alone, as before
@@ -293,8 +297,9 @@ describe('a top\'s details in the shader', () => {
       setFabricCut(m, { ...cut, ownHem: false });
       expect(s.uniforms.fabricCutHem.value).toBe(0);
     }
-    // the tops whose hem is their own are the ones cut above a shirt's LENGTH: the sports bra and the boxy crop tee
-    expect(COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params) && !hasNoHem(t.params) && t.params.length === null && t.params.hemFront !== null).map((t) => t.id).sort()).toEqual(['cropTee', 'sportsBra']);
+    // the tops whose hem is their own are the ones cut above a shirt's LENGTH: the sports bra and the boxy crop tee, and
+    // since 2026-11-23 the crop top, the maternity tee and the bandeau
+    expect(COVERAGE_TEMPLATES.filter((t) => isCutTop(t.params) && !hasNoHem(t.params) && t.params.length === null && t.params.hemFront !== null).map((t) => t.id).sort()).toEqual(['bandeau', 'crop', 'cropTee', 'maternity', 'sportsBra']);
     expect(skin.fragmentShader).toContain('vec2(fabricCutLimb.x + place.z * fabricCutLimb.w - fabricCutSide.x, place.y)');
     expect(skin.fragmentShader).toContain('neck = max(neck, arm) + sh * sh * fabricCutSide.w * 0.25;');
     expect(sheet.fragmentShader).not.toContain('fabricCutSide.x');

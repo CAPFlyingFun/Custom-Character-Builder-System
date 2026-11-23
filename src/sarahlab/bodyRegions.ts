@@ -270,12 +270,7 @@ export function mapBody(input: BodyMapInput): BodyMap {
   const side = new Int8Array(n), front = new Int8Array(n), across = new Float32Array(n), collar = new Float32Array(n), forward = new Float32Array(n), lateral = new Float32Array(n), around = new Float32Array(n), sideFacing = new Float32Array(n), upFacing = new Float32Array(n), legAround = new Float32Array(n).fill(NaN);
 
   // her spine as a line through the torso's joints, for skin facing sideways (the flanks of her belly)
-  const spine = (['pelvis', 'spine', 'chest', 'neck'] as const).map((k) => J[k]).sort((a, b) => a[1] - b[1]);
-  const spineZ = (y: number): number => {
-    if (y <= spine[0][1]) return spine[0][2];
-    for (let i = 1; i < spine.length; i++) if (y <= spine[i][1]) { const a = spine[i - 1], b = spine[i], u = (y - a[1]) / Math.max(1e-6, b[1] - a[1]); return a[2] + (b[2] - a[2]) * u; }
-    return spine[spine.length - 1][2];
-  };
+  const spineZ = spineLine(J);
   for (let v = 0; v < n; v++) {
     const p = at(v), t = (p[1] - hipMid[1]) / trunkLen, nz = N[v * 3 + 2] * facing;
     const f = Math.abs(nz) >= L.sideways ? (nz >= 0 ? 1 : -1) : ((p[2] - spineZ(p[1])) * facing >= L.seamAhead * trunkLen ? 1 : -1);
@@ -333,6 +328,24 @@ export function mapBody(input: BodyMapInput): BodyMap {
  * regions are told, with her two sides made the same). What a top's cut asks: a sleeve's end cuts her arm's skin, a hem
  * the rest of her (`topCut.ts`).
  */
+/** Her spine as a line through her torso's joints: its depth at a height (her rest frame's own z). */
+function spineLine(J: Readonly<Record<'pelvis' | 'spine' | 'chest' | 'neck', readonly [number, number, number]>>): (y: number) => number {
+  const spine = (['pelvis', 'spine', 'chest', 'neck'] as const).map((k) => J[k]).sort((a, b) => a[1] - b[1]);
+  return (y: number): number => {
+    if (y <= spine[0][1]) return spine[0][2];
+    for (let i = 1; i < spine.length; i++) if (y <= spine[i][1]) { const a = spine[i - 1], b = spine[i], u = (y - a[1]) / Math.max(1e-6, b[1] - a[1]); return a[2] + (b[2] - a[2]) * u; }
+    return spine[spine.length - 1][2];
+  };
+}
+/**
+ * Her side seam's depth at a height, where `around` is 0.5: `MAP_LINES.seamAhead` of her trunk ahead of her spine's
+ * line, counted as a top's frame counts depth (her rest z times her facing). Null for a map without her joints.
+ */
+export function seamDepth(map: BodyMap): ((y: number) => number) | null {
+  if (!map.joints) return null;
+  const spineZ = spineLine(map.joints), f = map.facing, ahead = MAP_LINES.seamAhead * map.trunkLength;
+  return (y: number) => spineZ(y) * f + ahead;
+}
 export function armSkin(map: BodyMap): Float32Array {
   const out = new Float32Array(map.region.length);
   for (let v = 0; v < out.length; v++) out[v] = Number.isFinite(map.arm[v]) ? 1 : 0;

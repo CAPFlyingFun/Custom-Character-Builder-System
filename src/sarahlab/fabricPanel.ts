@@ -42,7 +42,7 @@ import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricL
 import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, hoopInside, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, planeFront, planeShare, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
 import { makePulledSlip, pulledSlipDriver, type PulledDriver } from './pulledSlip';
 import { MOTION_SHAPES } from './levelLine';
-import { ARMSCYE, CHEST_CUTOUT, NECK_RANGE, TOP_CUT, type CutoutParams, type CutoutShape, TOP_OUTLINES, cutPicture, hasNoHem, isCatsuit, isCutTop, isOnePiece, sleevePlane, takesTurtleneck, topFrame, type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind } from './topCut';
+import { ARMSCYE, BANDEAU, CHEST_CUTOUT, NECK_RANGE, TOP_CUT, type CutoutParams, type CutoutShape, TOP_OUTLINES, cutPicture, hasNoHem, isCatsuit, isCutTop, isOnePiece, sleevePlane, takesTurtleneck, topFrame, type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind } from './topCut';
 import type { TopDetailSpec } from './topDetails';
 import { layCarried, poseTurns, settleCarry } from './designPose';
 import { besideShapes, makeFrameSlip, makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
@@ -51,7 +51,7 @@ import type { DetailKeep } from './bodyDetail';
 import { DEFAULT_LAYER_DETAIL, DEFAULT_VULVA_KEEP, resolveDetail, resolveVulva, type LayerDetail, type ResolvedDetail } from './detailMaterials';
 import { BRUSH_RANGE_CM, BodyPaint, PAINT_LAYER_COUNT, packLayer } from './bodyPaint';
 import { LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, type LineMode } from './levelLine';
-import { BODY_REGIONS, REGION_GROUPS, groupOf, groupRegions, type BodyMap, type RegionSide } from './bodyRegions';
+import { BODY_REGIONS, REGION_GROUPS, groupOf, groupRegions, seamDepth, type BodyMap, type RegionSide } from './bodyRegions';
 import { CleavageBridge } from './cleavageBridge';
 import { TINT_BASE_COLOUR, readTint, tintLabel, tintPixels } from './fabricTint';
 import { keepUpload, pictureImage, pictureName } from './pictureStore';
@@ -961,7 +961,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     if (!body || !map?.rest || !map.joints) return null;
     if (frameOf?.mesh !== body) {
       const index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array, J = map.joints;
-      const frame = index ? topFrame({ rest: map.rest, index, unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }}) : null;
+      const frame = index ? topFrame({ rest: map.rest, index, unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }, sideSeam: seamDepth(map) }) : null;
       frameOf = { mesh: body, frame };
       for (const t of cutTextures.values()) t.dispose();
       cuts.clear(); cutTextures.clear(); wornCut = null;
@@ -1059,6 +1059,8 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       armL: arm(f.arms[0]), armR: arm(f.arms[1]), limb: [f.mid, cut.spec.sleeve, Number.isFinite(cut.spec.hemY) ? cut.spec.hemY : -1e9, f.facing], seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U],
       side: S ? [S.z0, S.gate, ARMSCYE.feather * U, ARMSCYE.join * U] : null, start: S && Number.isFinite(S.startY) ? [S.startX, S.startY, S.slope] : null,
       ownHem: worn.ownHem,
+      // (a bandeau's top edge, round her: `topCut.BANDEAU`)
+      round: cut.spec.bandeau && f.seamRow ? [cut.spec.bandeau.front, cut.spec.bandeau.side, 0, BANDEAU.frontReach] : null,
     };
   }
   /** A one-piece's or the catsuit's neck shape as it is worn: its own pick, else its outline's or its template's style; past the base of her neck, a turtleneck. */
