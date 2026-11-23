@@ -554,7 +554,9 @@ describe('the mouth\'s inside', () => {
 /** The face's lines in the shader, each of which must sit behind the switch. */
 const VERTEX_EFFECTS = ['objectNormal.yz = vec2(', 'transformed.yz = vec2(', 'transformed.yz = '];
 const FRAGMENT_EFFECTS = ['diffuseColor.rgb *= mix(vec3(1.0)', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceLipTint.rgb * faceLipShade', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceM, faceInner);', 'faceEye(vFaceF.xy', 'diffuseColor.rgb = mix(diffuseColor.rgb, faceBC', 'roughnessFactor = mix(roughnessFactor', 'normal = normalize(mix(normal, nonPerturbedNormal, faceWet));', 'normal = normalize(mix(normal, vec3(0.0, 0.0, 1.0), faceInner));'];
-const UNIFORMS = ['faceBlink', 'faceBrow', 'faceBrowColour', 'faceGazeL', 'faceGazeR', 'faceIris', 'faceIrisAmber', 'faceIrisRing', 'faceJaw', 'faceLashes', 'faceLipTint', 'faceLips', 'faceOn', 'facePupil'];
+// (the details' own are handed every program, and declared only by one that has them: 2026-11-22)
+const DETAIL_UNIFORMS = ['faceBrowShape', 'faceDetail', 'faceIrisSplit', 'faceMarks', 'faceMarksAreas', 'faceMarksColour'];
+const UNIFORMS = ['faceBlink', 'faceBrow', 'faceBrowColour', 'faceBrowShape', 'faceDetail', 'faceGazeL', 'faceGazeR', 'faceIris', 'faceIrisAmber', 'faceIrisRing', 'faceIrisSplit', 'faceJaw', 'faceLashes', 'faceLipTint', 'faceLips', 'faceMarks', 'faceMarksAreas', 'faceMarksColour', 'faceOn', 'facePupil'];
 
 describe('the patch', () => {
   it('is applied once, and later changes are uniforms', () => {
@@ -654,7 +656,7 @@ describe('the patch', () => {
     expect(frag).toContain('faceInner = faceMouthAmount(vFaceJaw, vFaceF, vFacePosedY, faceJaw, faceDist, faceGap);');
     // its uniforms, declared once in each stage that reads them, and it starts off
     for (const name of UNIFORMS) {
-      expect(count(frag, ` ${name};`), name).toBe(1);
+      expect(count(frag, ` ${name};`), name).toBe(DETAIL_UNIFORMS.includes(name) ? 0 : 1);
       expect(uniforms[name], name).toBeDefined();
     }
     expect(count(vert, 'uniform float faceOn;')).toBe(1);

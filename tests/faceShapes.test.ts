@@ -14,7 +14,7 @@ import type { FaceShapeLook } from '../src/sarahlab/headLook';
 const BOUND_MM: Record<string, number> = {
   faceWidth: 4.2, faceLength: 8.6, forehead: 6.9, jawWidth: 9.4, jawCorner: 4.5, chinLength: 7.6, chinWidth: 4.8, chinForward: 7.5,
   cheekFullness: 7.9, cheekbones: 5.3, noseWidth: 3.7, noseLength: 4.3, noseBridge: 3.7, noseTip: 3.8, lipFullness: 2.3, mouthWidth: 4.5,
-  eyeSize: 1.6, eyeSpacing: 3.8, eyeTilt: 1.4, browHeight: 4.0, earSize: 3.2,
+  eyeSize: 1.6, eyeSpacing: 3.8, eyeTilt: 1.4, browHeight: 4.0, eyeDepth: 3.4, earSize: 3.2,
 };
 /** No triangle's normal turns further than this (cosine), nor keeps less than this share of its area: none folds. */
 const MIN_COS = 0.5, MIN_AREA = 0.15;

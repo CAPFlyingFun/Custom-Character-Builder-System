@@ -7,7 +7,7 @@
  * Pure.
  */
 import type { EyeMode } from './faceMotion';
-import { EYE_COLOURS, LIP_COLOURS, swatchOf, type FaceSwatch } from './faceLook';
+import { EYE_COLOURS, IRIS_INNER_COLOURS, LIP_COLOURS, MARK_COLOURS, swatchOf, type FaceSwatch } from './faceLook';
 import { HAIR_COLOURS } from './hairColours';
 
 /** The order EYES steps through: alive by default, then on the viewer, then still. */
@@ -97,4 +97,31 @@ export function beardLine(style: string, percent: number): string {
 }
 export function beardColourLine(colour: string | null): string {
   return `BEARD COLOUR · ${colour ? (swatchOf(HAIR_COLOURS, colour)?.name ?? `custom ${colour.toLowerCase()}`) : 'matches his hair'}`;
+}
+
+// THE FACE'S DETAILS' LINES (2026-11-22, for GDM's Mary and John Fisher: freckles, a two-tone iris, a brow's shape, the
+// face's details, a picture on her skin)
+const pct = (v: number, lo = 0): number => Math.round(Math.max(lo, Math.min(100, Number.isFinite(v) ? v : 0)));
+/** INNER RING: null is one colour, the ring her eye colour gives. */
+export function eyeInnerLine(colour: string | null): string {
+  return `INNER RING · ${colour ? (swatchOf(IRIS_INNER_COLOURS, colour)?.name ?? `custom ${colour.toLowerCase()}`) : 'none (one colour)'}`;
+}
+export function eyeInnerSizeLine(percent: number): string { return `INNER RING SIZE ${pct(percent)}%${pct(percent) === 50 ? ' (as before)' : ''}`; }
+/** A brow shape's slider: ARCH, TILT, THICKNESS -100..100; STRAIGHT 0..100. */
+export function browShapeLine(name: string, percent: number): string {
+  const p = Math.round(Math.max(-100, Math.min(100, Number.isFinite(percent) ? percent : 0)));
+  return p === 0 ? `${name} · her own` : `${name} ${p > 0 && name !== 'STRAIGHT' ? '+' : p < 0 ? '-' : ''}${Math.abs(p)}%`;
+}
+export function marksLine(percent: number): string { return `FRECKLES · ${pct(percent) === 0 ? 'none' : `${pct(percent)}%`}`; }
+export function marksSizeLine(percent: number): string { return `FRECKLE SIZE ${pct(percent)}%`; }
+export function marksColourLine(colour: string | null): string {
+  return `FRECKLE COLOUR · ${colour ? (swatchOf(MARK_COLOURS, colour)?.name ?? `custom ${colour.toLowerCase()}`) : MARK_COLOURS[0].name}`;
+}
+/** A face detail's slider, 0..100. */
+export function detailLine(name: string, percent: number): string { return `${name} · ${pct(percent) === 0 ? 'none' : `${pct(percent)}%`}`; }
+/** The picture on her skin: none, the picture's name and how much of it, or kept on another device. */
+export function overlayLine(state: { readonly name: string; readonly amount: number; readonly missing: boolean } | null): string {
+  if (!state) return 'SKIN PICTURE · none';
+  if (state.missing) return 'SKIN PICTURE · not on this device (import the character with its picture)';
+  return `SKIN PICTURE · ${state.name || 'picture'} · ${pct(state.amount * 100)}%`;
 }

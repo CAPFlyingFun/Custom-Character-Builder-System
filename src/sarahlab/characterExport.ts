@@ -14,7 +14,7 @@ import { PICTURE_ID, pictureExtension } from './pictureStore';
 
 export const EXPORT_JSON_NAME = 'characters.json';
 /** The most pictures, and bytes of one, an import takes (an untrusted file). */
-export const IMPORT_LIMITS = Object.freeze({ pictures: 200, bytes: 8 * 1024 * 1024 });
+export const IMPORT_LIMITS = Object.freeze({ pictures: 200, bytes: 16 * 1024 * 1024 });
 
 /** The chosen characters (by name, as saved) and the outfits they need; `allOutfits`: every shared outfit as well. */
 export function bookFor(book: CharacterBook, names: readonly string[], allOutfits: boolean): CharacterBook {

@@ -54,6 +54,31 @@ export const LIP_COLOURS: readonly FaceSwatch[] = Object.freeze([
   { id: 'dark', name: 'deep brown', colour: '#3c1b1c' },
 ].map((s) => Object.freeze(s)));
 
+/**
+ * A TWO-TONE IRIS's inner ring (2026-11-22, for Mary's hazel eyes: a golden ring round the pupil, green outside it): the
+ * colours offered for it, golds and ambers to browns, a green and a grey. GAME TUNING by eye on the reference.
+ */
+export const IRIS_INNER_COLOURS: readonly FaceSwatch[] = Object.freeze([
+  { id: 'gold', name: 'gold', colour: '#bf8f45' },
+  { id: 'amber', name: 'amber', colour: '#b57a2c' },
+  { id: 'honey', name: 'honey', colour: '#a06c34' },
+  { id: 'brown', name: 'brown', colour: '#6e4527' },
+  { id: 'dark-brown', name: 'dark brown', colour: '#40291a' },
+  { id: 'green', name: 'green', colour: '#7a9446' },
+  { id: 'grey', name: 'grey', colour: '#9a9a8c' },
+].map((s) => Object.freeze(s)));
+
+/** FRECKLES' colours: light to dark browns and a red-brown. GAME TUNING by eye; the first is theirs when none is chosen. */
+export const MARK_COLOURS: readonly FaceSwatch[] = Object.freeze([
+  { id: 'warm', name: 'warm brown', colour: '#a8673f' },
+  { id: 'light', name: 'light brown', colour: '#c58e62' },
+  { id: 'brown', name: 'brown', colour: '#7c4a2b' },
+  { id: 'dark', name: 'dark brown', colour: '#553420' },
+  { id: 'red', name: 'red brown', colour: '#9c4b2f' },
+].map((s) => Object.freeze(s)));
+/** Freckles' colour when the look names none. */
+export const MARK_COLOUR = MARK_COLOURS[0].colour;
+
 /** A swatch by its colour, or null (her own, or a colour picked off the lists). */
 export function swatchOf(list: readonly FaceSwatch[], colour: string | null): FaceSwatch | null {
   return colour ? list.find((s) => s.colour === colour.toLowerCase()) ?? null : null;
@@ -87,6 +112,11 @@ export const IRIS_PALETTE = {
 } as const;
 
 const luma = (c: readonly number[]): number => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+/** A picked colour, linear, lifted to `IRIS_PALETTE.floor` if darker (a darker iris can not be told from its pupil). */
+function liftedLinear(hex: string): Rgb {
+  const c = colourLinear(hex), l = luma(c), f = IRIS_PALETTE.floor;
+  return l >= f ? c : (l > 1e-6 ? c.map((x) => x * f / l) : [f, f, f]) as Rgb;
+}
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 const smooth = (e0: number, e1: number, x: number): number => { const t = clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
 
@@ -122,7 +152,22 @@ export function irisMean(state: Pick<FaceRigState, 'iris' | 'irisAmber' | 'irisR
  */
 export function faceRigLook(head: HeadLook, browFromHair: string | null): Partial<FaceRigState> {
   const out: { -readonly [K in keyof FaceRigState]?: FaceRigState[K] } = {};
-  if (head.eyes.colour) Object.assign(out, irisPalette(head.eyes.colour));
+  // a two-tone iris: its inner ring as chosen, its outer colour the base itself (a picked colour, as dark as a pupil's
+  // floor at the darkest; or her own); one colour alone: the palette, as before
+  if (head.eyes.inner) {
+    out.irisInner = colourLinear(head.eyes.inner);
+    if (head.eyes.colour) out.iris = liftedLinear(head.eyes.colour);
+  } else if (head.eyes.colour) Object.assign(out, irisPalette(head.eyes.colour));
+  if (head.eyes.innerSize !== undefined && head.eyes.innerSize !== 0.5) out.irisSplit = head.eyes.innerSize;
+  const b = head.brows;
+  if (b.arch || b.straight || b.tilt || b.thick) out.browShape = { arch: b.arch ?? 0, straight: b.straight ?? 0, tilt: b.tilt ?? 0, thick: b.thick ?? 0 };
+  const m = head.marks;
+  if (m && m.amount > 0 && (m.nose || m.cheeks || m.forehead || m.shoulders)) {
+    out.marks = { amount: m.amount, size: m.size, colour: colourLinear(m.colour ?? MARK_COLOUR), areas: [m.nose ? 1 : 0, m.cheeks ? 1 : 0, m.forehead ? 1 : 0, m.shoulders ? 1 : 0] };
+  }
+  // (deep-set eyes are a face slider: its shade comes with it, from 0 up)
+  const d = head.detail, socket = Math.max(0, Math.min(1, head.face.eyeDepth ?? 0));
+  if (d?.crease || d?.smile || d?.philtrum || socket > 0) out.detail = { crease: d?.crease ?? 0, socket, smile: d?.smile ?? 0, philtrum: d?.philtrum ?? 0 };
   const brow = head.brows.colour ?? browFromHair;
   if (brow) out.browColour = colourLinear(brow);
   if (head.brows.amount !== HEAD_DEFAULT.brows.amount) out.brow = head.brows.amount;

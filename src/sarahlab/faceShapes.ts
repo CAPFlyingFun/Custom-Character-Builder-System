@@ -112,6 +112,15 @@ const FIELDS: Readonly<Record<string, readonly Term[]>> = {
   eyeTilt: [{ c: EYE, r: [0.024, 0.018, 0.03], m: [[0, 0, 0], [0.25, 0, 0], [0, 0, 0]], mirror: true }],
   /** max 4.0 mm. Her brows higher or lower. */
   browHeight: [{ c: BROW, r: [0.03, 0.013, 0.03], v: [0, 0.0042, 0], mirror: true }],
+  /**
+   * max 3.4 mm. DEEP-SET EYES (Joshua, 2026-11-22, for GDM's John: "deep-set eyes"): her eyes and the skin round them
+   * back into her head, the ridge of her brow a little forward and down over them; at -1 her eyes stand out. Its shade,
+   * the socket's shadow, is the face layer's (`faceRig.ts` `FACE_DETAIL.socket`), laid by the same number.
+   */
+  eyeDepth: [
+    { c: [EYE[0], EYE[1] + 0.003, EYE[2]], r: [0.023, 0.016, 0.03], v: [0, 0, -0.0034], mirror: true },
+    { c: BROW, r: [0.028, 0.011, 0.03], v: [0, -0.0005, 0.0012], mirror: true },
+  ],
   // EARS
   /** max 3.2 mm. Her ears bigger or smaller, about their root. */
   earSize: [{ c: EAR, r: [0.016, 0.056, 0.045], m: k3(0.16, 0.24, 0.24), mirror: true }],
@@ -139,6 +148,7 @@ export const FACE_SLIDERS: readonly FaceSlider[] = [
   { id: 'eyeSpacing', name: 'EYE SPACING', group: 'EYES & BROWS' },
   { id: 'eyeTilt', name: 'EYE TILT', group: 'EYES & BROWS' },
   { id: 'browHeight', name: 'BROW HEIGHT', group: 'EYES & BROWS' },
+  { id: 'eyeDepth', name: 'DEEP-SET EYES', group: 'EYES & BROWS' },
   { id: 'earSize', name: 'EAR SIZE', group: 'EARS' },
 ];
 

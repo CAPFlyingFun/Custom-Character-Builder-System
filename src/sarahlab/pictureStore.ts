@@ -12,6 +12,11 @@
 
 /** GAME TUNING: the longest side a picture is kept at. A fabric's print tiles; 1024 is sharp on a phone and small. */
 export const PICTURE_MAX = 1024;
+/**
+ * A picture laid over a whole skin (`headLook.ts` `OverlayLook`, 2026-11-22) is kept as large as the skin it lies on
+ * (2048: `skinChoices.ts`'s EVEN skins): its detail is a face's, in a corner of the skin's layout.
+ */
+export const OVERLAY_MAX = 2048;
 export const PICTURE_DATABASE = 'character-builder-pictures';
 const STORE = 'pictures';
 /** An id: the first 16 hex characters of the SHA-256 of the kept file's bytes. */
@@ -97,11 +102,11 @@ export function pictureImage(id: string): Promise<ImageBitmap | HTMLImageElement
  * A picture from the phone made small and kept: a PNG stays a PNG (it may be see-through), anything else becomes a
  * JPEG. Its id and its name; throws with words for the screen when the file is not a picture this browser can read.
  */
-export async function keepUpload(file: File): Promise<{ id: string; name: string }> {
+export async function keepUpload(file: File, max: number = PICTURE_MAX): Promise<{ id: string; name: string }> {
   const url = URL.createObjectURL(file);
   let image: HTMLImageElement;
   try { image = new Image(); image.src = url; await image.decode(); } catch { throw new Error('Could not read that picture. Try a PNG, JPEG or WebP.'); } finally { URL.revokeObjectURL(url); }
-  const k = Math.min(1, PICTURE_MAX / Math.max(image.naturalWidth, image.naturalHeight, 1));
+  const k = Math.min(1, max / Math.max(image.naturalWidth, image.naturalHeight, 1));
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(image.naturalWidth * k)); canvas.height = Math.max(1, Math.round(image.naturalHeight * k));
   const ctx = canvas.getContext('2d');

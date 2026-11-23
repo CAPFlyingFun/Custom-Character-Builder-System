@@ -9,7 +9,12 @@
  *   LASHES       AMOUNT
  *   LIPS         SHADE swatches, AMOUNT
  *   FACIAL HAIR  (his: `hooks.beard`) STYLE chips, THICKNESS, COLOUR (match his hair, the list, custom)
+ *   FRECKLES     AMOUNT, SIZE, COLOUR, AREAS chips (nose, cheeks, forehead, shoulders)
+ *   FACE DETAIL  EYELID CREASE, DEEP-SET EYES (the face slider `eyeDepth`), SMILE LINES, PHILTRUM
+ *   SKIN PICTURE (`hooks.uploadOverlay`) UPLOAD, AMOUNT, REMOVE, TEMPLATE
  *   FACE SHAPE   FACE TYPE chips, then her sliders in a <details> a group, RESET FACE
+ * and in EYES an INNER RING (a two-tone iris: its colour and size), in BROWS their SHAPE (arch, straight, tilt, thickness);
+ * all of these 2026-11-22, for GDM's Mary and John Fisher.
  *   RESET HEAD   every part back to the body's own head (`hooks.own`; `HEAD_DEFAULT`)
  *
  * On HIM (`hooks.male`) its lines say "his" where they say "her".
@@ -31,14 +36,15 @@
  * Plain DOM: no three.js, no room.
  */
 import {
-  BEARD_NAMES, beardColourLine, beardLine, browColourLine, browsLine, eyeColourLine, faceGroupLine, faceSliderLine, hairColourLine, hairLengthLine, lashesLine, lipColourLine, lipsLine,
+  BEARD_NAMES, beardColourLine, beardLine, browColourLine, browShapeLine, browsLine, detailLine, eyeColourLine, eyeInnerLine, eyeInnerSizeLine, faceGroupLine, faceSliderLine, hairColourLine, hairLengthLine, lashesLine,
+  lipColourLine, lipsLine, marksColourLine, marksLine, marksSizeLine, overlayLine,
 } from './faceChoices';
 import { BEARD_STYLE_IDS } from './faceRig';
-import { EYE_COLOURS, LIP_COLOURS, type FaceSwatch } from './faceLook';
+import { EYE_COLOURS, IRIS_INNER_COLOURS, LIP_COLOURS, MARK_COLOURS, type FaceSwatch } from './faceLook';
 import { FACE_SLIDERS, FACE_TYPES, type FaceGroup } from './faceShapes';
 import { HAIR_COLOURS } from './hairColours';
 import { HAIR_STYLES, HAIR_STYLE_NONE, type HairStyle } from './hairStyles';
-import { BEARD_NONE, HEAD_DEFAULT, isDefaultHead, lookColour, type FaceShapeLook, type HeadLook, type LookColour } from './headLook';
+import { BEARD_NONE, DETAIL_NONE, HEAD_DEFAULT, MARKS_NONE, isDefaultHead, lookColour, type DetailLook, type FaceShapeLook, type HeadLook, type LookColour, type MarksLook } from './headLook';
 
 /** What the panel reads and drives; it never imports the room. */
 export interface HeadPanelHooks {
@@ -54,6 +60,15 @@ export interface HeadPanelHooks {
   beard?(): boolean;
   /** Whether the body is his (the lines say "his"); absent, hers. */
   male?(): boolean;
+  /**
+   * A picture of his own over the skin (SKIN PICTURE, offered only with this): keep the file and put it on the look;
+   * resolves with words for the screen when it could not, else null.
+   */
+  uploadOverlay?(file: File): Promise<string | null>;
+  /** The picture on the look now: its name, and whether this device has it. */
+  overlayState?(): { readonly name: string; readonly missing: boolean } | null;
+  /** Save a picture of the skin worn now, with its layout drawn on it, to paint a SKIN PICTURE over. */
+  overlayTemplate?(): void;
 }
 
 /** `data-field` of each line (its slider follows it) and of each swatch row, for a probe. A face slider's is `${faceSlider}<id>`. */
@@ -69,6 +84,20 @@ export const HEAD_PANEL_FIELD = Object.freeze({
   beardAmount: 'sarahlab-head-beard-amount',
   beardColour: 'sarahlab-head-beard-colour',
   faceSlider: 'sarahlab-head-face-',
+  eyeInner: 'sarahlab-head-eye-inner',
+  eyeInnerSize: 'sarahlab-head-eye-inner-size',
+  browArch: 'sarahlab-head-brow-arch',
+  browStraight: 'sarahlab-head-brow-straight',
+  browTilt: 'sarahlab-head-brow-tilt',
+  browThick: 'sarahlab-head-brow-thick',
+  marksAmount: 'sarahlab-head-marks-amount',
+  marksSize: 'sarahlab-head-marks-size',
+  marksColour: 'sarahlab-head-marks-colour',
+  detailCrease: 'sarahlab-head-detail-crease',
+  detailSmile: 'sarahlab-head-detail-smile',
+  detailPhiltrum: 'sarahlab-head-detail-philtrum',
+  overlay: 'sarahlab-head-overlay',
+  overlayAmount: 'sarahlab-head-overlay-amount',
 });
 
 /**
@@ -86,6 +115,13 @@ export const HEAD_PANEL_ACTION = Object.freeze({
   faceType: 'sarahlab:head:face-type:',
   resetFace: 'sarahlab:head:reset-face',
   resetHead: 'sarahlab:head:reset-head',
+  eyeInner: 'sarahlab:head:eye-inner:',
+  marksColour: 'sarahlab:head:marks-colour:',
+  /** `${marksArea}<nose | cheeks | forehead | shoulders>` */
+  marksArea: 'sarahlab:head:marks-area:',
+  overlayUpload: 'sarahlab:head:overlay-upload',
+  overlayRemove: 'sarahlab:head:overlay-remove',
+  overlayTemplate: 'sarahlab:head:overlay-template',
 });
 
 /** `data-role` of the panel, of each section (`${section}<name>`), of each face group's <details> (`${faceGroup}<group>`) and of each colour input. */
@@ -94,6 +130,7 @@ export const HEAD_PANEL_ROLE = Object.freeze({
   section: 'sarahlab-head-section-',
   faceGroup: 'sarahlab-head-group-',
   colourInput: 'sarahlab-head-colour-input-',
+  overlayInput: 'sarahlab-head-overlay-input',
 });
 
 /** Smallest touch targets, px (GAME TUNING, Joshua: "it's hard to press certain buttons"; garmentPanel's chips are 30). */
@@ -153,9 +190,19 @@ interface SliderSpec {
 interface Slider { readonly spec: SliderSpec; readonly line: HTMLDivElement; readonly input: HTMLInputElement }
 
 /** Which colour part a swatch row sets. */
-type ColourPart = 'hair' | 'eyes' | 'brows' | 'lips' | 'beard';
-const withColour = (l: HeadLook, part: ColourPart, colour: LookColour): HeadLook => ({ ...l, [part]: { ...(part === 'beard' ? l.beard ?? BEARD_NONE : l[part]), colour } }) as HeadLook;
-const colourOf = (l: HeadLook, part: ColourPart): LookColour => (part === 'beard' ? l.beard?.colour ?? null : l[part].colour);
+type ColourPart = 'hair' | 'eyes' | 'brows' | 'lips' | 'beard' | 'eyeInner' | 'marks';
+const withColour = (l: HeadLook, part: ColourPart, colour: LookColour): HeadLook => {
+  if (part === 'eyeInner') return { ...l, eyes: { ...l.eyes, inner: colour } };
+  if (part === 'marks') return { ...l, marks: { ...(l.marks ?? MARKS_NONE), colour } };
+  return ({ ...l, [part]: { ...(part === 'beard' ? l.beard ?? BEARD_NONE : l[part]), colour } }) as HeadLook;
+};
+const colourOf = (l: HeadLook, part: ColourPart): LookColour => (part === 'beard' ? l.beard?.colour ?? null : part === 'eyeInner' ? l.eyes.inner ?? null : part === 'marks' ? l.marks?.colour ?? null : l[part].colour);
+const marksOf = (l: HeadLook): MarksLook => l.marks ?? MARKS_NONE;
+const detailOf = (l: HeadLook): DetailLook => l.detail ?? DETAIL_NONE;
+/** The face sliders the FACE DETAIL section shows (not in their FACE SHAPE group). */
+const DETAIL_FACE_SLIDERS: readonly string[] = ['eyeDepth'];
+/** The freckles' areas, as the look and the chips name them. */
+const MARK_AREAS = [['nose', 'NOSE'], ['cheeks', 'CHEEKS'], ['forehead', 'FOREHEAD'], ['shoulders', 'SHOULDERS']] as const;
 
 const pct = (u: number): number => Math.round(u * 100);
 
@@ -183,6 +230,42 @@ const SLIDERS: readonly SliderSpec[] = [
     line: (x, l) => beardLine((l.beard ?? BEARD_NONE).style, x), enabled: (l) => (l.beard ?? BEARD_NONE).style !== 'none',
   },
 ];
+
+const browSpec = (field: string, name: string, key: 'arch' | 'straight' | 'tilt' | 'thick', min: number): SliderSpec => ({
+  field, name, min, max: 100,
+  get: (l) => pct(l.brows[key] ?? 0), set: (l, x) => ({ ...l, brows: { ...l.brows, [key]: x / 100 } }), line: (x) => browShapeLine(name, x),
+});
+const detailSpec = (field: string, name: string, key: keyof DetailLook): SliderSpec => ({
+  field, name, min: 0, max: 100,
+  get: (l) => pct(detailOf(l)[key]), set: (l, x) => ({ ...l, detail: { ...detailOf(l), [key]: x / 100 } }), line: (x) => detailLine(name, x),
+});
+/** THE DETAILS' sliders (2026-11-22). */
+const DETAIL_SLIDERS = {
+  innerSize: {
+    field: HEAD_PANEL_FIELD.eyeInnerSize, name: 'Inner ring size', min: 0, max: 100,
+    get: (l) => pct(l.eyes.innerSize ?? 0.5), set: (l, x) => ({ ...l, eyes: { ...l.eyes, innerSize: x / 100 } }), line: (x) => eyeInnerSizeLine(x),
+  } as SliderSpec,
+  arch: browSpec(HEAD_PANEL_FIELD.browArch, 'ARCH', 'arch', -100),
+  straight: browSpec(HEAD_PANEL_FIELD.browStraight, 'STRAIGHT', 'straight', 0),
+  tilt: browSpec(HEAD_PANEL_FIELD.browTilt, 'TILT', 'tilt', -100),
+  thick: browSpec(HEAD_PANEL_FIELD.browThick, 'THICKNESS', 'thick', -100),
+  marks: {
+    field: HEAD_PANEL_FIELD.marksAmount, name: 'Freckles', min: 0, max: 100,
+    get: (l) => pct(marksOf(l).amount), set: (l, x) => ({ ...l, marks: { ...marksOf(l), amount: x / 100 } }), line: (x) => marksLine(x),
+  } as SliderSpec,
+  marksSize: {
+    field: HEAD_PANEL_FIELD.marksSize, name: 'Freckle size', min: 0, max: 100,
+    get: (l) => pct(marksOf(l).size), set: (l, x) => ({ ...l, marks: { ...marksOf(l), size: x / 100 } }), line: (x) => marksSizeLine(x),
+  } as SliderSpec,
+  crease: detailSpec(HEAD_PANEL_FIELD.detailCrease, 'EYELID CREASE', 'crease'),
+  smile: detailSpec(HEAD_PANEL_FIELD.detailSmile, 'SMILE LINES', 'smile'),
+  philtrum: detailSpec(HEAD_PANEL_FIELD.detailPhiltrum, 'PHILTRUM', 'philtrum'),
+  overlay: {
+    field: HEAD_PANEL_FIELD.overlayAmount, name: 'Skin picture amount', min: 0, max: 100,
+    get: (l) => pct(l.overlay?.amount ?? 1), set: (l, x) => (l.overlay ? { ...l, overlay: { ...l.overlay, amount: x / 100 } } : l),
+    line: (x) => `SKIN PICTURE AMOUNT ${Math.round(x)}%`, enabled: (l) => !!l.overlay,
+  } as SliderSpec,
+};
 
 /** A face slider's spec: -100..100 for -1..1; a slider back at 0 REMOVES its key, and keys it does not own stay. */
 function faceSpec(id: string, name: string): SliderSpec {
@@ -234,6 +317,12 @@ export class HeadPanel {
   private resetHead!: HTMLButtonElement;
   private readonly beardSection: HTMLDivElement;
   private readonly beardChips: { readonly id: string; readonly button: HTMLButtonElement }[] = [];
+  private readonly markChips: { readonly id: typeof MARK_AREAS[number][0]; readonly button: HTMLButtonElement }[] = [];
+  private readonly overlaySection: HTMLDivElement;
+  private readonly overlayLineEl = el('div', LINE_CSS);
+  private readonly overlayRemove: HTMLButtonElement;
+  private overlayBusy = false;
+  private overlayError = '';
   private readonly lifted = (e: Event): void => this.release(pointerOf(e), e.type === 'pointercancel');
 
   constructor(hooks: HeadPanelHooks) {
@@ -250,10 +339,13 @@ export class HeadPanel {
     hair.append(this.caption('STYLE'), this.styleRow, ...this.sliderParts(length), ...this.swatchRow('hair', HEAD_PANEL_FIELD.hairColour, HEAD_PANEL_ACTION.hairColour, HAIR_COLOURS, 'her own', hairColourLine));
     // EYES
     const eyes = this.section('EYES', 'eyes');
-    eyes.append(...this.swatchRow('eyes', HEAD_PANEL_FIELD.eyeColour, HEAD_PANEL_ACTION.eyeColour, EYE_COLOURS, 'her own', eyeColourLine));
+    eyes.append(...this.swatchRow('eyes', HEAD_PANEL_FIELD.eyeColour, HEAD_PANEL_ACTION.eyeColour, EYE_COLOURS, 'her own', eyeColourLine),
+      this.caption('INNER RING (TWO-TONE)'), ...this.swatchRow('eyeInner', HEAD_PANEL_FIELD.eyeInner, HEAD_PANEL_ACTION.eyeInner, IRIS_INNER_COLOURS, 'none (one colour)', eyeInnerLine),
+      ...this.sliderParts(DETAIL_SLIDERS.innerSize));
     // BROWS
     const brows = this.section('BROWS', 'brows');
-    brows.append(...this.swatchRow('brows', HEAD_PANEL_FIELD.browColour, HEAD_PANEL_ACTION.browColour, [], 'match her hair', browColourLine), ...this.sliderParts(browAmount));
+    brows.append(...this.swatchRow('brows', HEAD_PANEL_FIELD.browColour, HEAD_PANEL_ACTION.browColour, [], 'match her hair', browColourLine), ...this.sliderParts(browAmount),
+      this.caption('SHAPE'), ...this.sliderParts(DETAIL_SLIDERS.arch), ...this.sliderParts(DETAIL_SLIDERS.straight), ...this.sliderParts(DETAIL_SLIDERS.tilt), ...this.sliderParts(DETAIL_SLIDERS.thick));
     // LASHES
     const lashSection = this.section('LASHES', 'lashes');
     lashSection.append(...this.sliderParts(lashes));
@@ -269,6 +361,50 @@ export class HeadPanel {
       beardRow.appendChild(button);
     }
     this.beardSection.append(this.caption('STYLE'), beardRow, ...this.sliderParts(beardAmount), ...this.swatchRow('beard', HEAD_PANEL_FIELD.beardColour, HEAD_PANEL_ACTION.beardColour, HAIR_COLOURS, 'match his hair', beardColourLine));
+    // FRECKLES
+    const marks = this.section('FRECKLES', 'marks');
+    const areaRow = el('div', ROW_CSS);
+    for (const [id, name] of MARK_AREAS) {
+      const button = this.chip(name, `${HEAD_PANEL_ACTION.marksArea}${id}`, (l) => {
+        const m = marksOf(l), on = !m[id];
+        // (an area switched on with no freckles yet gives them an amount to be seen by)
+        return { ...l, marks: { ...m, [id]: on, amount: on && m.amount === 0 ? 0.5 : m.amount } };
+      }, true);
+      this.markChips.push({ id, button });
+      areaRow.appendChild(button);
+    }
+    marks.append(...this.sliderParts(DETAIL_SLIDERS.marks), ...this.sliderParts(DETAIL_SLIDERS.marksSize), this.caption('AREAS'), areaRow,
+      ...this.swatchRow('marks', HEAD_PANEL_FIELD.marksColour, HEAD_PANEL_ACTION.marksColour, MARK_COLOURS.slice(1), MARK_COLOURS[0].name, marksColourLine));
+    // FACE DETAIL (deep-set eyes are a face slider: shown here, not in its group)
+    const detail = this.section('FACE DETAIL', 'detail');
+    const deep = FACE_SLIDERS.find((f) => f.id === 'eyeDepth');
+    detail.append(...this.sliderParts(DETAIL_SLIDERS.crease), ...(deep ? this.sliderParts(faceSpec(deep.id, deep.name)) : []), ...this.sliderParts(DETAIL_SLIDERS.smile), ...this.sliderParts(DETAIL_SLIDERS.philtrum));
+    // SKIN PICTURE (a picture of his own over the skin, in its layout)
+    this.overlaySection = this.section('SKIN PICTURE', 'overlay');
+    this.overlayLineEl.dataset.field = HEAD_PANEL_FIELD.overlay;
+    const file = el('input', 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none');
+    file.type = 'file';
+    file.accept = 'image/png,image/jpeg,image/webp';
+    file.tabIndex = -1;
+    file.dataset.role = HEAD_PANEL_ROLE.overlayInput;
+    file.addEventListener('change', () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f || this.disposed || !this.hooks.uploadOverlay) return;
+      this.overlayBusy = true; this.overlayError = ''; this.refresh();
+      void this.hooks.uploadOverlay(f).then((error) => { this.overlayBusy = false; this.overlayError = error ?? ''; this.refresh(); });
+    });
+    const upload = el('button', CHIP_CSS);
+    upload.type = 'button'; upload.textContent = 'UPLOAD PICTURE'; upload.dataset.action = HEAD_PANEL_ACTION.overlayUpload;
+    upload.addEventListener('click', (e) => { e.stopPropagation(); if (!this.disposed) file.click(); });
+    this.overlayRemove = this.chip('REMOVE', HEAD_PANEL_ACTION.overlayRemove, (l) => { const { overlay: _gone, ...rest } = l; return rest; }, false);
+    const template = el('button', CHIP_CSS);
+    template.type = 'button'; template.textContent = 'TEMPLATE'; template.dataset.action = HEAD_PANEL_ACTION.overlayTemplate;
+    template.title = 'Save a picture of the skin with its layout drawn on it, to paint over';
+    template.addEventListener('click', (e) => { e.stopPropagation(); if (!this.disposed) this.hooks.overlayTemplate?.(); });
+    const overlayRow = el('div', ROW_CSS);
+    overlayRow.append(upload, this.overlayRemove, template, file);
+    this.overlaySection.append(this.overlayLineEl, overlayRow, ...this.sliderParts(DETAIL_SLIDERS.overlay));
     // FACE SHAPE
     const face = this.section('FACE SHAPE', 'face');
     face.append(this.caption('FACE TYPE'), this.typeRow(), ...this.faceGroups());
@@ -281,7 +417,7 @@ export class HeadPanel {
     this.resetHead = this.chip('RESET HEAD', HEAD_PANEL_ACTION.resetHead, () => this.own(), false);
     foot.appendChild(this.resetHead);
 
-    body.append(hair, eyes, brows, lashSection, lips, this.beardSection, face, foot);
+    body.append(hair, eyes, brows, lashSection, lips, this.beardSection, marks, detail, this.overlaySection, face, foot);
     this.element.appendChild(body);
 
     // the room behind never hears it: no orbit from a drag on it, no shortcut from a key in it
@@ -454,7 +590,7 @@ export class HeadPanel {
       d.dataset.role = `${HEAD_PANEL_ROLE.faceGroup}${group}`;
       const summary = el('summary', SUMMARY_CSS);
       d.appendChild(summary);
-      const mine = FACE_SLIDERS.filter((s) => s.group === group);
+      const mine = FACE_SLIDERS.filter((s) => s.group === group && !DETAIL_FACE_SLIDERS.includes(s.id));
       for (const s of mine) d.append(...this.sliderParts(faceSpec(s.id, s.name)));
       this.groups.push({ group, summary, ids: mine.map((s) => s.id) });
       return d;
@@ -573,5 +709,15 @@ export class HeadPanel {
     this.beardSection.hidden = !beard;
     this.beardSection.style.display = beard ? 'flex' : 'none';
     for (const { id, button } of this.beardChips) lit(button, style === id);
+    const m = marksOf(look);
+    for (const { id, button } of this.markChips) lit(button, m[id]);
+    // SKIN PICTURE: offered where the room can keep a picture
+    const offered = !!this.hooks.uploadOverlay;
+    this.overlaySection.hidden = !offered;
+    this.overlaySection.style.display = offered ? 'flex' : 'none';
+    const st = look.overlay ? this.hooks.overlayState?.() ?? { name: '', missing: false } : null;
+    const text = this.overlayBusy ? 'SKIN PICTURE · keeping the picture…' : this.overlayError ? `SKIN PICTURE · ${this.overlayError}` : overlayLine(st && look.overlay ? { ...st, amount: look.overlay.amount } : null);
+    if (this.overlayLineEl.textContent !== text) this.overlayLineEl.textContent = text;
+    this.overlayRemove.style.display = look.overlay ? '' : 'none';
   }
 }

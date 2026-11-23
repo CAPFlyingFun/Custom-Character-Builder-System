@@ -2297,6 +2297,54 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `tests/headLook.test.ts`, `tests/headPanel.test.ts`, `tests/hairStyles.test.ts`; then the room: MALE, his face from his front,
   three-quarter and side, each kind of facial hair, a face type, a hairstyle of each kind.
 
+## A face's details, and a picture over the skin
+
+- **FIVE THINGS FOR GDM'S MARY AND JOHN FISHER** (Joshua, 2026-11-22: "1. Freckles / skin marks in the face layer: amount,
+  colour, size, area (nose, cheeks, forehead, shoulders). 2. Two-tone iris (inner ring colour + outer colour) for hazel eyes.
+  3. Brow shape per character (arch height, straightness), not only colour and thickness. 4. Deeper face realism: eyelid
+  crease, deep-set eyes, smile lines, philtrum; or per-character head morphs. 5. A per-character skin overlay picture (UV
+  decal) saved with the character, for face detail"; his reference pictures, AI-made, are on the `claude-reference` branch,
+  `faces/`: "Keep in your branch, main doesn't need it"). For her and for him, each kept with the character (`headLook.ts`:
+  `eyes.inner`, `eyes.innerSize`, `brows.arch / straight / tilt / thick`, `marks`, `detail`, `overlay`; each kept only where
+  it is not as before, so a save of an older look is the text it was).
+- **THE FACE LAYER DRAWS THEM ONLY IN A PROGRAM THAT HAS THEM** (`faceRig.ts` `faceNeedsDetails`, `shaderFor(spec, x)`): her
+  program and his are the text they were (`tests/maleHead.test.ts` holds hers to the letter) until a look asks for a detail;
+  then the material's program with the details goes on, once (its key ends `-details`), and later changes are uniforms.
+  - FRECKLES (`FACE_MARKS`): spots in her rest metres, a jittered point in a 3D grid of cells a disc where her skin passes
+    near it (the depth it is crossed at sizes it: no two alike), two layers, clustered by a noise; their AREAS soft
+    ellipsoids MEASURED on her skin (nose, both cheeks, forehead) and a band over her shoulders. Far off, a pixel wider than
+    a freckle lays the tone they average to. NEVER OVER HER PAINT: the fabric's program's `fabricMatte` says where paint
+    covers her; it goes in by its own patch, so the face's lines say `FACE_PAINT_COVER` and a last step on the material
+    (`finishDetails`) puts the name in -- the room lays the fabric's program on her before it asks for the details (`faceFrame`).
+  - TWO-TONE IRIS: the inner ring's colour (`irisInner`) laid round the pupil as it is, the base then the OUTER colour itself
+    (not the palette's solved base); INNER RING SIZE moves where it gives way (`FACE_IRIS_SPLIT`, 0.5 her own).
+  - BROW SHAPE (`FACE_BROW_SHAPE`): ARCH lifts its arch (head kept, tail keeping 0.3), STRAIGHT draws it to the line from its
+    head to its tail, TILT lifts its tail, THICKNESS. The CPU mirrors (`faceBrowLine`, `faceIrisColour`) agree.
+  - FACE DETAIL (`FACE_DETAIL`), painted as a warm shade: EYELID CREASE over each upper lid; SMILE LINES from the nose's wing
+    past the mouth's corner (MEASURED: the wing |x| 0.018 at 1.546); PHILTRUM, two ridges under the nose (MEASURED: her
+    philtrum is short, 1.534 to 1.528); DEEP-SET EYES is a FACE SHAPE slider (`faceShapes.ts` `eyeDepth`, max 3.4 mm: her
+    eyes back, her brow ridge forward) whose number lays the socket's shade too; the FACE tab shows it in FACE DETAIL.
+- **SKIN PICTURE** (`SarahLabScene.ts` `layOverlay`, `drawOverlay`): a picture of his own laid over the skin worn, in its
+  layout, AMOUNT of it, on a copy of that skin drawn on a canvas -- her skin's program reads no further picture (a phone has
+  13 of its 16 at her skin's fragment stage). Kept on the device at up to 2048 a side (`pictureStore.ts` `OVERLAY_MAX`) by its
+  id; an exported character takes it in the zip (`picturesUsed`; an import takes up to 16 MB a picture). TEMPLATE saves the
+  skin worn with its layout's triangles drawn on it, to paint over. His is laid on his skin, in his layout.
+- MEASURED in the room 2026-11-22 (light skin; 1x, the pictures for Joshua at 2x; no error on the page): a Mary look on her
+  (green eyes with a gold inner ring, arched brows, freckles on her nose, cheeks and shoulders, crease, smile lines,
+  philtrum) from her front, three-quarter and close on an eye and on her cheek; a John look on him (blue-grey eyes with a
+  grey inner ring, straight heavy brows, DEEP-SET 60%, crease, smile lines, philtrum, stubble) the same. Her freckled
+  shoulders under the painted scoop-neck tee: none on the paint, to its edge. A test picture (blue dots) uploaded through
+  the panel's own file input: laid over her skin in its layout, under her painted top, at 30% fainter; TEMPLATE saved
+  `skin-template-female-2048.png` (100 s on the build machine's software renderer: NOT MEASURED on a phone).
+  FOUND: HER SKIN'S LAYOUT IS CUT INTO HUNDREDS OF SMALL ISLANDS (Meshy's unwrap; her face in several), so a SKIN PICTURE
+  is for a picture made by a tool that paints onto the model or bakes into its layout -- painted by hand on the template it
+  is hard to line up. A picture of a face laid on from the front (projected) would be the hand-painted way: NOT BUILT, told.
+  First builds, pictured and changed the same evening: freckles in a 3D grid (too few, too alike); the details' shades a
+  tenth of what they are now (not to be seen); the smile line a hairline 0.7 mm wide running past the mouth to the jaw.
+- After anything changes them: `tests/faceDetails.test.ts`, `tests/headPanelDetails.test.ts`, `tests/faceRig.test.ts`,
+  `tests/maleHead.test.ts`, `tests/faceShapes.test.ts`, `tests/headLook.test.ts`; then the room: a Mary look on her and a John
+  look on him from the front, three-quarter and close on an eye, her shoulders under a top.
+
 ## Verification
 
 `npm run typecheck`, `npm test`, `npm run build`. Render probes are local

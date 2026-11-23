@@ -393,6 +393,19 @@ export interface FaceRigState {
   readonly lipTint?: readonly [number, number, number];
   /** Facial hair, on a face with a beard design (`FaceSpec.beard`): its kind, how much of it (0..1), its colour (LINEAR; absent, the design's). */
   readonly beard?: { readonly style: BeardStyleId; readonly amount?: number; readonly colour?: readonly [number, number, number] };
+  /**
+   * A TWO-TONE IRIS: the inner ring's own colour (LINEAR), laid round the pupil as it is; the base (`iris`) is then the
+   * outer colour, and the limbal ring `irisRing` (or the base's own ratio). Absent: the collar is `irisAmber`'s, or the base's.
+   */
+  readonly irisInner?: readonly [number, number, number];
+  /** 0..1: how far out the inner ring reaches (0.5 her own; `FACE_IRIS_SPLIT`). Another number asks for the details' program. */
+  readonly irisSplit?: number;
+  /** A brow's shape: arch -1..1, straight 0..1, tilt -1..1, thick -1..1 (`FACE_BROW_SHAPE`); all 0 her own. */
+  readonly browShape?: { readonly arch: number; readonly straight: number; readonly tilt: number; readonly thick: number };
+  /** Freckles: amount 0..1, size 0..1, colour LINEAR, and how much of each area (nose, cheeks, forehead, shoulders) 0..1. */
+  readonly marks?: { readonly amount: number; readonly size: number; readonly colour: readonly [number, number, number]; readonly areas: readonly [number, number, number, number] };
+  /** The face's details, 0..1 each: eyelid crease, deep-set socket's shade, smile lines, philtrum (`FACE_DETAIL`). */
+  readonly detail?: { readonly crease: number; readonly socket: number; readonly smile: number; readonly philtrum: number };
 }
 
 /** A state reduced to what both the shader and the CPU read: every amount clamped, every direction unit. */
@@ -414,6 +427,14 @@ interface Setting {
   readonly lipTint: V3 | null;
   /** null: none. */
   readonly beard: { readonly style: BeardStyle; readonly amount: number; readonly colour: V3 } | null;
+  /** The inner ring's reach (`FACE_IRIS_SPLIT`: 0.5 her own). */
+  readonly irisSplit: number;
+  /** arch, straight, tilt, thick (all 0: her own). */
+  readonly browShape: readonly [number, number, number, number];
+  /** null: none. */
+  readonly marks: { readonly amount: number; readonly size: number; readonly colour: V3; readonly areas: readonly [number, number, number, number] } | null;
+  /** crease, socket, smile, philtrum. */
+  readonly detail: readonly [number, number, number, number];
 }
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 const amount = (x: number | undefined, fallback: number): number => (x !== undefined && Number.isFinite(x) ? clamp(x, 0, 1) : fallback);
@@ -443,7 +464,20 @@ function settingOf(state: FaceRigState, spec: FaceSpec = HER_FACE): Setting {
     ...pickedIris(state, FACE_DEFAULTS.iris),
     lipTint: state.lipTint ? colour(state.lipTint, FACE_LIPS.tint) : null,
     beard: beardOf(state, spec),
+    irisSplit: amount(state.irisSplit, 0.5),
+    browShape: state.browShape ? [signed(state.browShape.arch), amount(state.browShape.straight, 0), signed(state.browShape.tilt), signed(state.browShape.thick)] : [0, 0, 0, 0],
+    marks: marksOf(state),
+    detail: state.detail ? [amount(state.detail.crease, 0), amount(state.detail.socket, 0), amount(state.detail.smile, 0), amount(state.detail.philtrum, 0)] : [0, 0, 0, 0],
   };
+}
+const signed = (x: number | undefined): number => (x !== undefined && Number.isFinite(x) ? clamp(x, -1, 1) : 0);
+/** Freckles a state asks for: none unless some are on some area. */
+function marksOf(state: FaceRigState): Setting['marks'] {
+  const m = state.marks;
+  if (!m) return null;
+  const areas = [0, 1, 2, 3].map((i) => amount(m.areas[i], 0)) as unknown as readonly [number, number, number, number];
+  const a = amount(m.amount, 0);
+  return a > 0 && areas.some((x) => x > 0) ? { amount: a, size: amount(m.size, 0.5), colour: colour(m.colour, [0.42, 0.17, 0.07]), areas } : null;
 }
 /** The facial hair a state asks of a face that has a design for it (none on a face without one, or for 'none'). */
 function beardOf(state: FaceRigState, spec: FaceSpec): Setting['beard'] {
@@ -453,8 +487,10 @@ function beardOf(state: FaceRigState, spec: FaceSpec): Setting['beard'] {
 }
 /** A collar and a ring are drawn only as a pair (one alone would be half of one look, half of another). */
 function pickedIris(state: FaceRigState, iris: V3 = FACE_DEFAULTS.iris): { irisAmber: V3 | null; irisRing: V3 | null } {
-  if (!state.irisAmber || !state.irisRing) return { irisAmber: null, irisRing: null };
   const base = colour(state.iris, iris);
+  // (a two-tone iris: its inner ring as chosen, the base the outer colour, the limbal ring the base's own ratio's)
+  if (state.irisInner) return { irisAmber: colour(state.irisInner, mul(base, AMBER_RATIO)), irisRing: state.irisRing ? colour(state.irisRing, mul(base, LIMBAL_RATIO)) : mul(base, LIMBAL_RATIO) };
+  if (!state.irisAmber || !state.irisRing) return { irisAmber: null, irisRing: null };
   return { irisAmber: colour(state.irisAmber, mul(base, AMBER_RATIO)), irisRing: colour(state.irisRing, mul(base, LIMBAL_RATIO)) };
 }
 const mul = (a: V3, b: V3): V3 => [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
@@ -502,6 +538,13 @@ interface Uniforms {
   readonly faceBeardColour?: THREE.IUniform<THREE.Vector4>;
   /** x its grain. */
   readonly faceBeardLook?: THREE.IUniform<THREE.Vector4>;
+  /** The details (`FACE_MARKS`, `FACE_DETAIL`, `FACE_BROW_SHAPE`): freckles' amount, size and cell (metres); their colour and alpha; their areas; the brow's arch and tilt (metres), straightness and thickness; crease, socket, smile, philtrum; the iris's split and its softness. */
+  readonly faceMarks: THREE.IUniform<THREE.Vector4>;
+  readonly faceMarksColour: THREE.IUniform<THREE.Vector4>;
+  readonly faceMarksAreas: THREE.IUniform<THREE.Vector4>;
+  readonly faceBrowShape: THREE.IUniform<THREE.Vector4>;
+  readonly faceDetail: THREE.IUniform<THREE.Vector4>;
+  readonly faceIrisSplit: THREE.IUniform<THREE.Vector2>;
 }
 const patched = new WeakMap<THREE.Material, Uniforms>();
 
@@ -516,6 +559,86 @@ const patched = new WeakMap<THREE.Material, Uniforms>();
  * every patch's own lines, so it holds whichever of the two patches was laid first.
  */
 export const FACE_REST_DEFINE = 'FABRIC_REST_ATTRIBUTE';
+
+// ------------------------------------------------------------------------------------------------------------------
+// THE FACE'S DETAILS (Joshua, 2026-11-22, for GDM's Mary and John Fisher: "Freckles / skin marks in the face layer:
+// amount, colour, size, area (nose, cheeks, forehead, shoulders)"; "Two-tone iris (inner ring colour + outer colour)";
+// "Brow shape per character (arch height, straightness)"; "Deeper face realism: eyelid crease, deep-set eyes, smile
+// lines, philtrum"). They are drawn only by a program that has them: a face asks for that program the first time a
+// look uses one (`faceNeedsDetails`), and her own program and his stay the text they were until then.
+
+/**
+ * FRECKLES: spots in her rest metres (so they ride her skin, her jaw and her face's shapes, and lie where her skin is
+ * whatever its shape), laid in a square grid on the plane her skin faces most there (front, side or top), a cell
+ * `cell` times the freckle's size across with one freckle in it or none, each its own size, darkness and a little out
+ * of round, in two layers, the second smaller and fainter, clustered by a smooth noise. (A first build laid them in a 3D
+ * grid, a disc where her skin passes near each point: half the cells missed her skin, and they were too few and too
+ * alike -- pictured in the room 2026-11-22.) Their AREAS are soft ellipsoids (and the shoulders a band),
+ * MEASURED on her skin 2026-11-22 (`scripts/preview/body.mjs`): her nose's wings end at |x| 0.018 between 1.540 and
+ * 1.548, her lower lids at 1.579, her brows' tops at about 1.61, her forehead to 1.68; the tops of her shoulders stand
+ * 1.42 to 1.46 from |x| 0.06 to 0.18 (1.40 at 0.18), her neck is about 0.045 to its side. Sizes, densities and shades:
+ * GAME TUNING, by eye on Joshua's reference of Mary (`claude-reference` branch, `faces/`).
+ */
+export const FACE_MARKS = {
+  nose: { c: [0, 1.562, 0.016] as V3, r: [0.019, 0.03, 0.03] as V3 },
+  /** (laid at |x|: both cheeks, high, under the eyes and across the cheekbones) */
+  cheek: { c: [0.031, 1.561, 0.0] as V3, r: [0.025, 0.018, 0.034] as V3 },
+  forehead: { c: [0, 1.646, 0.0] as V3, r: [0.06, 0.036, 0.055] as V3 },
+  /** The shoulders: rest y eased in over y[0..1] and out over y[2..3], |x| in over x[0..1] and out over x[2..3]. */
+  shoulders: { y: [1.27, 1.33, 1.43, 1.47] as const, x: [0.045, 0.075, 0.20, 0.235] as const },
+  /** A freckle's diameter (metres) at SIZE 0 and 1; its cell is `cell` diameters across. */
+  size: [0.0006, 0.003] as const, cell: 2.4,
+  /** The cells with a freckle at AMOUNT 1, where the clusters are thickest; `cluster` (metres) the clusters' size. */
+  density: 1.0, cluster: 0.011, clusterLow: 0.55,
+  /** The second, smaller layer: its cell against the first's, how strongly it is laid. */
+  fine: 0.62, fineAlpha: 0.65,
+  /** How strongly a freckle lays its colour at its strongest. */
+  alpha: 0.5,
+} as const;
+
+/**
+ * THE DETAILS OF A FACE, painted as shade on the skin (a warm shadow: `tint`), each 0..1 a character:
+ * - an EYELID CREASE: a line `gap` above the upper lid's edge, following it (less arched by `flatten`), from `spread[0]`
+ *   to `spread[1]` of the eye's own across (-1 its inner corner, 1 its outer), a `line` wide, with the lid under it in a
+ *   softer shade over `under`;
+ * - DEEP-SET EYES (the shade of it: the shape is the face slider `eyeDepth`, `faceShapes.ts`): the socket between the
+ *   brow and the crease, an ellipse `r` about `up` over the eye's middle line;
+ * - SMILE LINES: the fold from the nose's wing (`from`, MEASURED: the wing's outer edge, |x| 0.018 at 1.546) down and out
+ *   past the mouth's corner (|x| 0.024 at 1.518, `FACE_MOUTH`) to `to`, through `via` -- a line, its shadow on the
+ *   mouth's side, a little light on the cheek's;
+ * - the PHILTRUM: two ridges from under the nose (`top`, MEASURED: the skin under her nose turns down at about 1.533) to
+ *   the upper lip's edge (`bottom`, 1.528 at |x| 0.004), `ridge` out from the middle at each, lit, the groove between them
+ *   and the skin outside them shaded.
+ * Places MEASURED as said; widths and shades GAME TUNING by eye on the reference.
+ */
+export const FACE_DETAIL = {
+  crease: { gap: 0.0034, flatten: 0.35, spread: [-1.1, 1.22] as const, line: 0.00065, under: 0.0024, shade: 0.75, underShade: 0.25 },
+  socket: { up: 0.0078, r: [0.021, 0.0105] as const, shade: 0.55 },
+  smile: { from: [0.0190, 1.5445] as const, via: [0.0255, 1.530] as const, to: [0.0315, 1.5135] as const, line: 0.0011, shadow: 0.0035, shade: 0.45, shadowShade: 0.22, light: 0.05, fadeTop: 0.005, fadeLow: 0.009, zFrom: -0.016 },
+  philtrum: { top: 1.5338, bottom: 1.5276, ridge: [0.0034, 0.0047] as const, width: 0.0008, shade: 0.35, light: 0.1, zFrom: 0.004 },
+  tint: [0.62, 0.48, 0.44] as V3,
+  /** The most a fragment is shaded, all details together. */
+  most: 0.75,
+} as const;
+
+/**
+ * A BROW'S SHAPE (each a character's, 2026-11-22): ARCH lifts its arch by up to `arch` metres (its head kept, its tail
+ * keeping `tailKeep` of the lift), STRAIGHT draws it along the straight line from its head to its tail, TILT lifts its
+ * tail by up to `tilt` metres, THICKNESS makes it `thick` thicker or thinner at its ends. GAME TUNING.
+ */
+export const FACE_BROW_SHAPE = { arch: 0.003, tilt: 0.003, thick: 0.6, tailKeep: 0.3 } as const;
+/** The iris's inner ring: where the collar gives way to the outer colour, `t` from its middle (0.25 to 0.75; her own 0.5), over `soft` either side. */
+export const FACE_IRIS_SPLIT = { from: 0.25, to: 0.75, soft: 0.12 } as const;
+
+/** Whether a state asks for the face's details (and so the program that has them). */
+export function faceNeedsDetails(state: Partial<FaceRigState> | null): boolean {
+  if (!state) return false;
+  const b = state.browShape, d = state.detail, m = state.marks;
+  return (m !== undefined && m.amount > 0 && m.areas.some((a) => a > 0))
+    || (b !== undefined && (b.arch !== 0 || b.straight !== 0 || b.tilt !== 0 || b.thick !== 0))
+    || (d !== undefined && (d.crease > 0 || d.socket > 0 || d.smile > 0 || d.philtrum > 0))
+    || (state.irisSplit !== undefined && state.irisSplit !== 0.5);
+}
 
 /**
  * The constants in the frames the shader works in, converted once for a body's face (`FaceSpec`): its frame takes its
@@ -587,10 +710,10 @@ const { BOX_Y0_F, BOX_Y1_F, BOX_Z_F, BROW_HEAD_X, BROW_SPAN, BROW_T, BROW_Y, BRO
 const L = FACE_LIDS;
 
 /** The face's shader lines for a body's face (`FaceSpec`), from the same numbers as the CPU mirrors. */
-function shaderFor(spec: FaceSpec): ShaderLines {
+function shaderFor(spec: FaceSpec, x = false): ShaderLines {
   const FACE_BROWS = spec.brows, FACE_LIPS = spec.lips, FACE_LIDS = spec.lids;
   const FACE_REST_SCALE = spec.frame.scale;
-  const { BOX_Y0_F, BOX_Y1_F, BOX_Z_F, BROW_HEAD_X, BROW_SPAN, BROW_T, BROW_Y, BROW_Z_F, CORNER_Y_F, CORNER_Z_F, EDGE_HALF, EYE_R, EYE_Z_F, F_OFFSET, HAIR, HINGE_F, HINGE_G, INSIDE_Z_F, IRIS_ANGLE, LEFT_F, LIMBAL_RATIO, LIP_Z_F, MI, MT, NECK_FROM_F, NECK_TO_F, PHI_CENTRE, PHI_CORNER, RIGHT_F, SEAM_F, SEAM_Z_F } = derived(spec);
+  const { BOX_Y0_F, BOX_Y1_F, BOX_Z_F, BROW_HEAD_X, BROW_S_ARCH, BROW_SPAN, BROW_T, BROW_Y, BROW_Z_F, CORNER_Y_F, CORNER_Z_F, EDGE_HALF, EYE_R, EYE_Z_F, F_OFFSET, HAIR, HINGE_F, HINGE_G, INSIDE_Z_F, IRIS_ANGLE, LEFT_F, LIMBAL_RATIO, LIP_Z_F, MI, MT, NECK_FROM_F, NECK_TO_F, PHI_CENTRE, PHI_CORNER, RIGHT_F, SEAM_F, SEAM_Z_F } = derived(spec);
   // where a point of the sculpt stands in face coordinates, and (the jaw turned) its height: her own lines as they
   // always were; a frame with a pitch turns the point about x first
   const pc = Math.cos(spec.frame.pitch), ps = Math.sin(spec.frame.pitch), k = FACE_REST_SCALE;
@@ -743,13 +866,13 @@ function shaderFor(spec: FaceSpec): ShaderLines {
     float capT = clamp((${n(FACE_BROWS.headEnd + FACE_BROWS.headRound)} - a) / ${n(FACE_BROWS.headRound)}, 0.0, 1.0);
     float cap = pow(max(1.0 - pow(capT, ${n(FACE_BROWS.headPower)}), 0.0), ${n(1 / FACE_BROWS.headPower)});
     float tail = clamp((${n(FACE_BROWS.tailEnd)} - s) / ${n(FACE_BROWS.tailEnd - FACE_BROWS.tailFrom)}, 0.0, 1.0);
-    return 0.5 * th * cap * tail;
+    return 0.5 * th * cap * tail${x ? ' * faceBrowShape.w' : ''};
   }
   // the band's cover, its edges grown further out by grow (0 for the band itself, the overhang for where hairs may still show)
   float faceBrowCover(vec3 f, float grow, out float a, out float across) {
     a = abs(f.x) - ${n(BROW_HEAD_X)};
     float s = a / ${n(BROW_SPAN)};
-    across = f.y - (${n(BROW_Y[0])} + ${n(BROW_Y[1])} * s + ${n(BROW_Y[2])} * s * s);
+    ${x ? 'across = f.y - faceBrowShaped(s);' : `across = f.y - (${n(BROW_Y[0])} + ${n(BROW_Y[1])} * s + ${n(BROW_Y[2])} * s * s);`}
     float hb = faceBrowHalf(a);
     return smoothstep(-hb - grow - ${n(FACE_BROWS.edgeLow / 2)}, -hb - grow + ${n(FACE_BROWS.edgeLow / 2)}, across)
       * (1.0 - smoothstep(hb + grow - ${n(FACE_BROWS.edgeHigh / 2)}, hb + grow + ${n(FACE_BROWS.edgeHigh / 2)}, across))
@@ -825,7 +948,7 @@ function shaderFor(spec: FaceSpec): ShaderLines {
         vec3 up = cross(g, rt);
         float a = atan(dot(nrm, up), dot(nrm, rt) + 1e-6);
         float t = ang / ${n(IRIS_ANGLE)};
-        vec3 iris = mix(mix(faceIris * ${v3(AMBER_RATIO)}, faceIrisAmber.rgb, faceIrisAmber.w), faceIris, smoothstep(0.38, 0.62, t));
+        vec3 iris = mix(mix(faceIris * ${v3(AMBER_RATIO)}, faceIrisAmber.rgb, faceIrisAmber.w), faceIris, ${x ? 'smoothstep(faceIrisSplit.x - faceIrisSplit.y, faceIrisSplit.x + faceIrisSplit.y, t)' : 'smoothstep(0.38, 0.62, t)'});
         iris = mix(iris, mix(faceIris * ${v3(LIMBAL_RATIO)}, faceIrisRing, faceIrisAmber.w), smoothstep(0.80, 0.97, t));
         float fib = (a + 3.14159265) * ${n(FACE_LOOK.fibres / (2 * Math.PI))};
         float fi = floor(fib);
@@ -856,6 +979,135 @@ function shaderFor(spec: FaceSpec): ShaderLines {
     col = mix(col, ${v3(FACE_LOOK.lash)}, max(max(upper, flick) * ${n(L.lashAlpha)}, lower) * faceLashes);
   }`;
 
+  // THE FACE'S DETAILS (a program that has them: `x`). Before the functions above, what the brow reads; after them, the
+  // freckles and the painted shade, in face coordinates (`vFaceF`: rest metres less `FACE_ORIGIN`)
+  const BS = FACE_BROW_SHAPE, SA = BROW_S_ARCH;
+  const DETAIL_PRE = x ? [
+    'uniform vec4 faceMarks;',
+    'uniform vec4 faceMarksColour;',
+    'uniform vec4 faceMarksAreas;',
+    'uniform vec4 faceBrowShape;',
+    'uniform vec4 faceDetail;',
+    'uniform vec2 faceIrisSplit;',
+    `
+  // the brow's middle line at s (0 its head, 1 its tail) as a character's shape has it: drawn toward the straight line
+  // from its head to its tail, its arch lifted (its head kept, its tail keeping some of it), its tail lifted
+  float faceBrowShaped(float s) {
+    float own = ${n(BROW_Y[0])} + ${n(BROW_Y[1])} * s + ${n(BROW_Y[2])} * s * s;
+    float line = ${n(BROW_Y[0])} + ${n(BROW_Y[1] + BROW_Y[2])} * s;
+    float arch = s < ${n(SA)} ? smoothstep(0.0, ${n(SA)}, s) : 1.0 - ${n(1 - BS.tailKeep)} * smoothstep(${n(SA)}, 1.0, s);
+    return mix(own, line, faceBrowShape.y) + faceBrowShape.x * arch + faceBrowShape.z * clamp(s, 0.0, 1.2);
+  }`,
+  ].join('\n') : '';
+  const OF = (p: readonly number[]): V3 => [p[0] - O[0], p[1] - O[1], p[2] - O[2]];
+  const MK = FACE_MARKS, DT = FACE_DETAIL;
+  // the smile line as |x| of y (face coordinates): the quadratic through its three points
+  const SM = DT.smile, smY = [SM.from[1] - O[1], SM.via[1] - O[1], SM.to[1] - O[1]], smX = [SM.from[0], SM.via[0], SM.to[0]];
+  const smC = ((smX[0] - smX[1]) / (smY[0] - smY[1]) - (smX[1] - smX[2]) / (smY[1] - smY[2])) / (smY[0] - smY[2]);
+  const smB = (smX[0] - smX[1]) / (smY[0] - smY[1]) - smC * (smY[0] + smY[1]);
+  const smA = smX[0] - smB * smY[0] - smC * smY[0] * smY[0];
+  const CR = DT.crease, SK = DT.socket, PH = DT.philtrum;
+  const DETAIL_POST = x ? `
+  vec4 faceHash43(vec3 p) {
+    vec4 p4 = fract(vec4(p.xyzx) * vec4(0.1031, 0.1030, 0.0973, 0.1099));
+    p4 += dot(p4, p4.wzxy + 33.33);
+    return fract((p4.xxyz + p4.yzzw) * p4.zywx);
+  }
+  // a smooth value noise in 3D, 0..1, a cell a unit
+  float faceNoise3(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = mix(faceHash43(i).x, faceHash43(i + vec3(1.0, 0.0, 0.0)).x, f.x), b = mix(faceHash43(i + vec3(0.0, 1.0, 0.0)).x, faceHash43(i + vec3(1.0, 1.0, 0.0)).x, f.x);
+    float c = mix(faceHash43(i + vec3(0.0, 0.0, 1.0)).x, faceHash43(i + vec3(1.0, 0.0, 1.0)).x, f.x), d = mix(faceHash43(i + vec3(0.0, 1.0, 1.0)).x, faceHash43(i + vec3(1.0, 1.0, 1.0)).x, f.x);
+    return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
+  }
+  float faceEll(vec3 p, vec3 c, vec3 r) { return 1.0 - smoothstep(0.45, 1.0, length((p - c) / r)); }
+  // how much of the freckles' areas a point is (face coordinates)
+  float faceMarkArea(vec3 f) {
+    vec3 a = vec3(abs(f.x), f.y, f.z);
+    float nose = faceEll(f, ${v3(OF(MK.nose.c))}, ${v3(MK.nose.r)});
+    float cheek = faceEll(a, ${v3(OF(MK.cheek.c))}, ${v3(MK.cheek.r)});
+    float fore = faceEll(f, ${v3(OF(MK.forehead.c))}, ${v3(MK.forehead.r)});
+    float sh = smoothstep(${n(MK.shoulders.y[0] - O[1])}, ${n(MK.shoulders.y[1] - O[1])}, f.y) * (1.0 - smoothstep(${n(MK.shoulders.y[2] - O[1])}, ${n(MK.shoulders.y[3] - O[1])}, f.y))
+      * smoothstep(${n(MK.shoulders.x[0])}, ${n(MK.shoulders.x[1])}, a.x) * (1.0 - smoothstep(${n(MK.shoulders.x[2])}, ${n(MK.shoulders.x[3])}, a.x));
+    return max(max(nose * faceMarksAreas.x, cheek * faceMarksAreas.y), max(fore * faceMarksAreas.z, sh * faceMarksAreas.w));
+  }
+  // one layer of freckles in a square grid of cells of side c (metres) on the plane the skin faces most (seed: that
+  // plane's): each cell has one with the chance 'chance', its middle within the cell's middle 0.36, its radius 0.10 to
+  // 0.27 of the cell (mostly small; so it never leaves its cell), a little out of round, its edge soft: how much of
+  // one covers p, and how dark it is (0.35..1)
+  float faceMarkLayer(vec2 p, float c, float chance, float px, float seed) {
+    vec2 g = p / c + seed * 17.0;
+    vec2 cell = floor(g);
+    vec4 h = faceHash42(cell + seed * 31.0);
+    if (h.w > chance) return 0.0;
+    vec4 k = faceHash42(cell + 17.0 + seed);
+    float rad = mix(0.10, 0.27, k.x * k.x);
+    vec2 q = g - (cell + 0.32 + 0.36 * h.xy);
+    q *= vec2(1.0 + 0.35 * (k.z - 0.5), 1.0 - 0.35 * (k.z - 0.5));
+    float e = max(0.5 * px / c, rad * 0.35);
+    return (1.0 - smoothstep(rad - e, rad + e, length(q))) * mix(0.35, 1.0, k.y);
+  }
+  // the freckles over the colour under them (not under paint: cover), laid on the plane her skin faces most there (its
+  // facing from the point's own slopes, worked out first, where every pixel near it takes the same path); far off,
+  // where a pixel is wider than a freckle, they are laid as the tone they average to, so they never shimmer
+  vec3 faceMarksLay(vec3 f, float px, float cover, vec3 col) {
+    vec3 fn = abs(cross(dFdx(f), dFdy(f)));
+    float area = faceMarkArea(f) * (1.0 - cover);
+    if (area <= 0.0) return col;
+    bool front = fn.z >= max(fn.x, fn.y), side = fn.x >= fn.y;
+    vec2 p = front ? f.xy : side ? f.zy : f.xz;
+    float seed = front ? 0.0 : side ? 0.41 : 0.73;
+    float c = faceMarks.z;
+    float cluster = mix(${n(MK.clusterLow)}, 1.0, smoothstep(0.3, 0.75, faceNoise3(f / ${n(MK.cluster)})));
+    float chance = faceMarks.x * area * cluster * ${n(MK.density)};
+    float a = max(faceMarkLayer(p, c, chance, px, seed), ${n(MK.fineAlpha)} * faceMarkLayer(p, c * ${n(MK.fine)}, chance, px, seed + 0.37));
+    a = mix(a, chance * ${n(0.06 * (1 + MK.fineAlpha))}, smoothstep(0.12 * c, 0.4 * c, px));
+    return mix(col, faceMarksColour.rgb, a * faceMarksColour.w * (1.0 - faceLipAlpha(f)));
+  }
+  // the face's painted details over the colour under them (in the face's box)
+  vec3 faceDetailLay(vec3 f, vec3 col) {
+    float ax = abs(f.x), shade = 0.0, light = 0.0;
+    // the eyelid's crease and the socket over it, about this side's eye
+    if (faceDetail.x + faceDetail.y > 0.0 && f.z > ${n(EYE_Z_F)}) {
+      vec2 inner = f.x < 0.0 ? ${v2(RIGHT_F.inner)} : ${v2(LEFT_F.inner)};
+      vec2 outer = f.x < 0.0 ? ${v2(RIGHT_F.outer)} : ${v2(LEFT_F.outer)};
+      vec2 centre = f.x < 0.0 ? ${v2(RIGHT_F.centre)} : ${v2(LEFT_F.centre)};
+      float u = 2.0 * (f.x - inner.x) / (outer.x - inner.x) - 1.0;
+      float base = mix(inner.y, outer.y, 0.5 * (u + 1.0));
+      float yUp = base + ${n(FACE_EYES.upperLid)} * max(1.0 - u * u, 0.0);
+      float yC = yUp + ${n(CR.gap)} * (1.0 - ${n(CR.flatten)} * u * u);
+      float w = smoothstep(${n(CR.spread[0])}, ${n(CR.spread[0] + 0.25)}, u) * (1.0 - smoothstep(${n(CR.spread[1] - 0.3)}, ${n(CR.spread[1])}, u));
+      float d = f.y - yC;
+      float line = exp(-(d * d) / ${n(CR.line * CR.line)});
+      float under = smoothstep(${n(-CR.under)}, 0.0, d) * (1.0 - smoothstep(0.0, ${n(CR.line)}, d)) * step(yUp, f.y);
+      shade += faceDetail.x * w * (${n(CR.shade)} * line + ${n(CR.underShade)} * under);
+      vec2 q = (f.xy - vec2(centre.x, base + ${n(SK.up)})) / ${v2(SK.r)};
+      shade += faceDetail.y * ${n(SK.shade)} * (1.0 - smoothstep(0.15, 1.0, length(q))) * step(yUp, f.y);
+    }
+    // the smile lines, from the nose's wings down and out past the mouth's corners
+    if (faceDetail.z > 0.0 && f.z > ${n(SM.zFrom - O[2])} && f.y < ${n(smY[0])} && f.y > ${n(smY[2])}) {
+      float xl = ${n(smA)} + ${n(smB)} * f.y + ${n(smC)} * f.y * f.y, sl = ${n(smB)} + ${n(2 * smC)} * f.y;
+      float d = (ax - xl) / sqrt(1.0 + sl * sl);
+      float w = smoothstep(${n(smY[2])}, ${n(smY[2] + SM.fadeLow)}, f.y) * (1.0 - smoothstep(${n(smY[0] - SM.fadeTop)}, ${n(smY[0])}, f.y)) * (1.0 - smoothstep(0.004, 0.008, abs(ax - xl)));
+      shade += faceDetail.z * w * (${n(SM.shade)} * exp(-(d * d) / ${n(SM.line * SM.line)}) + ${n(SM.shadowShade)} * smoothstep(${n(-SM.shadow)}, 0.0, d) * (1.0 - step(0.0, d)));
+      light += faceDetail.z * w * ${n(SM.light)} * smoothstep(0.0, 0.0015, d) * (1.0 - smoothstep(0.0015, 0.005, d));
+    }
+    // the philtrum: two ridges from under the nose to the upper lip
+    if (faceDetail.w > 0.0 && ax < 0.009 && f.z > ${n(PH.zFrom - O[2])} && f.y < ${n(PH.top - O[1] + 0.001)} && f.y > ${n(PH.bottom - O[1] - 0.001)}) {
+      float t = clamp((${n(PH.top - O[1])} - f.y) / ${n(PH.top - PH.bottom)}, 0.0, 1.0);
+      float ridge = mix(${n(PH.ridge[0])}, ${n(PH.ridge[1])}, t);
+      float w = smoothstep(0.0, 0.3, t) * (1.0 - smoothstep(0.85, 1.0, t)) * (1.0 - faceLipAlpha(f));
+      float groove = 1.0 - smoothstep(0.0, ridge, ax);
+      float rq = (ax - ridge) / ${n(PH.width)}, rim = exp(-rq * rq);
+      float outside = smoothstep(ridge + ${n(PH.width)}, ridge + ${n(2.5 * PH.width)}, ax) * (1.0 - smoothstep(ridge + ${n(3 * PH.width)}, ridge + ${n(6 * PH.width)}, ax));
+      shade += faceDetail.w * w * ${n(PH.shade)} * (groove + 0.6 * outside);
+      light += faceDetail.w * w * ${n(PH.light)} * rim;
+    }
+    col *= mix(vec3(1.0), ${v3(DT.tint)}, min(shade, ${n(DT.most)}));
+    return col * (1.0 + light);
+  }` : '';
+
   const FRAGMENT_PARS = [
     'uniform float faceOn;',
     'uniform float faceJaw;',
@@ -874,7 +1126,9 @@ function shaderFor(spec: FaceSpec): ShaderLines {
     'varying float vFaceJaw;',
     'varying vec3 vFaceF;',
     'varying float vFacePosedY;',
+    ...(x ? [DETAIL_PRE] : []),
     GLSL_FRAGMENT_FUNCTIONS,
+    ...(x ? [DETAIL_POST] : []),
   ].join('\n');
 
   // After color_fragment, so it lies over her texture, any vertex colour and any fabric painted on her. The three
@@ -884,8 +1138,10 @@ function shaderFor(spec: FaceSpec): ShaderLines {
   const FRAGMENT_COLOUR = `
       float faceWet = 0.0, faceLipMask = 0.0, faceInner = 0.0;
       if (faceOn > 0.5) {
-        float facePx = max(max(fwidth(vFaceF.x), fwidth(vFaceF.y)), 1e-6);
-        if (abs(vFaceF.x) < ${n(FACE_BOX.halfWidth)} && vFaceF.y > ${n(BOX_Y0_F)} && vFaceF.y < ${n(BOX_Y1_F)} && vFaceF.z > ${n(BOX_Z_F)}) {
+        float facePx = max(max(fwidth(vFaceF.x), fwidth(vFaceF.y)), 1e-6);${x ? `
+        if (faceMarks.x > 0.0) diffuseColor.rgb = faceMarksLay(vFaceF, facePx, FACE_PAINT_COVER, diffuseColor.rgb);` : ''}
+        if (abs(vFaceF.x) < ${n(FACE_BOX.halfWidth)} && vFaceF.y > ${n(BOX_Y0_F)} && vFaceF.y < ${n(BOX_Y1_F)} && vFaceF.z > ${n(BOX_Z_F)}) {${x ? `
+          if (dot(faceDetail, vec4(1.0)) > 0.0) diffuseColor.rgb = faceDetailLay(vFaceF, diffuseColor.rgb);` : ''}
           faceLipMask = faceLipAlpha(vFaceF);
           diffuseColor.rgb *= mix(vec3(1.0), faceLipTint.rgb, faceLipMask * faceLips * (1.0 - faceLipTint.w));
           float faceLipShade = clamp(dot(diffuseColor.rgb, ${v3(LUMA)}) / ${n(FACE_LIPS.skinLuminance)}, ${n(FACE_LIPS.shade[0])}, ${n(FACE_LIPS.shade[1])});
@@ -1044,14 +1300,36 @@ function beardLines(d: BeardDesign): { pars: string; colour: string; roughness: 
   return { pars, colour, roughness };
 }
 interface ShaderLines { readonly VERTEX_PARS: string; readonly VERTEX_NORMAL: string; readonly VERTEX_JAW: string; readonly FRAGMENT_PARS: string; readonly FRAGMENT_COLOUR: string; readonly FRAGMENT_ROUGHNESS: string; readonly FRAGMENT_NORMAL: string }
-const shaders = new Map<FaceSpec, ShaderLines>();
+const shaders = new Map<FaceSpec, [ShaderLines | null, ShaderLines | null]>();
 // (the lines are written indented inside `shaderFor`; her program's text is as it was before, to the letter)
 const dedent = (t: string) => t.replace(/^ {2}/gm, '');
-const linesFor = (spec: FaceSpec): ShaderLines => {
-  let s = shaders.get(spec);
-  if (!s) { const raw = shaderFor(spec); s = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, dedent(v)])) as unknown as ShaderLines; shaders.set(spec, s); }
+const linesFor = (spec: FaceSpec, details = false): ShaderLines => {
+  let pair = shaders.get(spec);
+  if (!pair) { pair = [null, null]; shaders.set(spec, pair); }
+  const i = details ? 1 : 0;
+  let s = pair[i];
+  if (!s) { const raw = shaderFor(spec, details); s = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, dedent(v)])) as unknown as ShaderLines; pair[i] = s; }
   return s;
 };
+/** Materials whose face draws its details (`faceNeedsDetails`): their program has them from then on. */
+const detailed = new WeakSet<THREE.Material>();
+/** Whether a material's face program has the details (`faceNeedsDetails` asked for them once). */
+export function faceHasDetails(material: THREE.Material): boolean { return detailed.has(material); }
+/**
+ * WHAT IS PAINTED ON HER IS NOT FRECKLED: the details' freckles are laid where her skin's paint covers none of her
+ * (`fabricMatte`, the fabric program's own: `fabricMaterial.ts`). That program's text goes in by its own patch, which may
+ * be laid on the material before or after the face's; so the name is a placeholder in the face's lines, put right by a
+ * last step that runs after every patch then on the material -- `fabricMatte` where the fabric's program is in the
+ * text, else nothing covers her. (The room lays the fabric's program on her before it asks for the details.)
+ */
+const PAINT_COVER = 'FACE_PAINT_COVER';
+function finishDetails(material: THREE.Material): void {
+  const inner = material.onBeforeCompile;
+  material.onBeforeCompile = function (shader, renderer) {
+    inner.call(this, shader, renderer);
+    shader.fragmentShader = shader.fragmentShader.split(PAINT_COVER).join(/float fabricMatte\b/.test(shader.fragmentShader) ? 'fabricMatte' : '0.0');
+  };
+}
 
 
 /** Patch a material once (idempotent) with a body's face (hers unless said); the face starts OFF. */
@@ -1068,7 +1346,6 @@ function patch(material: THREE.Material, spec: FaceSpec = HER_FACE): Uniforms {
   const known = patched.get(material);
   if (known) return known;
   const FACE_DEFAULTS = spec.defaults as typeof HER_FACE.defaults & { readonly iris: V3; readonly browColour: V3 }, FACE_LIPS = spec.lips as typeof HER_FACE.lips & { readonly tint: V3 };
-  const { VERTEX_PARS, VERTEX_NORMAL, VERTEX_JAW, FRAGMENT_PARS, FRAGMENT_COLOUR, FRAGMENT_ROUGHNESS, FRAGMENT_NORMAL } = linesFor(spec);
   const uniforms: Uniforms = {
     faceOn: { value: 0 },
     faceJaw: { value: 0 },
@@ -1085,11 +1362,15 @@ function patch(material: THREE.Material, spec: FaceSpec = HER_FACE): Uniforms {
     faceIrisAmber: { value: new THREE.Vector4(...FACE_LOOK.amber, 0) },
     faceIrisRing: { value: new THREE.Vector3(...FACE_LOOK.limbal) },
     ...(spec.beard ? { faceBeardArea: { value: new THREE.Vector4() }, faceBeardHair: { value: new THREE.Vector4() }, faceBeardColour: { value: new THREE.Vector4() }, faceBeardLook: { value: new THREE.Vector4() } } : {}),
+    // (the details' own: read only by a program that has them)
+    faceMarks: { value: new THREE.Vector4() }, faceMarksColour: { value: new THREE.Vector4() }, faceMarksAreas: { value: new THREE.Vector4() },
+    faceBrowShape: { value: new THREE.Vector4(0, 0, 0, 1) }, faceDetail: { value: new THREE.Vector4() }, faceIrisSplit: { value: new THREE.Vector2(0.5, FACE_IRIS_SPLIT.soft) },
   };
   const previous = material.onBeforeCompile, cacheKey = material.customProgramCacheKey;
   material.onBeforeCompile = function (shader, renderer) {
     previous.call(this, shader, renderer);
     Object.assign(shader.uniforms, uniforms);
+    const { VERTEX_PARS, VERTEX_NORMAL, VERTEX_JAW, FRAGMENT_PARS, FRAGMENT_COLOUR, FRAGMENT_ROUGHNESS, FRAGMENT_NORMAL } = linesFor(spec, detailed.has(material));
     shader.vertexShader = [VERTEX_PARS, shader.vertexShader].join('\n')
       .replace('#include <morphnormal_vertex>', () => `#include <morphnormal_vertex>${VERTEX_NORMAL}`)
       .replace('#include <morphtarget_vertex>', () => `#include <morphtarget_vertex>${VERTEX_JAW}`);
@@ -1100,7 +1381,7 @@ function patch(material: THREE.Material, spec: FaceSpec = HER_FACE): Uniforms {
   };
   // (her own program's key as it always was; another body's face is another program)
   const tag = spec === HER_FACE ? '' : `-${spec.frame.id}`;
-  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|face-rig-v3${tag}`; };
+  material.customProgramCacheKey = function () { return `${cacheKey.call(this)}|face-rig-v3${tag}${detailed.has(material) ? '-details' : ''}`; };
   material.needsUpdate = true;
   patched.set(material, uniforms);
   specOf.set(material, spec);
@@ -1139,6 +1420,24 @@ export function setFaceRig(material: THREE.Material, state: FaceRigState | null)
     u.faceBeardColour.value.set(...(b ? b.colour : [0, 0, 0] as const), b ? b.amount : 0);
     u.faceBeardLook?.value.set(b ? b.style.grain : 0, 0, 0, 0);
   }
+  // THE DETAILS: the program that has them is asked for once, the first time a state wants one
+  if (s && state && faceNeedsDetails(state) && !detailed.has(material)) {
+    detailed.add(material);
+    finishDetails(material);
+    material.needsUpdate = true;
+  }
+  const m = s?.marks, size = m ? mix(FACE_MARKS.size[0], FACE_MARKS.size[1], m.size) : FACE_MARKS.size[0];
+  u.faceMarks.value.set(m ? m.amount : 0, size, size * FACE_MARKS.cell, 0);
+  u.faceMarksColour.value.set(...(m ? m.colour : [0, 0, 0] as const), FACE_MARKS.alpha);
+  u.faceMarksAreas.value.set(...(m ? m.areas : [0, 0, 0, 0] as const));
+  const bs = s ? s.browShape : [0, 0, 0, 0] as const;
+  u.faceBrowShape.value.set(bs[0] * FACE_BROW_SHAPE.arch, bs[1], bs[2] * FACE_BROW_SHAPE.tilt, 1 + bs[3] * FACE_BROW_SHAPE.thick);
+  u.faceDetail.value.set(...(s ? s.detail : [0, 0, 0, 0] as const));
+  u.faceIrisSplit.value.set(irisSplitAt(s ? s.irisSplit : 0.5), FACE_IRIS_SPLIT.soft);
+}
+/** Where the inner ring gives way, `t` from the iris's middle, for a reach of 0..1 (0.5: her own, 0.5). */
+export function irisSplitAt(reach: number): number {
+  return FACE_IRIS_SPLIT.from + (FACE_IRIS_SPLIT.to - FACE_IRIS_SPLIT.from) * clamp(reach, 0, 1);
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -1299,12 +1598,12 @@ function browHalf(a: number): number {
  * and all of it once a hair is under a pixel; on a hair all of it, and a hair may overhang the band by 0.8 mm); they are
  * a hash the GPU works in 32-bit floats, so they are not mirrored here.
  */
-export function faceBrowAlpha(rest: readonly [number, number, number], amountOf = 1): number {
+export function faceBrowAlpha(rest: readonly [number, number, number], amountOf = 1, shape?: FaceRigState['browShape']): number {
   const f = toF(rest);
   if (!inBox(f) || !(f[2] > BROW_Z_F)) return 0;
   const a = Math.abs(f[0]) - BROW_HEAD_X, s = a / BROW_SPAN;
-  const across = f[1] - (BROW_Y[0] + BROW_Y[1] * s + BROW_Y[2] * s * s);
-  const hb = browHalf(a);
+  const across = f[1] - browY(s, shape);
+  const hb = browHalf(a) * browThick(shape);
   const cover = smoothstep(-hb - FACE_BROWS.edgeLow / 2, -hb + FACE_BROWS.edgeLow / 2, across)
     * (1 - smoothstep(hb - FACE_BROWS.edgeHigh / 2, hb + FACE_BROWS.edgeHigh / 2, across))
     * smoothstep(0, 0.0004, hb);
@@ -1312,10 +1611,20 @@ export function faceBrowAlpha(rest: readonly [number, number, number], amountOf 
 }
 
 /** The brow's centre line at |x| (rest metres): its height and full thickness there, as the shader works them. */
-export function faceBrowLine(x: number): { readonly y: number; readonly thickness: number } {
+export function faceBrowLine(x: number, shape?: FaceRigState['browShape']): { readonly y: number; readonly thickness: number } {
   const a = Math.abs(x) - BROW_HEAD_X, s = a / BROW_SPAN;
-  return { y: BROW_Y[0] + BROW_Y[1] * s + BROW_Y[2] * s * s + O[1], thickness: 2 * browHalf(a) };
+  return { y: browY(s, shape) + O[1], thickness: 2 * browHalf(a) * browThick(shape) };
 }
+/** Her brow's middle line at s (face coordinates), as a shape has it (the shader's `faceBrowShaped`; none: her own). */
+function browY(s: number, shape?: FaceRigState['browShape']): number {
+  const own = BROW_Y[0] + BROW_Y[1] * s + BROW_Y[2] * s * s;
+  if (!shape) return own;
+  const sa = (FACE_BROWS.arch[0] - FACE_BROWS.head[0]) / (FACE_BROWS.tail[0] - FACE_BROWS.head[0]);
+  const line = BROW_Y[0] + (BROW_Y[1] + BROW_Y[2]) * s;
+  const arch = s < sa ? smoothstep(0, sa, s) : 1 - (1 - FACE_BROW_SHAPE.tailKeep) * smoothstep(sa, 1, s);
+  return mix(own, line, clamp(shape.straight, 0, 1)) + clamp(shape.arch, -1, 1) * FACE_BROW_SHAPE.arch * arch + clamp(shape.tilt, -1, 1) * FACE_BROW_SHAPE.tilt * clamp(s, 0, 1.2);
+}
+const browThick = (shape?: FaceRigState['browShape']): number => (shape ? 1 + clamp(shape.thick, -1, 1) * FACE_BROW_SHAPE.thick : 1);
 
 /** How much of the lips a rest point is (0..1): the shape the tint is laid by, before the tint's own amount. */
 export function faceLipAlpha(rest: readonly [number, number, number]): number {
@@ -1434,12 +1743,12 @@ export function faceMouthInterior(jawWeightInterpolated: number, rest: readonly 
  * The iris's colour (linear) at `t` of the way from its middle to its edge (0..1, the shader's `ang / IRIS_ANGLE`),
  * before its fibres: the collar, the base, the limbal ring, blended as `faceEye` blends them.
  */
-export function faceIrisColour(t: number, state: Pick<FaceRigState, 'iris' | 'irisAmber' | 'irisRing'>): [number, number, number] {
+export function faceIrisColour(t: number, state: Pick<FaceRigState, 'iris' | 'irisAmber' | 'irisRing' | 'irisInner' | 'irisSplit'>): [number, number, number] {
   return irisAt(t, settingOf({ jaw: 0, gazeRight: [0, 0, 1], gazeLeft: [0, 0, 1], blink: 0, ...state }));
 }
 function irisAt(t: number, s: Setting): [number, number, number] {
   const amber = s.irisAmber ?? mul(s.iris, AMBER_RATIO), ring = s.irisRing ?? mul(s.iris, LIMBAL_RATIO);
-  const a = smoothstep(0.38, 0.62, t), b = smoothstep(0.80, 0.97, t);
+  const c = irisSplitAt(s.irisSplit), a = smoothstep(c - FACE_IRIS_SPLIT.soft, c + FACE_IRIS_SPLIT.soft, t), b = smoothstep(0.80, 0.97, t);
   return [0, 1, 2].map((i) => mix(mix(amber[i], s.iris[i], a), ring[i], b)) as [number, number, number];
 }
 
