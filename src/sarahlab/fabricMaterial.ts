@@ -126,6 +126,8 @@ export interface FabricLow {
  * `fabricPanel.ts` her slip when the overlay comes off.
  */
 export const LOW_SLIP_ATTRIBUTE = 'fabricRegionTint';
+/** GAME TUNING (her mesh's units, about a metre's): how round a painted shirt's hem is where its two lines cross (`FabricCut.skinHem`). */
+export const SKIN_HEM_ROUND = 0.02;
 
 /**
  * A top's cut as a material reads it (`topCut.ts`; her mesh's own units): `texture`, its two drawings and her middle
@@ -162,6 +164,17 @@ export interface FabricCut {
    * its drape's band and stays at its rest height, as approved.
    */
   readonly ownHem?: boolean;
+  /**
+   * A PAINTED SHIRT'S HEM (one with a LENGTH, since 2026-11-24 no drape's band over it: `paintTemplates.PAINTED_SHIRT_DRAPE`)
+   * is where the HIGHER of two lines puts it, rounded where they cross (`SKIN_HEM_ROUND`): level on her as she is shaped
+   * (`ownHem`'s), and ON HER SKIN -- at its rest height on the skin it was put on, looked up through her skin's slip
+   * PULLED BACK through her skin's own stretch (`pulledSlip.ts`, `LOW_SLIP_ATTRIBUTE`), as a drawn bottom's waistband is.
+   * About her hips and her back the two are one. Under a big bump the skin's goes down with her bump: level alone, it
+   * cut across a bump of 150% and more, its lower part in what she wore under it (MEASURED 2026-11-24 in the room, the
+   * henley at 200%: a third of her bump). With no bump the level one's: on her skin alone, the skin under her body file's
+   * bump goes back up her as it goes, and the hem rose 5 cm over her mound in a U (MEASURED, the henley at 0%).
+   */
+  readonly skinHem?: boolean;
   /**
    * A BANDEAU's top edge (`topCut.BANDEAU`): its front's height, its sides' and back's, nothing, and how far round her
    * its front's height reaches (`BANDEAU.frontReach`). Worked out at each pixel from where it stands round her -- its
@@ -214,7 +227,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     fabricCutSeam: { value: new THREE.Vector2(0, 1) },
     // (an outline's armscye: off while its rounding, w, is 0)
     fabricCutSide: { value: new THREE.Vector4(0, 0, 1, 0) }, fabricCutRound: { value: new THREE.Vector4(0, 0, 0, 0) }, fabricCutStart: { value: new THREE.Vector3(0, 1e9, 0) },
-    // (1: the hem is the top's own edge, level on her as she is shaped -- `FabricCut.ownHem`)
+    // (1: the hem is the top's own edge, level on her as she is shaped -- `FabricCut.ownHem`; 2: on her skin, `skinHem`)
     fabricCutHem: { value: 0 },
   });
   for (let i = 0; i < layers; i++) {
@@ -323,10 +336,13 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     // A BAND IN A COLOUR OF ITS OWN (the layer's edging, `fabricCutEdge`): that colour in place of the fabric's, with
     // the fabric's own knit kept in it -- the pixel's light over the fabric's average light (w), held between about a
     // half and one and three quarters so a dark fabric's grain is not blown up under a light edging; with w 0, flat.
-    const band = (d: string, b: string, i: number) => `
+    // A HEM'S BAND IS ALWAYS THE TOP'S OWN FABRIC A SHADE DARKER (`topCut.SHIRT_HEM_BAND`): `edged`, how much of a band
+    // takes the EDGING -- along a cut's hem and sleeves' line, its sleeves' share (with no band at its hem, all of it,
+    // as before)
+    const band = (d: string, b: string, i: number, edged = '') => `
           if (${b} > 0.0) {
             float fa = max(fwidth(${d}) * 0.75, 1e-7), fi = 1.0 - smoothstep(${b} - fa, ${b} + fa, ${d});
-            if (fabricCutEdge${i}.w >= 0.0) fc = mix(fc, fabricCutEdge${i}.rgb * (fabricCutEdge${i}.w > 0.0 ? clamp(dot(fc, vec3(0.2126, 0.7152, 0.0722)) * fabricCutEdge${i}.w, 0.45, 1.75) : 1.0), fi);
+            if (fabricCutEdge${i}.w >= 0.0) ${edged ? '{ ' : ''}fc = mix(fc, fabricCutEdge${i}.rgb * (fabricCutEdge${i}.w > 0.0 ? clamp(dot(fc, vec3(0.2126, 0.7152, 0.0722)) * fabricCutEdge${i}.w, 0.45, 1.75) : 1.0), fi${edged ? ` * ${edged}` : ''});${edged ? ` fc *= 1.0 - fabricCutBand${i}.w * fi * (1.0 - ${edged}); }` : ''}
             else fc *= 1.0 - fabricCutBand${i}.w * fi;
             fc *= 1.0 - fabricCutSeam.x * (1.0 - smoothstep(fabricCutSeam.y, fabricCutSeam.y + fa, abs(${d} - ${b})));
           }`;
@@ -442,7 +458,7 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
     const cutLine = (i: number, neckOnly: boolean) => `
           float fn = fabricCutValue.x;${band('fn', `fabricCutBand${i}.x`, i)}
           ${neckOnly ? 'float fd = fn;' : `float fl = fabricCutValue.y;
-          float fbl = mix(fabricCutBand${i}.z, fabricCutBand${i}.y, fabricCutValue.z);${band('fl', 'fbl', i)}
+          float fbl = mix(fabricCutBand${i}.z, fabricCutBand${i}.y, fabricCutValue.z), fbe = fabricCutBand${i}.z > 0.0 ? fabricCutValue.z : 1.0;${band('fl', 'fbl', i, 'fbe')}
           float fd = min(fn, fl);`}${detailLine(i)}`;
     const sample = (i: number) => `
       if (fabricOn${i} > 0.5) {
@@ -535,7 +551,10 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           // (a ONE-PIECE has no hem -- its hem is told far under the floor -- and its trunk's distance from that, metres,
           // against a sleeve's own across the one row that joins her arm to her trunk was a slope of many ranges a
           // pixel: a dotted hairline down the front of each shoulder of the leotard. Both are held to a hand's width)
-          float hd = vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, sd = fabricCutLimb.y - vFabricAlong;
+          // (a painted shirt's, \`FabricCut.skinHem\`: the higher of its two places -- level on her as she is shaped, and on
+          // her skin -- rounded where they cross, 2 cm)
+          float hv = vFabricSlip.y * min(fabricCutHem, 1.0), hs = vFabricTint.y * (1.0 - fabricShowRegions), hk = max(${SKIN_HEM_ROUND.toFixed(3)} - abs(hs - hv), 0.0) / ${SKIN_HEM_ROUND.toFixed(3)};
+          float hd = vFabricPos.y + (fabricCutHem > 1.5 ? max(hv, hs) + hk * hk * ${(SKIN_HEM_ROUND / 4).toFixed(4)} : hv) - fabricCutLimb.z, sd = fabricCutLimb.y - vFabricAlong;
           if (fabricCutLimb.z < -1.0) { hd = min(hd, 0.12); sd = min(sd, 0.12); }
           return vec3(neck, mix(hd, sd, a), a);
         }`
@@ -833,7 +852,7 @@ export function setFabricCut(material: THREE.Material, cut: FabricCut | null): v
   (u.fabricCutSeam.value as THREE.Vector2).fromArray(cut.seam);
   (u.fabricCutSide.value as THREE.Vector4).fromArray(cut.side ?? [0, 0, 1, 0]);
   (u.fabricCutStart.value as THREE.Vector3).fromArray(cut.start ?? [0, 1e9, 0]);
-  u.fabricCutHem.value = cut.ownHem ? 1 : 0;
+  u.fabricCutHem.value = cut.skinHem ? 2 : cut.ownHem ? 1 : 0;
   if (u.fabricCutRound) (u.fabricCutRound.value as THREE.Vector4).fromArray(cut.round ?? [0, 0, 0, 0]);
 }
 /**

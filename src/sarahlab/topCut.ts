@@ -92,6 +92,14 @@ export interface TopBands { readonly neck: number; readonly sleeve: number; read
  * hairlines of it round her. To draw a stitched hem the drape's band has to draw it as well.
  */
 export const TEE_BANDS: TopBands = Object.freeze({ neck: 0.016, sleeve: 0.018, hem: 0 });
+/**
+ * GAME TUNING (metres): a PAINTED SHIRT's hem band -- every drawn top with a LENGTH, outlines too, unless its template
+ * says (the ringer's is none) -- now that its hem is painted, its own edge level on her as she is shaped, and no drape's
+ * band lies over it (`paintTemplates.PAINTED_SHIRT_DRAPE`, Joshua, 2026-11-24). His sheet's stitched hem, 20 mm. Drawn
+ * in the shirt's own fabric a shade darker always: a top's EDGING colours its collar and its sleeves' bands, not its hem
+ * (a ringer's or a raglan's hem is the body's colour).
+ */
+export const SHIRT_HEM_BAND = 0.02;
 
 /** What a top's cut is laid by on one body: her own measures, in her mesh's own units (the room's rest positions). */
 export interface TopFrame {

@@ -703,6 +703,7 @@ export function standingSourceOf(mesh: THREE.Mesh, posed: PosedShapes): (Standin
   const morphs = targets.map((a, k) => ({
     name: names[k] ?? '', weight: weights[k] ?? 0,
     move: (v: number, out: number[]) => { out[0] = a.getX(v); out[1] = a.getY(v); out[2] = a.getZ(v); },
+    moves: a.itemSize === 3 && !a.normalized && !(a as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute ? (a.array as ArrayLike<number>) : null,
   }));
   const key = `${pos.version} ${pushed ? pushed.version : '-'} ${morphs.map((m) => (MOTION_SHAPES.has(m.name) ? 0 : m.weight)).join(',')} ${posed.map((f) => f.weight).join(',')}`;
   return { shaped: pos.array, morphs, push: pushed ? pushed.array as Float32Array : null, posed, key };

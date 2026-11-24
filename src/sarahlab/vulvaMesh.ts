@@ -381,8 +381,8 @@ function samplePaintInto(out: Float32Array, from: ArrayLike<number>, src: Uint32
   }
 }
 /** An attribute as plain floats, one entry a vertex (a quantized or interleaved one read through getX..getW). */
-function floatsOf(attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): Float32Array {
-  const n = attr.count, s = attr.itemSize, out = new Float32Array(n * s);
+function floatsOf(attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, into?: Float32Array): Float32Array {
+  const n = attr.count, s = attr.itemSize, out = into && into.length === n * s ? into : new Float32Array(n * s);
   for (let i = 0; i < n; i++) for (let k = 0; k < s; k++) out[i * s + k] = attr.getComponent(i, k);
   return out;
 }
@@ -478,6 +478,7 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
   // for its waistband's look-up, and is read the same way.
   const IN_HER_TRIANGLE = new Set(['fabricRest', 'fabricSlip', 'fabricRegionTint']);
   const extras: { name: string; from: THREE.BufferAttribute | THREE.InterleavedBufferAttribute; version: number }[] = [];
+  const extraScratch = new Map<string, Float32Array>();
   const readExtras = (): boolean => {
     let changed = false;
     for (const [name, a] of Object.entries(g.attributes)) {
@@ -485,10 +486,18 @@ export function createVulvaPatch(body: THREE.SkinnedMesh, basePos: Float32Array,
       let e = extras.find((x) => x.name === name);
       const version = (a as THREE.BufferAttribute).version ?? 0;
       if (e && e.from === a && e.version === version) continue;
-      const out = new Float32Array(P * a.itemSize);
-      if (name === PAINT_ATTRIBUTE) samplePaintInto(out, floatsOf(a), bake.uvSrc, bake.uvBary, P);
-      else if (IN_HER_TRIANGLE.has(name)) sampleInto(out, floatsOf(a), a.itemSize, bake.src, bake.bary, P); else sampleInto(out, floatsOf(a), a.itemSize, bake.uvSrc, bake.uvBary, P);
-      geom.setAttribute(name, new THREE.BufferAttribute(out, a.itemSize));
+      // (read again as her shape changes -- every step of her belly: her attribute read where it is when it is plain
+      // floats, not copied whole -- 1.9 MB a time, 30 MB in ten steps, MEASURED 2026-11-24 -- and the area's own written
+      // into what it had, which is uploaded again, not a new one each time)
+      const plain = (a as THREE.BufferAttribute).isBufferAttribute && (a as THREE.BufferAttribute).array instanceof Float32Array && !a.normalized;
+      const from = plain ? (a as THREE.BufferAttribute).array as Float32Array : floatsOf(a, extraScratch.get(name));
+      if (!plain) extraScratch.set(name, from);
+      const had = geom.getAttribute(name) as THREE.BufferAttribute | undefined;
+      const keep = !!had && had.itemSize === a.itemSize && had.array instanceof Float32Array && had.array.length === P * a.itemSize;
+      const out = keep ? had!.array as Float32Array : new Float32Array(P * a.itemSize);
+      if (name === PAINT_ATTRIBUTE) samplePaintInto(out, from, bake.uvSrc, bake.uvBary, P);
+      else if (IN_HER_TRIANGLE.has(name)) sampleInto(out, from, a.itemSize, bake.src, bake.bary, P); else sampleInto(out, from, a.itemSize, bake.uvSrc, bake.uvBary, P);
+      if (keep) had!.needsUpdate = true; else geom.setAttribute(name, new THREE.BufferAttribute(out, a.itemSize));
       if (!e) { e = { name, from: a, version }; extras.push(e); } else { e.from = a; e.version = version; }
       changed = true;
     }

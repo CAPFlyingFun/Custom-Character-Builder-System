@@ -17,7 +17,7 @@ import { BODY_REGIONS, type BodyMap } from './bodyRegions';
 import { leotardFrontStencil } from './leotardStencil';
 import { bikiniBottomField } from './bikiniBottomStencil';
 import { ATHLETIC_BOTTOM, athleticBottomCarry, athleticBottomField } from './athleticBottomStencil';
-import { CHEST_CUTOUT, NECK_RANGE, NECK_STYLES, type CutoutParams, TOP_OUTLINES, cutCoverage, hasNoHem, isCutTop, isOnePiece, takesTurtleneck, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
+import { CHEST_CUTOUT, NECK_RANGE, NECK_STYLES, SHIRT_HEM_BAND, type CutoutParams, TOP_OUTLINES, cutCoverage, hasNoHem, isCutTop, isOnePiece, takesTurtleneck, topCut, topCutSpec, type CutTopKind, type NeckStyle, type TopBands, type TopCut, type TopFrame } from './topCut';
 import { waistLine, type LowBands } from './bottomCut';
 import { TOP_DETAIL_STYLES, topDetailSpec, type TopDetailName, type TopDetailSpec } from './topDetails';
 
@@ -407,14 +407,16 @@ export const DEFAULT_SHIRT_LENGTH = 0;
 export const PAINTED_SHIRT_LONGEST = 0;
 /**
  * How much of the drape below its waist a painted shirt wears (`tunicDrape.ts`: the sheet that spans what paint cannot,
- * from her waist to the hem, with its hem band). 'band': its hem band alone, the smooth, level bottom edge all round her,
- * front and back, lying on her skin -- no flap. A painted shirt ends above the line it was made for (Joshua, 2026-11-06:
- * "Remove that bottom flap skin on the painted shirt… it shouldn't need it as it is higher than that line"); taken off
- * whole, the paint's own hem was the edge, and it wobbled where her hips bend ("Work on creating smooth bottom edging…
- * we went through this before"; asked, he chose "Hem band only", "Also, do along the backside"). 'full' is the whole
- * drape as it was, kept for a painted shirt that may one day go lower again; 'off', none.
+ * from her waist to the hem, with its hem band). 'off' since 2026-11-24: NONE -- A PAINTED SHIRT'S HEM IS PAINTED, its
+ * own edge drawn for each pixel level on her as she is shaped, with a stitched band inside it (`topCut.SHIRT_HEM_BAND`,
+ * the panel's `ownHem`), as its sleeves' ends and a drawn bottom's are (Joshua, 2026-11-24, of the band standing off a
+ * big bump: "instead of trying to make it fit… can we instead, add painted edges instead like we did with leggings and
+ * shirts sleeves?"; "let's do all for now… we can come back to it later"). Before, 'band': its hem band alone, a sheet
+ * lying round her at the hem (Joshua, 2026-11-06: "Remove that bottom flap skin on the painted shirt…"; then "Hem band
+ * only", "Also, do along the backside") -- under a big bump it stood out at her bump's outline in flaps. 'full' is the
+ * whole drape as it was, kept for a painted shirt that may one day go lower again.
  */
-export const PAINTED_SHIRT_DRAPE: 'full' | 'band' | 'off' = 'band';
+export const PAINTED_SHIRT_DRAPE: 'full' | 'band' | 'off' = 'off';
 /** A painted shirt's LENGTH as it may be worn: from 0 up to PAINTED_SHIRT_LONGEST. */
 export const paintedShirtLength = (length: number): number => Math.max(0, Math.min(PAINTED_SHIRT_LONGEST, Number.isFinite(length) ? length : 0));
 /** The crew opening's width round her neck, in neck radii (what `open` is for a crew at LINES.neckCrew). */
@@ -963,7 +965,10 @@ export function templateCut(map: BodyMap, p: CoverageParams, frame: TopFrame | n
   // (a one-piece has no hem: it ends at its leg openings, which are its field's. Its hem is put under the floor, a
   // number and not "none": the shader mixes a hem's distance with a sleeve's by which skin a pixel is, and no number
   // times nothing is no number -- MEASURED in the room, her arms drawn half covered)
-  return topCut(topCutSpec(p, frame, hasNoHem(p) ? ONE_PIECE_HEM : p.length === null && p.hemFront !== null ? p.hemFront : shirtHem(map, p.length ?? 0)), frame);
+  // (a shirt with a LENGTH has a stitched band at its hem unless it says otherwise -- the ringer's is none -- now its hem
+  // is painted and not a drape's band: `PAINTED_SHIRT_DRAPE`)
+  const q = p.length !== null && PAINTED_SHIRT_DRAPE === 'off' && p.band?.hem === undefined ? { ...p, band: { ...(p.band ?? {}), hem: SHIRT_HEM_BAND } } : p;
+  return topCut(topCutSpec(q, frame, hasNoHem(p) ? ONE_PIECE_HEM : p.length === null && p.hemFront !== null ? p.hemFront : shirtHem(map, p.length ?? 0)), frame);
 }
 /** A one-piece's "hem", on her trunk (0 her hip joints, 1 the base of her neck): under the floor. */
 export const ONE_PIECE_HEM = -4;

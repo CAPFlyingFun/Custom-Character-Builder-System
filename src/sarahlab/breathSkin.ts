@@ -228,8 +228,11 @@ export function breathVolumes(u: BreathUniforms, rest: ArrayLike<number>, index:
     const bx = rest[k * 3] - rest[i * 3], by = rest[k * 3 + 1] - rest[i * 3 + 1], bz = rest[k * 3 + 2] - rest[i * 3 + 2];
     // (half the cross product: the triangle's area along the way it faces)
     const nx = (ay * bz - az * by) / 2, ny = (az * bx - ax * bz) / 2, nz = (ax * by - ay * bx) / 2;
-    let cs = 0, bs = 0, fs = 0;
-    for (const v of [i, j, k]) { cs += C[v * 3] * nx + C[v * 3 + 1] * ny + C[v * 3 + 2] * nz; bs += Bm[v * 3] * nx + Bm[v * 3 + 1] * ny + Bm[v * 3 + 2] * nz; fs += Fm[v * 3] * nx + Fm[v * 3 + 1] * ny + Fm[v * 3 + 2] * nz; }
+    // (its three corners written out: an array made for them at each of her triangles was 140 MB in ten steps of her belly)
+    const i3 = i * 3, j3 = j * 3, k3 = k * 3;
+    const cs = C[i3] * nx + C[i3 + 1] * ny + C[i3 + 2] * nz + (C[j3] * nx + C[j3 + 1] * ny + C[j3 + 2] * nz) + (C[k3] * nx + C[k3 + 1] * ny + C[k3 + 2] * nz);
+    const bs = Bm[i3] * nx + Bm[i3 + 1] * ny + Bm[i3 + 2] * nz + (Bm[j3] * nx + Bm[j3 + 1] * ny + Bm[j3 + 2] * nz) + (Bm[k3] * nx + Bm[k3 + 1] * ny + Bm[k3 + 2] * nz);
+    const fs = Fm[i3] * nx + Fm[i3 + 1] * ny + Fm[i3 + 2] * nz + (Fm[j3] * nx + Fm[j3 + 1] * ny + Fm[j3 + 2] * nz) + (Fm[k3] * nx + Fm[k3 + 1] * ny + Fm[k3 + 2] * nz);
     chest += cs / 3; belly += bs / 3; full += fs / 3;
   }
   return { chest: Math.abs(chest), belly: Math.abs(belly), full: Math.abs(full) };

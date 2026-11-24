@@ -198,12 +198,11 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   his sheet): inside the cut's line, the top's own fabric a tenth darker with a seam. Each edge's band is shaded by ITS
   OWN distance: taken from the nearer of the neck's and the sleeve's, the shade's edge was drawn where the nearer one
   changed -- a dashed line 3 cm from the rim all round her collar (MEASURED, the ringer).
-  NONE AT A HEM YET. A shirt's hem is its drape's hem band (`tunicDrape.ts`): a sheet in the shirt's own fabric, solid
-  over the last 18 mm above the hem, which covers her skin's paint there. A band drawn on her skin at her hem (20 mm,
-  his sheet's stitched hem) showed only where that sheet dips under her skin -- MEASURED 2026-11-14 in the room: a grey
-  patch at her side in the top's own fabric, and, a pink tee with a red edging, chips of red at her side and hairlines
-  of it round her. To draw a stitched hem the drape's band has to draw it as well (a template may still ask for one:
-  `band.hem`).
+  A HEM'S BAND SINCE 2026-11-24, when a painted shirt's drape was taken off ("A painted shirt's hem, painted", below:
+  20 mm, `SHIRT_HEM_BAND`, in the shirt's own shade whatever its EDGING). Until then none: a shirt's hem was its drape's
+  hem band (`tunicDrape.ts`), a sheet in its own fabric over the last 18 mm above the hem, and a band drawn on her skin
+  there (20 mm) showed only where that sheet dipped under her skin -- MEASURED 2026-11-14 in the room: a grey patch at
+  her side in the top's own fabric, and, a pink tee with a red edging, chips of red at her side and hairlines of it.
 - **EDGING: one colour of its own for a top's bands, or MATCH** (Joshua, 2026-11-14: "for the collars and sleeve bands,
   are those colors also adjustable? So for example can pick a solid pink shirt with solid red color edging"). A drawn
   top's layer shows the editor's trim controls as EDGING: MATCH (the default: every look saved before wears its bands
@@ -276,7 +275,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (above); and, seen from her side at her largest bust, a hairline and a sliver of her skin 3 cm long where the
   scoop's rim passes from the sheet onto her near breast (the sheet stands up to 44 mm off her there; from her front
   the two rims agree to 0.9 mm).
-- **A PAINTED SHIRT'S HEM: her paint ends at the hem band's own bottom edge, on a line that is straight across her
+- (UNTIL 2026-11-24, WHILE A PAINTED SHIRT WORE ITS DRAPE'S BAND: "A painted shirt's hem, painted", below.) **A PAINTED
+  SHIRT'S HEM: her paint ends at the hem band's own bottom edge, on a line that is straight across her
   biggest triangles** (a fault found and fixed; Joshua, 2026-11-14: "Go ahead and push then fix the issues you see";
   `tunicDrape.ts` `HEM_PAINT_ROWS`, `paintTemplates.templateCut`). MEASURED 2026-11-14 on v0.9.23 and on v0.9.24 alike:
   at her side, just above a painted shirt's hem, two chips of what is under the shirt (her leggings, or her skin), each
@@ -481,7 +481,7 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     12 squared over its distance; the hem by its two side neighbours). (b) THE RING'S TOP EDGE WAVERS SEATED, 1 to 8 mm, at
     the small of her back (its heights there 78.4, 77.9, 78.6, 77.8 cm; standing it is smooth; on her full skin as well, and
     with each of her pose's fields switched off in turn). PLANNED: the drawn ring evened along itself, shrink-free (two
-    rounds of 0.5 and -0.53). (c) `SHEET_TAUT.most` (3 cm) is reached in two strides of six and seated. (d) A PAINTED TOP TO
+    rounds of 0.5 and -0.53). (c) `SHEET_TAUT.most` (3 cm) is reached in two strides of six and seated. (d) (GONE 2026-11-24 with a painted shirt's drape: "A painted shirt's hem, painted") A PAINTED TOP TO
     HER HIPS worn over a skirt: its hem band stands through the skirt in chips at her hips (a painted top's hem is its
     drape's band, which no skirt is told of). (e) Her shoes through the maxi's hem (below). (f) The points under her skin
     squatting (above).
@@ -1483,6 +1483,44 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (`breathVolumes`; MEASURED in the room 2026-11-13: 690.9 mL breathed, 690.9 swept; a quiet breath at term moves her
   skin 6 mm at the most, a running breath 15 mm).
 - Her lungs, heart and the organs under her diaphragm are drawn from her vitals (`ThoraxView.drive`).
+
+## Her skeleton and her bare feet, laid a slice at a time
+
+- **SNEAKERS · OFF LAYS HER SKELETON AND FITS HER BARE FEET OVER IT, AND THE ROOM GOES ON DRAWING** (a fault Joshua found,
+  2026-11-24: "pressing to turn off the sneakers causes the app to lock up for about 60s, then crash/restart afterwards").
+  Barefoot, her feet are fitted over her foot bones (`footCover.ts`), so her skeleton is laid (`skeletonInV2.ts`) if it is
+  not yet -- all of it, in one piece of work. MEASURED in the room as a phone (430 x 932, touch; the build machine):
+  140.6 s of the page doing nothing else, one task of 137 s.
+- WHAT IT COST, by the profile: her skin's depth at each of her bones' 45,112 points (six rays each and the nearest of
+  her triangles, `insideSkin.ts` `depthsInSkin`) every pass and every step of the fit; the distance to a triangle made a
+  function of its own at every call; Math.hypot (a dozen times a plain root: MEASURED, 2e7 of each); sorting thousands of
+  her points within 10 cm of each bone point for the four nearest; her feet's rounding hunting her points across a Map
+  of string keys.
+- NOW, WHAT IS LAID IS THE SAME: the rays' answer is kept for a point while it has moved less than it stood from her
+  skin (`RaysKept`); a cell, or a triangle's box, no nearer than the nearest found is passed over; the four nearest are
+  kept as they are found, the first found first among equals, as the sort had them; cells are numbers (`cellKey`); her
+  feet's points are read straight through memory, in the order they were summed; a plain root where Math.hypot was.
+  MEASURED against the old laying, number for number (the probe's `skeletonLaid`): her bare feet's field the same to the
+  last bit; her skeleton's 45,112 points 4,909 of them moved, by 0.055 mm at the most (a root's last bit tips a point at
+  its margin from one pass to the next), and so 4,275 of its weights by up to 0.027.
+- AND IT IS DONE A SLICE AT A TIME (`insideSkin.ts` `Steps`, `runSteps`; `SkeletonInV2.stepped`, `footCoverSteps`;
+  SarahLabScene's `inSlices`, `SLICE_MS`): each slice as long as the room took since the last, 12 to 100 ms (GAME
+  TUNING), so the room draws at about half its rate while her feet are fitted and never stops. MEASURED as above: its
+  work 18.8 s in 163 slices, the longest 347 ms (140.6 s in one before); on a phone, NOT MEASURED -- by the old laying's
+  minute there, some 8 s of work over twice that. Left off if another
+  laying, or another body, comes first. `new SkeletonInV2(...)` and `footCover(...)` still lay it at once (a probe's
+  relaying, the tests).
+- The probe's `skeletonLaid()`: her skeleton's points and weights and her feet's field as laid, how long it took, and
+  its slices' work.
+- After anything changes how her skeleton or her feet are laid: `tests/insideSkin.test.ts`, `tests/footCover.test.ts`,
+  `tests/herOwnSkeleton.test.ts`, `tests/sarahSkeleton.test.ts`; then the room as a phone: SNEAKERS · OFF, its time, its
+  longest slice, and `skeletonLaid()` against the laying before.
+- **HER BREATH'S ARRAYS ARE MADE ONCE AND REFILLED** (Joshua, 2026-11-24: "make them once, refill them so belly changes
+  don't churn memory on iPhone"). Her breath is laid again when her shape changes, at most twice a second (`layBreath`):
+  her standing shape and her rest places (`breathWork`, 1.4 MB each) and each move's shape at her points
+  (`breathSkin.ts` `volumeWork`, 4.2 MB) were new at every laying; so were a held stroke's surface's in the painters
+  (`levelWork`: her standing shape, its heights and its normals; `LevelMesh.normals`' sums). `tests/vitals.test.ts`
+  holds that a refilled laying says what a fresh one does. MEASURED_BREATH.
 
 ## Her organs
 

@@ -67,6 +67,8 @@ interface WornCut {
   readonly key: string; readonly cut: TopCut; readonly detail: TopDetailSpec | null;
   /** Its hem is the top's OWN edge -- above a LENGTH's reach, no drape's band over it: the sports bra, the boxy crop tee (`FabricCut.ownHem`). */
   readonly ownHem: boolean;
+  /** A painted shirt's (a LENGTH's) hem, with no drape's band over it since 2026-11-24, on her skin: `FabricCut.skinHem`, `PAINTED_SHIRT_DRAPE`. */
+  readonly skinHem: boolean;
 }
 
 export const FABRIC_PANEL_ROLE = 'sarahlab-fabric';
@@ -1033,7 +1035,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (cuts.size >= 24) { const oldest = cuts.keys().next().value as string; cuts.delete(oldest); cutTextures.get(oldest)?.dispose(); cutTextures.delete(oldest); }
     }
     cuts.set(key, made);
-    return { key, cut: made.cut, detail: made.detail, ownHem: params.length === null && params.hemFront !== null && !hasNoHem(params) };
+    return { key, cut: made.cut, detail: made.detail, ownHem: params.length === null && params.hemFront !== null && !hasNoHem(params), skinHem: params.length !== null && PAINTED_SHIRT_DRAPE === 'off' };
   }
   /** A drawn top's layer beside its fabric: its bands, its EDGING and what is drawn on it. */
   const cutLayerOf = (worn: WornCut, c: FabricChoice) => ({ ...cutLayer(worn.cut), edging: edgingOf(c), detail: worn.detail ? { pack: worn.detail.pack } : null });
@@ -1058,7 +1060,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       texture, rect: [f.x0, f.y0, 1 / (f.cols * f.cell), 1 / (f.rows * f.cell)], depth: [f.zLo, f.zHi - f.zLo, cut.spec.sideBlend ?? TOP_CUT.sideBlend * U, TOP_CUT.range * U],
       armL: arm(f.arms[0]), armR: arm(f.arms[1]), limb: [f.mid, cut.spec.sleeve, Number.isFinite(cut.spec.hemY) ? cut.spec.hemY : -1e9, f.facing], seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U],
       side: S ? [S.z0, S.gate, ARMSCYE.feather * U, ARMSCYE.join * U] : null, start: S && Number.isFinite(S.startY) ? [S.startX, S.startY, S.slope] : null,
-      ownHem: worn.ownHem,
+      ownHem: worn.ownHem, skinHem: worn.skinHem,
       // (a bandeau's top edge, round her: `topCut.BANDEAU`)
       round: cut.spec.bandeau && f.seamRow ? [cut.spec.bandeau.front, cut.spec.bandeau.side, 0, BANDEAU.frontReach] : null,
     };
@@ -1579,7 +1581,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     // about her frame as well (`FabricCut.ownHem`): the reach goes down past it, and is made again when one worn after
     // needs more than the last)
     const cutFrame = wornCut && frameOf?.mesh === body ? frameOf.frame : null;
-    const below = cutFrame && wornCut ? Math.max(CUT_SLIP_REACH_M.below * cutFrame.unitsPerMetre, wornCut.ownHem && Number.isFinite(wornCut.cut.spec.hemY) ? cutFrame.neckY - wornCut.cut.spec.hemY + CUT_SLIP_HEM_M * cutFrame.unitsPerMetre : 0) : 0;
+    const below = cutFrame && wornCut ? Math.max(CUT_SLIP_REACH_M.below * cutFrame.unitsPerMetre, (wornCut.ownHem || wornCut.skinHem) && Number.isFinite(wornCut.cut.spec.hemY) ? cutFrame.neckY - wornCut.cut.spec.hemY + CUT_SLIP_HEM_M * cutFrame.unitsPerMetre : 0) : 0;
     if (wornCut && fabricCutWorn(material) && (cutSlip?.mesh !== body || cutSlipBelow < below)) {
       const frame = cutFrame;
       if (frame) {
@@ -1651,8 +1653,10 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     const body = hooks.body();
     if (!body) return;
     const material = skinMaterialOf(body), g = body.geometry as THREE.BufferGeometry;
-    if (!fabricLowWorn(material)) return;
-    const frame = lowOf?.mesh === body ? lowOf.frame : null, map = regionMap();
+    // (and while a painted shirt is worn: its hem is looked up by it too, `FabricCut.skinHem`)
+    const shirt = !!wornCut?.skinHem && fabricCutWorn(material);
+    if (!fabricLowWorn(material) && !shirt) return;
+    const frame = lowOf?.mesh === body ? lowOf.frame : shirt ? lowFrameNow() : null, map = regionMap();
     if (!frame || !map) return;
     if (painting && showingRegions) { if (lowSlip) lowSlip.laid = false; return; }
     if (lowSlip?.mesh !== body) lowSlip = lowSlipOver(body, frame, map);
@@ -2209,7 +2213,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       if (k?.laid && attr) for (const v of k.vertices) { longest = Math.max(longest, Math.hypot(attr.getX(v), attr.getY(v), attr.getZ(v))); narrowest = Math.min(narrowest, attr.getW(v)); widest = Math.max(widest, attr.getW(v)); }
       return {
         frame: { unitsPerMetre: frame.unitsPerMetre, mid: frame.mid, hipY: frame.hipY, trunk: frame.trunk, facing: frame.facing, legs: frame.legs.map((l) => ({ name: l.name, thigh: l.thigh, shin: l.shin })), middle: frame.middle.length, groin: frame.groin.length, crease: frame.crease ? Array.from(frame.crease) : null, fold: lowFold, band: lowBand?.mesh === body ? { stations: lowBand.stations.count, cuts: lowBand.stations.a.map((a) => a.length), lean: lowBand.stations.lean, ms: lowBandMs, told: lowBandTold } : null },
-        worn: fabricLowWorn(skinMaterialOf(body)),
+        worn: fabricLowWorn(skinMaterialOf(body)) || (!!wornCut?.skinHem && fabricCutWorn(skinMaterialOf(body))),
         layers: templates.map((t, i) => { const spec = t && paint?.has(i) && layerShown(i) && paintChoices[i].fabric ? lowOfParams(t.params) : null; return spec ? { template: t!.id, waist: spec.waist, end: spec.end, start: spec.start, bands: [spec.bands.waist, spec.bands.leg, spec.bands.top], edged: !!edgingOf(paintChoices[i]), hinge: spec.hinge, reach: spec.reach, swing: lowSwings[i], inner: lowInner[i] ? Array.from(lowInner[i]!) : null, stretch: lowStretch ? Array.from(lowStretch, (k) => +k.toFixed(3)) : null, moon: lowMoons[i] ? { width: lowMoons[i]![0].width, fill: lowMoons[i]![0].fill, edge: Array.from(lowMoons[i]![0].table), inner: Array.from(lowMoons[i]![1].table) } : null } : null; }),
         slip: k ? { points: k.points, vertices: k.vertices.length, laid: k.laid, pending: k.driver.pending, solved: k.driver.stats.solved, pulled: k.driver.stats.pulled, morphs: k.driver.stats.morphs.slice(), longest, across: [narrowest, widest] } : null,
       };

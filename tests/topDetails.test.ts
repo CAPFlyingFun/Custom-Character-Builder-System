@@ -237,7 +237,10 @@ describe('a top\'s details in the shader', () => {
     // skin's; a sheet does not ask)
     // (2026-11-19: her paint unpacked two layers to a number, `bodyPaint.PAINT_PACK`, for six layers: 60f831b4…)
     // (2026-11-23: a bandeau's top edge, a line round her worked out at each pixel, `fabricCutRound`)
-    expect(compiled(true, 3, null).hash).toBe('c864c777b5c264abc65d6c41fc7dac903be10dbf024bc06c8328d90203fc364b');
+    // (2026-11-24: a hem's band in the top's own shade whatever its EDGING, `topCut.SHIRT_HEM_BAND`, and a painted shirt's hem on her skin, `FabricCut.skinHem`: c864c777… before)
+    expect(compiled(true, 3, null).hash).toBe('b85b55ce7054c3e649bc4619efdc7ea4e14f330ffa0f97531ca692a1c1d85090');
+    // A HEM'S BAND IS THE TOP'S OWN FABRIC A SHADE DARKER: the EDGING colours its sleeves' share of the line, the rest is shaded
+    expect(compiled(true, 3, null).fragmentShader).toContain('fbe = fabricCutBand0.z > 0.0 ? fabricCutValue.z : 1.0;');
     expect(compiled(false, 1, null).hash).toBe('3fac908ee59b894ad4cb7ae0f0ab5d217cc4f17ad16bccba7bce24f571e8b005');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
     // A BANDEAU's top edge is a line round her, worked out at each pixel where it stands round her (topCut.ts `BANDEAU`)
@@ -278,7 +281,10 @@ describe('a top\'s details in the shader', () => {
     // A TOP'S OWN HEM (a sports bra's, a boxy crop tee's: no drape's band over it) is level on her AS SHE IS SHAPED: at
     // the height the pixel stands about her frame -- its rest place and its slip -- while `fabricCutHem` is 1; a
     // shirt's, under its drape's band, at its rest height as before (0, the uniform's own value)
-    expect(skin.fragmentShader).toContain('float hd = vFabricPos.y + vFabricSlip.y * fabricCutHem - fabricCutLimb.z, sd = fabricCutLimb.y - vFabricAlong;');
+    // (and a painted shirt's -- 2 -- the higher of that and its place on her skin, through her pulled slip as a drawn
+    // bottom's waistband, rounded where they cross: `FabricCut.skinHem`)
+    expect(skin.fragmentShader).toContain('float hv = vFabricSlip.y * min(fabricCutHem, 1.0), hs = vFabricTint.y * (1.0 - fabricShowRegions), hk = max(0.020 - abs(hs - hv), 0.0) / 0.020;');
+    expect(skin.fragmentShader).toContain('float hd = vFabricPos.y + (fabricCutHem > 1.5 ? max(hv, hs) + hk * hk * 0.0050 : hv) - fabricCutLimb.z, sd = fabricCutLimb.y - vFabricAlong;');
     expect(skin.fragmentShader).toContain('return vec3(neck, mix(hd, sd, a), a);');
     expect((skin.uniforms.fabricCutHem as { value: number }).value).toBe(0);
     // ...and a cut says which it is when it is laid on her skin's material (`FabricCut.ownHem`; left out: a shirt's)

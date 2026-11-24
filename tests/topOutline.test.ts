@@ -15,11 +15,11 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
-  ARMSCYE, ARMSCYES, BANDEAU, CAMI_FALL, NECK_STYLES, TOP_OUTLINES, armscyeAt, bandeauHeight, bandeauPath, armscyeGate, armscyePath, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, smoothMax, topCut, topCutSpec, topFrame,
+  ARMSCYE, ARMSCYES, BANDEAU, CAMI_FALL, NECK_STYLES, SHIRT_HEM_BAND, TOP_OUTLINES, armscyeAt, bandeauHeight, bandeauPath, armscyeGate, armscyePath, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, smoothMax, topCut, topCutSpec, topFrame,
   type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind,
 } from '../src/sarahlab/topCut';
 import { loadBody } from '../scripts/preview/body.mjs';
-import { COVERAGE_TEMPLATES, OUTLINE_NECK, dialsFor, templateCut, withDial, wornParams, type CoverageParams } from '../src/sarahlab/paintTemplates';
+import { COVERAGE_TEMPLATES, OUTLINE_NECK, PAINTED_SHIRT_DRAPE, dialsFor, templateCut, withDial, wornParams, type CoverageParams } from '../src/sarahlab/paintTemplates';
 import { readBody } from '../scripts/sarahV2SideLock.mjs';
 import { seamDepth, type BodyMap } from '../src/sarahlab/bodyRegions';
 import { loadHerBody } from './herBodyMap';
@@ -455,6 +455,26 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
       }
     }
   });
+});
+
+describe('a painted shirt\'s hem is painted (Joshua, 2026-11-24: "add painted edges instead like we did with leggings and shirts sleeves")', () => {
+  it('no drape lies under it, its hem is its own edge, and a shirt with a LENGTH has a stitched band there unless its template says', async () => {
+    expect(PAINTED_SHIRT_DRAPE).toBe('off');
+    const her = await loadHerBody(), m = her.map, J = m.joints!, U = her.unitsPerMetre;
+    const f = topFrame({ rest: m.rest!, index: her.index, unitsPerMetre: U, facing: m.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }, sideSeam: seamDepth(m) });
+    const shirts = COVERAGE_TEMPLATES.filter((x) => x.params.length !== null);
+    expect(shirts.length).toBeGreaterThanOrEqual(17);
+    for (const s of shirts) {
+      const cut = templateCut(m, s.params, f)!;
+      expect(cut, s.id).toBeTruthy();
+      expect(Number.isFinite(cut.spec.hemY), s.id).toBe(true);
+      // (the ringer's hem is the body's colour and plain: its template says none)
+      expect(cut.spec.bands.hem / U, s.id).toBeCloseTo(s.id === 'teeRinger' ? 0 : SHIRT_HEM_BAND, 6);
+    }
+    // a top cut above a LENGTH's reach keeps its own: the crop tees none, the sports bra its wide band under her bust
+    for (const id of ['crop', 'cropTee']) expect(templateCut(m, t(id), f)!.spec.bands.hem, id).toBe(0);
+    expect(templateCut(m, t('sportsBra'), f)!.spec.bands.hem / U).toBeCloseTo(t('sportsBra').band!.hem!, 6);
+  }, 60_000);
 });
 
 describe('the outline tops\' templates', () => {

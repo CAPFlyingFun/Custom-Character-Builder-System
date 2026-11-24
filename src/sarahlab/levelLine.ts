@@ -79,7 +79,7 @@ export interface StandingSource {
   /** xyz per vertex. */
   readonly shaped: ArrayLike<number>;
   /** Each morph's name, its weight now, and a vertex's move at full weight (written into `out`). */
-  readonly morphs: readonly { readonly name: string; readonly weight: number; move(vertex: number, out: number[]): void }[];
+  readonly morphs: readonly { readonly name: string; readonly weight: number; move(vertex: number, out: number[]): void; readonly moves?: ArrayLike<number> | null }[];
   /** xyz per vertex, or null. */
   readonly push: ArrayLike<number> | null;
   /** Sparse fields laid in `shaped` now: `index` its vertices, `pos` xyz for each, at `weight`. */
@@ -110,7 +110,10 @@ export function standingShape(source: StandingSource, out?: Float32Array): Float
   const d = [0, 0, 0];
   for (const m of source.morphs) {
     if (!m.weight || !Number.isFinite(m.weight) || MOTION_SHAPES.has(m.name)) continue;
-    for (let v = 0; v < n; v++) { m.move(v, d); S[v * 3] += m.weight * d[0]; S[v * 3 + 1] += m.weight * d[1]; S[v * 3 + 2] += m.weight * d[2]; }
+    // (its moves read straight from their array where it has one: a call a point cost more than the sum)
+    const M = m.moves, w = m.weight;
+    if (M && M.length >= n * 3) { for (let i = 0; i < n * 3; i++) S[i] += w * M[i]; continue; }
+    for (let v = 0; v < n; v++) { m.move(v, d); S[v * 3] += w * d[0]; S[v * 3 + 1] += w * d[1]; S[v * 3 + 2] += w * d[2]; }
   }
   return S;
 }
