@@ -230,6 +230,8 @@ export class LevelMesh {
   /** Which search last took each triangle in, and last reached it. */
   private readonly given: Uint32Array;
   private readonly reached: Uint32Array;
+  /** `normals`' sums over each welded point, made once and refilled */
+  private sums: Float64Array | null = null;
   private stamp = 0;
 
   /** `rest` xyz per vertex, `index` three vertices a triangle; two vertices within `weld` of the same place are one point. */
@@ -255,8 +257,9 @@ export class LevelMesh {
    * The way a surface with her triangles faces at each vertex (`space` xyz per vertex; unit normals, xyz per vertex):
    * her triangles' own, summed over each welded point, so the copies of a point along a texture seam face one way.
    */
-  normals(space: ArrayLike<number>): Float32Array {
-    const { point, index } = this, n = point.length, sum = new Float64Array((this.start.length - 1) * 3), out = new Float32Array(n * 3);
+  normals(space: ArrayLike<number>, into?: Float32Array): Float32Array {
+    const { point, index } = this, n = point.length, sum = this.sums ??= new Float64Array((this.start.length - 1) * 3), out = into && into.length === n * 3 ? into : new Float32Array(n * 3);
+    sum.fill(0); out.fill(0);
     for (let t = 0; t * 3 + 2 < index.length; t++) {
       const a = index[t * 3], b = index[t * 3 + 1], c = index[t * 3 + 2];
       if (!(a >= 0 && a < n && b >= 0 && b < n && c >= 0 && c < n)) continue;

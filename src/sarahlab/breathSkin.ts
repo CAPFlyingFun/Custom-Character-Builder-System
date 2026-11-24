@@ -201,6 +201,9 @@ export function layBreathTable(u: BreathUniforms, rest: ArrayLike<number>, arm: 
   u.breath.value.w = marks.ribsLowest;
 }
 
+/** `breathVolumes`' arrays, kept between calls. */
+let volumeWork: Float32Array | null = null;
+
 /**
  * How much air each move sweeps at 1 m (m³ per metre, i.e. m²): over her skin's triangles (`rest` her points, rest
  * metres; `index` her triangles), each move's shape at a triangle's corners against the way the triangle faces, times its
@@ -208,7 +211,11 @@ export function layBreathTable(u: BreathUniforms, rest: ArrayLike<number>, arm: 
  * belly's is what her stomach holds beyond its room over `full`.
  */
 export function breathVolumes(u: BreathUniforms, rest: ArrayLike<number>, index: ArrayLike<number>): { chest: number; belly: number; full: number } {
-  const n = Math.floor(rest.length / 3), C = new Float32Array(n * 3), Bm = new Float32Array(n * 3), Fm = new Float32Array(n * 3), c = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 }, f = { x: 0, y: 0, z: 0 };
+  const n = Math.floor(rest.length / 3), c = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 }, f = { x: 0, y: 0, z: 0 };
+  // (each move's shape at her points, in arrays made once and refilled: 4.2 MB new at every laying of her breath, which a
+  // change of her belly lays again -- Joshua, 2026-11-24: "so belly changes don't churn memory on iPhone")
+  if (!volumeWork || volumeWork.length < n * 9) volumeWork = new Float32Array(n * 9);
+  const C = volumeWork.subarray(0, n * 3), Bm = volumeWork.subarray(n * 3, n * 6), Fm = volumeWork.subarray(n * 6, n * 9);
   for (let i = 0; i < n; i++) {
     breathShapeAt(u, rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2], c, b, f);
     C[i * 3] = c.x; C[i * 3 + 1] = c.y; C[i * 3 + 2] = c.z; Bm[i * 3] = b.x; Bm[i * 3 + 1] = b.y; Bm[i * 3 + 2] = b.z; Fm[i * 3] = f.x; Fm[i * 3 + 1] = f.y; Fm[i * 3 + 2] = f.z;

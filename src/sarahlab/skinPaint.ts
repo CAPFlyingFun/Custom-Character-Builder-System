@@ -731,6 +731,8 @@ export class SkinPainter {
   private surface: { readonly mesh: SkinMesh; readonly grid: TriangleGrid } | null = null;
   /** A stroke held to a level, and the last line's height between strokes (`levelLine.ts`). */
   private readonly level = new LevelStroke();
+  /** A held stroke's surface's arrays, made once and refilled (`levelSpace`) */
+  private levelWork: { standing: Float32Array; height: Float32Array; normal: Float32Array } | null = null;
   /** Her skin's joins, for a held stroke: made at the first one. */
   private joins: LevelMesh | null = null;
   /** The surface the last held stroke was laid on: kept while it is still hers (`LevelSpace.key`). */
@@ -877,13 +879,15 @@ export class SkinPainter {
       key = source && source.shaped.length >= count * 3 ? `body ${source.key}` : 'rest';
     }
     if (this.space?.key === key) return this.space;
-    if (mode !== 'room') points = key === 'rest' || !source ? surface.mesh.rest : standingShape(source);
+    // (her standing shape, its heights and its normals made once and refilled: the space made from them before is let go)
+    const work = this.levelWork?.height.length === count ? this.levelWork : (this.levelWork = { standing: new Float32Array(count * 3), height: new Float32Array(count), normal: new Float32Array(count * 3) });
+    if (mode !== 'room') points = key === 'rest' || !source ? surface.mesh.rest : standingShape(source, source.shaped.length === count * 3 ? work.standing : undefined);
     if (!points || points.length < count * 3) return null;
-    const height = new Float32Array(count);
+    const height = work.height;
     for (let i = 0; i < count; i++) height[i] = points[i * 3 + 1];
     const mesh: SkinMesh = { rest: points, uv: surface.mesh.uv, index: surface.mesh.index };
     const joins = this.joins ??= new LevelMesh(surface.mesh.rest, surface.mesh.index);
-    this.space = { key, mesh, grid: new TriangleGrid(mesh, GRID_CELL_M / this.metresPerUnit), height, normal: joins.normals(points) };
+    this.space = { key, mesh, grid: new TriangleGrid(mesh, GRID_CELL_M / this.metresPerUnit), height, normal: joins.normals(points, work.normal) };
     return this.space;
   }
 

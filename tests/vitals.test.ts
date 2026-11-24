@@ -171,6 +171,16 @@ describe('her skin breathes', () => {
     expect(grew / air).toBeGreaterThan(0.97); expect(grew / air).toBeLessThan(1.03);
   });
 
+  it('its arrays are made once and refilled, and say the same each time (Joshua, 2026-11-24: "so belly changes don\'t churn memory on iPhone")', () => {
+    const u = createBreathUniforms(), P = paperBody();
+    layBreathTable(u, P.rest, P.arm, marks);
+    const first = breathVolumes(u, P.rest, P.index);
+    // (a smaller body between: what is kept is longer than it needs, and only its own share is read)
+    const half = Math.floor(P.rest.length / 6) * 3;
+    breathVolumes(u, P.rest.subarray(0, half), Array.from(P.index).filter((_, t, all) => all[t - (t % 3)] * 3 < half && all[t - (t % 3) + 1] * 3 < half && all[t - (t % 3) + 2] * 3 < half));
+    expect(breathVolumes(u, P.rest, P.index)).toEqual(first);
+  });
+
   it('her full belly stands out low and round: its top, her back and her sides stay (Joshua, 2026-11-13)', () => {
     const u = createBreathUniforms(), P = paperBody();
     layBreathTable(u, P.rest, P.arm, marks);

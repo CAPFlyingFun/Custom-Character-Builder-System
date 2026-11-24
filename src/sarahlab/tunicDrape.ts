@@ -39,6 +39,16 @@ const ROW_STEP = 0.01;
 const COLUMNS = 80;
 /** The outline is smoothed over this many rows either side (and a column either side). */
 const SMOOTH_ROWS = 3;
+/** ...and a painted shirt's hem band alone (`bandOnly`), the row either side: see step 2. GAME TUNING. */
+const BAND_SMOOTH_ROWS = 1;
+/**
+ * A painted shirt's hem band alone (`bandOnly`) lies in a hollow of her outline (deeper than BAND_HOLLOW of her trunk under
+ * the outline round her) more than BAND_SPAN_COLUMNS directions wide: see step 1. GAME TUNING (her seat's cleft is a few
+ * directions wide; the hollow round each side of a big bump, many).
+ */
+const BAND_HOLLOW = 0.006, BAND_SPAN_COLUMNS = 8, BAND_GAP_COLUMNS = 3;
+/** ...and her skin under it smoothed down her by so many passes, not SKIN_PASSES (see where it is used). GAME TUNING. */
+const BAND_SKIN_PASSES = 2;
 /** How far inside her raw outline the smoothed one may dip (a share of her trunk: about 1.2 mm, under the lift). */
 const SKIN_SLACK = 0.002;
 /** How fast fabric may come back in toward her going down: this much in for each unit down. */
@@ -190,7 +200,7 @@ const smooth01 = (x: number) => { const c = Math.max(0, Math.min(1, x)); return 
  */
 export const DRAPE_LEAD = 0.2;
 /** For a probe: each of the 2026-11-06 changes on or off (`TunicDrape.reshape` to build again with them). */
-export const DRAPE_PROBE = { lift: true, covered: true, whole: true, lead: true, lap: true };
+export const DRAPE_PROBE = { lift: true, covered: true, whole: true, lead: true, lap: true, rows: false };
 /** The most the lead grows where the drape is seen at a slant (at most DRAPE_LEAD × this toward the eye: 6 mm). GAME TUNING. */
 export const DRAPE_LEAD_SLANT = 3;
 const leading = new WeakSet<THREE.Material>();
@@ -515,6 +525,33 @@ export class TunicDrape {
         }
         R[r * COLUMNS + c] = best || sk[c];
       }
+      // ONLY ITS HEM BAND (`bandOnly`) lies IN a hollow of her outline wider than BAND_SPAN_COLUMNS directions -- round the
+      // sides of a big bump, where its slice is her bump in front and her hips behind and the outline round both spans the
+      // air between them (the henley at 150 and 200%: its band out at her bump's outline in wings at her sides, Joshua,
+      // 2026-11-24) -- and spans a narrower one (her seat's cleft) and any with no skin in it (between her legs), as before
+      if (this.bandOnly) {
+        const base = r * COLUMNS, hollow = (c: number) => sk[c] <= 0 || R[base + c] - sk[c] > BAND_HOLLOW * T;
+        let from = -1;
+        for (let c = 0; c < COLUMNS && from < 0; c++) if (!hollow(c)) from = c;
+        if (from >= 0) for (let k = 1; k <= COLUMNS; k++) {
+          const c0 = (from + k) % COLUMNS;
+          if (!hollow(c0)) continue;
+          // (a gap is BAND_GAP_COLUMNS directions in a row with none of her skin: one here and there is a direction no
+          // point of her happened to fall in -- MEASURED at 200%, the henley's band, one beside each hollow round her bump)
+          let len = 0, gap = false, empty = 0;
+          while (len < COLUMNS && hollow((c0 + len) % COLUMNS)) { if (sk[(c0 + len) % COLUMNS] <= 0) { if (++empty >= BAND_GAP_COLUMNS) gap = true; } else empty = 0; len++; }
+          if (!gap && len > BAND_SPAN_COLUMNS) for (let q = 0; q < len; q++) {
+            const c = (c0 + q) % COLUMNS;
+            if (sk[c] > 0) { R[base + c] = sk[c]; continue; }
+            // (a direction with none of her: between the skin either side of it)
+            let a = 1, b = 1;
+            while (a < COLUMNS && sk[(c - a + COLUMNS) % COLUMNS] <= 0) a++;
+            while (b < COLUMNS && sk[(c + b) % COLUMNS] <= 0) b++;
+            R[base + c] = sk[(c - a + COLUMNS) % COLUMNS] + ((sk[(c + b) % COLUMNS] - sk[(c - a + COLUMNS) % COLUMNS]) * a) / (a + b);
+          }
+          k += len;
+        }
+      }
     }
     // how much each direction is her front (her skin's own measure, averaged over the skin in it): there the fabric
     // hangs straight from her bump rather than falling back to her thighs
@@ -542,12 +579,18 @@ export class TunicDrape {
       for (let c = 0; c < COLUMNS; c++) hangs[c] = Math.max(0, Math.min(1, (DRAPE_SLOPE - fall[c]) / (DRAPE_SLOPE - BACK_SLOPE)));
     }
     // 2. smoothed, as cloth is (each slice's outline is sampled from slightly different skin), never inside her; then
-    // fabric falls from the row above
+    // fabric falls from the row above.
+    // ONLY ITS HEM BAND (`bandOnly`: a painted shirt, which is her skin's paint down to the band) neither falls nor is
+    // smoothed down her past the row either side: nothing hangs above it, and under a big bump both held it out where the
+    // bump had been -- at 150 and 200% the henley's band stood out at her bump's outline under it, with a gap between it
+    // and the shirt on her (Joshua, 2026-11-24: "Wanted: the hem band touching the shirt and belly all the way round at
+    // every belly size, still level and still bridging between the legs and the seat"). Its own slice's outline spans
+    // between her legs and her seat's cleft as before
     {
-      const tmp = new Float64Array(n);
+      const tmp = new Float64Array(n), smoothRows = this.bandOnly ? BAND_SMOOTH_ROWS : SMOOTH_ROWS;
       for (let r = 0; r < rows; r++) for (let c = 0; c < COLUMNS; c++) {
         let s2 = 0, w = 0;
-        for (let dr = -SMOOTH_ROWS; dr <= SMOOTH_ROWS; dr++) {
+        for (let dr = -smoothRows; dr <= smoothRows; dr++) {
           const q = r + dr;
           if (q < 0 || q >= rows) continue;
           for (let dc = -1; dc <= 1; dc++) { const k2 = dc ? 0.5 : 1; s2 += k2 * R[q * COLUMNS + ((c + dc + COLUMNS) % COLUMNS)]; w += k2; }
@@ -571,10 +614,9 @@ export class TunicDrape {
         skinS[i] = s2 / w;
       }
       for (let i = 0; i < n; i++) R[i] = Math.max(tmp[i], skinS[i] ? Math.max(skinS[i], skin[i] - SKIN_SLACK * T) : skin[i]);
-      for (let r = 1; r < rows; r++) for (let c = 0; c < COLUMNS; c++) {
+      if (!this.bandOnly) for (let r = 1; r < rows; r++) for (let c = 0; c < COLUMNS; c++) {
         const i = r * COLUMNS + c;
-        // (only its hem band: it does not hang from her bump or her seat, where nothing joins it to her above)
-        R[i] = Math.max(R[i], R[i - COLUMNS] - (this.bandOnly ? DRAPE_SLOPE : fall[c]) * step * T);
+        R[i] = Math.max(R[i], R[i - COLUMNS] - fall[c] * step * T);
       }
     }
     // 3. how far it stands off her, smoothed (so what shows is whole patches, not single points either side of the line)
@@ -857,7 +899,10 @@ export class TunicDrape {
       };
       const skinSmooth = Float64Array.from(skin), off = new Float64Array(n);
       for (let i = 0; i < n; i++) off[i] = shown(i) ? radius[i] - skin[i] : 0;
-      smooth(skinSmooth, SKIN_PASSES, false);
+      // (only its hem band: a few passes. Its rows are few, and smoothed down them as a drape's are, her skin under a big
+      // bump -- the bump's underside over the rows below it -- came out at the bump's: the band stood 2 to 4 cm off her lower
+      // belly under it at 100% and more, MEASURED in the room)
+      smooth(skinSmooth, this.bandOnly ? BAND_SKIN_PASSES : SKIN_PASSES, false);
       smooth(off, OFF_PASSES, true);
       // ...but smoothed down her, her skin over a rounded part -- her seat, most of all -- comes out under her skin itself:
       // the drape laid on it was drawn inside her, up to 11 mm at 73% (Joshua, 2026-11-06: "the back end of that shirt on
@@ -892,7 +937,9 @@ export class TunicDrape {
       // (for a probe: where it shows, how much of it is drawn inside her skin as measured)
       let shownN = 0, inside = 0, worst = 0;
       for (let i = 0; i < n; i++) if (skin[i] > 0 && alpha[i] > 0.01) { shownN++; const d = skin[i] - radius[i]; if (d > 0.0005 * T) { inside++; worst = Math.max(worst, d); } }
-      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2), lap: lapN, axisMm: Math.round(axisMm), stretch: this.stretch, stayedDownMm: Math.round(stayedDown * TRUNK_MM) };
+      this.inside = { shown: shownN, inside, worstMm: +(worst / T * TRUNK_MM).toFixed(2), lap: lapN, axisMm: Math.round(axisMm), stretch: this.stretch, stayedDownMm: Math.round(stayedDown * TRUNK_MM),
+        // (a probe's: each row's height over her hip joints and, round her, how far out it is laid and her skin is, in mm)
+        ...(DRAPE_PROBE.rows ? { rows: Array.from({ length: rows }, (_, r) => ({ mm: Math.round((T_TOP - r * step) * TRUNK_MM), at: Array.from({ length: COLUMNS }, (_, c) => { const i = r * COLUMNS + c; return [Math.round(radius[i] / T * TRUNK_MM), Math.round(skin[i] / T * TRUNK_MM), +alpha[i].toFixed(2), +standOff[i].toFixed(2)]; }) })), edgeMm: Array.from(edgeT, (e) => Math.round(e * TRUNK_MM)), bandOnly: this.bandOnly } : {}) };
       this.mesh.userData.drapeInside = this.inside;
     }
     // the skin it hangs clear of: each of her vertices against the drape AS DRAWN, at its own height and direction. (It

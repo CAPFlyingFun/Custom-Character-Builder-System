@@ -205,6 +205,8 @@ export class BodyPaint {
   private readonly level = new LevelStroke();
   /** Her skin's joins, for a held stroke: made at the first one. */
   private joins: LevelMesh | null = null;
+  /** A held stroke's surface's arrays, made once and refilled (`levelSpace`) */
+  private levelWork: { standing: Float32Array; height: Float32Array; normal: Float32Array } | null = null;
   /**
    * THE SURFACE A HELD STROKE IS LAID ON (`levelLine.ts` says why it is not her body file's rest shape): her points where
    * that surface has them -- her standing shape (BODY LEVEL) or where she is in the room (ROOM LEVEL), both in her mesh's
@@ -430,14 +432,16 @@ export class BodyPaint {
       key = source && source.shaped.length >= count * 3 ? `body ${source.key}` : 'rest';
     }
     if (this.space?.key === key) return this.space;
-    if (mode !== 'room') points = key === 'rest' || !source ? rest : standingShape(source);
+    // (her standing shape, its heights and its normals made once and refilled: the space made from them before is let go)
+    const work = this.levelWork?.height.length === count ? this.levelWork : (this.levelWork = { standing: new Float32Array(count * 3), height: new Float32Array(count), normal: new Float32Array(count * 3) });
+    if (mode !== 'room') points = key === 'rest' || !source ? rest : standingShape(source, source.shaped.length === count * 3 ? work.standing : undefined);
     if (!points || points.length < count * 3) return null;
-    const height = new Float32Array(count);
+    const height = work.height;
     for (let i = 0; i < count; i++) height[i] = points[i * 3 + 1];
     // every triangle of her, not only those drawn now (the room may leave covered skin out of the draw)
     const index = (this.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? g.index?.array ?? Uint32Array.from({ length: count }, (_, i) => i);
     const joins = this.joins ??= new LevelMesh(rest, index);
-    this.space = { key, points, index, grid: new TriangleGrid({ rest: points, uv: [], index }, 2 * unitsPerCm), height, normal: joins.normals(points) };
+    this.space = { key, points, index, grid: new TriangleGrid({ rest: points, uv: [], index }, 2 * unitsPerCm), height, normal: joins.normals(points, work.normal) };
     return this.space;
   }
 

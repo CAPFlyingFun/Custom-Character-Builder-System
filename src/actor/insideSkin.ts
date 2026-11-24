@@ -22,6 +22,8 @@ export interface SkinGrid {
   /** triangles per cell, flattened: cell k's are tris[start[k] .. start[k + 1]) */
   readonly start: Uint32Array;
   readonly tris: Uint32Array;
+  /** each triangle's box (lo x, y, z, hi x, y, z): a triangle whose box is no nearer than the nearest found is passed over */
+  readonly box?: Float32Array;
 }
 
 /** Her skin's triangles binned into cells `cell` wide (the units of `pos`). */
@@ -41,7 +43,12 @@ export function skinGrid(pos: Float32Array, tri: ArrayLike<number>, cell: number
   for (let k = 1; k < count.length; k++) count[k] += count[k - 1];
   const tris = new Uint32Array(count[count.length - 1]), fill = count.slice(0, -1);
   for (let t = 0; t < nt; t++) cellsOf(t, (k) => { tris[fill[k]++] = t; });
-  return { pos, tri, lo, cell, dim, start: count, tris };
+  const box = new Float32Array(nt * 6);
+  for (let t = 0; t < nt; t++) {
+    for (let a = 0; a < 3; a++) { box[t * 6 + a] = Infinity; box[t * 6 + 3 + a] = -Infinity; }
+    for (let c = 0; c < 3; c++) { const i = tri[t * 3 + c] * 3; for (let a = 0; a < 3; a++) { box[t * 6 + a] = Math.min(box[t * 6 + a], pos[i + a]); box[t * 6 + 3 + a] = Math.max(box[t * 6 + 3 + a], pos[i + a]); } }
+  }
+  return { pos, tri, lo, cell, dim, start: count, tris, box };
 }
 
 /** Distance from p to triangle t (Ericson, closest point on a triangle). */
@@ -50,20 +57,27 @@ function triDistance(g: SkinGrid, t: number, px: number, py: number, pz: number)
   const abx = P[b] - P[a], aby = P[b + 1] - P[a + 1], abz = P[b + 2] - P[a + 2], acx = P[c] - P[a], acy = P[c + 1] - P[a + 1], acz = P[c + 2] - P[a + 2];
   const apx = px - P[a], apy = py - P[a + 1], apz = pz - P[a + 2];
   const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
-  const at = (u: number, v: number) => { const qx = P[a] + abx * u + acx * v, qy = P[a + 1] + aby * u + acy * v, qz = P[a + 2] + abz * u + acz * v; return Math.hypot(px - qx, py - qy, pz - qz); };
-  if (d1 <= 0 && d2 <= 0) return at(0, 0);
-  const bpx = px - P[b], bpy = py - P[b + 1], bpz = pz - P[b + 2], d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
-  if (d3 >= 0 && d4 <= d3) return at(1, 0);
-  const vc = d1 * d4 - d3 * d2;
-  if (vc <= 0 && d1 >= 0 && d3 <= 0) return at(d1 / (d1 - d3), 0);
-  const cpx = px - P[c], cpy = py - P[c + 1], cpz = pz - P[c + 2], d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
-  if (d6 >= 0 && d5 <= d6) return at(0, 1);
-  const vb = d5 * d2 - d1 * d6;
-  if (vb <= 0 && d2 >= 0 && d6 <= 0) return at(0, d2 / (d2 - d6));
-  const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { const w = (d4 - d3) / (d4 - d3 + (d5 - d6)); return at(1 - w, w); }
-  const den = 1 / (va + vb + vc);
-  return at(vb * den, vc * den);
+  // (the closest point is a + ab u + ac v; worked out in place: a function made for it at every call cost more than the rest)
+  let u: number, v: number;
+  if (d1 <= 0 && d2 <= 0) { u = 0; v = 0; }
+  else {
+    const bpx = px - P[b], bpy = py - P[b + 1], bpz = pz - P[b + 2], d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+    const vc = d1 * d4 - d3 * d2;
+    if (d3 >= 0 && d4 <= d3) { u = 1; v = 0; }
+    else if (vc <= 0 && d1 >= 0 && d3 <= 0) { u = d1 / (d1 - d3); v = 0; }
+    else {
+      const cpx = px - P[c], cpy = py - P[c + 1], cpz = pz - P[c + 2], d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+      const vb = d5 * d2 - d1 * d6, va = d3 * d6 - d5 * d4;
+      if (d6 >= 0 && d5 <= d6) { u = 0; v = 1; }
+      else if (vb <= 0 && d2 >= 0 && d6 <= 0) { u = 0; v = d2 / (d2 - d6); }
+      else if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { const w = (d4 - d3) / (d4 - d3 + (d5 - d6)); u = 1 - w; v = w; }
+      else { const den = 1 / (va + vb + vc); u = vb * den; v = vc * den; }
+    }
+  }
+  const qx = P[a] + abx * u + acx * v, qy = P[a + 1] + aby * u + acy * v, qz = P[a + 2] + abz * u + acz * v;
+  // (a plain root: Math.hypot, which guards against overflow no skin needs, costs a dozen times as much)
+  const ex = px - qx, ey = py - qy, ez = pz - qz;
+  return Math.sqrt(ex * ex + ey * ey + ez * ez);
 }
 
 /** Crossings of the skin by a ray from p along d (and the nearest crossing's distance, in `nearest[0]` when given). */
@@ -102,26 +116,77 @@ function crossings(g: SkinGrid, px: number, py: number, pz: number, d: readonly 
 const RAYS: readonly (readonly number[])[] = [[1, 0.13, 0.07], [-1, 0.11, -0.09], [0.08, 1, 0.12], [-0.1, -1, 0.06], [0.12, 0.07, 1], [-0.07, -0.1, -1]].map((v) => { const l = Math.hypot(v[0], v[1], v[2]); return v.map((x) => x / l); });
 
 /**
+ * What the rays said of points, kept between calls (`depthsInSkin`'s `kept`): each point's votes (-1: not cast yet), where it
+ * stood when cast, and how far it was then from the nearest of her skin (up to the reach asked).
+ */
+export interface RaysKept { readonly votes: Int8Array; readonly at: Float32Array; readonly room: Float32Array }
+export function raysKept(n: number): RaysKept { return { votes: new Int8Array(n).fill(-1), at: new Float32Array(n * 3), room: new Float32Array(n) }; }
+
+/**
  * Each point's depth inside her skin (the units of the grid; negative = outside), up to `reach` (further than that from
  * any triangle reads as `reach`, with its sign). `points`: x, y, z each.
+ * `kept`: a point whose six rays all agreed when last cast, and that has since moved less than it then stood from the nearest
+ * of her skin, has crossed none of her skin and is not cast again (`pullInside` and `fitWhole` move their points a little
+ * at a time, most of them not at all: casting each again every pass was most of the laying of her skeleton -- 140 s on the
+ * build machine, a minute and a crash on Joshua's phone, 2026-11-24).
  */
-export function depthsInSkin(g: SkinGrid, points: Float32Array, reach: number): Float32Array {
-  const out = new Float32Array(points.length / 3), stamp = new Uint32Array(g.tri.length / 3);
+export function depthsInSkin(g: SkinGrid, points: Float32Array, reach: number, kept?: RaysKept): Float32Array {
+  return runSteps(depthsInSkinSteps(g, points, reach, kept));
+}
+
+/**
+ * A piece of work done a step at a time (`runSteps`, or a little each frame: SarahLabScene's `inSlices`): it yields now and
+ * then, and returns what it made. Her skeleton and her bare feet are laid so (Joshua, 2026-11-24: "pressing to turn off the
+ * sneakers causes the app to lock up for about 60s, then crash/restart"): the room goes on drawing while they are made.
+ */
+export type Steps<T> = Generator<void, T, void>;
+/** A piece of work's steps, all of them now. */
+export function runSteps<T>(steps: Steps<T>): T {
+  for (;;) { const r = steps.next(); if (r.done) return r.value; }
+}
+/** How many points between two of `depthsInSkinSteps`' steps. */
+const DEPTH_STEP = 128;
+
+/** `depthsInSkin`, a step at a time. */
+export function* depthsInSkinSteps(g: SkinGrid, points: Float32Array, reach: number, kept?: RaysKept): Steps<Float32Array> {
+  const out = new Float32Array(points.length / 3), stamp = new Uint32Array(g.tri.length / 3), box = g.box;
   let id = 0;
   const span = Math.ceil(reach / g.cell);
   for (let i = 0; i < out.length; i++) {
+    if (i % DEPTH_STEP === DEPTH_STEP - 1) yield;
     const px = points[i * 3], py = points[i * 3 + 1], pz = points[i * 3 + 2];
-    let inside = 0;
-    for (const d of RAYS) if (crossings(g, px, py, pz, d, stamp, ++id) % 2 === 1) inside++;
-    // nearest triangle within `reach`
+    // nearest triangle within `reach` (a cell, or a triangle's box, no nearer than the nearest yet found is passed over:
+    // what is found is the same)
     let best = reach;
     const cx = Math.floor((px - g.lo[0]) / g.cell), cy = Math.floor((py - g.lo[1]) / g.cell), cz = Math.floor((pz - g.lo[2]) / g.cell), mark = ++id;
     for (let z = cz - span; z <= cz + span; z++) for (let y = cy - span; y <= cy + span; y++) for (let x = cx - span; x <= cx + span; x++) {
       if (x < 0 || y < 0 || z < 0 || x >= g.dim[0] || y >= g.dim[1] || z >= g.dim[2]) continue;
       const k = (z * g.dim[1] + y) * g.dim[0] + x;
-      for (let s = g.start[k]; s < g.start[k + 1]; s++) { const t = g.tris[s]; if (stamp[t] === mark) continue; stamp[t] = mark; best = Math.min(best, triDistance(g, t, px, py, pz)); }
+      if (g.start[k] === g.start[k + 1]) continue;
+      const bx = Math.max(0, g.lo[0] + x * g.cell - px, px - (g.lo[0] + (x + 1) * g.cell)), by = Math.max(0, g.lo[1] + y * g.cell - py, py - (g.lo[1] + (y + 1) * g.cell)), bz = Math.max(0, g.lo[2] + z * g.cell - pz, pz - (g.lo[2] + (z + 1) * g.cell));
+      if (bx * bx + by * by + bz * bz >= best * best) continue;
+      for (let s = g.start[k]; s < g.start[k + 1]; s++) {
+        const t = g.tris[s];
+        if (stamp[t] === mark) continue;
+        stamp[t] = mark;
+        if (box) {
+          const ex = Math.max(0, box[t * 6] - px, px - box[t * 6 + 3]), ey = Math.max(0, box[t * 6 + 1] - py, py - box[t * 6 + 4]), ez = Math.max(0, box[t * 6 + 2] - pz, pz - box[t * 6 + 5]);
+          if (ex * ex + ey * ey + ez * ez >= best * best) continue;
+        }
+        best = Math.min(best, triDistance(g, t, px, py, pz));
+      }
     }
-    out[i] = inside >= INSIDE_VOTES ? best : -best;
+    let votes = -1;
+    if (kept) {
+      const v = kept.votes[i];
+      if ((v === 0 || v === RAYS.length) && (px - kept.at[i * 3]) ** 2 + (py - kept.at[i * 3 + 1]) ** 2 + (pz - kept.at[i * 3 + 2]) ** 2 < kept.room[i] * kept.room[i]) votes = v;
+    }
+    if (votes < 0) {
+      votes = 0;
+      for (const d of RAYS) if (crossings(g, px, py, pz, d, stamp, ++id) % 2 === 1) votes++;
+      if (kept) { kept.votes[i] = votes; kept.at[i * 3] = px; kept.at[i * 3 + 1] = py; kept.at[i * 3 + 2] = pz; kept.room[i] = best; }
+    }
+    out[i] = votes >= INSIDE_VOTES ? best : -best;
   }
   return out;
 }
@@ -143,6 +208,14 @@ export function raysAtBrute(pos: Float32Array, tri: ArrayLike<number>, px: numbe
 }
 
 /**
+ * One number for a cell of a grid of whole cells (each index within 2^16 either side: under 2^51, so every one is a
+ * whole number exactly): a Map's key, as a string of the three was (and slower to make and to look up).
+ */
+export function cellKey(x: number, y: number, z: number): number {
+  return ((x + 65536) * 131072 + (y + 65536)) * 131072 + (z + 65536);
+}
+
+/**
  * BONE KEPT UNDER HER SKIN (Joshua, 2026-11-09: "the skin matches to the bone structure, not bone to skin... the bone size
  * can be changed a little"): each point of a piece of bone nearer her skin than `margin` (or through it) is drawn in toward
  * the middle of its own piece, and the move is shared smoothly with the points of the same piece within `blend` of it so
@@ -151,12 +224,18 @@ export function raysAtBrute(pos: Float32Array, tri: ArrayLike<number>, px: numbe
  * is left alone. Returns how many points were still within `margin` at the last pass. Units are the grid's.
  */
 export function pullInside(g: SkinGrid, points: Float32Array, owner: ArrayLike<number>, margin: number, blend: number, keep: (piece: number) => boolean, passes = 4): number {
+  return runSteps(pullInsideSteps(g, points, owner, margin, blend, keep, passes));
+}
+/** `pullInside`, a step at a time. */
+export function* pullInsideSteps(g: SkinGrid, points: Float32Array, owner: ArrayLike<number>, margin: number, blend: number, keep: (piece: number) => boolean, passes = 4): Steps<number> {
   const n = points.length / 3, centre = new Map<number, [number, number, number, number]>();
   for (let i = 0; i < n; i++) { const c = centre.get(owner[i]) ?? [0, 0, 0, 0]; c[0] += points[i * 3]; c[1] += points[i * 3 + 1]; c[2] += points[i * 3 + 2]; c[3]++; centre.set(owner[i], c); }
   for (const c of centre.values()) { c[0] /= c[3]; c[1] /= c[3]; c[2] /= c[3]; }
   let left = 0;
+  // (what the rays said of each point, kept from pass to pass: `RaysKept`)
+  const kept = raysKept(n);
   for (let pass = 0; pass < passes; pass++) {
-    const depth = depthsInSkin(g, points, margin * 4), push = new Float32Array(n * 3);
+    const depth = yield* depthsInSkinSteps(g, points, margin * 4, kept), push = new Float32Array(n * 3);
     left = 0;
     for (let i = 0; i < n; i++) {
       if (!keep(owner[i]) || depth[i] >= margin) continue;
@@ -166,18 +245,21 @@ export function pullInside(g: SkinGrid, points: Float32Array, owner: ArrayLike<n
     }
     if (!left) break;
     // (shared over the piece's points within `blend`: each takes the largest nearby move, faded by distance)
-    const cell = blend, key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`, grid = new Map<string, number[]>();
-    for (let i = 0; i < n; i++) if (push[i * 3] || push[i * 3 + 1] || push[i * 3 + 2]) { const k = key(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
+    const cell = blend, grid = new Map<number, number[]>();
+    for (let i = 0; i < n; i++) if (push[i * 3] || push[i * 3 + 1] || push[i * 3 + 2]) { const k = cellKey(Math.floor(points[i * 3] / cell), Math.floor(points[i * 3 + 1] / cell), Math.floor(points[i * 3 + 2] / cell)); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
     const move = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
+      if (i % 2048 === 2047) yield;
       if (!keep(owner[i])) continue;
       const px = points[i * 3], py = points[i * 3 + 1], pz = points[i * 3 + 2], cx = Math.floor(px / cell), cy = Math.floor(py / cell), cz = Math.floor(pz / cell);
       let best = 0;
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
-        const l = grid.get(`${cx + a},${cy + b},${cz + c}`);
+        const l = grid.get(cellKey(cx + a, cy + b, cz + c));
         if (l) for (const j of l) {
           if (owner[j] !== owner[i]) continue;
-          const r = Math.hypot(points[j * 3] - px, points[j * 3 + 1] - py, points[j * 3 + 2] - pz);
+          const ex = points[j * 3] - px, ey = points[j * 3 + 1] - py, ez = points[j * 3 + 2] - pz;
+          if (ex * ex + ey * ey + ez * ez > blend * blend * 1.000001) continue;
+          const r = Math.sqrt(ex * ex + ey * ey + ez * ez);
           if (r >= blend) continue;
           const f = 0.5 + 0.5 * Math.cos((Math.PI * r) / blend), m = Math.hypot(push[j * 3], push[j * 3 + 1], push[j * 3 + 2]) * f;
           if (m > best) { best = m; move[i * 3] = push[j * 3] * f; move[i * 3 + 1] = push[j * 3 + 1] * f; move[i * 3 + 2] = push[j * 3 + 2] * f; }
@@ -197,12 +279,16 @@ export function pullInside(g: SkinGrid, points: Float32Array, owner: ArrayLike<n
  * slide (the grid's units) it took.
  */
 export function fitWhole(g: SkinGrid, points: Float32Array, which: readonly number[], margin: number, steps = 24, shrinkStep = 0.985, leastScale = 0.82, mostSlide = Infinity): { scale: number; slide: [number, number, number]; left: number } {
+  return runSteps(fitWholeSteps(g, points, which, margin, steps, shrinkStep, leastScale, mostSlide));
+}
+/** `fitWhole`, a step at a time. */
+export function* fitWholeSteps(g: SkinGrid, points: Float32Array, which: readonly number[], margin: number, steps = 24, shrinkStep = 0.985, leastScale = 0.82, mostSlide = Infinity): Steps<{ scale: number; slide: [number, number, number]; left: number }> {
   const sub = new Float32Array(which.length * 3);
   which.forEach((i, k) => { sub[k * 3] = points[i * 3]; sub[k * 3 + 1] = points[i * 3 + 1]; sub[k * 3 + 2] = points[i * 3 + 2]; });
   let scale = 1, left = 0;
-  const slide: [number, number, number] = [0, 0, 0];
+  const slide: [number, number, number] = [0, 0, 0], kept = raysKept(which.length);
   for (let step = 0; step < steps; step++) {
-    const d = depthsInSkin(g, sub, margin * 6);
+    const d = yield* depthsInSkinSteps(g, sub, margin * 6, kept);
     let cx = 0, cy = 0, cz = 0;
     for (let k = 0; k < which.length; k++) { cx += sub[k * 3]; cy += sub[k * 3 + 1]; cz += sub[k * 3 + 2]; }
     cx /= which.length; cy /= which.length; cz /= which.length;

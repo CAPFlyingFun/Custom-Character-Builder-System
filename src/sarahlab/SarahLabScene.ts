@@ -101,8 +101,9 @@ import { eyesLine, mouthLine, nextEyeMode } from './faceChoices';
  */
 import * as THREE from 'three';
 import { MALE_OWN_HEIGHT, SKIN_DETAIL, SKIN_DETAIL_MAP, SKIN_OWN_HEIGHT, patchSkinDetail, wearOwnHeight, prepareSkinDetailMap, skinDetailUniforms } from './skinDetail';
-import { SkeletonInV2, carryLandmarks } from './skeletonInV2';
-import { footCover } from './footCover';
+import { SkeletonInV2, carryLandmarks, type LimbFit } from './skeletonInV2';
+import type { Steps } from '../actor/insideSkin';
+import { footCoverSteps } from './footCover';
 import { HUMAN_POSE_TURNS, humanStride, poseHuman } from '../actor/humanPose';
 import { newJointTurn, type BindJoint, type HumanMeasure, type JointTurn, type MutableJointTurn } from '../actor/humanRig';
 import { measureContacts, type ContactPoint, type ContactSet, type FingerName } from '../actor/contactPoints';
@@ -1527,6 +1528,30 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    */
   const FOOT_SET = Object.freeze({ pitchDeg: -6, shift: [0, -0.008, 0.014] as [number, number, number] });
   let footCoverMm = 0;
+  // (how long her skeleton took to lay, the last time: the `skeletonLaid` probe's)
+  let skeletonLayMs = 0;
+  /**
+   * A piece of work (insideSkin.ts `Steps`) run a slice at a time between the room's frames: each slice as long as the room
+   * took since the last one -- half the time the work's, half the room's -- held to `SLICE_MS` (GAME TUNING); `stop` asked
+   * before each slice leaves it off (and `left` is told). An error in it ends it (its own `try` says what it was).
+   */
+  const SLICE_MS = Object.freeze({ least: 12, most: 100 });
+  function inSlices(steps: Steps<void>, stop: () => boolean, left: () => void): void {
+    let ended = performance.now();
+    sliceWork = { ms: 0, slices: 0, longest: 0 };
+    const slice = () => {
+      if (stop()) { left(); return; }
+      const start = performance.now(), end = start + Math.min(SLICE_MS.most, Math.max(SLICE_MS.least, start - ended));
+      const spent = () => { const ms = performance.now() - start; sliceWork.ms += ms; sliceWork.slices++; sliceWork.longest = Math.max(sliceWork.longest, ms); };
+      try { for (;;) { if (steps.next().done) { spent(); return; } if (performance.now() >= end) break; } } catch (error) { spent(); console.error('[sarahlab] work done a slice at a time stopped', error); left(); return; }
+      spent();
+      ended = performance.now();
+      setTimeout(slice, 0);
+    };
+    slice();
+  }
+  // (the last such work: how long its slices took in all, how many, the longest -- the `skeletonLaid` probe's)
+  let sliceWork = { ms: 0, slices: 0, longest: 0 };
   /** v2: lays her skeleton when first wanted (X-RAY raised, her sneakers off, a probe asks) */
   let skeletonV2Lay: (() => void) | null = null;
   /** v2's own pelvis joint at bind, her rest frame (metres): what her carried landmark files are told as `joint` */
@@ -6766,6 +6791,11 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     breathArm = { mesh, share };
     return share;
   }
+  /**
+   * Her standing shape and her rest places for laying her breath, made once and refilled (Joshua, 2026-11-24: "make them
+   * once, refill them so belly changes don't churn memory on iPhone"): each was 1.4 MB new at every laying.
+   */
+  let breathWork: { standing: Float32Array; rest: Float32Array } | null = null;
   /** Her trunk's table and each move's sweep laid again when her shape has changed (at most twice a second). */
   function layBreath(now: number): boolean {
     const b = bodyOf();
@@ -6774,7 +6804,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!src) return false;
     const key = `${src.key} ${jiggle.breath.value.z.toFixed(2)}`;
     if (breathLaid && (breathLaid.key === key || now - breathLaid.at < 0.5)) return true;
-    const S = standingShape(src), rest = new Float32Array(S.length), v = new THREE.Vector3();
+    const length = Math.floor(src.shaped.length / 3) * 3;
+    if (breathWork?.standing.length !== length) breathWork = { standing: new Float32Array(length), rest: new Float32Array(length) };
+    const S = standingShape(src, breathWork.standing), rest = breathWork.rest, v = new THREE.Vector3();
     for (let i = 0; i < S.length; i += 3) v.set(S[i], S[i + 1], S[i + 2]).applyMatrix4(babyFrame.meshToRest).toArray(rest, i);
     layBreathTable(jiggle, rest, armShareOf(b.mesh), { pubisTop: v2Pelvis.landmarks.symphysisTop[1], xiphoid: v2Thorax.xiphoid[1], sternumTop: v2Thorax.sternumTop[1], midX: v2Pelvis.landmarks.symphysisTop[0], ribsLowest: v2Thorax.sections[0].y });
     const index = (b.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? b.mesh.geometry.index?.array;
@@ -9371,9 +9403,15 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         const bodyBone = maleNow ? hisBone : (x: string) => x, skelBone = maleNow ? herBone : (x: string) => x;
         if ((recovered || maleNow) && frameNow) skeletonV2Lay = () => {
           skeletonV2Lay = null;
+          const layStart = performance.now();
           const request = ++skeletonV2Request, toRest = frameNow.meshToRest.clone();
           void assets.loadModel(SARAH_SKELETON_MODEL, () => new THREE.Object3D(), {}).then((skel) => {
             if (disposed || request !== skeletonV2Request || !model) { release(skel); return; }
+            // LAID A SLICE AT A TIME (`inSlices`; Joshua, 2026-11-24: "pressing to turn off the sneakers causes the app to
+            // lock up for about 60s, then crash/restart"): the room goes on drawing while her skeleton and her bare feet are
+            // made, and they are laid as they would be at once. Left off if another laying, or another body, comes first.
+            let laid = false;
+            inSlices((function* (): Steps<void> {
             try {
               // (her body itself: her clothes are copies of it, the same points, so the first skinned mesh may be a garment)
               const body = bodyOf()?.mesh ?? (maleNow ? herSkinned() : null);
@@ -9412,7 +9450,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                 const raise = (rises[0] + rises[1]) / 2;
                 if (Number.isFinite(raise) && neck && Math.abs(raise) < 0.08) trunk = { raise, rigidTo: skeletonPelvis.landmarks.promontory[1], to: neck.y, skip: new Set(skull) };
               }
-              const make = (wholeScale: (number | null)[] | undefined) => new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, {
+              const fitOf = (wholeScale: (number | null)[] | undefined): LimbFit => ({
                 chains, noFit, whole, wholeScale, trunk, wholeSlideMost: [Infinity, FOOT_SLIDE_MOST, FOOT_SLIDE_MOST],
                 set: jt ? [jt.ankleL, jt.ankleR].map((a) => ({ names: under(a), pivot: nameOf(a), pitchDeg: FOOT_SET.pitchDeg, shift: FOOT_SET.shift })) : [],
                 skeletonJoint: (name) => { const b = skelBones.get(name); return b ? b.getWorldPosition(new THREE.Vector3()).applyMatrix4(skelInv) : null; },
@@ -9422,9 +9460,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                 ...(maleNow ? { trunkShape: MALE_TRUNK_SHAPE_OF(new Set(skull)) } : {}),
                 v2Joint: (name) => { const k = bodyBones.get(bodyBone(name)); return k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest); },
               });
+              const make = (wholeScale: (number | null)[] | undefined) => new SkeletonInV2(sm, restOfMesh(sm, skel), body, toRest, fitOf(wholeScale));
               // (her skull at its real size, only slid in: it fits her head so, back and up a little -- the head-size renders,
               // Joshua 2026-11-09; the Head slider grows and shrinks it with her head, it rides her head bone)
-              skeletonV2 = make([1, 1, 1]);
+              { const { skeleton, steps } = SkeletonInV2.stepped(sm, restOfMesh(sm, skel), body, toRest, fitOf([1, 1, 1])); yield* steps; skeletonV2 = skeleton; laid = true; }
               { const pj = jt ? nameOf(jt.pelvis) : '', k = bodyBones.get(bodyBone(pj)); skeletonV2PelvisJoint = k === undefined ? null : new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(bodyBind, new THREE.Matrix4().copy(body.skeleton.boneInverses[k]).invert())).applyMatrix4(toRest).toArray(); }
               // HER BARE FEET OVER HER FOOT BONES (footCover.ts; Joshua 2026-11-09): a field on her shape, drawn barefoot
               try {
@@ -9438,7 +9477,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
                     w.fromArray(bn, i * 3).applyMatrix3(nm).normalize().toArray(restN, i * 3);
                     if (rest[i * 3 + 1] < FOOT_COVER_BELOW) region.push(i);
                   }
-                  const c = footCover(rest, restN, region, skeletonV2.restPointsOf(feet));
+                  const c = yield* footCoverSteps(rest, restN, region, skeletonV2!.restPointsOf(feet));
                   footCoverMm = +(c.most * 1000).toFixed(1);
                   if (c.index.length) {
                     const toGeom = new THREE.Matrix3().setFromMatrix4(toRest).invert(), pos = new Float32Array(c.delta.length);
@@ -9453,8 +9492,10 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
               // (his organs are laid on what the skeleton in him measures: laid now if X-RAY is waiting for them)
               if (maleNow) { maleMarks = null; if (xrayPct > 0) layOrgansV2(); }
               applyXray(); refresh();
+              skeletonLayMs = Math.round(performance.now() - layStart);
               // (its file stays loaded: the laid copy shares its material's maps)
             } catch (error) { console.error('[sarahlab] her skeleton could not be laid inside v2', error); skeletonV2 = null; release(skel); }
+            })(), () => disposed || request !== skeletonV2Request || !model, () => { if (!laid) release(skel); });
           });
         };
         // (her sneakers not made yet -- they are made once she has loaded -- is not her sneakers off: read so, her skeleton was
@@ -11431,6 +11472,14 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // them (model units), 'rest' as her fabric is laid by (fabricRest), 'posed' as drawn (metres, the room's frame)
         // (a probe's) one of her skin's attributes as it is laid now, by its name: how many numbers a vertex, and the
         // numbers themselves as base64 Float32 -- to read what a pixel of her is told (a limb's flag, her slip) offline
+        // (a probe's) her skeleton as laid in her, and her bare feet's field over it, as base64 Float32s: to tell that a
+        // change to how it is laid leaves it as it was, and how long the laying took
+        skeletonLaid: () => {
+          if (!skeletonV2) return null;
+          const b64 = (a: ArrayLike<number>) => { const out = Float32Array.from(a), bytes = new Uint8Array(out.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+          const g = skeletonV2.mesh.geometry, sb = shaped.find((x) => x.mesh === bodyOf()?.mesh), foot = sb?.fields.fields.get(FOOT_COVER_FIELD);
+          return { position: b64(g.getAttribute('position').array as ArrayLike<number>), skinIndex: b64(g.getAttribute('skinIndex').array as ArrayLike<number>), skinWeight: b64(g.getAttribute('skinWeight').array as ArrayLike<number>), footIndex: foot ? b64(foot.index) : null, footPos: foot ? b64(foot.pos) : null, footCoverMm, layMs: skeletonLayMs, work: { ms: Math.round(sliceWork.ms), slices: sliceWork.slices, longest: Math.round(sliceWork.longest) }, fitLeft: skeletonV2.fitLeft, fitMostMm: skeletonV2.fitMostMm };
+        },
         bodyAttribute: (name: string) => {
           const a = bodyOf()?.mesh.geometry.getAttribute(name) as THREE.BufferAttribute | undefined; if (!a) return null;
           const out = Float32Array.from(a.array as ArrayLike<number>), bytes = new Uint8Array(out.buffer); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));

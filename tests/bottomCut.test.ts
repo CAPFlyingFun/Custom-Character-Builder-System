@@ -588,7 +588,8 @@ describe('a bottom\'s cut in the shader', () => {
     const plain = compiled(null);
     // (the hash `tests/topDetails.test.ts` holds her skin's program to)
     // (2026-11-19: her paint unpacked two layers to a number, `bodyPaint.PAINT_PACK`, for six layers)
-    expect(plain.hash).toBe('60f831b4ca8a567a0aa1b1c282665f5df1528a66473d1d20945ce0fd739807c0');
+    // (2026-11-23: with a bandeau's line round her, `fabricCutRound`: 60f831b4… before)
+    expect(plain.hash).toBe('c864c777b5c264abc65d6c41fc7dac903be10dbf024bc06c8328d90203fc364b');
     expect(plain.key).not.toContain('-low');
     expect(plain.fragmentShader).not.toContain('fabricLow');
     expect(plain.vertexShader).not.toContain('vFabricLow');

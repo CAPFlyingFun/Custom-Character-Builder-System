@@ -15,7 +15,7 @@
  * included): the random-pose test's numbers.
  */
 import * as THREE from 'three';
-import { depthsInSkin, fitWhole, pullInside, rayToSkin, raysAt, raysAtBrute, skinGrid } from '../actor/insideSkin';
+import { cellKey, depthsInSkin, fitWholeSteps, pullInsideSteps, rayToSkin, raysAt, raysAtBrute, runSteps, skinGrid, type Steps } from '../actor/insideSkin';
 
 /** What counts as close to her skin: a bone this near it (or through it) is reported. GAME TUNING (Joshua, 2026-11-09:
  * "it's okay if it's close"). Metres. */
@@ -80,9 +80,10 @@ export const SKELETON_FIT = Object.freeze({ margin: 0.004, blend: 0.035, passes:
 export interface BoneDepth { readonly bone: string; readonly points: number; readonly leastMm: number; readonly at: readonly number[]; readonly closeCount: number; readonly throughCount: number }
 
 export class SkeletonInV2 {
-  readonly mesh: THREE.SkinnedMesh;
+  /** laid by its last step (`SkeletonInV2.stepped`); `new` lays it at once */
+  mesh!: THREE.SkinnedMesh;
   /** each vertex's bone name (the one that carries it most), for the report */
-  private readonly owner: string[];
+  private owner: string[] = [];
 
   /**
    * @param skeletonMesh the skeleton file's skinned mesh, and `skeletonToRest` its geometry to her rest frame (metres)
@@ -133,7 +134,22 @@ export class SkeletonInV2 {
   /** the most any point of each piece moved in the fit, mm */
   readonly fitMoves: Record<string, number> = {};
 
-  constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null, trunkWeights = true) {
+  constructor(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, private readonly body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null, trunkWeights = true, later = false) {
+    if (!later) runSteps(this.lay(skeletonMesh, skeletonToRest, bodyToRest, fit, trunkWeights));
+  }
+
+  /**
+   * Her skeleton laid a step at a time (insideSkin.ts `Steps`; Joshua, 2026-11-24, of her sneakers taken off: "causes the
+   * app to lock up for about 60s, then crash/restart"): `skeleton` is whole once `steps` has run to its end, which adds
+   * its mesh beside her body; until then it is not to be used. What it lays is what `new` lays.
+   */
+  static stepped(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, body: THREE.SkinnedMesh, bodyToRest: THREE.Matrix4, fit: LimbFit | null = null, trunkWeights = true): { skeleton: SkeletonInV2; steps: Steps<void> } {
+    const skeleton = new SkeletonInV2(skeletonMesh, skeletonToRest, body, bodyToRest, fit, trunkWeights, true);
+    return { skeleton, steps: skeleton.lay(skeletonMesh, skeletonToRest, bodyToRest, fit, trunkWeights) };
+  }
+
+  private *lay(skeletonMesh: THREE.SkinnedMesh, skeletonToRest: THREE.Matrix4, bodyToRest: THREE.Matrix4, fit: LimbFit | null, trunkWeights: boolean): Steps<void> {
+    const body = this.body;
     const src = skeletonMesh.geometry, pos = src.getAttribute('position'), nrm = src.getAttribute('normal');
     const toBody = new THREE.Matrix4().copy(bodyToRest).invert(), toBodyN = new THREE.Matrix3().getNormalMatrix(toBody);
     const restN = new THREE.Matrix3().getNormalMatrix(skeletonToRest);
@@ -232,10 +248,10 @@ export class SkeletonInV2 {
             for (const i of which) { R[i * 3] = cx + (R[i * 3] - cx) * set0; R[i * 3 + 1] = cy + (R[i * 3 + 1] - cy) * set0; R[i * 3 + 2] = cz + (R[i * 3 + 2] - cz) * set0; }
           }
           const most = fit.wholeSlideMost?.[this.wholeFits.length] ?? Infinity;
-          if (which.length) { const r = set0 !== null ? fitWhole(grid, R, which, SKELETON_FIT.margin, 24, 1, 1, most) : fitWhole(grid, R, which, SKELETON_FIT.margin, 24, 0.985, 0.82, most); if (set0 !== null) r.scale = set0; this.wholeFits.push({ bones: names.join(' '), scale: +r.scale.toFixed(3), slideMm: r.slide.map((x) => Math.round(x * 1000)), left: r.left }); }
+          if (which.length) { const r = set0 !== null ? yield* fitWholeSteps(grid, R, which, SKELETON_FIT.margin, 24, 1, 1, most) : yield* fitWholeSteps(grid, R, which, SKELETON_FIT.margin, 24, 0.985, 0.82, most); if (set0 !== null) r.scale = set0; this.wholeFits.push({ bones: names.join(' '), scale: +r.scale.toFixed(3), slideMm: r.slide.map((x) => Math.round(x * 1000)), left: r.left }); }
         }
         const afterWhole = R.slice();
-        this.fitLeft = pullInside(grid, R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
+        this.fitLeft = yield* pullInsideSteps(grid, R, own, SKELETON_FIT.margin, SKELETON_FIT.blend, (k) => !skip.has(k), SKELETON_FIT.passes);
         this.moved = new Float32Array(n);
         for (let i = 0; i < n; i++) {
           const mm = Math.hypot(R[i * 3] - before[i * 3], R[i * 3 + 1] - before[i * 3 + 1], R[i * 3 + 2] - before[i * 3 + 2]) * 1000;
@@ -254,10 +270,14 @@ export class SkeletonInV2 {
     if (fit && trunkWeights) {
       const bp = body.geometry.getAttribute('position'), bi = body.geometry.getAttribute('skinIndex'), bw = body.geometry.getAttribute('skinWeight'), m = bp.count, S = new Float32Array(m * 3), w = new THREE.Vector3();
       for (let i = 0; i < m; i++) { THREE.Mesh.prototype.getVertexPosition.call(body, i, w); w.applyMatrix4(bodyToRest).toArray(S, i * 3); }
-      const cell = 0.05, key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`, grid = new Map<string, number[]>();
-      for (let i = 0; i < m; i++) { const k = key(S[i * 3], S[i * 3 + 1], S[i * 3 + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
-      const near: [number, number][] = [], acc = new Map<number, number>();
+      const cell = 0.05, grid = new Map<number, number[]>();
+      for (let i = 0; i < m; i++) { const k = cellKey(Math.floor(S[i * 3] / cell), Math.floor(S[i * 3 + 1] / cell), Math.floor(S[i * 3 + 2] / cell)); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
+      // (her four nearest points, kept as they are found -- the nearest first, the first found first among equals, as a
+      // sort of all of them within 10 cm had them: thousands a bone point, sorted, cost more than the rest of the laying)
+      const nearD = new Float64Array(4), nearJ = new Int32Array(4), acc = new Map<number, number>();
+      let nearN = 0;
       for (let i = 0; i < n; i++) {
+        if (i % 1024 === 1023) yield;
         // (a limb's long bone stays rigid, but its ends -- the ball of the thigh bone in her hip, the head of the upper arm
         // in her shoulder, the knee's and elbow's ends -- share her skin's weights within JOINT_BLEND of the joint: v2's
         // rig bends her skin there as a blend, and a rigid end comes out through it at the limits of a hip or a shoulder)
@@ -270,15 +290,26 @@ export class SkeletonInV2 {
           if (share <= 0) continue;
         }
         const x = R[i * 3], y = R[i * 3 + 1], z = R[i * 3 + 2], cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
-        near.length = 0;
+        nearN = 0;
         for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) for (let c = -2; c <= 2; c++) {
-          const l = grid.get(`${cx + a},${cy + b},${cz + c}`);
-          if (l) for (const j of l) { const d = Math.hypot(S[j * 3] - x, S[j * 3 + 1] - y, S[j * 3 + 2] - z); if (d < 0.1) near.push([d, j]); }
+          const l = grid.get(cellKey(cx + a, cy + b, cz + c));
+          if (l) for (const j of l) {
+            const dx = S[j * 3] - x, dy = S[j * 3 + 1] - y, dz = S[j * 3 + 2] - z;
+            if (dx * dx + dy * dy + dz * dz >= 0.0101 || (nearN === 4 && dx * dx + dy * dy + dz * dz > nearD[3] * nearD[3] * 1.0001)) continue;
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (!(d < 0.1)) continue;
+            // (into its place among the four, after any as near)
+            let at = nearN < 4 ? nearN : 4;
+            while (at > 0 && nearD[at - 1] > d) at--;
+            if (at >= 4) continue;
+            for (let q = Math.min(nearN, 3); q > at; q--) { nearD[q] = nearD[q - 1]; nearJ[q] = nearJ[q - 1]; }
+            nearD[at] = d; nearJ[at] = j; if (nearN < 4) nearN++;
+          }
         }
-        if (!near.length) continue;
-        near.sort((p, q) => p[0] - q[0]);
+        if (!nearN) continue;
         acc.clear();
-        for (const [d, j] of near.slice(0, 4)) { const f = 1 / Math.max(1e-4, d); for (let c = 0; c < 4; c++) { const wt = bw.getComponent(j, c); if (wt > 0) { const b = bi.getComponent(j, c); acc.set(b, (acc.get(b) ?? 0) + wt * f); } } }
+        for (let q = 0; q < nearN; q++) {
+          const d = nearD[q], j = nearJ[q]; const f = 1 / Math.max(1e-4, d); for (let c = 0; c < 4; c++) { const wt = bw.getComponent(j, c); if (wt > 0) { const b = bi.getComponent(j, c); acc.set(b, (acc.get(b) ?? 0) + wt * f); } } }
         const top = [...acc.entries()].sort((p, q) => q[1] - p[1]).slice(0, 4), sum = top.reduce((t, e) => t + e[1], 0) || 1;
         if (share >= 1) { for (let c = 0; c < 4; c++) { I[i * 4 + c] = top[c]?.[0] ?? 0; W[i * 4 + c] = top[c] ? top[c][1] / sum : 0; } continue; }
         // (a limb's end: its own bone's weights and her skin's, mixed by `share`)
