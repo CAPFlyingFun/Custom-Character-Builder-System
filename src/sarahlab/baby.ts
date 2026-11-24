@@ -1053,15 +1053,32 @@ function wallAt(w: WombShape, x: number, y: number, z: number): number {
   const g = w.give ? radialAt(w.give, dx / r, dy / r, dz / r) : 1;
   return over * over * (1 + PACK_STIFF * (1 - Math.min(1, Math.max(0, g))));
 }
+/**
+ * The last few wombs' fields, the oldest first: a new womb takes over the oldest one's numbers (that womb asked again
+ * works its own out afresh), so a belly being changed does not make a grid of a megabyte and more for every shape her
+ * womb passes through (MEASURED 2026-11-24 in the room: 68 MB of them over ten 1% steps of her belly -- churn a phone's
+ * memory pays for). GAME TUNING: how many are kept.
+ */
+const WALL_FIELDS_KEPT = 4;
+const wallKept: { womb: WombShape; buffer: Float32Array }[] = [];
 function wallField(w: WombShape): WallField {
   const hit = wallFields.get(w);
-  if (hit) return hit;
+  if (hit) { const k = wallKept.findIndex((e) => e.womb === w); if (k >= 0) wallKept.push(...wallKept.splice(k, 1)); return hit; }
   let most = 0; for (const r of w.r) most = Math.max(most, r);
-  const half = most + 0.05, cube = 0.008, n = Math.ceil((2 * half) / cube) + 1;
+  const half = most + 0.05, cube = 0.008, n = Math.ceil((2 * half) / cube) + 1, size = n * n * n;
   // each cube worked out the first time it is asked for (a packing only ever goes near a few of them)
-  const min = w.centre.clone().subScalar(half), cost = new Float32Array(n * n * n).fill(NaN);
-  const f: WallField = { min, cube, dims: [n, n, n], cost };
+  let buffer: Float32Array | null = null;
+  if (wallKept.length >= WALL_FIELDS_KEPT) {
+    const old = wallKept.shift()!;
+    wallFields.delete(old.womb);
+    if (old.buffer.length >= size) buffer = old.buffer;
+  }
+  // (made a little larger than this womb needs, so the next, a little bigger, fits in it)
+  if (!buffer) buffer = new Float32Array(Math.ceil(size * 1.25));
+  const cost = buffer.subarray(0, size).fill(NaN);
+  const f: WallField = { min: w.centre.clone().subScalar(half), cube, dims: [n, n, n], cost };
   wallFields.set(w, f);
+  wallKept.push({ womb: w, buffer });
   return f;
 }
 function wallCost(f: WallField, w: WombShape, x: number, y: number, z: number): number {
@@ -1080,6 +1097,10 @@ function wallCost(f: WallField, w: WombShape, x: number, y: number, z: number): 
   const c01 = C[k + sz] * (1 - u) + C[k + sz + 1] * u, c11 = C[k + sz + sy] * (1 - u) + C[k + sz + sy + 1] * u;
   return (c00 * (1 - v) + c10 * v) * (1 - t) + (c01 * (1 - v) + c11 * v) * t;
 }
+
+/** (a test's) What standing past a womb's wall costs at a point, by its field; and how many wombs' fields are kept. */
+export const wallCostAt = (w: WombShape, x: number, y: number, z: number): number => wallCost(wallField(w), w, x, y, z);
+export const wallFieldsKept = (): number => wallKept.length;
 
 /** A tiny seeded random source, so a packing is the same every time it is asked for. */
 function seeded(seed: number): () => number {

@@ -374,18 +374,29 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     her as she is shaped, no drape under it), in the neck each was painted with: the crop top's a scoop at 0.86 (a crew
     under 0.94 was painted as a scoop, `isScoop`), the maternity tee's a SQUARE at 0.94 (painted, a crew's line level
     across her chest: wide and shallow). A look saved before keeps its numbers and wears that neck (`wornParams`).
-  - THE BANDEAU (`topCut.BANDEAU`, `bandeauPath`, `top: 'bandeau'`): strapless, its hem its own. Her front's drawing is
-    its TOP EDGE (`topFront`, 0.82) straight across her; her back's `topBack` (0.7) across her back's middle, eased down
-    by 10.5 cm out to UNDER HER ARM (19 cm under her neck joint: `underArm`); and the two drawings meet 6.5 cm AHEAD of
-    her middle depth (`ahead`: the cut's own frame carries its middle depth moved forward, which is what the shader
-    reads), so her bust wears the front's line and the hollow of her armpit and her sides the back's: straight across
-    her bust and down round the side of it to under her arm. Its sliders as they were (HEM / BELLY 0.56, NECKLINE / TOP
-    EDGE 0.82); SLEEVE is not offered. MEASURED on her body file (`tests/topOutline.test.ts`): her areolas 17.5 mm
-    inside it; the row of her triangles that joins her arm's skin to her trunk's 10.1 mm outside it. THE PAINTED LINE
-    (`topSide` 0.72 at her sides, 14.7 cm under her neck joint, by where a point stands round her) CROSSED THAT ROW by
-    26 mm at the back of her armpit -- her arm's skin bare beside cloth, the edge ragged along her triangles there; and
-    drawn along it, the same (66 mm). TRIED AND TAKEN OUT the same afternoon: a line down from 6 to 12.5 cm out (her
-    areolas bare, pictured); raised 2 cm as he first said (her areolas still 5 mm bare, the arm row inside it).
+  - THE BANDEAU (`topCut.BANDEAU`, `bandeauHeight`, `top: 'bandeau'`; Joshua, of it: "Make sure you do with arms raise
+    and not as I think the arm weight will mess with the paint and you will need to let it ignore the arm weights and
+    follow body level lines"): strapless, its hem its own. ITS TOP EDGE IS A LINE ROUND HER BODY, worked out at each
+    pixel by where the pixel stands round her (her map's `around`: 1 her front's middle, 0.5 her side seam,
+    `bodyRegions.seamDepth`, which its cut's picture keeps as its middle depth): at its front's height (`topFront`, 0.82,
+    the NECKLINE / TOP EDGE slider) from 0.7 round her and in (`frontReach`), at its sides' height at her side seam and all
+    round her back, eased between -- straight across her bust, back and down round the side of it to her side seam,
+    level behind. In the shader (`fabricCutRound`) and on the CPU (`neckAt`) alike. Its sides' height is UNDER HER ARM, no
+    higher than 19 cm under her neck joint (`underArm`): skin her arms' bones do not move (her side lock), under the row
+    of triangles that joins her arm's skin to her trunk's -- on her LIGHT skin as well since its armpits are kept whole
+    lower ("Her light skin"): before, a triangle of that row reached 15.2 mm into the band (MEASURED 2026-11-24 on the
+    light list, each place sampled as the shader mixes her arm's share), and in her T-pose its top edge was ragged along
+    them under her arm (pictured; taking the band's sides down to 21.5 cm instead left her back a strip 1.4 cm deep over
+    its level hem). Its sliders as they were (HEM / BELLY 0.56, NECKLINE / TOP EDGE 0.82); SLEEVE is not offered. MEASURED on
+    her as the room maps her (`tests/topOutline.test.ts`): her areolas 19.2 mm inside it; her full skin's arm row 10.1 mm
+    and more outside it. THE PAINTED LINE (`topSide` 0.72 at her sides, 14.7 cm under her neck joint) CROSSED THAT ROW by
+    26 mm -- her arm's skin bare beside cloth, the edge ragged along her triangles there -- and rode up with her arms.
+    TRIED AND TAKEN OUT on the way, each pictured in the room: her front's and her back's drawings meeting 6.5 cm ahead of
+    her middle depth (a hook at the side of her bust, a bare speck there at 100 and 200%); a line drawn in her front's
+    picture by where her front-most skin stands round her (an upright edge down her side, and, drawn cell by cell, rows of
+    skin through the cloth down the side of her bust: from in front, every place of her side lies over the same few
+    columns); a line down from 6 to 12.5 cm out (her areolas bare); raised 2 cm as he first said (her areolas still 5 mm
+    bare, the arm row inside it). PICTURED_HERE.
 - **THE BOXY CROP TEE'S AND THE MATERNITY TEE'S HEM FOLLOW HER BELLY, as the under-belly leggings' waistband does**
   (Joshua, 2026-11-23, his five settings of each on Blaze, pictured; of the maternity tee: "I changed my mind… Yes,
   follow the belly"). `paintTemplates.ts` `BELLY_FOLLOW` (a table of his settings for each following dial, by template:
@@ -1520,7 +1531,14 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   her standing shape and her rest places (`breathWork`, 1.4 MB each) and each move's shape at her points
   (`breathSkin.ts` `volumeWork`, 4.2 MB) were new at every laying; so were a held stroke's surface's in the painters
   (`levelWork`: her standing shape, its heights and its normals; `LevelMesh.normals`' sums). `tests/vitals.test.ts`
-  holds that a refilled laying says what a fresh one does. MEASURED_BREATH.
+  holds that a refilled laying says what a fresh one does. MEASURED 2026-11-24 in the room (every typed array of a
+  megabyte and more made, counted by where it is made, over ten 1% steps of her belly): none of her breath's or a held
+  stroke's after. FOUND THE SAME WAY, AND MADE ONCE SINCE: her opening's area's copies of her attributes
+  (`vulvaMesh.ts` `readExtras`: her attribute copied whole, and the area's own made new, at every change -- 29.6 MB in the
+  ten steps; now read where it is and the area's refilled) and her womb's wall field (`baby.ts` `wallField`, a 1.1 MB
+  grid for each new shape of her womb: 68 MB in the ten steps; now the last four wombs' grids are kept and a new womb
+  takes over the oldest's, `WALL_FIELDS_KEPT`, `tests/wallField.test.ts`) -- NEITHER COUNTED AGAIN. FOUND AND LEFT: her
+  rest shape's shift (4.6 MB) and her pulled slip's working (about 12 MB).
 
 ## Her organs
 
@@ -2001,8 +2019,11 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   the top of her shoulder were big and counted as her arm's well onto her trunk -- her skin stood through the cloth in
   six-sided holes. MEASURED in the room with his tee's own settings (ease 0, neck 0.24), seated: holes on the light
   skin, none on the full one, none with her shoulders whole (`SHOULDER`: from 1.24 to 1.42 m, her arm's skin and what
-  is over 9 cm out from her middle). 143,640 triangles of her 208,592 (it was 127,704): her hands alone are some
-  33,000 -- the first saving to take if he allows them less.
+  is over 9 cm out from her middle). AND DOWN TO 1.18 M SINCE 2026-11-24 (a fault found in the bandeau's pictures, fixed
+  and told): thinned under 1.24, the row of triangles that joins her arm's skin to her trunk's at the back of her armpit
+  came 15 mm down into the bandeau's band, and in her T-pose its top edge was ragged along them; kept whole from 1.18 the
+  row is her full skin's, triangle for triangle (863). 146,172 triangles of her 208,592 (143,640 before, 127,704 at
+  first): her hands alone are some 33,000 -- the first saving to take if he allows them less.
 - A re-meshed body (Meshy, 6,737 points) was looked at and not used: another shape and pose, its points in other
   places, her face lost.
 - WORK ON THE LIGHT SKIN FIRST (`?probe=cloth&body=light`, 1x): what he approves there is applied to the full one.

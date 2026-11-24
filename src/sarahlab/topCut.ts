@@ -283,7 +283,11 @@ export interface TopCutSpec {
  *   move: her side lock (`SIDE_LOCK`) holds her trunk still from 2 cm under her armpit. MEASURED on her body file
  *   (2026-11-23): the row of her triangles that joins her arm's skin to her trunk's comes down to 18 cm under her neck
  *   joint at the back of her armpit; the painted line (`topSide` 0.72 at her sides, 14.7 cm under, `topBack` 0.7)
- *   crossed it -- her arm's skin bare beside cloth, the edge ragged along her triangles -- and rose with her arms.
+ *   crossed it -- her arm's skin bare beside cloth, the edge ragged along her triangles -- and rose with her arms. HER
+ *   LIGHT SKIN's row (`lightBody.mjs`: what a phone wears) was lower until 2026-11-24: a triangle of it reached 15.2 mm
+ *   into the band (MEASURED on the light list's triangles, each sampled as the shader mixes her arm's share), and in her
+ *   T-pose the top edge was ragged along them under her arm (pictured in the room). Its sides are kept whole down to
+ *   1.18 m now (`SHOULDER`), and its row is her full skin's.
  * Without her side seam (a sketch, a test) its front is drawn: level over her middle out to `flat`, down to her sides'
  * height by `out`. GAME TUNING (metres) but where said.
  */

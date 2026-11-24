@@ -54,8 +54,11 @@ const at = (v) => [Math.abs(R[v * 3] - body.midX), R[v * 3 + 1], R[v * 3 + 2]];
 // body never rests on: thinned to a fifth of 26,000 triangles for her arms, her back and her shoulders together, the
 // triangles over the top of her shoulder were big, counted as her arm's well onto her trunk, and her skin stood
 // through the cloth there in six-sided holes. MEASURED in the room, his tee's own settings (ease 0), seated: holes on
-// the light skin, none on the full one, none on this.
-const SHOULDER = Object.freeze({ from: 1.24, to: 1.42, out: 0.09 });
+// the light skin, none on the full one, none on this. FROM 1.18 m (it was 1.24) since 2026-11-24: thinned under 1.24, the
+// row of triangles that joins her arm's skin to her trunk's at the back of her armpit came down into a bandeau's band by
+// 15.2 mm, and its top edge was ragged along them under her raised arm (`topCut.BANDEAU`; `tests/topOutline.test.ts`).
+// Kept whole from 1.18 its row is her full skin's (863 triangles, as hers); 146,172 triangles in all (143,640 before).
+const SHOULDER = Object.freeze({ from: 1.18, to: 1.42, out: 0.09 });
 const whole = (v) => { const [x, y, z] = at(v); if (y > SHOULDER.from && y <= SHOULDER.to && (isArmV[v] || x > SHOULDER.out)) return true; if (isArmV[v]) return x > 0.2 && y < 0.95; return y > 1.42 || (x < 0.1 && y > HIP_Y - 0.17 && y < HIP_Y - 0.01) || (y >= HIP_Y - 0.12 && y < 1.36 && z > -0.02 && x < 0.2); };
 // (and her HANDS whole: Joshua, the same morning, of the light skin on his phone: "we forgot to add the hands in")
 // OF THE REST, HER LEGS, HER HIPS AND HER FEET ARE THE DENSER PART: thinned as her arms and her back are they stood in

@@ -10,6 +10,7 @@
  *   round the side of her bust to under her arm, seen from her front, her three-quarter and her side;
  * - the templates: which are drawn, their dials, and a look saved before today still opens.
  */
+import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -436,6 +437,21 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     expect(Math.min(...areola.map((v) => cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 0))) / U / MM).toBeGreaterThan(15);
     // its two drawings meet at her side seam
     expect(cut.frame.zMid[0]).toBeCloseTo(f.seamRow![0], 6);
+    // AND ON HER LIGHT SKIN (what a phone wears: `lightBody.mjs`): no place of the triangles of its row joining her arm's
+    // skin to her trunk's is inside the band where the shader's mix of her arm's share takes the cloth off (MEASURED
+    // 2026-11-24: 15.2 mm inside on the list thinned from 1.24 m down, ragged under her raised arm; none kept whole from 1.18)
+    const buf = readFileSync('public/models/sarah-v2-body-light.bin'), light = new Uint32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+    let deepest = 0;
+    for (let k = 0; k + 2 < light.length; k += 3) {
+      const v = [light[k], light[k + 1], light[k + 2]], a = v.map((i) => (isArm(i) ? 1 : 0)), s = a[0] + a[1] + a[2];
+      if (s === 0 || s === 3) continue;
+      for (let p = 0; p <= 12; p++) for (let q = 0; p + q <= 12; q++) {
+        const w = [p / 12, q / 12, 1 - p / 12 - q / 12], at = (c: number) => w[0] * P[v[0] * 3 + c] + w[1] * P[v[1] * 3 + c] + w[2] * P[v[2] * 3 + c];
+        const u = Math.max(0, Math.min(1, ((w[0] * a[0] + w[1] * a[1] + w[2] * a[2]) - 0.4) / 0.2));
+        if (u * u * (3 - 2 * u) > 0.01) deepest = Math.max(deepest, cutAt(cut, at(0), at(1), at(2), 0));
+      }
+    }
+    expect(deepest).toBe(0);
   }, 60_000);
 
   it('the paths have no corner: over any 3 mm of them they turn no more than a smooth curve does', () => {
