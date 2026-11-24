@@ -186,7 +186,8 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     measured on her posed skin (`setFabricCutArms`): a flat ring round her arm in any pose. Looked up on her rest
     skin, the end ran ragged toward her armpit, where her arm's skin and her trunk's share points (MEASURED in her
     T-pose, a ringer's band);
-  - its HEM is level, at its LENGTH (the drape's band is the edge there).
+  - its HEM is at its LENGTH: painted since 2026-11-24, a stitched band inside it ("A painted shirt's hem, painted");
+    until then the drape's band was the edge there.
 - **A SAVED LOOK KEEPS ITS NUMBERS** (`paintTemplates.wornParams`): a tee saved with NECKLINE 94% opens at 94% (his
   three characters of 2026-11-14 do), and a field a template has gained since (a long sleeve's cuff) is the
   template's. Only a style picked afresh starts at his sheet's depth.
@@ -396,7 +397,9 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     picture by where her front-most skin stands round her (an upright edge down her side, and, drawn cell by cell, rows of
     skin through the cloth down the side of her bust: from in front, every place of her side lies over the same few
     columns); a line down from 6 to 12.5 cm out (her areolas bare); raised 2 cm as he first said (her areolas still 5 mm
-    bare, the arm row inside it). PICTURED_HERE.
+    bare, the arm row inside it). PICTURED in the room 2026-11-24 (light skin): at 0, 100 and 200% her arms down, from
+    her front, three-quarter, side and back, and at 100% in her T-pose from the four -- straight across her bust, down
+    round its side to under her arm, level behind, and one line under her raised arm.
 - **THE BOXY CROP TEE'S AND THE MATERNITY TEE'S HEM FOLLOW HER BELLY, as the under-belly leggings' waistband does**
   (Joshua, 2026-11-23, his five settings of each on Blaze, pictured; of the maternity tee: "I changed my mind… Yes,
   follow the belly"). `paintTemplates.ts` `BELLY_FOLLOW` (a table of his settings for each following dial, by template:
@@ -411,6 +414,43 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   paint laid) 64 to 77 ms on the build machine, at most every 250 ms while her belly is dragged.
 - After anything changes them: `tests/underBellyFollow.test.ts`, `tests/topOutline.test.ts`, `tests/topCut.test.ts`;
   then the room: the bandeau at 0, 100 and 200% from her front, three-quarter, side and back; the two tees at 0 to 200%.
+
+## A painted shirt's hem, painted
+
+- **A PAINTED SHIRT HAS NO DRAPE: ITS HEM IS PAINTED, A STITCHED BAND INSIDE IT** (Joshua, 2026-11-24, of the henley's
+  hem band standing off her bump at 150 to 200%: "instead of trying to make it fit if yours having issues, can we
+  instead, add painted edges instead like we did with leggings and shirts sleeves?"; asked whether all of them or the
+  henley first: "let's do all for now… we can come back to it later if I want… but we do have the cloth simulation which
+  we could freeze as well"). `paintTemplates.PAINTED_SHIRT_DRAPE` is 'off': every drawn top with a LENGTH -- the tees, the
+  henley, the polo, the raglan, the wrap, the button-up, the tank, the camisole, the mock neck -- wears no drape's hem
+  band (`tunicDrape.ts`, kept for 'band' and 'full'), and its hem is its cut's own edge, drawn for each pixel
+  (`FabricCut.skinHem`, the shader's `fabricCutHem` 2).
+- **ITS LINE IS THE HIGHER OF TWO, ROUNDED WHERE THEY CROSS** (`fabricMaterial.SKIN_HEM_ROUND`, 2 cm; GAME TUNING):
+  level on her as she is shaped (a top's own hem's: her points' movement off her frame, `ownHem`, worked out down past
+  it), and ON HER SKIN, at its rest height on the skin it was put on, looked up through her skin's slip PULLED BACK
+  through her skin's own stretch (`pulledSlip.ts`), as a drawn bottom's waistband is -- laid while a painted shirt is
+  worn whether or not a drawn bottom is (`layLowSlip`). About her hips and her back the two are one; under a big bump
+  her skin's goes down with her bump to its underside. MEASURED 2026-11-24 in the room, the henley (light skin):
+  - level alone (the boxy crop tee's way): at 150% and 200% a level line across the lower third of her bump, under it
+    her leggings' grey;
+  - on her skin alone: the skin under her body file's bump goes back up her as her bump goes, and at 0% the hem rose
+    over her mound in a U some 5 cm high, her leggings' grey in it;
+  - the higher of the two: PICTURED (light skin; the henley at 0, 100, 150 and 200% from her front, three-quarter, side
+    and back, and seated at 0 and 200%; a plain tee at 0 and 200%): at 0% level round her, a stitched band inside it; from
+    100% her bump covered to its underside, the hem going under it and down round its sides, level round her hips and
+    back. Seated, it lies on her lap as paint does.
+- **A STITCHED BAND** (`topCut.SHIRT_HEM_BAND`, 20 mm, his sheet's stitched hem; GAME TUNING) inside its hem, in the
+  shirt's own fabric a shade darker ALWAYS: a top's EDGING colours its collar and its sleeves' bands, never its hem (a
+  raglan's or a ringer's hem is the body's colour; the shader's `fbe`). A template may say its own (`band.hem`): the
+  ringer's is none. The tops cut above a LENGTH's reach keep their own: the crop tees none, the sports bra its wide band.
+- WHAT WENT WITH THE DRAPE: a painted top to her hips worn over a skirt stood through it in chips at her hips (its
+  drape's band, which no skirt was told of: "The skirts", (d)); a painted shirt's paint taken off below the band's edge
+  (`HEM_PAINT_ROWS`: "A painted top, drawn"); seated, the drape's front rode up by its fabric's stretch.
+- NOT DONE, OFFERED: the maternity tee and the boxy crop tee keep their level hem (his settings on Blaze were set on it):
+  at 100% and over, the maternity tee's leaves a strip of what is under it below her bump.
+- After anything changes it: `tests/topOutline.test.ts` ("a painted shirt's hem is painted"), `tests/topDetails.test.ts`,
+  `tests/bottomCut.test.ts`, `tests/topCut.test.ts`; then the room: the henley and a tee at 0, 100, 150 and 200% from her
+  front, three-quarter, side and back, and seated.
 
 ## The cloth tops
 

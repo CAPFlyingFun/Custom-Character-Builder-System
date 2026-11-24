@@ -84,12 +84,11 @@ export type NeckStyle = keyof typeof NECK_STYLES;
 /** A BAND along an edge, metres wide: a collar, a sleeve's hem or cuff, a hem. 0: none there. */
 export interface TopBands { readonly neck: number; readonly sleeve: number; readonly hem: number }
 /**
- * GAME TUNING (metres): a tee's bands as his sheet shows them -- a ribbed collar, a turned sleeve hem.
- * NONE AT ITS HEM YET. A shirt's hem is its drape's hem band (`tunicDrape.ts`): a sheet in the shirt's own fabric, solid
- * over the last 18 mm above the hem, which covers her skin's paint there. A band drawn on her skin at her hem (20 mm,
- * his sheet's stitched hem; tried 2026-11-14) showed only where that sheet dips under her skin: MEASURED in the room,
- * a grey patch at her side in the top's own fabric, and, with an edging colour, chips of that colour at her side and
- * hairlines of it round her. To draw a stitched hem the drape's band has to draw it as well.
+ * GAME TUNING (metres): a tee's bands as his sheet shows them -- a ribbed collar, a turned sleeve hem. None at its hem
+ * here: a shirt with a LENGTH has `SHIRT_HEM_BAND` (below) since its drape was taken off (2026-11-24). While a shirt's hem
+ * was its drape's hem band (`tunicDrape.ts`), a band drawn on her skin at her hem (20 mm; tried 2026-11-14) showed only
+ * where that sheet dipped under her skin: MEASURED in the room, a grey patch at her side in the top's own fabric, and,
+ * with an edging colour, chips of that colour at her side and hairlines of it round her.
  */
 export const TEE_BANDS: TopBands = Object.freeze({ neck: 0.016, sleeve: 0.018, hem: 0 });
 /**
