@@ -188,6 +188,9 @@ export const SARAH_LAB_ACTION = Object.freeze({
   pregnant: 'sarahlab:pregnant',
   /** `${pregnancyClear}week` / `first` / `delivery` / `deliveryWeek` / `after` / `births`: one of HER PREGNANCY's boxes back to nothing typed (her baby counter's, or with no count the chart's) */
   pregnancyClear: 'sarahlab:pregnancy-clear-',
+  /** `${lungsClear}<lungs|heart>-<key>`: one of LUNGS & HEART's numbers back to the body's own (actor/vitals.ts); `lungsReset`, all of them */
+  lungsClear: 'sarahlab:lungs-clear-',
+  lungsReset: 'sarahlab:lungs-reset',
   /** SEE BABY: her baby in her womb, her body seen through (baby.ts) */
   baby: 'sarahlab:baby',
   /** OPENING (v2): her skeleton's doors at her opening, or v2's own as it was (the new direction's step 3) */
@@ -296,6 +299,9 @@ export const SARAH_LAB_FIELD = Object.freeze({
   pregnancyAfter: 'sarahlab-pregnancy-after',
   pregnancyNumbers: 'sarahlab-pregnancy-numbers',
   pregnancyLine: 'sarahlab-pregnancy-line',
+  /** `${lungs}<lungs|heart>-<key>`: LUNGS & HEART's boxes (blank: the body's own, in grey); `lungsLine`, what they come to at her hardest */
+  lungs: 'sarahlab-lungs-',
+  lungsLine: 'sarahlab-lungs-line',
   fingers: 'sarahlab-fingers',
   /** her birth opening (vulvaMesh.ts): closed to the full 10 cm, for looking at it in the room */
   birthOpen: 'sarahlab-birth-open',

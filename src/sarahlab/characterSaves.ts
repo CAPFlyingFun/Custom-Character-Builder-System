@@ -6,7 +6,8 @@
  * A save is a NAME (Sarah, Lena, ...) holding a body, an outfit, or both:
  *   - the BODY: which model, her bump (the STARTING size; the story clock that grows and later eases it is the game's,
  *     later), every body-shape control, the belly refinement, RANDOMIZE's ranges and locks (`actor/bodyRandom.ts`), and
- *     her pregnancy -- PREGNANT on or off and her weeks as typed (`pregnancy.ts`), numbers the game can grow her by;
+ *     her pregnancy -- PREGNANT on or off and her weeks as typed (`pregnancy.ts`), numbers the game can grow her by --
+ *     and her own lungs and heart (actor/vitals.ts `Lungs`, `Heart`), numbers a game breathes her by;
  *   - the CLOTHES: the outfit she wears, each paint layer (its template and dial settings, or the hand-painted mask
  *     when there is no template), its fabric, colour, stitch and detail-through-paint, each modelled garment's fabric,
  *     the shirt length, the outfit's BREAST and NAVEL DETAIL (each AUTO or a manual value: `DetailOverride`), the
@@ -42,7 +43,8 @@ import { headDefault, isDefaultHead, normaliseHead, type HeadLook } from './head
 import {
   GARMENT_DEFAULTS, GARMENT_RECORD_VERSION, clampGarmentSettings, sameGarment, type GarmentRecord, type GarmentSettings,
 } from './garment/settings';
-import { CLOTH_TUNE_DEFAULT, type ClothTune } from './sarahLabTool';
+import { CLOTH_TUNE_DEFAULT, isMaleModel, type ClothTune } from './sarahLabTool';
+import { heartDefault, lungsDefault, readHeart, readLungs, type Heart, type Lungs } from '../actor/vitals';
 import { readSkirtRecord, sameSkirt, type SkirtRecord } from './skirt/skirtDraft';
 
 import { PICTURE_ID } from './pictureStore';
@@ -71,6 +73,24 @@ export interface SavedBody {
    * `headOf` reads those as that head.
    */
   readonly head?: HeadLook;
+  /**
+   * Her own lungs and heart (actor/vitals.ts `Lungs`, `Heart`; Galaxy Defender, 2026-11-25: "Per-character lung settings,
+   * saved with the character and in its JSON export, as customizable defaults (not fixed by sex)"): every number, as the
+   * room breathes her by them -- the body's own (`FEMALE_LUNGS`, `MALE_LUNGS`...) with whatever was typed over them.
+   * Left out by every save from before: `lungsOf`, `heartOf` read those as the body's own.
+   */
+  readonly lungs?: Lungs;
+  readonly heart?: Heart;
+}
+/** A saved body's lungs: what it kept, or its model's own (the male base body's, or the female's). */
+export function lungsOf(body: SavedBody | null | undefined): Lungs {
+  const own = lungsDefault(!!body && isMaleModel(body.model));
+  return body?.lungs ? readLungs(body.lungs, own) : own;
+}
+/** A saved body's heart, the same way. */
+export function heartOf(body: SavedBody | null | undefined): Heart {
+  const own = heartDefault(!!body && isMaleModel(body.model));
+  return body?.heart ? readHeart(body.heart, own) : own;
 }
 /** A saved body's head: what it kept, or the head she had before a head could be chosen (his own, for the male base model). */
 export function headOf(body: SavedBody | null | undefined, male = false): HeadLook {
@@ -442,7 +462,12 @@ function readRandom(v: unknown): RandomRules {
 }
 function readBody(v: unknown): SavedBody | null {
   if (!isRecord(v) || typeof v.model !== 'string') return null;
-  return { model: str(v.model, 40), bump: num(v.bump, 0, 1000, 0), shape: str(v.shape, 20_000), refine: v.refine === true, random: readRandom(v.random), ...(isRecord(v.pregnancy) ? { pregnancy: readPregnancy(v.pregnancy) } : {}), ...(isRecord(v.head) ? savedHead(normaliseHead(v.head)) : {}) };
+  return { model: str(v.model, 40), bump: num(v.bump, 0, 1000, 0), shape: str(v.shape, 20_000), refine: v.refine === true, random: readRandom(v.random), ...(isRecord(v.pregnancy) ? { pregnancy: readPregnancy(v.pregnancy) } : {}), ...(isRecord(v.head) ? savedHead(normaliseHead(v.head)) : {}), ...lungsAndHeart(v) };
+}
+/** Her lungs and heart as kept (each clamped to its range; a number missing her model's own). */
+function lungsAndHeart(v: Record<string, unknown>): { lungs?: Lungs; heart?: Heart } {
+  const male = typeof v.model === 'string' && isMaleModel(v.model);
+  return { ...(isRecord(v.lungs) ? { lungs: readLungs(v.lungs, lungsDefault(male)) } : {}), ...(isRecord(v.heart) ? { heart: readHeart(v.heart, heartDefault(male)) } : {}) };
 }
 function readRef(v: unknown): OutfitRef | null {
   if (!isRecord(v) || typeof v.basedOn !== 'string' || !isRecord(v.overrides)) return null;

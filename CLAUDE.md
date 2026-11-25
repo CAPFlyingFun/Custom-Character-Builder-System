@@ -1546,6 +1546,47 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   skin 6 mm at the most, a running breath 15 mm).
 - Her lungs, heart and the organs under her diaphragm are drawn from her vitals (`ThoraxView.drive`).
 
+## A character's own lungs and heart
+
+- **Each character breathes and beats by numbers of her own** (Galaxy Defender, for its Mary and John, 2026-11-25: "John,
+  on the male base body, breathes and beats exactly like Mary"; "Per-character lung settings, saved with the character
+  and in its JSON export, as customizable defaults (not fixed by sex)"; "Nothing about stamina or endurance changes").
+  `actor/vitals.ts` `Lungs` (total and vital capacity, a breath at rest, breaths a minute at rest, the biggest working
+  breath as a share of the vital capacity, the most air a minute, the most breaths a minute) and `Heart` (at rest, and
+  the peak's formula: its value at age 0 and its drop a year), taken by `vitalsFor` and `stepVitals` through
+  `VitalsBody.lungs` / `.heart` -- left out, the female body's. A pregnancy's changes are laid on top of them.
+  `vitalsFor` and `VitalsNow` say the air moved a minute (`airLPerMin`): over `mostLPerMin`, how hard breathing works.
+- **THE TWO BODIES' OWN** (exported for a game: `FEMALE_LUNGS`, `FEMALE_HEART`, `MALE_LUNGS`, `MALE_HEART`, `lungsDefault`,
+  `heartDefault`, `readLungs`, `readHeart`): the female body's are `BREATHING` and `HEARTBEAT`, number for number, and
+  her total 4.2 L; the male base body's are GDM's (GAME TUNING within physiology's: total 6.0 L, vital 4.7, a breath 0.5,
+  14 a minute, the biggest 55% of his vital capacity, 120 L a minute, 50 a minute; his heart 65 at rest, 208 - 0.7 x his
+  age, Tanaka 2001). Ranges in `LUNG_RANGE`, `HEART_RANGE`.
+- MEASURED: Mary to the last bit as before, with her numbers passed or left out (every felt effort and energy, weeks 0,
+  20 and 40, three ages; ten minutes of each activity stepped, two resting after): at rest 14 a minute, 0.5 L, 70; at her
+  hardest 46.9, 1.705 L, 80 L a minute, 181.4. John: at rest 14, 0.5 L, 65; at his hardest 46.4 a minute, 2.585 L, 120 L
+  a minute, 188.4 at 28 years; held there until spent, up to 124.5 L a minute as he empties (the quicker, shallower
+  breathing of spent energy, hers too: up to 82.4), 109.9 once spent. His effort and energy go exactly as hers at every
+  activity.
+- **KEPT WITH HER BODY** (`characterSaves` `SavedBody.lungs`, `.heart`, every number, written with each save, in its
+  export; `lungsOf`, `heartOf`: a save from before is its model's own). In the room, the Body tab's LUNGS & HEART:
+  each box blank until typed, her body's own in grey, a ↺ each and BODY'S OWN for all, and what they come to at her
+  hardest. What is typed is kept for each body, as her head is (`typedVitals`).
+- **HIS SKIN BREATHES ON HIS OWN LANDMARKS** (`SarahLabScene.ts` `MALE_BREATH_MARKS`, `breathMarksNow`): her breath's moves
+  are anchored on her bones' landmarks (src/data); his were hers until 2026-11-25. MEASURED on the skeleton laid in him
+  (the probe's `breathMarks`): the top of his pubic bone 2.0 cm lower than hers, the bottom of his breastbone 1.0 cm
+  lower and its top 1.8 cm higher, the bottom of his rib cage at his sides 1.6 cm lower. Kept as numbers, as hers are,
+  so his breath lays no skeleton. MEASURED in the room on him at his hardest: his skin sweeps 2,518 mL for 2,518 mL
+  breathed, 24 mm at the most (at the bottom of his breastbone; 4.9 mm at rest). PICTURED at his 0% from his side and
+  three-quarter, all out and all in.
+- **HIS DRAWN CHEST BREATHES BY HIS OWN SHARE** (`breathDepth`): a breath's share of the body's vital capacity, as that
+  share of hers; hers is the litres over 0.5 as before.
+- **NEVER CARRYING ON THE MALE BASE BODY** (a fault found 2026-11-25, `pregnancy.ts` `carryingFor`): her PREGNANT left on
+  and the body switched to his, he breathed with a pregnancy's numbers (16 a minute, 0.70 L, his heart 77 at rest), and
+  his navel and his balance took her weeks. MEASURED after, her PREGNANT still on: 14, 0.50 L, 65.
+- After anything changes them: `tests/lungsAndHeart.test.ts`, `tests/vitals.test.ts`, `tests/pregnantToggle.test.ts`,
+  `tests/characterSaves.test.ts`, `tests/characterExport.test.ts`; then the room: her vitals line at rest and her
+  hardest, MALE and his, and `breathCheck` on him.
+
 ## Her skeleton and her bare feet, laid a slice at a time
 
 - **SNEAKERS · OFF LAYS HER SKELETON AND FITS HER BARE FEET OVER IT, AND THE ROOM GOES ON DRAWING** (a fault Joshua found,

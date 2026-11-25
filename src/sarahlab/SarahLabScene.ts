@@ -6,7 +6,7 @@ import { fabricPanel, type FabricPanel } from './fabricPanel';
 import { strapBuilder, type StrapBuilder } from './strapBuilder';
 import { mapBody } from './bodyRegions';
 import { DEFAULT_SHIRT_LENGTH, PAINTED_SHIRT_LONGEST } from './paintTemplates';
-import { AUTO_DETAIL, EMPTY_BOOK, headOf, savedHead, type CharacterBook, type SavedBody, type SavedClothes } from './characterSaves';
+import { AUTO_DETAIL, EMPTY_BOOK, headOf, heartOf, lungsOf, savedHead, type CharacterBook, type SavedBody, type SavedClothes } from './characterSaves';
 import { characterPanel, type CharacterPanel } from './characterPanel';
 import { outfitPanel, type OutfitPanel, type OutfitSource } from './outfitPanel';
 import { NO_RULES, isLocked, randomize, ruleFor, withGroupLock, withRule, type RandomRules, type RandomSpec } from '../actor/bodyRandom';
@@ -30,8 +30,8 @@ import { JointLimits, type JointAngles } from '../actor/jointLimits';
 import { rangeDeg, type RangeLevel } from '../data/jointRange';
 import { DEFAULT_SKIN, EVEN_SKIN_COLOUR, SKIN_BRUSH_CM, SKIN_CHOICES, SKIN_EVEN_ROUGHNESS, SKIN_ORIGINAL_IMAGE, SKIN_SWATCHES, SKIN_TEXTURE_CM, hexRgb, nextSkin, skinBrushLine, skinLine, skinNote, skinStrengthLine, skinTextureLine, type SkinId } from './skinChoices';
 import { SkinPainter, standingSourceOf, tilePattern, type SkinImage, type SkinPattern, type SkinStrokeSettings } from './skinPaint';
-import { ACTIVITY, ACTIVITIES, breathFlare, chestShare, diaphragmRise, restingVitals, stepVitals, type Activity, type VitalsNow } from '../actor/vitals';
-import { breathAt, breathVolumes, layBreathTable } from './breathSkin';
+import { ACTIVITY, ACTIVITIES, HEART_KEYS, HEART_RANGE, LUNG_KEYS, LUNG_RANGE, breathDepth, breathFlare, chestShare, diaphragmRise, heartDefault, lungsDefault, readHeart, readLungs, restingVitals, sameHeart, sameLungs, stepVitals, vitalsFor, type Activity, type Heart, type Lungs, type VitalsNow } from '../actor/vitals';
+import { BREATH_SLICES, BREATH_SPAN, breathAt, breathVolumes, layBreathTable, type BreathMarks } from './breathSkin';
 import { MOTION_SHAPES, LEVEL_LINE_OFFERED, lineModeLine, lineModeNote, nextLineMode, standingShape, type LineMode } from './levelLine';
 import { ensureRest, ensureSkinFabric, fabricFieldState, setFabricFieldLevels } from './fabricMaterial';
 import { BodyCrease, CREASE_SETTLE_MS, unitBefore } from './bodyCrease';
@@ -126,7 +126,7 @@ import v2Pelvis from '../data/pelvis/v2.json';
 import v2Torso from '../data/torso/v2.json';
 import { AbdomenView } from './abdomenView';
 import { ThoraxView } from './thoraxView';
-import { DIAPHRAGM_RISE, LUNGS, measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
+import { DIAPHRAGM_RISE, measureThorax, type ThoraxLandmarks } from '../actor/thoracicOrgans';
 import { WOMB_WALL_SLOPE } from '../actor/pregnantWomb';
 import v2Thorax from '../data/thorax/v2.json';
 import { wombRoomOf } from './wombRoom';
@@ -167,6 +167,30 @@ import { BIRTH_NORMALS_FIELD, createBirthNormals, type BirthNormals } from './bi
 /** HER KNEES SMOOTHED AS POSED in a birth pose (Joshua, 2026-10-31: "the upper and lower legs at the knee... should remain
  * separated, but appear merged"): her groin's smoothing (birthNormals.ts) run round each knee */
 const BIRTH_KNEES_FIELD = 'shape:birthKnees';
+/**
+ * WHERE HIS BREATH'S MOVES ARE ANCHORED (breathSkin.ts `BreathMarks`, rest metres): the top of his pubic bone, the bottom
+ * and top of his breastbone, his midline and the bottom of his rib cage at his sides. Hers are her bones' (src/data);
+ * his, MEASURED on the skeleton laid in him (skeletonInV2.ts, his rib cage sized to him: the probe's `breathMarks`) --
+ * kept here, as hers are kept, so his breath needs no skeleton laid. Null: hers.
+ */
+// (MEASURED 2026-11-25 in the room, his skeleton laid in him at his own build: against hers, the top of his pubic bone
+// 2.0 cm lower, the bottom of his breastbone 1.0 cm lower and its top 1.8 cm higher -- a breastbone 19.2 cm long to her
+// 16.5 -- and the bottom of his rib cage at his sides 1.6 cm lower; his pelvis is hers carried into him, not yet a man's)
+const MALE_BREATH_MARKS: BreathMarks | null = Object.freeze({ pubisTop: 0.85004, xiphoid: 1.19362, sternumTop: 1.38610, midX: 0.00332, ribsLowest: 1.07166 });
+/** LUNGS & HEART's rows (actor/vitals.ts `Lungs`, `Heart`): its name, its unit, the box's scale (the biggest breath shown
+ * as a % of her vital capacity) and step, and the digits it is shown to. */
+const VITAL_ROWS: readonly { part: 'lungs' | 'heart'; key: string; label: string; unit: string; scale: number; step: number; digits: number }[] = [
+  { part: 'lungs', key: 'totalL', label: 'TOTAL CAPACITY', unit: 'L', scale: 1, step: 0.1, digits: 2 },
+  { part: 'lungs', key: 'vitalL', label: 'VITAL CAPACITY', unit: 'L', scale: 1, step: 0.1, digits: 2 },
+  { part: 'lungs', key: 'tidalL', label: 'BREATH AT REST', unit: 'L', scale: 1, step: 0.05, digits: 2 },
+  { part: 'lungs', key: 'perMinute', label: 'BREATHS AT REST', unit: '/min', scale: 1, step: 1, digits: 1 },
+  { part: 'lungs', key: 'tidalOfVital', label: 'BIGGEST BREATH', unit: '% vital', scale: 100, step: 1, digits: 1 },
+  { part: 'lungs', key: 'mostLPerMin', label: 'MOST AIR', unit: 'L/min', scale: 1, step: 1, digits: 1 },
+  { part: 'lungs', key: 'mostPerMinute', label: 'MOST BREATHS', unit: '/min', scale: 1, step: 1, digits: 1 },
+  { part: 'heart', key: 'restPerMinute', label: 'HEART AT REST', unit: 'bpm', scale: 1, step: 1, digits: 1 },
+  { part: 'heart', key: 'peakAt', label: 'PEAK AT AGE 0', unit: 'bpm', scale: 1, step: 1, digits: 1 },
+  { part: 'heart', key: 'peakPerYear', label: 'PEAK DROP A YEAR', unit: 'bpm', scale: 1, step: 0.01, digits: 3 },
+];
 /** BIOLOGICAL SHAPE: a baby's head at term is about 9.5 cm across (its biparietal diameter) on a 51 cm baby; a smaller
  * baby's in proportion. And a contraction lifts her womb up and forward a little (metres at the peak; GAME TUNING). */
 /** The poses a birth may run in (Joshua, 2026-11-02): birthSequence.ts `BIRTH_NEEDS`, with what else a birth needs. */
@@ -2263,6 +2287,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let birthButtons: HTMLButtonElement[] = [];
   /** HER WEEKS' boxes (pregnancy.ts), by `SARAH_LAB_FIELD`, and the week box's own label */
   const weekBoxes = new Map<string, HTMLInputElement>();
+  /** LUNGS & HEART's boxes, by `<lungs|heart>-<key>` */
+  const vitalBoxes = new Map<string, HTMLInputElement>();
   let weekLabel: HTMLElement | null = null;
   /** FACE's own controls: the held-open mouth (her head's look has a panel of its own: `headPanel`). */
   let faceMouthInput: HTMLInputElement | null = null;
@@ -2490,6 +2516,23 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (birthClock !== null && next.pregnant !== pregnancy.pregnant) { birthControl('reset'); if (birthButtons[0]) birthButtons[0].textContent = 'BIRTH ▶'; }
     pregnancy = next; babyDirty = true; babyFitAt = -Infinity; applyLook(); applyMotion(); refresh();
   }
+  /** LUNGS & HEART's boxes: what is typed, or blank with her body's own in grey; and what they come to at her hardest */
+  function refreshLungs(): void {
+    const male = maleBody(), typed = typedVitals.get(male), own = { lungs: lungsDefault(male), heart: heartDefault(male) } as unknown as Record<string, Record<string, number>>;
+    for (const r of VITAL_ROWS) {
+      const i = vitalBoxes.get(`${r.part}-${r.key}`);
+      if (!i) continue;
+      const t = (typed?.[r.part] as Record<string, number> | undefined)?.[r.key], show = (v: number) => String(+(v * r.scale).toFixed(r.digits));
+      if (document.activeElement !== i) i.value = t === undefined ? '' : show(t);
+      i.placeholder = show(own[r.part][r.key]);
+      const b = buttons[`${SARAH_LAB_ACTION.lungsClear}${r.part}-${r.key}`];
+      if (b) { b.disabled = t === undefined; b.style.opacity = t === undefined ? '.4' : '1'; }
+    }
+    const any = !!typed && (Object.keys(typed.lungs).length > 0 || Object.keys(typed.heart).length > 0), all = buttons[SARAH_LAB_ACTION.lungsReset];
+    if (all) { all.disabled = !any; all.style.opacity = any ? '1' : '.4'; }
+    const line = fields[SARAH_LAB_FIELD.lungsLine];
+    if (line) line.textContent = `${any ? 'typed over' : 'all'} the ${male ? 'male' : 'female'} base body's own · ${lungsLine()}`;
+  }
   /** HER PREGNANCY's boxes: what is typed, or blank with what is in force in grey; and the lines under them */
   function refreshWeeks(): void {
     const size = sized(), chart = herChart(babyCount, pregnancy), here = herWeek(size, babyCount, pregnancy), mine = weekIsFor(pregnancy, size);
@@ -2578,6 +2621,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (bumpInput && Number(bumpInput.value) !== bump) bumpInput.value = String(bump);
     if (bumpExact && document.activeElement !== bumpExact) bumpExact.placeholder = `${bump}%`;
     refreshWeeks();
+    refreshLungs();
     for (const spec of BODY_RANDOM_SPECS) {
       const b = lockButtons.get(spec.key);
       if (!b) continue;
@@ -3904,6 +3948,48 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       wrap.appendChild(line);
       right.appendChild(wrap);
     }
+    {
+      // LUNGS & HEART (actor/vitals.ts `Lungs`, `Heart`; Galaxy Defender, 2026-11-25: "Per-character lung settings, saved
+      // with the character and in its JSON export, as customizable defaults (not fixed by sex)"): each box blank until a
+      // number is typed, her body's own in grey meanwhile (the male base body's or the female's); its ↺ is her body's
+      // own again. Kept with her body; a game breathes her by them.
+      const wrap = document.createElement('details'); wrap.dataset.tab = 'body';
+      wrap.style.cssText = 'border-top:1px solid rgba(255,255,255,0.12);padding-top:6px;margin:2px 0 4px';
+      const head = document.createElement('summary');
+      head.textContent = 'LUNGS & HEART';
+      head.style.cssText = 'cursor:pointer;font:700 11px system-ui,sans-serif;letter-spacing:.08em;padding:4px 0';
+      const grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:3px 5px;font-size:11px;letter-spacing:.04em';
+      wrap.append(head, grid);
+      for (const r of VITAL_ROWS) {
+        const range = (r.part === 'lungs' ? LUNG_RANGE : HEART_RANGE)[r.key as never] as readonly [number, number];
+        const i = document.createElement('input');
+        i.type = 'number'; i.inputMode = 'decimal'; i.min = String(range[0] * r.scale); i.max = String(range[1] * r.scale); i.step = String(r.step);
+        i.dataset.field = `${SARAH_LAB_FIELD.lungs}${r.part}-${r.key}`;
+        i.style.cssText = 'width:58px;height:24px;border-radius:6px;border:1px solid #ffffff30;background:#0d1117;color:#e8e2d8;font:600 12px system-ui;padding:0 4px';
+        // (applied when the box is left or Enter pressed; blank is her body's own)
+        i.addEventListener('change', () => {
+          const t = i.value.trim(), v = Number(t);
+          if (t === '') typeVital(r.part, r.key, null);
+          else if (Number.isFinite(v)) typeVital(r.part, r.key, Math.min(range[1], Math.max(range[0], v / r.scale)));
+          else refresh();
+        });
+        i.addEventListener('keydown', (e) => e.stopPropagation());
+        vitalBoxes.set(`${r.part}-${r.key}`, i);
+        const action = `${SARAH_LAB_ACTION.lungsClear}${r.part}-${r.key}`, reset = btn('↺', action, () => typeVital(r.part, r.key, null));
+        reset.title = 'her body\'s own'; reset.style.padding = '2px 8px'; reset.style.fontSize = '12px';
+        buttons[action] = reset;
+        grid.append(Object.assign(document.createElement('span'), { textContent: r.label }), i, Object.assign(document.createElement('span'), { textContent: r.unit }), reset);
+      }
+      const line = document.createElement('div');
+      line.dataset.field = SARAH_LAB_FIELD.lungsLine; fields[SARAH_LAB_FIELD.lungsLine] = line;
+      line.style.cssText = 'grid-column:1 / -1;font-size:10px;opacity:.85;line-height:1.35';
+      const all = btn('↺ BODY\'S OWN', SARAH_LAB_ACTION.lungsReset, () => { typedVitals.delete(maleBody()); refresh(); });
+      all.style.padding = '4px 8px'; all.style.fontSize = '11px'; all.style.gridColumn = '1 / -1'; all.style.justifySelf = 'start';
+      buttons[SARAH_LAB_ACTION.lungsReset] = all;
+      grid.append(line, all);
+      right.appendChild(wrap);
+    }
     slider(SARAH_LAB_FIELD.fingers, curl, (v) => { curl = v; }, 100, 'pose');
     armsInput = slider(SARAH_LAB_FIELD.arms, armsDeg, (v) => { armsDeg = v; armsOverride = true; }, 90, 'pose');
     // THE SLOPE (walkStrip.ts): the treadmill tilted under STAND and WALK, -30 to +30, ahead of her or across her path
@@ -4206,7 +4292,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     characters = characterPanel({
       read: () => book.read(),
       write: (b) => book.write(b),
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head, headMale) }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head, headMale), lungs: lungsNow(), heart: heartNow() }),
       clothes: () => currentClothes(),
       wornFrom: () => wornFrom,
       putOnBody: (saved) => {
@@ -4215,6 +4301,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         // (another body: no birth of the last one's goes on)
         if (birthClock !== null) { birthControl('reset'); if (birthButtons[0]) birthButtons[0].textContent = 'BIRTH ▶'; }
         pregnancy = pregnancyOf(saved); babyDirty = true; babyFitAt = -Infinity;
+        { const male = isMaleModel(saved.model); typedVitals.set(male, typedOver(lungsOf(saved), heartOf(saved), male)); }
         refine = saved.refine;
         randomRules = saved.random;
         // her head as the character has it (one saved before a head could be chosen: the head she had), or his
@@ -4262,7 +4349,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       read: () => book.read(),
       write: (b) => { book.write(b); characters?.refresh(); },
       clothes: clothesNow,
-      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head, headMale) }),
+      body: (): SavedBody => ({ model: SARAH_LAB_MODELS[modelIndex].id, bump, shape: serializeShape(body), refine, random: randomRules, pregnancy, ...savedHead(head, headMale), lungs: lungsNow(), heart: heartNow() }),
       characterName: () => characters?.name() ?? '',
       builtins: () => OUTFITS.filter((o) => (o.his ? isMaleModel(SARAH_LAB_MODELS[modelIndex].id) : o.paint ? recovered : o.name !== 'none')).map((o) => o.name),
       // her own outfit first, then the rest in the room's order
@@ -6773,6 +6860,41 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   let breathLaid: { key: string; chest: number; belly: number; full: number; at: number } | null = null;
   let breathArm: { mesh: THREE.SkinnedMesh; share: Float32Array } | null = null;
   let vitalsShownAt = 0;
+  /**
+   * HER OWN LUNGS AND HEART (actor/vitals.ts `Lungs`, `Heart`; Galaxy Defender, 2026-11-25: "Per-character lung settings,
+   * saved with the character and in its JSON export, as customizable defaults (not fixed by sex)"): what is typed over
+   * her body's own (`FEMALE_LUNGS`, `MALE_LUNGS`...), kept for each body as her head is; nothing typed is the body's own.
+   */
+  const typedVitals = new Map<boolean, { lungs: Partial<Lungs>; heart: Partial<Heart> }>();
+  let vitalsBody: { male: boolean; typed: { lungs: Partial<Lungs>; heart: Partial<Heart> } | undefined; lungs: Lungs; heart: Heart } | null = null;
+  const maleBody = (): boolean => isMaleModel(SARAH_LAB_MODELS[modelIndex].id);
+  /** her lungs and heart as she breathes by them now (the body's own, what is typed over them) */
+  function breathBody(): { lungs: Lungs; heart: Heart } {
+    const male = maleBody(), typed = typedVitals.get(male);
+    if (!vitalsBody || vitalsBody.male !== male || vitalsBody.typed !== typed) vitalsBody = { male, typed, lungs: readLungs(typed?.lungs, lungsDefault(male)), heart: readHeart(typed?.heart, heartDefault(male)) };
+    return vitalsBody;
+  }
+  const lungsNow = (): Lungs => breathBody().lungs;
+  const heartNow = (): Heart => breathBody().heart;
+  /** what of a body's lungs and heart is not its model's own: what is typed */
+  function typedOver(lungs: Lungs, heart: Heart, male: boolean): { lungs: Partial<Lungs>; heart: Partial<Heart> } {
+    const L = lungsDefault(male), H = heartDefault(male), out = { lungs: {} as Record<string, number>, heart: {} as Record<string, number> };
+    if (!sameLungs(lungs, L)) for (const k of LUNG_KEYS) if (lungs[k] !== L[k]) out.lungs[k] = lungs[k];
+    if (!sameHeart(heart, H)) for (const k of HEART_KEYS) if (heart[k] !== H[k]) out.heart[k] = heart[k];
+    return out;
+  }
+  /** one number typed (null: back to the body's own) */
+  function typeVital(part: 'lungs' | 'heart', key: string, value: number | null): void {
+    const male = maleBody(), was = typedVitals.get(male) ?? { lungs: {}, heart: {} }, next = { lungs: { ...was.lungs }, heart: { ...was.heart } } as { lungs: Record<string, number>; heart: Record<string, number> };
+    if (value === null) delete next[part][key]; else next[part][key] = value;
+    typedVitals.set(male, next);
+    refresh();
+  }
+  /** what is in force for her at her hardest, fresh (vitals.ts `vitalsFor`), in one line */
+  function lungsLine(): string {
+    const { lungs, heart } = breathBody(), hard = vitalsFor(1, 1, { lungs, heart });
+    return `at ${maleBody() ? 'his' : 'her'} hardest: ${hard.breathsPerMinute.toFixed(1)} breaths/min · ${hard.tidalL.toFixed(2)} L a breath · ${hard.airLPerMin.toFixed(0)} L/min · heart ${Math.round(hard.beatsPerMinute)} bpm (age 28)`;
+  }
   /** what of her shape is her pose's now (as her painters read it) */
   function poseShapesOf(mesh: THREE.Mesh) {
     const fields = shaped.find((x) => x.mesh === mesh)?.fields;
@@ -6802,24 +6924,31 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (!b || !babyFrame) return false;
     const src = standingSourceOf(b.mesh, poseShapesOf(b.mesh));
     if (!src) return false;
-    const key = `${src.key} ${jiggle.breath.value.z.toFixed(2)}`;
-    if (breathLaid && (breathLaid.key === key || now - breathLaid.at < 0.5)) return true;
+    // (another body is laid at once: its own skin, its own landmarks)
+    const marks = breathMarksNow(), key = `${b.mesh.uuid} ${src.key} ${jiggle.breath.value.z.toFixed(2)}`;
+    if (breathLaid && (breathLaid.key === key || (now - breathLaid.at < 0.5 && breathLaid.key.startsWith(b.mesh.uuid)))) return true;
     const length = Math.floor(src.shaped.length / 3) * 3;
     if (breathWork?.standing.length !== length) breathWork = { standing: new Float32Array(length), rest: new Float32Array(length) };
     const S = standingShape(src, breathWork.standing), rest = breathWork.rest, v = new THREE.Vector3();
     for (let i = 0; i < S.length; i += 3) v.set(S[i], S[i + 1], S[i + 2]).applyMatrix4(babyFrame.meshToRest).toArray(rest, i);
-    layBreathTable(jiggle, rest, armShareOf(b.mesh), { pubisTop: v2Pelvis.landmarks.symphysisTop[1], xiphoid: v2Thorax.xiphoid[1], sternumTop: v2Thorax.sternumTop[1], midX: v2Pelvis.landmarks.symphysisTop[0], ribsLowest: v2Thorax.sections[0].y });
+    layBreathTable(jiggle, rest, armShareOf(b.mesh), marks);
     const index = (b.mesh.userData.allIndices as ArrayLike<number> | undefined) ?? b.mesh.geometry.index?.array;
     if (!index) return false;
     const swept = breathVolumes(jiggle, rest, index);
     breathLaid = { key, chest: swept.chest, belly: swept.belly, full: swept.full, at: now };
     return swept.chest > 0 && swept.belly > 0;
   }
+  /** Where her breath's moves are anchored (breathSkin.ts `BreathMarks`): her own bones' landmarks (src/data), or his
+   * (`MALE_BREATH_MARKS`). */
+  function breathMarksNow(): BreathMarks {
+    return maleBody() && MALE_BREATH_MARKS ? MALE_BREATH_MARKS : { pubisTop: v2Pelvis.landmarks.symphysisTop[1], xiphoid: v2Thorax.xiphoid[1], sternumTop: v2Thorax.sternumTop[1], midX: v2Pelvis.landmarks.symphysisTop[0], ribsLowest: v2Thorax.sections[0].y };
+  }
   /** One step of her breath and her heart; her skin's move and her lungs and heart laid by them. */
   function stepBreath(dt: number): void {
     const weeks = carrying() ? herWeek(sized(), babyCount, pregnancy) : 0;
     const intensity = activity === 'auto' ? (pose === 'walk' ? ACTIVITY.walk : ACTIVITY.rest) : ACTIVITY[activity];
-    const now = (vitalsNow = stepVitals(vitals, dt, intensity, { weeks }));
+    const { lungs, heart } = breathBody();
+    const now = (vitalsNow = stepVitals(vitals, dt, intensity, { weeks, lungs, heart }));
     const B = jiggle.breath.value;
     B.z = breathFlare(weeks);
     if (babyFrame) { jiggle.kickRest.value.copy(babyFrame.meshToRest); jiggle.kickUnits.value.setFromMatrix4(babyFrame.meshToRest).invert(); }
@@ -6836,7 +6965,9 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     jiggle.breathFull.value = laid && laid.full > 0 ? (stomachGiveMl(gut.stomachFoodMl + gut.stomachWaterMl) * 1e-6) / laid.full : 0;
     // (her pregnancy pushes her diaphragm up: her chest's and her belly's organs are laid for it)
     { const rise = diaphragmRise(weeks, DIAPHRAGM_RISE); thorax?.setRise(rise); abdomen?.setRise(rise); }
-    thorax?.drive(breath, now.beat, now.tidalL / (LUNGS.tidalMl / 1000), now.breathsPerMinute, now.beatsPerMinute);
+    // (her drawn chest's depth: the breath's share of her own vital capacity, as that share of the female body's --
+    // exactly the litres over her quiet 0.5 L for hers, vitals.ts `breathDepth`)
+    thorax?.drive(breath, now.beat, breathDepth(now.tidalL, lungs), now.breathsPerMinute, now.beatsPerMinute);
     // its line, a few times a second
     const t = performance.now();
     if (t - vitalsShownAt > 250) { vitalsShownAt = t; const f = fields[SARAH_LAB_FIELD.vitals]; if (f) f.textContent = vitalsLine(); }
@@ -6845,7 +6976,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const v = vitalsNow;
     if (!v) return 'BREATH & HEART';
     const share = chestShareSet ?? chestShare(softDown, pose === 'sit');
-    return `BREATH ${Math.round(v.breathsPerMinute)}/min · ${v.tidalL.toFixed(2)} L · chest ${Math.round(share * 100)}% · HEART ${Math.round(v.beatsPerMinute)} bpm · ENERGY ${Math.round(v.energy * 100)}%`;
+    return `BREATH ${Math.round(v.breathsPerMinute)}/min · ${v.tidalL.toFixed(2)} L · AIR ${v.airLPerMin.toFixed(1)} L/min (${Math.round((100 * v.airLPerMin) / lungsNow().mostLPerMin)}%) · chest ${Math.round(share * 100)}% · HEART ${Math.round(v.beatsPerMinute)} bpm · ENERGY ${Math.round(v.energy * 100)}%`;
   }
   const activityLabel = (): string => `ACTIVITY · ${activity === 'auto' ? `AUTO (${pose === 'walk' ? 'WALK' : 'REST'})` : activity.toUpperCase()}`;
   const chestLabel = (): string => `CHEST · ${chestShareSet === null ? 'AUTO' : `${Math.round(chestShareSet * 100)}%`}`;
@@ -10081,6 +10212,18 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           B.copy(keep); jiggle.breathFull.value = keepFull;
           const now = vitalsNow, breath = breathHeld ?? now?.breath ?? 0;
           return { airMl: +((now?.tidalL ?? 0) * breath * 1000).toFixed(1), share: chestShareSet ?? chestShare(softDown, pose === 'sit'), chest, belly, both, full, giveMl: +stomachGiveMl(gut.stomachFoodMl + gut.stomachWaterMl).toFixed(1), laid: breathLaid };
+        },
+        // her own lungs and heart: what is typed over her body's own (null: back to it), and what is in force
+        lungs: (set?: { lungs?: Partial<Lungs>; heart?: Partial<Heart> } | null) => {
+          if (set === null) typedVitals.delete(maleBody());
+          else if (set) { const was = typedVitals.get(maleBody()) ?? { lungs: {}, heart: {} }; typedVitals.set(maleBody(), { lungs: { ...was.lungs, ...set.lungs }, heart: { ...was.heart, ...set.heart } }); }
+          refresh();
+          return { male: maleBody(), typed: typedVitals.get(maleBody()) ?? null, ...breathBody(), line: lungsLine() };
+        },
+        // where her breath's moves are anchored, and his landmarks as the skeleton laid in him measures them (once laid)
+        breathMarks: () => {
+          const m = maleBody() ? maleLandmarks() as { pelvis: { landmarks: { symphysisTop: number[] } }; thorax: ThoraxLandmarks } | null : null;
+          return { used: breathMarksNow(), his: m ? { pubisTop: m.pelvis.landmarks.symphysisTop[1], xiphoid: m.thorax.xiphoid[1], sternumTop: m.thorax.sternumTop[1], midX: m.pelvis.landmarks.symphysisTop[0], ribsLowest: m.thorax.sections[0].y } : null, span: [BREATH_SPAN.from, BREATH_SPAN.from + BREATH_SPAN.step * (BREATH_SLICES - 1)] };
         },
         setVitals: (set: { activity?: Activity | 'auto'; energy?: number; effort?: number; held?: number | null; chest?: number | null; breathing?: boolean }) => {
           if (set.activity !== undefined) activity = set.activity;

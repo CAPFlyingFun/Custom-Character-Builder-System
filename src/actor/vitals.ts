@@ -12,6 +12,10 @@
  * near empty her breaths come quicker and shallower and her heart drifts up. Her energy starts to come back as soon as she
  * eases off below her threshold.
  *
+ * Each character breathes by HER OWN LUNGS AND HEART (`Lungs`, `Heart`, through `VitalsBody`): the female body's
+ * (`FEMALE_LUNGS`, `FEMALE_HEART`: the numbers below), the male base body's (`MALE_LUNGS`, `MALE_HEART`), or her own,
+ * kept with her save. Left out, the female body's: nothing breathes otherwise than it did.
+ *
  * MEASURED (each number's source in its comment), or GAME TUNING where physiology gives a range and a game a number.
  */
 
@@ -34,6 +38,96 @@ export const BREATHING = Object.freeze({
  * https://pubmed.ncbi.nlm.nih.gov/20585008/). GAME TUNING: `age`, her years when none is given; `driftMost`, how far her
  * heart drifts up as she runs out of energy while working. */
 export const HEARTBEAT = Object.freeze({ restPerMinute: 70, peakAt: 206, peakPerYear: 0.88, age: 28, driftMost: 12 });
+
+/**
+ * A CHARACTER'S OWN LUNGS AND HEART (Galaxy Defender's Mary and John, 2026-11-25: "John, on the male base body, breathes
+ * and beats exactly like Mary"; "Per-character lung settings, saved with the character and in its JSON export, as
+ * customizable defaults (not fixed by sex)"). What `vitalsFor` and `stepVitals` take through `VitalsBody` (left out:
+ * the female body's, which is everything above, number for number). A pregnancy's changes are laid on top of them, as
+ * on hers. They change how much air a body moves and how fast its heart goes -- never how long it lasts: its energy
+ * drains and fills by its share of its own hardest (`STAMINA`), whatever its lungs.
+ */
+export interface Lungs {
+  /** total lung capacity, litres (all the air in them breathed all the way in) */
+  readonly totalL: number;
+  /** vital capacity, litres: all that can be breathed in from all the way out */
+  readonly vitalL: number;
+  /** a breath at rest, litres */
+  readonly tidalL: number;
+  /** breaths a minute at rest */
+  readonly perMinute: number;
+  /** the biggest a breath grows in hard work, a share of the vital capacity (past it only the rate grows) */
+  readonly tidalOfVital: number;
+  /** the most air moved a minute at the hardest, litres */
+  readonly mostLPerMin: number;
+  /** the quickest breathing, breaths a minute */
+  readonly mostPerMinute: number;
+}
+/** A character's heart: at rest, and its peak by age (`peakAt` - `peakPerYear` x years). */
+export interface Heart {
+  readonly restPerMinute: number;
+  readonly peakAt: number;
+  readonly peakPerYear: number;
+}
+
+/** THE FEMALE BODY'S: `BREATHING` and `HEARTBEAT` above, her total lung capacity 4.2 L (MEASURED, the women's column
+ * there). A character given these breathes and beats exactly as one given none. */
+export const FEMALE_LUNGS: Lungs = Object.freeze({
+  totalL: 4.2, vitalL: BREATHING.vitalL, tidalL: BREATHING.tidalL, perMinute: BREATHING.perMinute,
+  tidalOfVital: BREATHING.tidalOfVital, mostLPerMin: BREATHING.mostLPerMin, mostPerMinute: BREATHING.mostPerMinute,
+});
+export const FEMALE_HEART: Heart = Object.freeze({ restPerMinute: HEARTBEAT.restPerMinute, peakAt: HEARTBEAT.peakAt, peakPerYear: HEARTBEAT.peakPerYear });
+
+/**
+ * THE MALE BASE BODY'S DEFAULTS (GAME TUNING: Galaxy Defender's numbers for John, 2026-11-25, within physiology's: a man's
+ * total lung capacity 6.0 L and vital capacity 4.8, a breath at rest 0.5 -- the men's column,
+ * https://en.wikipedia.org/wiki/Lung_volumes_and_capacities; 4.7 here; his biggest working breath the same 55% of his
+ * vital capacity as hers, 2.6 L; the most air an untrained man moves a minute at his hardest, about 100 to 140 L; a peak
+ * heart rate of 208 - 0.7 x his age, MEASURED: Tanaka, Monahan and Seals, "Age-predicted maximal heart rate revisited",
+ * J. Am. Coll. Cardiol. 2001, https://pubmed.ncbi.nlm.nih.gov/11153730/; 65 a minute at rest). A default, not a rule
+ * of his sex: a character keeps its own (`SavedBody.lungs`, `.heart`).
+ */
+export const MALE_LUNGS: Lungs = Object.freeze({ totalL: 6.0, vitalL: 4.7, tidalL: 0.5, perMinute: 14, tidalOfVital: 0.55, mostLPerMin: 120, mostPerMinute: 50 });
+export const MALE_HEART: Heart = Object.freeze({ restPerMinute: 65, peakAt: 208, peakPerYear: 0.7 });
+
+/** What each may be set to, [least, most]. GAME TUNING (wide enough for a child to an athlete, narrow enough that the
+ * sums stay sane). */
+export const LUNG_RANGE: Readonly<Record<keyof Lungs, readonly [number, number]>> = Object.freeze({
+  totalL: [1, 10], vitalL: [0.5, 8], tidalL: [0.2, 2], perMinute: [6, 30], tidalOfVital: [0.2, 0.8], mostLPerMin: [20, 250], mostPerMinute: [20, 70],
+});
+export const HEART_RANGE: Readonly<Record<keyof Heart, readonly [number, number]>> = Object.freeze({
+  restPerMinute: [30, 120], peakAt: [150, 240], peakPerYear: [0, 1.5],
+});
+export const LUNG_KEYS = Object.freeze(Object.keys(LUNG_RANGE) as (keyof Lungs)[]);
+export const HEART_KEYS = Object.freeze(Object.keys(HEART_RANGE) as (keyof Heart)[]);
+
+/** Lungs as kept: each number clamped to its range, one not given (or not a number) the `base`'s, and the vital capacity
+ * never more than the total. Never throws: a save's or a game's numbers are read through it. */
+export function readLungs(v: unknown, base: Lungs = FEMALE_LUNGS): Lungs {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>, out = {} as Record<keyof Lungs, number>;
+  for (const k of LUNG_KEYS) { const x = o[k], [lo, hi] = LUNG_RANGE[k]; out[k] = typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : base[k]; }
+  out.vitalL = Math.min(out.vitalL, out.totalL);
+  return Object.freeze(out);
+}
+/** A heart as kept, the same way. */
+export function readHeart(v: unknown, base: Heart = FEMALE_HEART): Heart {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>, out = {} as Record<keyof Heart, number>;
+  for (const k of HEART_KEYS) { const x = o[k], [lo, hi] = HEART_RANGE[k]; out[k] = typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : base[k]; }
+  return Object.freeze(out);
+}
+export const sameLungs = (a: Lungs, b: Lungs): boolean => LUNG_KEYS.every((k) => a[k] === b[k]);
+export const sameHeart = (a: Heart, b: Heart): boolean => HEART_KEYS.every((k) => a[k] === b[k]);
+/** The body's own: the male base body's, or the female's. */
+export const lungsDefault = (male = false): Lungs => (male ? MALE_LUNGS : FEMALE_LUNGS);
+export const heartDefault = (male = false): Heart => (male ? MALE_HEART : FEMALE_HEART);
+
+/**
+ * How deep a breath of `tidalL` litres is, in the drawn chest's own measure (sarahlab/thoraxView.ts `drive`: 1 a quiet
+ * breath of hers, 0.5 L): the breath's share of THESE lungs' vital capacity, as that share of hers. So a man's 0.5 L
+ * breath at rest moves his bigger chest less than hers, and his hardest breath -- 55% of his vital capacity, as hers --
+ * as deep as hers. Hers is exactly the litres over 0.5 L, as before.
+ */
+export const breathDepth = (tidalL: number, lungs: Lungs = FEMALE_LUNGS): number => (tidalL * (FEMALE_LUNGS.vitalL / lungs.vitalL)) / FEMALE_LUNGS.tidalL;
 
 /** What pregnancy does to them, at full term (eased in over her weeks, `pregnancyShare`). MEASURED ("A summary of
  * physiological changes in pregnancy", https://derangedphysiology.com/main/required-reading/obstetric-intensive-care/Chapter-301/summary-physiological-changes-pregnancy):
@@ -65,10 +159,11 @@ export const ACTIVITIES = Object.freeze(Object.keys(ACTIVITY) as Activity[]);
 /** Her vitals as they stand: her effort (0..1, her body's lag behind what she does), her energy (1 full .. 0 spent),
  * how far through a breath and a beat she is (0..1), and the breath's size (litres, following what is asked). */
 export interface Vitals { effort: number; energy: number; cycle: number; pulse: number; tidalL: number; drift: number }
-export const restingVitals = (): Vitals => ({ effort: 0, energy: 1, cycle: 0, pulse: 0, tidalL: BREATHING.tidalL, drift: 0 });
+export const restingVitals = (lungs: Lungs = FEMALE_LUNGS): Vitals => ({ effort: 0, energy: 1, cycle: 0, pulse: 0, tidalL: lungs.tidalL, drift: 0 });
 
-/** Who she is, for her vitals: her age (years) and how far into a pregnancy she is (weeks; 0 not pregnant). */
-export interface VitalsBody { readonly age?: number; readonly weeks?: number }
+/** Who she is, for her vitals: her age (years), how far into a pregnancy she is (weeks; 0 not pregnant), and her own
+ * lungs and heart (each left out: the female body's, `FEMALE_LUNGS`, `FEMALE_HEART`). */
+export interface VitalsBody { readonly age?: number; readonly weeks?: number; readonly lungs?: Lungs; readonly heart?: Heart }
 
 /** What her breath and heart are this moment. */
 export interface VitalsNow {
@@ -76,6 +171,9 @@ export interface VitalsNow {
   readonly beatsPerMinute: number;
   /** a breath's size now (litres) */
   readonly tidalL: number;
+  /** the air she moves a minute now (litres): a breath's size times her breaths a minute. Over her lungs' `mostLPerMin`,
+   * how hard her breathing is working (a little over 1 as she runs out of energy at her hardest: quicker, shallower). */
+  readonly airLPerMin: number;
   /** air in her above the end of a breath out now (litres): 0 .. `tidalL` */
   readonly breathL: number;
   /** her breath 0 (all out) .. 1 (all in) */
@@ -112,23 +210,25 @@ export function beatOf(at: number, squeezeShare = 0.3): number {
   return c < squeezeShare ? Math.sin((Math.PI * c) / squeezeShare) : 0;
 }
 
-/** Her peak heart rate (a minute) at `age`. */
-export const peakHeart = (age: number = HEARTBEAT.age): number => HEARTBEAT.peakAt - HEARTBEAT.peakPerYear * clamp(age, 12, 90);
+/** A peak heart rate (a minute) at `age`, by a heart's own formula (hers: 206 - 0.88 x her age). */
+export const peakHeart = (age: number = HEARTBEAT.age, heart: Heart = FEMALE_HEART): number => heart.peakAt - heart.peakPerYear * clamp(age, 12, 90);
 
-/** What her breath and heart are for a FELT effort (0..1) and her energy, as she is (not stepped: what `stepVitals` asks). */
-export function vitalsFor(felt: number, energy: number, body: VitalsBody = {}): { breathsPerMinute: number; tidalL: number; beatsPerMinute: number; inShare: number } {
-  const B = BREATHING, P = PREGNANT_BREATH, S = STAMINA, p = pregnancyShare(body.weeks), e = clamp(felt, 0, 1), spent = 1 - clamp(energy, 0, 1);
-  // a breath at rest and her rate, pregnancy's share added; what she breathes a minute grows with her effort
-  const tidalRest = B.tidalL * (1 + P.tidalShare * p), rateRest = B.perMinute + P.perMinute * p, ventRest = tidalRest * rateRest;
-  const vent = ventRest + (B.mostLPerMin - ventRest) * Math.pow(e, B.ventCurve);
-  const tidalMost = Math.max(tidalRest, B.tidalOfVital * B.vitalL);
+/** What her breath and heart are for a FELT effort (0..1) and her energy, as she is (not stepped: what `stepVitals`
+ * asks), by her own lungs and heart (`body.lungs`, `body.heart`; left out, the female body's). */
+export function vitalsFor(felt: number, energy: number, body: VitalsBody = {}): { breathsPerMinute: number; tidalL: number; airLPerMin: number; beatsPerMinute: number; inShare: number } {
+  const B = BREATHING, L = body.lungs ?? FEMALE_LUNGS, H = body.heart ?? FEMALE_HEART, P = PREGNANT_BREATH, S = STAMINA, p = pregnancyShare(body.weeks), e = clamp(felt, 0, 1), spent = 1 - clamp(energy, 0, 1);
+  // a breath at rest and her rate, pregnancy's share added; what she breathes a minute grows with her effort (to no
+  // less than she breathes at rest: lungs set with a small most)
+  const tidalRest = L.tidalL * (1 + P.tidalShare * p), rateRest = L.perMinute + P.perMinute * p, ventRest = tidalRest * rateRest;
+  const vent = ventRest + (Math.max(ventRest, L.mostLPerMin) - ventRest) * Math.pow(e, B.ventCurve);
+  const tidalMost = Math.max(tidalRest, L.tidalOfVital * L.vitalL);
   let tidal = tidalRest + (tidalMost - tidalRest) * ease(e / B.tidalCurve);
   // spent: quicker, shallower
   tidal *= 1 - S.shallowMost * spent;
-  const rate = clamp((vent / tidal) * (1 + S.quickMost * spent * e), 4, B.mostPerMinute);
-  const rest = HEARTBEAT.restPerMinute + P.heart * p, peak = Math.max(rest + 20, peakHeart(body.age));
+  const rate = clamp((vent / tidal) * (1 + S.quickMost * spent * e), 4, L.mostPerMinute);
+  const rest = H.restPerMinute + P.heart * p, peak = Math.max(rest + 20, peakHeart(body.age, H));
   const beats = clamp(rest + (peak - rest) * e, 30, peak);
-  return { breathsPerMinute: rate, tidalL: tidal, beatsPerMinute: beats, inShare: B.inRest + (B.inHard - B.inRest) * e };
+  return { breathsPerMinute: rate, tidalL: tidal, airLPerMin: tidal * rate, beatsPerMinute: beats, inShare: B.inRest + (B.inHard - B.inRest) * e };
 }
 
 /**
@@ -161,7 +261,7 @@ export function stepVitals(v: Vitals, dt: number, intensity: number, body: Vital
   v.pulse = (v.pulse + (h * beats) / 60) % 1;
   const breath = breathOf(v.cycle, now.inShare);
   return {
-    breathsPerMinute: now.breathsPerMinute, beatsPerMinute: beats, tidalL: v.tidalL, breathL: v.tidalL * breath, breath,
+    breathsPerMinute: now.breathsPerMinute, beatsPerMinute: beats, tidalL: v.tidalL, airLPerMin: v.tidalL * now.breathsPerMinute, breathL: v.tidalL * breath, breath,
     beat: beatOf(v.pulse), inShare: now.inShare, effort: v.effort, energy: v.energy, felt,
   };
 }
