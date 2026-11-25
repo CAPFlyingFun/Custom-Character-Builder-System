@@ -262,6 +262,15 @@ export function weekIsFor(p: Pregnancy, bump: number): boolean {
 }
 
 /** Nothing typed that her chart is drawn from: it is the rule's for her counter, or with no count the chart itself. */
+/**
+ * WHETHER A BODY IS CARRYING -- drawn, breathed and balanced as pregnant: her PREGNANT state, or a birth on the clock (the
+ * birth she is giving is drawn to its end, though her state ends with it). NEVER THE MALE BASE BODY, whatever the state
+ * a female body left behind (a fault found 2026-11-25: the room's PREGNANT left on for her and the body switched to his,
+ * he breathed with a pregnancy's numbers -- 16 a minute, 0.70 L, his heart 77 at rest -- and his navel and his balance
+ * took her weeks).
+ */
+export const carryingFor = (p: Pregnancy, male: boolean, birthOn: boolean): boolean => !male && (p.pregnant || birthOn);
+
 export function nothingTyped(p: Pregnancy): boolean {
   return p.week === null && p.firstWeekBump === null && p.deliveryBump === null && p.deliveryWeek === null;
 }

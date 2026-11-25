@@ -65,7 +65,7 @@ import type { PieceKind } from './paintTemplates';
 import { PAINT_LAYER_COUNT, paintAt } from './bodyPaint';
 import { lookOpenedOn } from './sarahLook';
 import { attachLookup } from './valueLookup';
-import { BIRTH_KINDS, PREGNANCY_OPENING, PREGNANCY_RANGE, PREGNANCY_RULE, bellySize, numbersLine, pregnancyOf, pregnantLine, typeBirths, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
+import { BIRTH_KINDS, PREGNANCY_OPENING, carryingFor, PREGNANCY_RANGE, PREGNANCY_RULE, bellySize, numbersLine, pregnancyOf, pregnantLine, typeBirths, typedNumber, typeWeek, weekIsFor, weekText, nothingTyped, type Pregnancy } from './pregnancy';
 import { collectStoryBake, type StoryBake } from './storyBake';
 import { BUILD_INFO } from '../ui/buildInfo';
 import { graphicsNote, pictureLost } from './lostPictures';
@@ -1161,7 +1161,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * birth's until it is put back. What draws her asks this; what she IS -- her PREGNANT button, HER PREGNANCY's lines,
    * whether a birth can begin -- asks `pregnant()`.
    */
-  const carrying = (): boolean => pregnancy.pregnant || birthClock !== null;
+  const carrying = (): boolean => carryingFor(pregnancy, isMaleModel(SARAH_LAB_MODELS[modelIndex].id), birthClock !== null);
   /**
    * Her belly's SIZE, as her chart reads it (pregnancy.ts `bellySize`; Joshua, 2026-11-13: "anything past the 200% default
    * slider will carry over into the extra depth slider which can go an additional +15%"): her belly slider's %, and once

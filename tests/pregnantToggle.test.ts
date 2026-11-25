@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultBodyShape, serializeShape } from '../src/actor/bodyShape';
 import { EMPTY_BOOK, exportBook, importBook, saveInto, type SavedBody, type SavedClothes } from '../src/sarahlab/characterSaves';
 import { NO_RULES } from '../src/actor/bodyRandom';
-import { PREGNANCY_DEFAULT, legacyPregnancy, pregnancyOf, pregnantLine, readPregnancy, typedNumber, typeWeek, weekIsFor, type Pregnancy } from '../src/sarahlab/pregnancy';
+import { PREGNANCY_DEFAULT, carryingFor, legacyPregnancy, pregnancyOf, pregnantLine, readPregnancy, typedNumber, typeWeek, weekIsFor, type Pregnancy } from '../src/sarahlab/pregnancy';
 import { bellyWeeksGone, bumpForWeek, chartBump, DELIVERY_WEEKS, herChart, herWeek, weekForBump } from '../src/sarahlab/baby';
 
 const typed = (p: Partial<Pregnancy>): Pregnancy => ({ ...PREGNANCY_DEFAULT, ...p });
@@ -117,5 +117,15 @@ describe('her weeks as typed and as saved', () => {
     expect(legacyPregnancy('{"version":1,"shape":{"pregnancyWeeks":32}}', 73)).toEqual(typed({ week: 32, weekAtBump: 73 }));
     expect(legacyPregnancy('not json', 50)).toEqual(PREGNANCY_DEFAULT);
     expect(pregnancyOf({ bump: 73, shape: '{"version":1,"shape":{"pregnancyWeeks":0}}' }).pregnant).toBe(false);
+  });
+});
+
+describe('the male base body is never carrying (a fault found 2026-11-25)', () => {
+  it("her PREGNANT left on, or a birth on the clock, carries her and never him", () => {
+    const on = typed({ pregnant: true }), off = typed({ pregnant: false });
+    expect(carryingFor(on, false, false)).toBe(true);
+    expect(carryingFor(off, false, true)).toBe(true);
+    expect(carryingFor(off, false, false)).toBe(false);
+    for (const p of [on, off]) for (const birth of [false, true]) expect(carryingFor(p, true, birth)).toBe(false);
   });
 });
