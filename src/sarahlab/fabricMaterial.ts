@@ -141,8 +141,13 @@ export const SKIN_HEM_ROUND = 0.02;
  * picture's alpha: her shoulder joints' depth as she faces (the drawing's origin along z), how far out from her middle
  * the drawing comes in and over how much either side of that, and how much a corner between it and her front's or her
  * back's drawing is rounded over (`topCut.smoothMax`); `start`, a camisole's line besides (nothing of the armscye over a
- * height out to a distance from her middle, lower by a slope for each unit further out); absent or null, a top with
- * no armscye.
+ * height out to a distance from her middle, lower by a slope for each unit further out); absent or null, a top with no
+ * armscye. A BANDEAU (`topCut.BANDEAU`, a tube) says so by `side`'s fourth number under 0: its first, her shoulder
+ * joints' depth as she faces (where its picture of her side is hung: her trunk's reach either side, `TopFrame.reach`, in
+ * the picture's alpha and green), its second, the out from her middle those bytes' middle stands for; and its `armL`
+ * (and `armR`) is the level of its top edge -- (0, 1, 0, minus its height), her rest shape's -- which the shader measures
+ * where her bones carry each point as her shapes and her morphs have put it (her raised arms' shapes among them), taken
+ * back about her chest's bone (`setFabricCutChest`): `vFabricAlong`.
  */
 export interface FabricCut {
   readonly texture: THREE.DataTexture;
@@ -175,13 +180,6 @@ export interface FabricCut {
    * bump goes back up her as it goes, and the hem rose 5 cm over her mound in a U (MEASURED, the henley at 0%).
    */
   readonly skinHem?: boolean;
-  /**
-   * A BANDEAU's top edge (`topCut.BANDEAU`): its front's height, its sides' and back's, nothing, and how far round her
-   * its front's height reaches (`BANDEAU.frontReach`). Worked out at each pixel from where it stands round her -- its
-   * place's way out from her middle, against her side seam's depth (the picture's middle depth, which a bandeau's cut
-   * lays there) -- in place of her front's and her back's drawings. Absent: drawn by its drawings.
-   */
-  readonly round?: readonly [number, number, number, number] | null;
 }
 
 interface Patched { readonly uniforms: Record<string, THREE.IUniform>; readonly layers: number; readonly masked: boolean; readonly cut: boolean; details: boolean; low: boolean }
@@ -224,9 +222,11 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
   if (cut) Object.assign(uniforms, {
     fabricCutMap: { value: null }, fabricCutRect: { value: new THREE.Vector4(0, 0, 1, 1) }, fabricCutDepth: { value: new THREE.Vector4(0, 1, 1, 1) },
     fabricCutArmL: { value: new THREE.Vector4(0, -1, 0, 0) }, fabricCutArmR: { value: new THREE.Vector4(0, -1, 0, 0) }, fabricCutLimb: { value: new THREE.Vector4(0, -1, -1e9, 1) },
+    // (a bandeau's: her chest's bone's carry, undone -- `setFabricCutChest`)
+    fabricCutChest: { value: new THREE.Matrix4() },
     fabricCutSeam: { value: new THREE.Vector2(0, 1) },
-    // (an outline's armscye: off while its rounding, w, is 0)
-    fabricCutSide: { value: new THREE.Vector4(0, 0, 1, 0) }, fabricCutRound: { value: new THREE.Vector4(0, 0, 0, 0) }, fabricCutStart: { value: new THREE.Vector3(0, 1e9, 0) },
+    // (her side's drawing, an outline's armscye or a bandeau's armholes: off while its rounding, w, is 0)
+    fabricCutSide: { value: new THREE.Vector4(0, 0, 1, 0) }, fabricCutStart: { value: new THREE.Vector3(0, 1e9, 0) },
     // (1: the hem is the top's own edge, level on her as she is shaped -- `FabricCut.ownHem`; 2: on her skin, `skinHem`)
     fabricCutHem: { value: 0 },
   });
@@ -284,7 +284,11 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
         // a drawn top's sleeve: how far along her arm this point is, measured where her arm's bone has carried the
         // sleeve's end to (`setFabricCutArms`) -- on her posed place, so the end is a flat ring round her arm however
         // her skin under it is stretched
-        'uniform vec4 fabricCutArmL;', 'uniform vec4 fabricCutArmR;', 'uniform vec4 fabricCutLimb;', 'varying float vFabricAlong;',
+        // (a BANDEAU, fabricCutSide.w under 0: how far over its top edge this point is, where her bones carry its place as
+        // her shapes and morphs have it -- her raised arms' shapes among them (fabricMorphed) -- taken back about her
+        // chest's bone (fabricCutChest); her breath and her soft body do not move it. So her armpits' skin is in the tube
+        // while it is under its level, and leaves it as her arms lift it over. topCut.ts BANDEAU)
+        'uniform vec4 fabricCutArmL;', 'uniform vec4 fabricCutArmR;', 'uniform vec4 fabricCutLimb;', 'uniform vec4 fabricCutSide;', 'uniform mat4 fabricCutChest;', 'varying float vFabricAlong;',
         ...idx.flatMap((i) => [`uniform float fabricOn${i};`, `uniform float fabricNippleKeep${i};`, `uniform float fabricNavelKeep${i};`])]
         // (a sheet in a top's fabric that reads the top's cut -- her cleavage bridge -- has a slip of its own, laid from
         // her skin's at its ends: its rim is looked up as her skin's is, at its rest place and its slip)
@@ -317,8 +321,12 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       if (fabricSoften > 0.0) objectNormal = normalize(objectNormal - fabricDetailN.xyz * fabricSoften);` : '';
     if (masked) shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>${soften}`);
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\nvFabricPos = fabricRest;\nvFabricNrm = fabricRestNormal;${mask}${cut && !masked ? '\nvFabricSlip = fabricSlip;' : ''}${masked ? '\ntransformed -= fabricDetail.xyz * fabricSoften;\nvFabricDetailKeep = clamp(fabricDetail.w * (1.0 - fabricHideNipple / max(fabricCovered, 1e-3)) + fabricDetailN.w * (1.0 - fabricHideNavel / max(fabricCovered, 1e-3)), 0.0, 1.0);' : ''}`);
+    // (a bandeau's top edge is told where her shapes and her morphs -- her raised arms' among them -- have put a point,
+    // before her breath and her soft body move it: laid straight after her morphs, which her soft body's patch, laid on
+    // her before this one, follows with its own moves -- softBody.ts patchJiggle)
+    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <morphtarget_vertex>', '#include <morphtarget_vertex>\nvec3 fabricMorphed = transformed;');
     // (after her bones: `transformed` is her posed place, in her mesh's own space)
-    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <skinning_vertex>', `${entry.low ? 'vFabricLow.xyz = transformed;\n' : ''}#include <skinning_vertex>\nvFabricAlong = dot(fabricRest.x >= fabricCutLimb.x ? fabricCutArmL : fabricCutArmR, vec4(transformed, 1.0));${entry.low ? `
+    if (masked) shader.vertexShader = shader.vertexShader.replace('#include <skinning_vertex>', `${entry.low ? 'vFabricLow.xyz = transformed;\n' : ''}#include <skinning_vertex>\nvFabricAlong = dot(fabricRest.x >= fabricCutLimb.x ? fabricCutArmL : fabricCutArmR, vec4(transformed, 1.0));\n#ifdef USE_SKINNING\nif (fabricCutSide.w < 0.0) { vec4 fbr = bindMatrix * vec4(fabricMorphed, 1.0); vec3 fbC = (fabricCutChest * (bindMatrixInverse * (boneMatX * fbr * skinWeight.x + boneMatY * fbr * skinWeight.y + boneMatZ * fbr * skinWeight.z + boneMatW * fbr * skinWeight.w))).xyz; vFabricAlong = dot(fabricCutArmL, vec4(fbC, 1.0)); }\n#endif${entry.low ? `
 {
   bool fabricLegLeft = fabricRest.x >= fabricLowAxis.x;
   vec4 fabricPosed = vec4(transformed, 1.0);
@@ -517,28 +525,22 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
       // where the paint's ramp crosses one half, antialiased over about a pixel
       ...(cut ? ['float fabricEdge(float m) { float w = max(fwidth(m) * 0.75, 0.002); return smoothstep(0.5 - w, 0.5 + w, m); }',
         'uniform sampler2D fabricCutMap;', 'uniform vec4 fabricCutRect;', 'uniform vec4 fabricCutDepth;', 'uniform vec4 fabricCutLimb;', 'uniform vec2 fabricCutSeam;',
-        'uniform vec4 fabricCutSide;', 'uniform vec3 fabricCutStart;', 'uniform float fabricCutHem;', ...(masked ? ['uniform vec4 fabricCutRound;'] : []),
+        'uniform vec4 fabricCutSide;', 'uniform vec3 fabricCutStart;', 'uniform float fabricCutHem;',
         ...idx.flatMap((i) => [`uniform float fabricCutOn${i};`, `uniform vec4 fabricCutBand${i};`, `uniform vec4 fabricCutEdge${i};`]),
         // a top's cut at this pixel's own place (topCut.ts `cutAt`): x, how far inside its neck opening's rim -- looked
         // up where the pixel stands about her frame (its rest place and its movement off her frame, `fabricSlip`), in her
         // front's drawing or her back's by whether that place is in front of her middle depth; y, how far inside its
         // sleeve's end (her arm's skin: `vFabricAlong`, her arm's bone's measure) or its hem (the rest of her); z, which
-        // of those two (1 her arm's). AN OUTLINE'S ARMSCYE (topCut.ts `armscyeAt`, `smoothMax`): what her side's drawing
-        // covers -- the picture's alpha, read at the place's depth ahead of her shoulder joints and its height -- is
-        // covered as well, on skin further out from her middle than the drawing comes in at (and, a camisole's, under
-        // the line its bodice falls away by), the corner between the two rounded
+        // of those two (1 her arm's). HER SIDE'S DRAWING -- the picture's alpha, read at the place's depth ahead of her
+        // shoulder joints and its height, on skin further out from her middle than the drawing comes in at: AN OUTLINE'S
+        // ARMSCYE (topCut.ts `armscyeAt`, `smoothMax`; w over 0) covers as well (and, a camisole's, under the line its
+        // bodice falls away by); A BANDEAU'S ARMHOLES (`armholeAt`, `smoothMin`; w under 0) take the cloth off. The
+        // corner between the two is rounded
         masked ? `vec3 fabricCutAt() {
           vec3 place = vFabricPos + vFabricSlip;
           vec4 c = texture2D(fabricCutMap, (place.xy - fabricCutRect.xy) * fabricCutRect.zw);
           float side = smoothstep(-fabricCutDepth.z, fabricCutDepth.z, place.z * fabricCutLimb.w - (fabricCutDepth.x + c.b * fabricCutDepth.y));
           float neck = (mix(c.g, c.r, side) * 255.0 - 127.5) / 127.5 * fabricCutDepth.w;
-          // (A BANDEAU: its top edge a line round her body, at where the place stands round her -- out from her middle,
-          // against her side seam's depth, which its picture keeps as her middle depth: topCut.ts BANDEAU, bandeauHeight)
-          if (fabricCutRound.w > 0.0) {
-            vec2 rd = vec2(place.x - fabricCutLimb.x, place.z * fabricCutLimb.w - (fabricCutDepth.x + c.b * fabricCutDepth.y));
-            float around = 0.5 + 0.5 * rd.y / max(length(rd), 1e-6);
-            neck = clamp(mix(fabricCutRound.y, fabricCutRound.x, smoothstep(0.5, fabricCutRound.w, around)) - place.y, -fabricCutDepth.w, fabricCutDepth.w);
-          }
           if (fabricCutSide.w > 0.0) {
             float so = abs(place.x - fabricCutLimb.x), ss = fabricCutStart.y - fabricCutStart.z * max(0.0, so - fabricCutStart.x);
             float sw = smoothstep(fabricCutSide.y - fabricCutSide.z, fabricCutSide.y + fabricCutSide.z, so) * (1.0 - smoothstep(ss - fabricCutSide.z, ss + fabricCutSide.z, place.y));
@@ -556,6 +558,15 @@ function patch(material: THREE.Material, layers: number, masked: boolean, withCu
           float hv = vFabricSlip.y * min(fabricCutHem, 1.0), hs = vFabricTint.y * (1.0 - fabricShowRegions), hk = max(${SKIN_HEM_ROUND.toFixed(3)} - abs(hs - hv), 0.0) / ${SKIN_HEM_ROUND.toFixed(3)};
           float hd = vFabricPos.y + (fabricCutHem > 1.5 ? max(hv, hs) + hk * hk * ${(SKIN_HEM_ROUND / 4).toFixed(4)} : hv) - fabricCutLimb.z, sd = fabricCutLimb.y - vFabricAlong;
           if (fabricCutLimb.z < -1.0) { hd = min(hd, 0.12); sd = min(sd, 0.12); }
+          // (A BANDEAU, a tube -- topCut.ts BANDEAU, bandeauArms: its top edge where its bones carry the point; its edge at
+          // her arms, at her rest place, no further out from her middle than her trunk reaches on that side of her -- the
+          // picture's alpha her left's, its green her right's, read in her side's view hung at fabricCutSide.x, about
+          // fabricCutSide.y -- told as a sleeve's, with no band)
+          if (fabricCutSide.w < 0.0) {
+            vec4 fr = texture2D(fabricCutMap, (vec2(fabricCutLimb.x + vFabricPos.z * fabricCutLimb.w - fabricCutSide.x, vFabricPos.y) - fabricCutRect.xy) * fabricCutRect.zw);
+            float lim = fabricCutSide.y + ((vFabricPos.x >= fabricCutLimb.x ? fr.a : fr.g) * 255.0 - 127.5) / 127.5 * fabricCutDepth.w - abs(vFabricPos.x - fabricCutLimb.x);
+            return vec3(clamp(-vFabricAlong, -fabricCutDepth.w, fabricCutDepth.w), min(hd, lim), step(lim, hd));
+          }
           return vec3(neck, mix(hd, sd, a), a);
         }`
           // (a sheet across her front: her front's drawing alone)
@@ -853,7 +864,6 @@ export function setFabricCut(material: THREE.Material, cut: FabricCut | null): v
   (u.fabricCutSide.value as THREE.Vector4).fromArray(cut.side ?? [0, 0, 1, 0]);
   (u.fabricCutStart.value as THREE.Vector3).fromArray(cut.start ?? [0, 1e9, 0]);
   u.fabricCutHem.value = cut.skinHem ? 2 : cut.ownHem ? 1 : 0;
-  if (u.fabricCutRound) (u.fabricCutRound.value as THREE.Vector4).fromArray(cut.round ?? [0, 0, 0, 0]);
 }
 /**
  * Each sleeve's end as her arm's bone carries it now (her left arm's, her right's): four numbers each, as
@@ -866,6 +876,15 @@ export function setFabricCutArms(material: THREE.Material, armL: readonly [numbe
   if (!p?.cut) return;
   (p.uniforms.fabricCutArmL.value as THREE.Vector4).fromArray(armL);
   (p.uniforms.fabricCutArmR.value as THREE.Vector4).fromArray(armR);
+}
+/**
+ * A BANDEAU's top edge is told about her chest's bone (`topCut.BANDEAU`): the inverse of its carry now (her rest shape's
+ * places to where it carries them), laid once a frame while one is worn. Identity: at rest.
+ */
+export function setFabricCutChest(material: THREE.Material, inverseCarry: THREE.Matrix4): void {
+  const p = patched.get(material);
+  if (!p?.cut) return;
+  (p.uniforms.fabricCutChest.value as THREE.Matrix4).copy(inverseCarry);
 }
 /** Whether any layer of a material is drawn from a top's cut now. */
 export function fabricCutWorn(material: THREE.Material): boolean {

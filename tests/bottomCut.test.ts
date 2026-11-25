@@ -578,7 +578,7 @@ function compiled(low: LowSpec | null) {
   const m = new THREE.MeshStandardMaterial(), mesh = new THREE.Mesh(g, m);
   const layer = { texture: new THREE.Texture(), tile: 1, opacity: 1 };
   setFabricLayer(mesh, m, 1, low ? { ...layer, low: { waist: low.waist, end: low.end, start: low.start, band: [low.bands.waist, low.bands.leg, low.bands.top], shade: 0.1, hinge: low.hinge ? low.hinge[0] : null, edging: null } } : layer, { layers: 3, masked: true, rest: null });
-  const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <skinning_vertex>', fragmentShader: '#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n#include <map_fragment>' };
+  const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <morphtarget_vertex>\n#include <skinning_vertex>', fragmentShader: '#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n#include <map_fragment>' };
   m.onBeforeCompile(s as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
   return { ...s, material: m, mesh, key: m.customProgramCacheKey(), hash: createHash('sha256').update(`${s.vertexShader}\n---\n${s.fragmentShader}`).digest('hex') };
 }
@@ -590,7 +590,8 @@ describe('a bottom\'s cut in the shader', () => {
     // (2026-11-19: her paint unpacked two layers to a number, `bodyPaint.PAINT_PACK`, for six layers)
     // (2026-11-23: with a bandeau's line round her, `fabricCutRound`: 60f831b4… before)
     // (2026-11-24: a hem's band in the top's own shade, `topCut.SHIRT_HEM_BAND`, and a painted shirt's hem on her skin, `FabricCut.skinHem`: c864c777… before)
-    expect(plain.hash).toBe('b85b55ce7054c3e649bc4619efdc7ea4e14f330ffa0f97531ca692a1c1d85090');
+    // (2026-11-24, later: the bandeau a tube, its line round her taken out, its top edge measured where her bones carry a point, `fabricCutSide.w` under 0: b85b55ce… before)
+    expect(plain.hash).toBe('74635bb4bb2de14bdf0028910278756bba3227612ee4df11018642e0ae01f35c');
     expect(plain.key).not.toContain('-low');
     expect(plain.fragmentShader).not.toContain('fabricLow');
     expect(plain.vertexShader).not.toContain('vFabricLow');

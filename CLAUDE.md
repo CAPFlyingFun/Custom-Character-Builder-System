@@ -375,31 +375,42 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
     her as she is shaped, no drape under it), in the neck each was painted with: the crop top's a scoop at 0.86 (a crew
     under 0.94 was painted as a scoop, `isScoop`), the maternity tee's a SQUARE at 0.94 (painted, a crew's line level
     across her chest: wide and shallow). A look saved before keeps its numbers and wears that neck (`wornParams`).
-  - THE BANDEAU (`topCut.BANDEAU`, `bandeauHeight`, `top: 'bandeau'`; Joshua, of it: "Make sure you do with arms raise
-    and not as I think the arm weight will mess with the paint and you will need to let it ignore the arm weights and
-    follow body level lines"): strapless, its hem its own. ITS TOP EDGE IS A LINE ROUND HER BODY, worked out at each
-    pixel by where the pixel stands round her (her map's `around`: 1 her front's middle, 0.5 her side seam,
-    `bodyRegions.seamDepth`, which its cut's picture keeps as its middle depth): at its front's height (`topFront`, 0.82,
-    the NECKLINE / TOP EDGE slider) from 0.7 round her and in (`frontReach`), at its sides' height at her side seam and all
-    round her back, eased between -- straight across her bust, back and down round the side of it to her side seam,
-    level behind. In the shader (`fabricCutRound`) and on the CPU (`neckAt`) alike. Its sides' height is UNDER HER ARM, no
-    higher than 19 cm under her neck joint (`underArm`): skin her arms' bones do not move (her side lock), under the row
-    of triangles that joins her arm's skin to her trunk's -- on her LIGHT skin as well since its armpits are kept whole
-    lower ("Her light skin"): before, a triangle of that row reached 15.2 mm into the band (MEASURED 2026-11-24 on the
-    light list, each place sampled as the shader mixes her arm's share), and in her T-pose its top edge was ragged along
-    them under her arm (pictured; taking the band's sides down to 21.5 cm instead left her back a strip 1.4 cm deep over
-    its level hem). Its sliders as they were (HEM / BELLY 0.56, NECKLINE / TOP EDGE 0.82); SLEEVE is not offered. MEASURED on
-    her as the room maps her (`tests/topOutline.test.ts`): her areolas 19.2 mm inside it; her full skin's arm row 10.1 mm
-    and more outside it. THE PAINTED LINE (`topSide` 0.72 at her sides, 14.7 cm under her neck joint) CROSSED THAT ROW by
-    26 mm -- her arm's skin bare beside cloth, the edge ragged along her triangles there -- and rode up with her arms.
-    TRIED AND TAKEN OUT on the way, each pictured in the room: her front's and her back's drawings meeting 6.5 cm ahead of
-    her middle depth (a hook at the side of her bust, a bare speck there at 100 and 200%); a line drawn in her front's
-    picture by where her front-most skin stands round her (an upright edge down her side, and, drawn cell by cell, rows of
-    skin through the cloth down the side of her bust: from in front, every place of her side lies over the same few
-    columns); a line down from 6 to 12.5 cm out (her areolas bare); raised 2 cm as he first said (her areolas still 5 mm
-    bare, the arm row inside it). PICTURED in the room 2026-11-24 (light skin): at 0, 100 and 200% her arms down, from
-    her front, three-quarter, side and back, and at 100% in her T-pose from the four -- straight across her bust, down
-    round its side to under her arm, level behind, and one line under her raised arm.
+  - THE BANDEAU IS A TUBE (`topCut.BANDEAU`, `bandeauArms`, `top: 'bandeau'`; Joshua, 2026-11-24, with his picture of a
+    ribbed tube, its arms down over it: "the Bandeau should look the same on top as bottom… it's not even looking… like my
+    reference photo"; of an armhole cut under each arm, the hour after: "check the arms?… Think like a mini skirt wrap with
+    a top and bottom hem… yours only has a bottom and the side top has like a top cutout…"; 2026-11-23: "Make sure you do
+    with arms raise… let it ignore the arm weights and follow body level lines"): strapless, its hem its own. ITS TOP EDGE
+    IS LEVEL ALL ROUND HER, under her arms too, at its NECKLINE / TOP EDGE (`topFront` 0.82: 9.4 cm under her neck joint),
+    a stitched band inside its top edge and its hem alike (`BANDEAU.band`, 1.5 cm).
+    - IN THE ROOM ITS TOP EDGE IS TOLD WHERE HER BONES CARRY EACH POINT AS HER SHAPES AND MORPHS HAVE PUT IT (her raised
+      arms' shapes among them: `fabricMorphed`, laid straight after her morphs and before her breath and her soft body,
+      whose patch is laid on her first), taken back about her chest's bone (the vertex stage's `vFabricAlong` while
+      `fabricCutSide.w` is under 0; `setFabricCutChest`, laid each frame by `layCutArms` with `boneCarry('chest')`). So
+      the skin of her armpits, which her arms' bones carry, is in the tube while it is under its level and leaves it as her
+      arms lift it over: the edge stays a level line round her body. On the CPU (her paint a value a vertex, the tests) it
+      is her rest height. TRIED in her T-pose: her rest place and slip carried by her bones (a tab rose up the front of her
+      arm: her raised arms' shapes were left out); and her arm's skin carried out past her trunk's reach (read in the
+      vertex stage) put over it too (a notch into her armpit, toothed a triangle at a time).
+    - ITS ARMS ARE HERS: nothing of it further out from her middle than HER TRUNK REACHES there (`TopFrame.reach`, laid the
+      first time a bandeau asks -- a third of a second on the build machine -- from her trunk's vertices and the places of
+      the row of triangles joining her arm's skin to her trunk's that keep any of her trunk's share, spread, taken across
+      between the creases of her armpit, evened and 5 mm more: `SIDE_REACH`), read in a picture of her side at her rest
+      place, her left's in the cut picture's alpha and her right's in its green. So the tube goes into the creases of her
+      armpits and no further: her arm's front and back are bare. Told as a sleeve's end, with no band (`cutEdgeAt`).
+    Its sliders as they were (HEM / BELLY 0.56; NECKLINE / TOP EDGE moving front and back together); `topSide` and
+    `topBack` are not read by its drawn cut. MEASURED on her (`tests/topOutline.test.ts`): her areolas 18.9 mm under its top
+    edge; her trunk 4.8 mm and more inside its edge at her arms; the row's places with any of her trunk's share 2.6 mm and
+    more inside it, full list and light (so no edge is drawn along her triangles); her arm's skin 3 cm under her armpit
+    all bare. PICTURED in the room 2026-11-24 (light skin, 1x): at 0, 100 and 200% with her arms down from
+    her front, three-quarter, side and back, and in her T-pose from the four -- one level line round her, into the creases of
+    her armpits, and level through her armpit with her arms raised.
+    BEFORE: (2026-11-23) its top edge a line round her body by where a pixel stands round her (her map's `around`, her
+    side seam's depth as its picture's middle depth, `fabricCutRound`): his 0.82 over her front, eased from 0.7 round her
+    to 19 cm under her neck joint at her side seam and level there all round her back -- the band 13.7 cm deep in front
+    and 4 at her sides and back; (2026-11-24) level front and back with an ARMHOLE under each arm 7 mm clear of that row --
+    a notch down into each armpit from her three-quarter and her back, "a top cutout"; then her arm's skin in it out to a
+    fixed 14.5 cm from her middle -- tabs of it on the backs of her arms (most of that skin faces her front or her back,
+    MEASURED by its normals).
 - **THE BOXY CROP TEE'S AND THE MATERNITY TEE'S HEM FOLLOW HER BELLY, as the under-belly leggings' waistband does**
   (Joshua, 2026-11-23, his five settings of each on Blaze, pictured; of the maternity tee: "I changed my mind… Yes,
   follow the belly"). `paintTemplates.ts` `BELLY_FOLLOW` (a table of his settings for each following dial, by template:

@@ -222,7 +222,7 @@ function compiled(masked: boolean, layers: number, detail: { pack: ArrayLike<num
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
   const m = new THREE.MeshStandardMaterial(), mesh = new THREE.Mesh(g, m);
   setFabricLayer(mesh, m, 0, { texture: new THREE.Texture(), tile: 1, opacity: 1, cut: { band: [0.01, 0.01, 0], shade: 0.1, detail } }, { layers, masked, rest: null, cut: true });
-  const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <skinning_vertex>', fragmentShader: '#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n#include <map_fragment>' };
+  const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <morphtarget_vertex>\n#include <skinning_vertex>', fragmentShader: '#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n#include <map_fragment>' };
   m.onBeforeCompile(s as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
   return { ...s, key: m.customProgramCacheKey(), hash: createHash('sha256').update(`${s.vertexShader}\n---\n${s.fragmentShader}`).digest('hex') };
 }
@@ -238,14 +238,21 @@ describe('a top\'s details in the shader', () => {
     // (2026-11-19: her paint unpacked two layers to a number, `bodyPaint.PAINT_PACK`, for six layers: 60f831b4…)
     // (2026-11-23: a bandeau's top edge, a line round her worked out at each pixel, `fabricCutRound`)
     // (2026-11-24: a hem's band in the top's own shade whatever its EDGING, `topCut.SHIRT_HEM_BAND`, and a painted shirt's hem on her skin, `FabricCut.skinHem`: c864c777… before)
-    expect(compiled(true, 3, null).hash).toBe('b85b55ce7054c3e649bc4619efdc7ea4e14f330ffa0f97531ca692a1c1d85090');
+    // (2026-11-24, later: the bandeau a tube, its line round her taken out, its top edge measured where her bones carry a point, `fabricCutSide.w` under 0: b85b55ce… before)
+    expect(compiled(true, 3, null).hash).toBe('74635bb4bb2de14bdf0028910278756bba3227612ee4df11018642e0ae01f35c');
     // A HEM'S BAND IS THE TOP'S OWN FABRIC A SHADE DARKER: the EDGING colours its sleeves' share of the line, the rest is shaded
     expect(compiled(true, 3, null).fragmentShader).toContain('fbe = fabricCutBand0.z > 0.0 ? fabricCutValue.z : 1.0;');
-    expect(compiled(false, 1, null).hash).toBe('3fac908ee59b894ad4cb7ae0f0ab5d217cc4f17ad16bccba7bce24f571e8b005');
+    // (a sheet's program as it was: its stub has had her morphs' include since 2026-11-24, which a bandeau reads after: 3fac908e… on the stub before)
+    expect(compiled(false, 1, null).hash).toBe('8d715132d053ea8ec17a0619c6e5f3a568993156da97daf116148d6313c0e7cb');
     expect(compiled(true, 3, null).key).not.toContain('-detail');
-    // A BANDEAU's top edge is a line round her, worked out at each pixel where it stands round her (topCut.ts `BANDEAU`)
-    expect(compiled(true, 3, null).fragmentShader).toContain('float around = 0.5 + 0.5 * rd.y / max(length(rd), 1e-6);');
-    expect(compiled(false, 1, null).fragmentShader).not.toContain('fabricCutRound');
+    // A BANDEAU is a tube (topCut.ts `BANDEAU`, `bandeauArms`): its top edge where her bones alone carry a point, against
+    // a level her chest's bone carries (the vertex stage's `vFabricAlong` while `fabricCutSide.w` is under 0), its edges at
+    // her arms at her rest place, told as a sleeve's; its line round her, worked out at each pixel, is gone (2026-11-24)
+    const tube = compiled(true, 3, null);
+    expect(tube.fragmentShader).toContain('return vec3(clamp(-vFabricAlong, -fabricCutDepth.w, fabricCutDepth.w), min(hd, lim), step(lim, hd));');
+    expect(tube.vertexShader).toContain('vec4 fbr = bindMatrix * vec4(fabricMorphed, 1.0);');
+    expect(tube.vertexShader).toContain('#include <morphtarget_vertex>\nvec3 fabricMorphed = transformed;');
+    expect(tube.fragmentShader).not.toContain('fabricCutRound');
     // her skin reads an outline's armscye -- her side's drawing, the picture's alpha, at the place's depth ahead of her
     // shoulder joints -- and rounds the corner between it and her front's and back's (topCut.ts `armscyeAt`, `smoothMax`);
     // a sheet across her front (her cleavage bridge) reads her front's drawing alone, as before

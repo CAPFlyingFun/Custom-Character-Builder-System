@@ -38,11 +38,11 @@ import {
   fabricFamily, matchSet as matchedSet, opacityOf, setMatches, swatchRect, tileUnits, trimPick, IMAGE_TILE_CM, type FabricChoice, type FabricFamilyId, type FabricLayout,
   type FabricPick, type FabricSet, type OutfitConfig, type PaintTool,
 } from './fabricLibrary';
-import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricLowWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowMoon, setFabricLowSwing, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer, type FabricLow } from './fabricMaterial';
+import { LOW_SLIP_ATTRIBUTE, ensureRest, fabricCutWorn, fabricFieldWorn, fabricLowWorn, fabricSlip, fieldCells, setArmSkin, setDetailKeep, setFabricCut, setFabricCutArms, setFabricCutChest, setFabricLayer, setFabricLow, setFabricLowFold, setFabricLowFoldStretch, setFabricLowInner, setFabricLowLegs, setFabricLowMoon, setFabricLowSwing, setHang, setRegionOverlay, setUnder, type FabricCut, type FabricLayer, type FabricLow } from './fabricMaterial';
 import { FOLD_LINE, LOW_CUT, bandInner, bandStations, foldEase, foldLift, foldNear, foldOf, foldStretch, frontMoon, innerMoon, stationEdges, hoopInside, isDrawnBottom, legBlend, legPlanes, limbSkin, lowFrame, lowSpec, planeFront, planeShare, roomAt, swingOf, type BandPoint, type BandStations, type FrontMoon, type LowFrame, type LowLeg, type LowSpec } from './bottomCut';
 import { makePulledSlip, pulledSlipDriver, type PulledDriver } from './pulledSlip';
 import { MOTION_SHAPES } from './levelLine';
-import { ARMSCYE, BANDEAU, CHEST_CUTOUT, NECK_RANGE, TOP_CUT, type CutoutParams, type CutoutShape, TOP_OUTLINES, cutPicture, hasNoHem, isCatsuit, isCutTop, isOnePiece, sleevePlane, takesTurtleneck, topFrame, type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind } from './topCut';
+import { ARMSCYE, CHEST_CUTOUT, NECK_RANGE, TOP_CUT, type CutoutParams, type CutoutShape, TOP_OUTLINES, cutPicture, hasNoHem, isCatsuit, isCutTop, isOnePiece, sleevePlane, takesTurtleneck, topFrame, type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind } from './topCut';
 import type { TopDetailSpec } from './topDetails';
 import { layCarried, poseTurns, settleCarry } from './designPose';
 import { besideShapes, makeFrameSlip, makeSkinSlip, slipDriver, type SlipDriver } from './skinSlip';
@@ -212,7 +212,7 @@ export interface FabricHooks {
    * her thigh's bone (her hip joint's), her shin's (her knee's) and her foot's (her ankle's) say where her leg's three
    * joints are (`fabricMaterial.setFabricLowLegs`).
    */
-  boneCarry?(mesh: THREE.Mesh, bone: 'shoulderL' | 'elbowL' | 'shoulderR' | 'elbowR' | 'hipL' | 'kneeL' | 'ankleL' | 'hipR' | 'kneeR' | 'ankleR', out: THREE.Matrix4): THREE.Matrix4 | null;
+  boneCarry?(mesh: THREE.Mesh, bone: 'chest' | 'shoulderL' | 'elbowL' | 'shoulderR' | 'elbowR' | 'hipL' | 'kneeL' | 'ankleL' | 'hipR' | 'kneeR' | 'ankleR', out: THREE.Matrix4): THREE.Matrix4 | null;
   /** An atlas, decoded, or null if it could not be fetched. */
   loadImage(path: string): Promise<(CanvasImageSource & { width: number; height: number }) | null>;
   /**
@@ -963,7 +963,7 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     if (!body || !map?.rest || !map.joints) return null;
     if (frameOf?.mesh !== body) {
       const index = hooks.skinTriangles?.(body) ?? (body.userData.allIndices as ArrayLike<number> | undefined) ?? body.geometry.index?.array, J = map.joints;
-      const frame = index ? topFrame({ rest: map.rest, index, unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }, sideSeam: seamDepth(map) }) : null;
+      const frame = index ? topFrame({ rest: map.rest, index, unitsPerMetre: hooks.unitsPerMetre?.(body) ?? hooks.unitsPerCm(body) * 100, facing: map.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }, sideSeam: seamDepth(map), armSkin: (v) => Number.isFinite(map.arm[v]) }) : null;
       frameOf = { mesh: body, frame };
       for (const t of cutTextures.values()) t.dispose();
       cuts.clear(); cutTextures.clear(); wornCut = null;
@@ -1055,16 +1055,20 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
       texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping; texture.generateMipmaps = false; texture.needsUpdate = true;
       cutTextures.set(key, texture);
     }
-    const arm = (a: TopFrame['arms'][number]) => sleevePlane(a, cut.spec.sleeve, U), S = cut.side ? cut.spec.outline?.side : null;
+    const arm = (a: TopFrame['arms'][number]) => sleevePlane(a, cut.spec.sleeve, U), S = cut.side ? cut.spec.outline?.side : null, B = cut.spec.bandeau;
+    // (a bandeau, a tube: the level of its top edge in place of a sleeve's end, carried each frame by her chest's bone, and
+    // its edges at her arms -- `topCut.BANDEAU`, `layCutArms`)
+    const level = B ? bandeauLevel(B.front) : null;
     return {
       texture, rect: [f.x0, f.y0, 1 / (f.cols * f.cell), 1 / (f.rows * f.cell)], depth: [f.zLo, f.zHi - f.zLo, cut.spec.sideBlend ?? TOP_CUT.sideBlend * U, TOP_CUT.range * U],
-      armL: arm(f.arms[0]), armR: arm(f.arms[1]), limb: [f.mid, cut.spec.sleeve, Number.isFinite(cut.spec.hemY) ? cut.spec.hemY : -1e9, f.facing], seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U],
-      side: S ? [S.z0, S.gate, ARMSCYE.feather * U, ARMSCYE.join * U] : null, start: S && Number.isFinite(S.startY) ? [S.startX, S.startY, S.slope] : null,
+      armL: level ?? arm(f.arms[0]), armR: level ?? arm(f.arms[1]), limb: [f.mid, cut.spec.sleeve, Number.isFinite(cut.spec.hemY) ? cut.spec.hemY : -1e9, f.facing], seam: [CUT_SEAM.dark, CUT_SEAM.halfWidth * U],
+      side: S ? [S.z0, S.gate, ARMSCYE.feather * U, ARMSCYE.join * U] : B ? [B.z0, B.base, 0, -1] : null,
+      start: S && Number.isFinite(S.startY) ? [S.startX, S.startY, S.slope] : null,
       ownHem: worn.ownHem, skinHem: worn.skinHem,
-      // (a bandeau's top edge, round her: `topCut.BANDEAU`)
-      round: cut.spec.bandeau && f.seamRow ? [cut.spec.bandeau.front, cut.spec.bandeau.side, 0, BANDEAU.frontReach] : null,
     };
   }
+  /** A bandeau's top edge as a level (her mesh's own space, at rest): a place p is `p . (the first three) + the fourth` over it. */
+  const bandeauLevel = (y: number): readonly [number, number, number, number] => [0, 1, 0, -y];
   /** A one-piece's or the catsuit's neck shape as it is worn: its own pick, else its outline's or its template's style; past the base of her neck, a turtleneck. */
   function neckShapeOf(p: CoverageParams): NeckStyle | 'turtle' {
     if (p.neckFront !== null && p.neckFront > 1) return 'turtle';
@@ -1628,7 +1632,13 @@ export function fabricPanel(hooks: FabricHooks): FabricPanel {
     if (!body || !worn) return;
     const material = Array.isArray(body.material) ? body.material[0] : body.material;
     if (!fabricCutWorn(material)) return;
-    const f = worn.cut.frame, sleeve = worn.cut.spec.sleeve;
+    const f = worn.cut.frame, sleeve = worn.cut.spec.sleeve, B = worn.cut.spec.bandeau;
+    if (B) {
+      // (a bandeau: its top edge told about her chest's bone, wherever that bone is -- `topCut.BANDEAU`)
+      const m = hooks.boneCarry?.(body, 'chest', carried) ?? null;
+      setFabricCutChest(material, m ? m.invert() : carried.identity());
+      return;
+    }
     const planes = f.arms.map((arm, k): readonly [number, number, number, number] => {
       const rest = sleevePlane(arm, sleeve, f.unitsPerMetre), side = k === 0 ? 'L' : 'R';
       const m = hooks.boneCarry?.(body, sleeve > arm.upper.length ? `elbow${side}` : `shoulder${side}`, carried) ?? null;

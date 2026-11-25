@@ -116,6 +116,13 @@ export interface TopFrame {
   readonly zMid: Float32Array; readonly zLo: number; readonly zHi: number;
   /** Her side seam's depth (`TopFrameInput.sideSeam`: where `around` is 0.5) at each row, as `zMid` counts depth. Absent: not measured. */
   readonly seamRow?: Float32Array;
+  /**
+   * HOW FAR OUT FROM HER MIDDLE HER TRUNK REACHES, her left's and her right's (her units), over a picture of her side --
+   * the picture's own cells, across: `x0` + her units ahead of her shoulder joints (`shoulderDepth`); up: her height --
+   * with the row of triangles joining her arm's skin to her trunk's, wherever it mixes in any of her trunk's share
+   * (`sideReach`). Laid when her arm's skin is told (`TopFrameInput.armSkin`): a bandeau's edge at her arms (`BANDEAU`).
+   */
+  readonly reach?: readonly [Float32Array, Float32Array];
 }
 /**
  * An arm at rest: her shoulder, elbow and wrist joints; her upper arm and her forearm, each a unit vector and a length;
@@ -136,10 +143,12 @@ export interface TopFrameInput {
   readonly facing?: number;
   /**
    * Her side seam's depth at a height (`bodyRegions.seamDepth`: where her map's `around` is 0.5 -- her rest z times her
-   * facing): a bandeau's top edge is a line round her body, read by where each place stands round her (`BANDEAU`).
-   * Absent: not measured.
+   * facing), kept on the frame as `seamRow`. (The bandeau's top edge was read by it from 2026-11-23 to 2026-11-24; no cut
+   * reads it now: `BANDEAU`.) Absent: not measured.
    */
   readonly sideSeam?: ((y: number) => number) | null;
+  /** Which of her vertices are her arm's skin (by her bones: `BodyMap.arm` not NaN). Absent: her side's reach is not laid (`TopFrame.reach`). */
+  readonly armSkin?: ((v: number) => boolean) | null;
 }
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -219,7 +228,84 @@ export function topFrame(input: TopFrameInput): TopFrame {
   for (let k = ridgeN - 2; k >= 0; k--) if (!(ridge[k] > -Infinity)) ridge[k] = ridge[k + 1];
   const bone = (from: V3, to: V3) => { const d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]], length = Math.hypot(d[0], d[1], d[2]) || 1; return { dir: [d[0] / length, d[1] / length, d[2] / length] as V3, length }; };
   const arm = (from: V3, elbow: V3, to: V3, side: 1 | -1): TopArm => { const upper = bone(from, elbow), fore = bone(elbow, to); return { from, elbow, to, upper, fore, length: upper.length + fore.length, side }; };
-  return { unitsPerMetre: U, mid, neckY, hipY, facing, ridge, ridgeStep, arms: [arm(J.shoulderL, J.elbowL, J.wristL, 1), arm(J.shoulderR, J.elbowR, J.wristR, -1)], x0, y0, cell, cols, rows, zMid, zLo, zHi, ...(input.sideSeam ? { seamRow: Float32Array.from({ length: rows }, (_, j) => input.sideSeam!(y0 + (j + 0.5) * cell)) } : {}) };
+  const frame: TopFrame = {
+    unitsPerMetre: U, mid, neckY, hipY, facing, ridge, ridgeStep, arms: [arm(J.shoulderL, J.elbowL, J.wristL, 1), arm(J.shoulderR, J.elbowR, J.wristR, -1)], x0, y0, cell, cols, rows, zMid, zLo, zHi,
+    ...(input.sideSeam ? { seamRow: Float32Array.from({ length: rows }, (_, j) => input.sideSeam!(y0 + (j + 0.5) * cell)) } : {}),
+  };
+  // (her side's reach is laid the first time a bandeau asks for it: a third of a second on the build machine)
+  const armSkin = input.armSkin;
+  if (armSkin) {
+    let reach: [Float32Array, Float32Array] | undefined;
+    const z0 = ((J.shoulderL[2] + J.shoulderR[2]) / 2) * facing;
+    Object.defineProperty(frame, 'reach', { enumerable: true, get: () => (reach ??= sideReach(P, index, armSkin, { U, mid, neckY, facing, z0, x0, y0, cell, cols, rows })) });
+  }
+  return frame;
+}
+/**
+ * GAME TUNING (metres): her side's reach (`sideReach`) is laid from `top` to `bottom` under her neck joint, spread over
+ * `spread` of her side's view (so a few places of her skin make a smooth edge), evened over `even` and given `margin`
+ * more out from her middle.
+ */
+export const SIDE_REACH = Object.freeze({ top: 0.02, bottom: 0.3, spread: 0.006, even: 0.005, margin: 0.005 });
+/**
+ * Her trunk's reach out from her middle over a picture of her side, her left's and her right's (`TopFrame.reach`): in
+ * each cell, the furthest out of her trunk's vertices there and of the places of the row joining her arm's skin to her
+ * trunk's where any of her trunk's share is left (as the shader mixes it: `armSide`); spread over her side's view, cells
+ * none of it falls in taken across from the nearest cells either side at that height (between the creases of her
+ * armpit, the straight way from the one to the other), evened, and `SIDE_REACH.margin` more. Infinity over and under
+ * the heights it is laid at.
+ */
+function sideReach(P: ArrayLike<number>, index: ArrayLike<number>, armSkin: (v: number) => boolean, g: { U: number; mid: number; neckY: number; facing: number; z0: number; x0: number; y0: number; cell: number; cols: number; rows: number }): [Float32Array, Float32Array] {
+  const { U, mid, facing, z0, x0, y0, cell, cols, rows } = g, top = g.neckY - SIDE_REACH.top * U, bottom = g.neckY - SIDE_REACH.bottom * U;
+  const raw = [new Float32Array(cols * rows).fill(-Infinity), new Float32Array(cols * rows).fill(-Infinity)];
+  const put = (x: number, y: number, z: number) => {
+    if (y > top || y < bottom) return;
+    const i = Math.floor((mid + z * facing - z0 - x0) / cell), j = Math.floor((y - y0) / cell);
+    if (i < 0 || j < 0 || i >= cols || j >= rows) return;
+    const k = j * cols + i, side = x >= mid ? 0 : 1, out = Math.abs(x - mid);
+    if (out > raw[side][k]) raw[side][k] = out;
+  };
+  for (let v = 0; v < P.length / 3; v++) if (!armSkin(v)) put(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]);
+  const S = 10;
+  for (let t = 0; t + 2 < index.length; t += 3) {
+    const a = index[t], b = index[t + 1], c = index[t + 2], fa = armSkin(a) ? 1 : 0, fb = armSkin(b) ? 1 : 0, fc = armSkin(c) ? 1 : 0;
+    if (fa + fb + fc === 0 || fa + fb + fc === 3) continue;
+    for (let p = 0; p <= S; p++) for (let q = 0; p + q <= S; q++) {
+      const wa = p / S, wb = q / S, wc = 1 - wa - wb;
+      if (armSide(wa * fa + wb * fb + wc * fc) > 0.999) continue;
+      put(wa * P[a * 3] + wb * P[b * 3] + wc * P[c * 3], wa * P[a * 3 + 1] + wb * P[b * 3 + 1] + wc * P[c * 3 + 1], wa * P[a * 3 + 2] + wb * P[b * 3 + 2] + wc * P[c * 3 + 2]);
+    }
+  }
+  const spread = Math.max(1, Math.round((SIDE_REACH.spread * U) / cell)), even = Math.max(1, Math.round((SIDE_REACH.even * U) / cell)), margin = SIDE_REACH.margin * U;
+  return raw.map((r) => {
+    // spread: the furthest out within `spread` cells either way, across and then up
+    const across = new Float32Array(cols * rows).fill(-Infinity), out = new Float32Array(cols * rows).fill(-Infinity);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { let m = -Infinity; for (let d = Math.max(0, i - spread); d <= Math.min(cols - 1, i + spread); d++) m = Math.max(m, r[j * cols + d]); across[j * cols + i] = m; }
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { let m = -Infinity; for (let d = Math.max(0, j - spread); d <= Math.min(rows - 1, j + spread); d++) m = Math.max(m, across[d * cols + i]); out[j * cols + i] = m; }
+    // cells none of it reaches: taken across from the nearest either side at that height (beyond the last, the last's)
+    for (let j = 0; j < rows; j++) {
+      const row = j * cols;
+      let last = -1;
+      for (let i = 0; i < cols; i++) {
+        if (!(out[row + i] > -Infinity)) continue;
+        if (last < 0) for (let k = 0; k < i; k++) out[row + k] = out[row + i];
+        else for (let k = last + 1; k < i; k++) out[row + k] = out[row + last] + ((out[row + i] - out[row + last]) * (k - last)) / (i - last);
+        last = i;
+      }
+      if (last < 0) out.fill(Infinity, row, row + cols);
+      else for (let k = last + 1; k < cols; k++) out[row + k] = out[row + last];
+    }
+    // evened (twice over `even` cells either way, across and up), and the margin
+    let f = out;
+    for (let pass = 0; pass < 2; pass++) {
+      const h = new Float32Array(cols * rows), w = new Float32Array(cols * rows);
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { let sum = 0, n = 0; for (let d = Math.max(0, i - even); d <= Math.min(cols - 1, i + even); d++) { const x = f[j * cols + d]; if (Number.isFinite(x)) { sum += x; n++; } } h[j * cols + i] = n ? sum / n : Infinity; }
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { let sum = 0, n = 0; for (let d = Math.max(0, j - even); d <= Math.min(rows - 1, j + even); d++) { const x = h[d * cols + i]; if (Number.isFinite(x)) { sum += x; n++; } } w[j * cols + i] = n ? sum / n : Infinity; }
+      f = w;
+    }
+    for (let k = 0; k < f.length; k++) f[k] += margin;
+    return f;
+  }) as [Float32Array, Float32Array];
 }
 
 /** Her shoulders' ridge at `out` (her units) from her middle. */
@@ -261,41 +347,47 @@ export interface TopCutSpec {
   readonly collarY?: number;
   /** A CHEST CUTOUT (`CHEST_CUTOUT`) in her front's drawing (her units): its shape, its middle's height, its half width and half height. Absent: none. */
   readonly cutout?: { readonly shape: CutoutShape; readonly y: number; readonly hw: number; readonly hh: number };
-  /** A BANDEAU (`BANDEAU`): no neck opening and no straps, its top edge at these heights round her front and at her sides and back (her units). Absent: none. */
-  readonly bandeau?: { readonly front: number; readonly side: number; readonly flat: number; readonly out: number };
+  /**
+   * A BANDEAU (`BANDEAU`): no neck opening, no straps and no armholes -- a tube. Its top edge level round her at `front`
+   * over her front and `back` over her back; nothing of it further out from her middle than her trunk reaches
+   * (`TopFrame.reach`, read in her side's view hung at her shoulder joints' depth `z0`; `BANDEAU.reach` is the out from
+   * her middle its picture's middle byte stands for). Her units. Absent: none.
+   */
+  readonly bandeau?: { readonly front: number; readonly back: number; readonly z0: number; readonly base: number };
 }
 /**
- * A BANDEAU (Joshua, 2026-11-23, of the painted bandeau's ragged edges: "Fix the Bandeau…"; "The default numbers for
- * the Bandeau is fine… only fix the ragged edges"; "Only if the edges and make it look better", with a picture of one: a
- * band round her, its top edge straight across her bust, under her arms at her sides; "Make sure you do with arms raise
- * and not… let it ignore the arm weights and follow body level lines"): strapless, and its hem its own -- level on her.
- * - Its TOP EDGE is a line ROUND HER BODY, worked out for each place by where it stands round her as her map tells it
- *   (`BodyMap.around`: 1 her front's middle, 0.5 her side seam -- `bodyRegions.seamDepth` -- 0 her back's): at its front
- *   height (`topFront`, the NECKLINE / TOP EDGE slider) from `frontReach` round her and in, at its sides' height at her
- *   side seam and all round her back, eased between (`bandeauHeight`). So it is straight across her bust and comes down
- *   round the side of her bust to her side seam, back and down as her skin goes, and is level behind. In the shader as on
- *   the CPU (`neckAt`), from the place's own rest place and slip: a picture of her front seen from in front has every
- *   place of her side over the same few columns, and a line drawn in one stood upright down her side (MEASURED in the
- *   room: a corner where it met her side's height, and, drawn by her front-most skin's place round her, rows of skin
- *   through the cloth down the side of her bust).
- * - Its sides' height is UNDER HER ARM -- no higher than `underArm` under her neck joint -- in skin her arms' bones do not
- *   move: her side lock (`SIDE_LOCK`) holds her trunk still from 2 cm under her armpit. MEASURED on her body file
- *   (2026-11-23): the row of her triangles that joins her arm's skin to her trunk's comes down to 18 cm under her neck
- *   joint at the back of her armpit; the painted line (`topSide` 0.72 at her sides, 14.7 cm under, `topBack` 0.7)
- *   crossed it -- her arm's skin bare beside cloth, the edge ragged along her triangles -- and rose with her arms. HER
- *   LIGHT SKIN's row (`lightBody.mjs`: what a phone wears) was lower until 2026-11-24: a triangle of it reached 15.2 mm
- *   into the band (MEASURED on the light list's triangles, each sampled as the shader mixes her arm's share), and in her
- *   T-pose the top edge was ragged along them under her arm (pictured in the room). Its sides are kept whole down to
- *   1.18 m now (`SHOULDER`), and its row is her full skin's.
- * Without her side seam (a sketch, a test) its front is drawn: level over her middle out to `flat`, down to her sides'
- * height by `out`. GAME TUNING (metres) but where said.
+ * A BANDEAU IS A TUBE: ITS TOP EDGE LEVEL ROUND HER AS ITS HEM IS, UNDER HER ARMS AS WELL (Joshua, 2026-11-24, of the
+ * bandeau drawn the day before, its top edge coming down round the side of her bust to under her arm: "the Bandeau should
+ * look the same on top as bottom… it's not even looking… like my reference photo" -- a ribbed tube, level all round, its
+ * arms down over it, a stitched band at its top and at its bottom; and of an armhole cut under each arm: "check the
+ * arms?… Think like a mini skirt wrap with a top and bottom hem… yours only has a bottom and the side top has like a top
+ * cutout…"; 2026-11-23: "Make sure you do with arms raise and not as I think the arm weight will mess with the paint and
+ * you will need to let it ignore the arm weights and follow body level lines"). Strapless, its hem its own (level on her
+ * as she is shaped).
+ * - ITS TOP EDGE is level at its NECKLINE / TOP EDGE (`topFront`, his 0.82: 9.4 cm under her neck joint) all round her --
+ *   over the skin of her armpits too, which her arms' bones carry. IN THE ROOM it is told WHERE HER BONES CARRY EACH POINT
+ *   AS HER SHAPES AND MORPHS HAVE PUT IT (her raised arms' shapes among them; not her breath or her soft body), taken back
+ *   about her chest's bone (the shader's `vFabricAlong`, `setFabricCutChest`): with her arms down her armpits' skin is
+ *   under it and in the tube; as her arms lift that skin over it, it leaves the tube, and the edge stays a level line
+ *   round her body (MEASURED in the room, her T-pose: level through her armpit from her side and her three-quarter; told
+ *   at her rest place and its slip instead, her raised arms' shapes left out, a tab of it rose up the front of her arm).
+ *   On the CPU (her paint a value a vertex, the tests) it is her rest height.
+ * - ITS ARMS ARE HERS: nothing of it further out from her middle than her TRUNK REACHES there (`TopFrame.reach`, laid
+ *   from her trunk's vertices and the row of triangles joining her arm's skin to her trunk's wherever it mixes in any of
+ *   her trunk's share, `SIDE_REACH`; read in a picture of her side at her rest place, her left's and her right's), so the
+ *   tube goes into the creases of her armpits and no further: her arm's front and back are bare. Told as a sleeve's end,
+ *   with no band, and on her skin only (never along that row: the row is all inside it).
+ * - `band`: a stitched band inside its top edge and inside its hem alike (his picture's two bands; a template may say its
+ *   own). `reach`: the out from her middle the reach picture's middle byte stands for (it holds 3 cm either side).
+ * GAME TUNING (metres) but where MEASURED.
+ * BEFORE: (2026-11-23) its top edge eased by where a place stands round her from its front's height to under her arm (19
+ * cm under her neck joint) at her side seam and level there all round her back -- the band 13.7 cm deep over her front
+ * and 4 cm at her sides and back; (2026-11-24, an hour) level front and back with an armhole under each arm, 7 mm clear
+ * of that row: a notch down into each armpit, seen from her three-quarter and her back ("a top cutout"); then her arm's
+ * skin in it out to a fixed 14.5 cm from her middle: tabs of it on the backs of her arms (most of that skin faces her
+ * front or her back, MEASURED by its normals).
  */
-export const BANDEAU = Object.freeze({ underArm: 0.19, frontReach: 0.7, blend: 0.02, flat: 0.09, out: 0.14 });
-/** The bandeau's height at a place round her (`around`: 1 her front, 0.5 her sides), between its front's and its sides'. */
-export function bandeauHeight(front: number, side: number, around: number): number {
-  const u = Math.max(0, Math.min(1, (around - 0.5) / (BANDEAU.frontReach - 0.5)));
-  return side + (front - side) * u * u * (3 - 2 * u);
-}
+export const BANDEAU = Object.freeze({ band: 0.015, reach: 0.13 });
 
 /**
  * THE OUTLINES, by kind (Joshua, 2026-11-14: "finish all 10 remaining shirt tops"; his sheet's 06, 07, 11 and 13). Metres
@@ -465,41 +557,20 @@ export function topCutSpec(p: Pick<CoverageParams, 'neckFront' | 'neckStyle' | '
     bands: { neck: (p.band?.neck ?? TEE_BANDS.neck) * U, sleeve: (p.band?.sleeve ?? TEE_BANDS.sleeve) * U, hem: (p.band?.hem ?? TEE_BANDS.hem) * U },
   };
 }
-/** A bandeau's spec on her: its top edge's two heights (its NECKLINE / TOP EDGE moves its front), its hem; no sleeves, no neck opening. */
-function bandeauSpec(p: { readonly band?: Partial<TopBands> | null; readonly topFront?: number | null; readonly topSide?: number | null; readonly topBack?: number | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
-  const U = frame.unitsPerMetre, trunk = frame.neckY - frame.hipY, at = (t: number) => frame.hipY + t * trunk;
-  const front = p.topFront ?? 0.82, side = Math.min(at(Math.min(front, p.topSide ?? front)), frame.neckY - BANDEAU.underArm * U);
+/** A bandeau's spec on her: its top edge level round her at its NECKLINE / TOP EDGE, an armhole under each arm, its hem; no sleeves, no neck opening. */
+function bandeauSpec(p: { readonly band?: Partial<TopBands> | null; readonly topFront?: number | null }, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
+  const U = frame.unitsPerMetre, trunk = frame.neckY - frame.hipY, at = (t: number) => frame.hipY + t * trunk, top = at(p.topFront ?? 0.82);
   return {
-    style: 'crew', half: 0, dipY: at(front), sleeve: -U,
+    style: 'crew', half: 0, dipY: top, sleeve: -U,
     hemY: hemTrunk === null ? -Infinity : at(hemTrunk),
-    bands: { neck: (p.band?.neck ?? OUTLINE_BANDS.neck) * U, sleeve: 0, hem: (p.band?.hem ?? OUTLINE_BANDS.hem) * U },
-    sideBlend: BANDEAU.blend * U,
-    bandeau: { front: at(front), side, flat: BANDEAU.flat * U, out: BANDEAU.out * U },
+    bands: { neck: (p.band?.neck ?? BANDEAU.band) * U, sleeve: 0, hem: (p.band?.hem ?? BANDEAU.band) * U },
+    bandeau: { front: top, back: top, z0: shoulderDepth(frame), base: BANDEAU.reach * U },
   };
 }
-/** Her frame with its middle depth at her side seam on every row (`TopFrame.seamRow`). */
-function seamMet(frame: TopFrame): TopFrame {
-  const { cols, rows } = frame, zMid = new Float32Array(cols * rows);
-  let zLo = Infinity, zHi = -Infinity;
-  for (let j = 0; j < rows; j++) { const z = frame.seamRow![j]; zMid.fill(z, j * cols, (j + 1) * cols); zLo = Math.min(zLo, z); zHi = Math.max(zHi, z); }
-  if (!(zHi > zLo)) zHi = zLo + 1;
-  return { ...frame, zMid, zLo, zHi };
-}
-/**
- * A bandeau's top edge as one of her drawings' paths, left to right (her units): her front's level over her middle and
- * down to her sides' height further out; her back's level. Read only without her side seam (`TopFrame.seamRow`): with it,
- * its edge is worked out place by place (`neckAt`, and the shader's `fabricCutRound`). Above it is the opening.
- */
+/** A bandeau's top edge as one of her drawings' paths, left to right (her units): level across her. Above it is the opening. */
 export function bandeauPath(spec: TopCutSpec, frame: TopFrame, front: boolean): P2[] {
-  const B = spec.bandeau!, U = frame.unitsPerMetre, range = TOP_CUT.range * U, x0 = frame.x0 - range * 4, x1 = frame.x0 + frame.cols * frame.cell + range * 4;
-  if (!front) return [[x0, B.side], [x1, B.side]];
-  const out: P2[] = [[x0, B.side]];
-  for (let i = 0; i < frame.cols; i++) {
-    const x = frame.x0 + (i + 0.5) * frame.cell, t = Math.max(0, Math.min(1, (Math.abs(x - frame.mid) - B.flat) / (B.out - B.flat)));
-    out.push([x, B.front + (B.side - B.front) * (0.5 - 0.5 * Math.cos(Math.PI * t))]);
-  }
-  out.push([x1, B.side]);
-  return out;
+  const B = spec.bandeau!, range = TOP_CUT.range * frame.unitsPerMetre, y = front ? B.front : B.back;
+  return [[frame.x0 - range * 4, y], [frame.x0 + frame.cols * frame.cell + range * 4, y]];
 }
 /** An outline's spec on her: its own numbers, its NECKLINE (the front's depth, or a camisole's top edge) and its hem; no sleeves. */
 function outlineSpec(p: Pick<CoverageParams, 'neckFront'> & { readonly band?: Partial<TopBands> | null; readonly neckShape?: NeckStyle | null; readonly neckWide?: number | null; readonly cutout?: CutoutParams | null }, kind: TopOutlineKind, frame: TopFrame, hemTrunk: number | null): TopCutSpec {
@@ -872,11 +943,16 @@ function cubic(a: P2, b: P2, c: P2, d: P2, step: number): P2[] {
 
 /** A top's two drawings, ready to look up. */
 /** A top's drawings, ready to look up: her front's, her back's, and for an outline her side's (its armscye, `ARMSCYE`). */
-export interface TopCut { readonly spec: TopCutSpec; readonly frame: TopFrame; readonly front: Float32Array; readonly back: Float32Array; readonly side?: Float32Array | null }
+export interface TopCut {
+  readonly spec: TopCutSpec; readonly frame: TopFrame; readonly front: Float32Array; readonly back: Float32Array; readonly side?: Float32Array | null;
+  /** A bandeau's: her trunk's reach on her left and on her right (`TopFrame.reach`), less `TopCutSpec.bandeau.base` and held to the drawings' range. */
+  readonly reach?: readonly [Float32Array, Float32Array] | null;
+}
 export function topCut(spec: TopCutSpec, frame: TopFrame): TopCut {
-  // (a bandeau's middle depth is her side seam, which its line round her is told about: `BANDEAU`)
-  const at = spec.bandeau && frame.seamRow ? seamMet(frame) : frame;
-  return { spec, frame: at, front: drawCut(spec, frame, true), back: drawCut(spec, frame, false), side: spec.outline?.side ? pathDistances(armscyePath(frame, spec.outline.side.curve), frame) : null };
+  // (her side's drawing: an outline's armscye; a bandeau's, her trunk's reach either side, `TopFrame.reach`)
+  const side = spec.outline?.side ? pathDistances(armscyePath(frame, spec.outline.side.curve), frame) : null, range = TOP_CUT.range * frame.unitsPerMetre;
+  const reach = spec.bandeau && frame.reach ? frame.reach.map((r) => Float32Array.from(r, (x) => Math.max(-range, Math.min(range, x - spec.bandeau!.base)))) as [Float32Array, Float32Array] : null;
+  return { spec, frame, front: drawCut(spec, frame, true), back: drawCut(spec, frame, false), side, reach };
 }
 /**
  * Her side's drawing at a place (her units; + covered): the armscye's say, come in over `ARMSCYE.feather` past `gate`;
@@ -928,13 +1004,7 @@ export function alongArm(frame: TopFrame, x: number, y: number, z: number, sleev
 
 /** The drawings' say at a place: how far inside the neck opening's rim it is (her units), Infinity when it is held at their range. */
 function neckAt(cut: TopCut, x: number, y: number, z: number): number {
-  const { frame } = cut, U = frame.unitsPerMetre, B = cut.spec.bandeau;
-  // a bandeau's top edge: its line round her, at where this place stands round her (the shader's `fabricCutRound`)
-  if (B && frame.seamRow) {
-    const range = TOP_CUT.range * U, rz = z * frame.facing - midDepthAt(frame, x, y), rx = x - frame.mid;
-    const d = Math.max(-range, Math.min(range, bandeauHeight(B.front, B.side, 0.5 + (0.5 * rz) / Math.max(Math.hypot(rx, rz), 1e-6)) - y));
-    return d >= 0.98 * range ? Infinity : d;
-  }
+  const { frame } = cut, U = frame.unitsPerMetre;
   const blend = cut.spec.sideBlend ?? TOP_CUT.sideBlend * U, side = smoothstep(-blend, blend, z * frame.facing - midDepthAt(frame, x, y));
   let d = cellAt(frame, cut.back, x, y) * (1 - side) + cellAt(frame, cut.front, x, y) * side;
   // an outline's armscye: what her side's drawing covers is covered, whatever her front's and her back's say
@@ -951,9 +1021,23 @@ export function cutAt(cut: TopCut, x: number, y: number, z: number, armShare: nu
   const { frame, spec } = cut;
   const neck = neckAt(cut, x, y, z);
   const hem = spec.hemY === -Infinity ? Infinity : y - spec.hemY;
+  // (a bandeau: its edge at her arms in place of a sleeve's: `BANDEAU`)
+  const lim = bandeauArms(cut, x, y, z);
+  if (lim !== null) return Math.min(neck, hem, lim);
   const sleeve = spec.sleeve - alongArm(frame, x, y, z, spec.sleeve);
   const a = armSide(armShare);
   return Math.min(neck, hem * (1 - a) + sleeve * a);
+}
+/**
+ * A bandeau's edge at her arms (`BANDEAU`; her units, + inside): no further out from her middle than her trunk reaches
+ * on that side of her at the place's depth and height (`TopFrame.reach`). Null for any other top; +range for a bandeau
+ * laid with no reach (a frame without her arm's skin).
+ */
+export function bandeauArms(cut: TopCut, x: number, y: number, z: number): number | null {
+  const B = cut.spec.bandeau, { frame } = cut;
+  if (!B) return null;
+  if (!cut.reach) return TOP_CUT.range * frame.unitsPerMetre;
+  return B.base + cellAt(frame, cut.reach[x >= frame.mid ? 0 : 1], frame.mid + z * frame.facing - B.z0, y) - Math.abs(x - frame.mid);
 }
 /**
  * Her arm's skin or not, from `armShare` blended across a triangle: one or the other but in the middle of the one row
@@ -964,8 +1048,10 @@ export const armSide = (armShare: number): number => smoothstep(0.4, 0.6, armSha
 /** As `cutAt`, with which edge is nearest: for telling a band's own width (0 neck, 1 sleeve, 2 hem). */
 export function cutEdgeAt(cut: TopCut, x: number, y: number, z: number, armShare: number): { readonly distance: number; readonly edge: 0 | 1 | 2 } {
   const { frame, spec } = cut;
-  const neck = neckAt(cut, x, y, z);
-  const a = armSide(armShare), limb = (spec.hemY === -Infinity ? Infinity : y - spec.hemY) * (1 - a) + (spec.sleeve - alongArm(frame, x, y, z, spec.sleeve)) * a;
+  const neck = neckAt(cut, x, y, z), lim = bandeauArms(cut, x, y, z), hem = spec.hemY === -Infinity ? Infinity : y - spec.hemY;
+  // (a bandeau's edge at her arms is told as a sleeve's: no band)
+  if (lim !== null) return neck <= Math.min(hem, lim) ? { distance: neck, edge: 0 } : lim < hem ? { distance: lim, edge: 1 } : { distance: hem, edge: 2 };
+  const a = armSide(armShare), limb = hem * (1 - a) + (spec.sleeve - alongArm(frame, x, y, z, spec.sleeve)) * a;
   return neck <= limb ? { distance: neck, edge: 0 } : { distance: limb, edge: a > 0.5 ? 1 : 2 };
 }
 
@@ -991,10 +1077,11 @@ export function cutPicture(cut: TopCut): Uint8Array {
   const { frame } = cut, n = frame.cols * frame.rows, range = TOP_CUT.range * frame.unitsPerMetre, out = new Uint8Array(n * 4);
   const byte = (d: number) => Math.max(0, Math.min(255, Math.round(127.5 + (d / range) * 127.5)));
   for (let k = 0; k < n; k++) {
-    out[k * 4] = byte(cut.front[k]); out[k * 4 + 1] = byte(cut.back[k]);
+    // (a bandeau's back drawing is its front's, and its two reaches go in green and alpha: her right's, her left's)
+    out[k * 4] = byte(cut.front[k]); out[k * 4 + 1] = byte(cut.reach ? cut.reach[1][k] : cut.back[k]);
     out[k * 4 + 2] = Math.max(0, Math.min(255, Math.round(((frame.zMid[k] - frame.zLo) / (frame.zHi - frame.zLo)) * 255)));
     // (alpha: her side's drawing, an outline's armscye -- across, her units ahead of her shoulder joints; whole without one)
-    out[k * 4 + 3] = cut.side ? byte(cut.side[k]) : 255;
+    out[k * 4 + 3] = cut.reach ? byte(cut.reach[0][k]) : cut.side ? byte(cut.side[k]) : 255;
   }
   return out;
 }

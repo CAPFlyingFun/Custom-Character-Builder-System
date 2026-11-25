@@ -16,7 +16,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import {
-  ARMSCYE, ARMSCYES, BANDEAU, CAMI_FALL, NECK_STYLES, SHIRT_HEM_BAND, TOP_OUTLINES, armscyeAt, bandeauHeight, bandeauPath, armscyeGate, armscyePath, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, smoothMax, topCut, topCutSpec, topFrame,
+  ARMSCYE, ARMSCYES, BANDEAU, CAMI_FALL, NECK_STYLES, SHIRT_HEM_BAND, TOP_OUTLINES, SIDE_REACH, armSide, armscyeAt, bandeauArms, bandeauPath, armscyeGate, armscyePath, cutAt, cutEdgeAt, isCutTop, midDepthAt, neckDefault, outlinePath, ridgeAt, smoothMax, topCut, topCutSpec, topFrame,
   type NeckStyle, type TopCut, type TopFrame, type TopOutlineKind,
 } from '../src/sarahlab/topCut';
 import { loadBody } from '../scripts/preview/body.mjs';
@@ -413,19 +413,31 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     }
   }, 60_000);
 
-  it('MEASURED: a bandeau covers her areolas and keeps off the row that joins her arm\'s skin to her trunk\'s', async () => {
-    // on her as the room maps her (her points' places round her, her arm's skin by her bones, her side seam: what the panel
-    // hands the frame). MEASURED 2026-11-23: her areolas 19.2 mm inside it; the row 10.1 mm outside, 18 cm under her neck
-    // joint at the back of her armpit. (The painted line at her sides, 14.7 cm under, was inside that row by 26 mm: her
-    // arm's skin bare beside cloth)
-    const her = await loadHerBody(), m = her.map, J = m.joints!, U = her.unitsPerMetre, P = m.rest!, isArm = (v: number) => m.arm[v] === m.arm[v];
-    const f = topFrame({ rest: P, index: her.index, unitsPerMetre: U, facing: m.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }, sideSeam: seamDepth(m) });
-    const cut = topCut(topCutSpec({ ...t('bandeau') }, f, 0.56), f), I = her.index;
-    const row = new Set<number>();
-    for (let k = 0; k + 2 < I.length; k += 3) { const v = [I[k], I[k + 1], I[k + 2]], a = v.map(isArm); if (a.some(Boolean) && !a.every(Boolean)) for (const i of v) if (!isArm(i)) row.add(i); }
-    let worst = -Infinity;
-    for (const v of row) worst = Math.max(worst, cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 0));
-    expect(worst / U / MM).toBeLessThan(-5);
+  it('MEASURED: a bandeau is a tube on her: all of her trunk from its top edge to its hem, her armpits between their creases, her arms not, and no edge along the row that joins her arm\'s skin to her trunk\'s', async () => {
+    // on her as the room maps her (her points' places, her arm's skin by her bones: what the panel hands the frame).
+    // MEASURED 2026-11-24, the tube (`BANDEAU`, `TopFrame.reach`): her areolas 18.9 mm inside it; her trunk 4.8 mm and
+    // more inside its edge at her arms; the row's places with any of her trunk's share 2.6 mm and more inside it.
+    // (2026-11-23, its top edge down round her bust to 19 cm under her neck joint at her sides: 19.2 mm)
+    const her = await loadHerBody(), m = her.map, J = m.joints!, U = her.unitsPerMetre, P = m.rest!, isArm = (v: number) => Number.isFinite(m.arm[v]);
+    const f = topFrame({ rest: P, index: her.index, unitsPerMetre: U, facing: m.facing, joints: { neck: J.neck, hipL: J.hipL, hipR: J.hipR, shoulderL: J.shoulderL, elbowL: J.elbowL, wristL: J.wristL, shoulderR: J.shoulderR, elbowR: J.elbowR, wristR: J.wristR }, sideSeam: seamDepth(m), armSkin: isArm });
+    const cut = topCut(topCutSpec({ ...t('bandeau') }, f, 0.56), f), I = her.index, H = cut.spec.bandeau!.front;
+    expect(cut.reach).toBeTruthy();
+    const inBand = (y: number) => y < H - 0.005 * U && y > cut.spec.hemY + 0.005 * U;
+    // all of her trunk, its edge at her arms 3 mm and more out past it
+    let trunk = 0, nearest = Infinity;
+    for (let v = 0; v < P.length / 3; v++) {
+      if (isArm(v) || !inBand(P[v * 3 + 1])) continue;
+      trunk++; nearest = Math.min(nearest, bandeauArms(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2])!);
+    }
+    expect(trunk).toBeGreaterThan(5000);
+    expect(nearest / U / MM).toBeGreaterThan(3);
+    // her arm, by her bones, 3 cm and more under her armpit (where her arm and her trunk have parted), is bare
+    let arm = 0, armCovered = 0;
+    for (let v = 0; v < P.length / 3; v++) {
+      if (!isArm(v) || !inBand(P[v * 3 + 1]) || f.neckY - P[v * 3 + 1] < 0.215 * U) continue;
+      arm++; if (cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 1) > 0) armCovered++;
+    }
+    expect(arm).toBeGreaterThan(100); expect(armCovered).toBe(0);
     // her areolas by her skin's own picture (the same points of the same file, in metres there)
     const body = await loadBody(), col = (v: number) => body.skin!.texel(body.uv[v * 2], body.uv[v * 2 + 1]);
     expect(body.rest.length).toBe(P.length);
@@ -434,25 +446,27 @@ describe('a top\'s outline on her own rest skin (the room\'s body file)', () => 
     const rg = chest.map((v) => col(v)[0] - col(v)[1]).sort((a, b) => a - b), median = rg[rg.length >> 1];
     const areola = chest.filter((v) => col(v)[0] - col(v)[1] > median + 0.03);
     expect(areola.length).toBeGreaterThan(500);
-    expect(Math.min(...areola.map((v) => cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 0))) / U / MM).toBeGreaterThan(15);
-    // its two drawings meet at her side seam
-    expect(cut.frame.zMid[0]).toBeCloseTo(f.seamRow![0], 6);
-    // AND ON HER LIGHT SKIN (what a phone wears: `lightBody.mjs`): no place of the triangles of its row joining her arm's
-    // skin to her trunk's is inside the band where the shader's mix of her arm's share takes the cloth off (MEASURED
-    // 2026-11-24: 15.2 mm inside on the list thinned from 1.24 m down, ragged under her raised arm; none kept whole from 1.18)
+    // (under its top edge by 15 mm and more; inside its edge at her arms -- her bust's side -- by 5)
+    expect(Math.min(...areola.map((v) => H - P[v * 3 + 1])) / U / MM).toBeGreaterThan(15);
+    expect(Math.min(...areola.map((v) => cutAt(cut, P[v * 3], P[v * 3 + 1], P[v * 3 + 2], 0))) / U / MM).toBeGreaterThan(5);
+    // NO EDGE ALONG HER TRIANGLES, on her full skin and her light one (what a phone wears: `lightBody.mjs`): every place of
+    // the row joining her arm's skin to her trunk's with any of her trunk's share (as the shader mixes it) is 2 mm and
+    // more inside its edge at her arms -- the edge is all on her arm's skin
     const buf = readFileSync('public/models/sarah-v2-body-light.bin'), light = new Uint32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-    let deepest = 0;
-    for (let k = 0; k + 2 < light.length; k += 3) {
-      const v = [light[k], light[k + 1], light[k + 2]], a = v.map((i) => (isArm(i) ? 1 : 0)), s = a[0] + a[1] + a[2];
-      if (s === 0 || s === 3) continue;
-      for (let p = 0; p <= 12; p++) for (let q = 0; p + q <= 12; q++) {
-        const w = [p / 12, q / 12, 1 - p / 12 - q / 12], at = (c: number) => w[0] * P[v[0] * 3 + c] + w[1] * P[v[1] * 3 + c] + w[2] * P[v[2] * 3 + c];
-        const u = Math.max(0, Math.min(1, ((w[0] * a[0] + w[1] * a[1] + w[2] * a[2]) - 0.4) / 0.2));
-        if (u * u * (3 - 2 * u) > 0.01) deepest = Math.max(deepest, cutAt(cut, at(0), at(1), at(2), 0));
+    for (const L of [I, light]) {
+      let near = Infinity;
+      for (let k = 0; k + 2 < L.length; k += 3) {
+        const v = [L[k], L[k + 1], L[k + 2]], a = v.map((i) => (isArm(i) ? 1 : 0)), s = a[0] + a[1] + a[2];
+        if (s === 0 || s === 3) continue;
+        for (let p = 0; p <= 12; p++) for (let q = 0; p + q <= 12; q++) {
+          const w = [p / 12, q / 12, 1 - p / 12 - q / 12], at = (c: number) => w[0] * P[v[0] * 3 + c] + w[1] * P[v[1] * 3 + c] + w[2] * P[v[2] * 3 + c];
+          if (armSide(w[0] * a[0] + w[1] * a[1] + w[2] * a[2]) > 0.999 || !inBand(at(1))) continue;
+          near = Math.min(near, bandeauArms(cut, at(0), at(1), at(2))!);
+        }
       }
+      expect(near / U / MM, L === I ? 'full' : 'light').toBeGreaterThan(2);
     }
-    expect(deepest).toBe(0);
-  }, 60_000);
+  }, 120_000);
 
   it('the paths have no corner: over any 3 mm of them they turn no more than a smooth curve does', () => {
     // (the tightest turn drawn is a camisole's, 8.4 mm round, where its top edge leaves the strap: about 20 degrees in 3 mm,
@@ -521,26 +535,52 @@ describe('the outline tops\' templates', () => {
     expect(dialsFor(t('bandeau'))).toEqual(['hem', 'neck']);
     expect(t('tank').neckFront).toBe(OUTLINE_NECK.tank);
   });
-  it('a bandeau: its top edge straight across her front, down round her bust to under her arms, level behind; its own hem', () => {
+  it('a bandeau is a tube (Joshua, 2026-11-24: "the Bandeau should look the same on top as bottom"; "Think like a mini skirt wrap with a top and bottom hem"): its top edge level all round her, under her arms too, a band at its top and its hem', () => {
     const cut = templateCut(map, t('bandeau'), frame)!, B = cut.spec.bandeau!;
     expect(cut.spec.outline).toBeUndefined();
     expect(cut.spec.sleeve).toBeLessThan(0);
-    // (his numbers: its top edge 0.82 over her front; at her sides and behind, no higher than under her arm)
+    expect(cut.side).toBeNull();
+    // (his number: its top edge 0.82 of her trunk, over her front and her back alike; its hem 0.56)
     expect(B.front).toBeCloseTo(0.9 + 0.82 * 0.5, 9);
-    expect(B.side).toBeCloseTo(Math.min(0.9 + 0.72 * 0.5, frame.neckY - BANDEAU.underArm), 9);
+    expect(B.back).toBe(B.front);
     expect(cut.spec.hemY).toBeCloseTo(0.9 + 0.56 * 0.5, 9);
+    expect(B.base).toBeCloseTo(BANDEAU.reach, 9);
+    // (the same stitched band at its top edge and at its hem)
+    expect(cut.spec.bands.neck).toBeCloseTo(BANDEAU.band, 9);
+    expect(cut.spec.bands.hem).toBeCloseTo(BANDEAU.band, 9);
     const y = (path: readonly (readonly [number, number])[], x: number) => { for (let k = 0; k + 1 < path.length; k++) { const [ax, ay] = path[k], [bx, by] = path[k + 1]; if (x >= ax && x <= bx && bx > ax) return ay + ((by - ay) * (x - ax)) / (bx - ax); } return NaN; };
-    const front = bandeauPath(cut.spec, frame, true), back = bandeauPath(cut.spec, frame, false);
-    // (a frame with no places round her, a sketch's: level over her middle, down to her sides' height further out)
-    for (const x of [0, 0.05, -0.06]) expect(y(front, frame.mid + x), `front ${x}`).toBeCloseTo(B.front, 6);
-    for (const x of [BANDEAU.out + 0.02, -BANDEAU.out - 0.05]) expect(y(front, frame.mid + x), `front ${x}`).toBeCloseTo(B.side, 6);
-    for (const x of [0, 0.12, -0.2]) expect(y(back, frame.mid + x), `back ${x}`).toBeCloseTo(B.side, 9);
-    // its line round her: his front's height round her front, her sides' at her sides, smooth between
-    expect(bandeauHeight(1.3, 1.2, 0.9)).toBe(1.3); expect(bandeauHeight(1.3, 1.2, 0.5)).toBe(1.2); expect(bandeauHeight(1.3, 1.2, 0.2)).toBe(1.2);
-    expect(bandeauHeight(1.3, 1.2, 0.6)).toBeCloseTo(1.25, 9);
-    // its NECKLINE / TOP EDGE moves its front
+    for (const front of [true, false]) for (const x of [0, 0.12, -0.2]) expect(y(bandeauPath(cut.spec, frame, front), frame.mid + x), `${front ? 'front' : 'back'} ${x}`).toBeCloseTo(B.front, 9);
+    // (a frame laid with no arm's skin has no reach: nothing at her arms is cut, and her arm's skin is the tube's as her trunk's is)
+    expect(cut.reach).toBeNull();
+    const at = (out: number, under: number, ahead: number, arm: number) => cutAt(cut, frame.mid + out, frame.neckY - under, ahead, arm);
+    for (const ahead of [-0.1, 0, 0.1]) for (const arm of [0, 1]) for (const out of [0.05, 0.12, -0.13]) expect(at(out, 0.12, ahead, arm), `${out} ${ahead} ${arm}`).toBeGreaterThan(0.005);
+    expect(at(0.05, 0.08, 0, 0)).toBeLessThan(0);
+    // its top edge is told as a neck's and its hem as a hem's
+    expect(cutEdgeAt(cut, frame.mid + 0.05, frame.neckY - 0.095, 0, 0).edge).toBe(0);
+    expect(cutEdgeAt(cut, frame.mid + 0.05, frame.neckY - 0.215, 0, 0).edge).toBe(2);
+    // its NECKLINE / TOP EDGE moves its front and its back together
     const lower = templateCut(map, withDial(t('bandeau'), 'neck', 0.78), frame)!.spec.bandeau!;
     expect(lower.front).toBeCloseTo(0.9 + 0.78 * 0.5, 9);
+    expect(lower.back).toBe(lower.front);
+  });
+  it('a bandeau\'s edge at her arms is told as a sleeve\'s (no band), from her trunk\'s reach in her side\'s view', () => {
+    // a frame of a little trunk and a little arm beside it: the reach is laid where her trunk is, and her arm past it is bare
+    const P: number[] = [], index: number[] = [], arm: boolean[] = [];
+    const quad = (x: number, y0: number, y1: number, z0: number, z1: number, isArm: boolean) => { const b = P.length / 3; P.push(x, y0, z0, x, y1, z0, x, y1, z1, x, y0, z1); arm.push(isArm, isArm, isArm, isArm); index.push(b, b + 1, b + 2, b, b + 2, b + 3); };
+    for (const s of [1, -1]) {
+      quad(0.12 * s, 0.9, 1.4, -0.06, 0.06, false); quad(0.17 * s, 1.0, 1.36, -0.04, 0.04, true);
+      // (her trunk's skin is told by its vertices: a few over its side)
+      for (let y = 1.1; y <= 1.38; y += 0.01) for (let z = -0.06; z <= 0.06; z += 0.01) { P.push(0.12 * s, y, z); arm.push(false); }
+    }
+    const g = topFrame({ rest: P, index, unitsPerMetre: 1, armSkin: (v) => arm[v], joints: { neck: [0, 1.4, 0], hipL: [0.1, 0.9, 0], hipR: [-0.1, 0.9, 0], shoulderL: [0.15, 1.36, 0], elbowL: [0.3, 1.15, 0], wristL: [0.45, 0.96, 0], shoulderR: [-0.15, 1.36, 0], elbowR: [-0.3, 1.15, 0], wristR: [-0.45, 0.96, 0] } });
+    const c = templateCut(map, t('bandeau'), g)!;
+    expect(c.reach).toBeTruthy();
+    // her trunk inside its edge (by the margin and more), her arm past it outside it
+    expect(bandeauArms(c, 0.12, 1.25, 0)!).toBeGreaterThan(SIDE_REACH.margin * 0.9);
+    expect(bandeauArms(c, -0.12, 1.25, 0)!).toBeGreaterThan(SIDE_REACH.margin * 0.9);
+    expect(bandeauArms(c, 0.17, 1.25, 0)!).toBeLessThan(-0.03);
+    expect(cutAt(c, 0.17, 1.25, 0, 1)).toBeLessThan(0);
+    expect(cutEdgeAt(c, 0.123, 1.25, 0, 0).edge).toBe(1);
   });
   it('a tank or sports bra saved before today opens drawn, with all the numbers it was saved with', () => {
     // as v0.9.26 saved them: no `top`, their old strap numbers, a tank's NECKLINE moved to 78%
