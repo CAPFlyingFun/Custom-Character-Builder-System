@@ -184,6 +184,22 @@ export class JointLimits {
     };
   }
 
+  /**
+   * The turn `read` reads as these angles (degrees, `read`'s own signs): the back's or the neck's WHOLE turn (a chain's
+   * two joints share it as the caller chooses), a hip's (`side` its abduction, `rotation` internal), a knee's or an
+   * ankle's (flexion; `side` and `rotation` their sideways swing and twist about the bone, which the table has no
+   * number for). A quaternion [x, y, z, w]. For a pose written in the clinician's terms (`actor/bodyAngles.ts`), so its
+   * numbers are the ones this table checks.
+   */
+  compose(where: 'back' | 'neck' | 'hipL' | 'hipR' | 'kneeL' | 'kneeR' | 'ankleL' | 'ankleR', flexion: number, side = 0, rotation = 0): Q {
+    const rad = Math.PI / 180;
+    const A = where === 'back' || where === 'neck' ? this.body
+      : where === 'hipL' ? this.hip.L : where === 'hipR' ? this.hip.R
+        : where === 'kneeL' ? this.knee.L : where === 'kneeR' ? this.knee.R
+          : where === 'ankleL' ? this.ankle.L : this.ankle.R;
+    return join(A.t, A.a, A.b, flexion * rad, side * rad, rotation * rad * A.twistSign);
+  }
+
   /** Every motion of a pose past its wall (degrees past it, positive), for a report. */
   pastWalls(turns: readonly JointTurn[]): PastWall[] {
     const r = this.read(turns), R = this.range, out: PastWall[] = [];

@@ -149,7 +149,8 @@ export const sarahLabTool: DevTool = {
 /** The HUD root's `data-role`: what a probe waits for. */
 export const SARAH_LAB_HUD_ROLE = 'sarah-lab-hud';
 
-export type SarahLabPose = 'stand' | 'walk' | 'sit' | 'tpose' | BirthStyle;
+/** `library`: a pose of the pose library (actor/poseLibrary.ts, data/poses), which one the room's own */
+export type SarahLabPose = 'stand' | 'walk' | 'sit' | 'tpose' | 'library' | BirthStyle;
 /** Her birth positions (actor/humanBirth.ts): her legs open, her lower clothes off while she is in one. */
 export const isBirthPose = (p: SarahLabPose): p is BirthStyle => (BIRTH_STYLES as readonly string[]).includes(p);
 
@@ -182,6 +183,9 @@ export const SARAH_LAB_ACTION = Object.freeze({
   apart: 'sarahlab:apart',
   squat: 'sarahlab:squat',
   recline: 'sarahlab:recline',
+  /** `${librarySheet}<sheet>`: the pose library's sheet shown; `${libraryPose}<pose id>`: that pose put on (actor/poseLibrary.ts) */
+  librarySheet: 'sarahlab:library-sheet:',
+  libraryPose: 'sarahlab:library-pose:',
   turn: 'sarahlab:turn',
   bounce: 'sarahlab:bounce',
   /** PREGNANT on or off (P5): on or off and nothing else -- her weeks are typed, each its own box (pregnancy.ts) */
@@ -275,6 +279,8 @@ export const SARAH_LAB_FIELD = Object.freeze({
   /** the room's name and build at the top (`labTitle`) */
   title: 'sarahlab-title',
   status: 'sarahlab-status',
+  /** the pose library's line: the pose she is in, what it is for, where she touches */
+  library: 'sarahlab-library',
   /** what should be noticed over the stage, shown only when there is something: the phone loaded the page again, its
    * graphics were restarted, a newer version is ready (pwa/onDevice.ts `deviceNote`, the room's `graphicsNote`) */
   notice: 'sarahlab-notice',
