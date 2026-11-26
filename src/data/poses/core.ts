@@ -20,8 +20,8 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
   {
     id: 'core-02-hands-on-hips', name: 'Hands on hips', sheet: 'core', ref: `${REF} 02`, tags: ['idle', 'confident', 'clothing'], support: 'feet',
     angles: {
-      armL: { reach: { at: 'hip', off: [0.08, 0.13, 0.0], elbow: [1, -0.1, -0.25] }, pronate: 40, wristFlex: -15 },
-      armR: { reach: { at: 'hip', off: [0.08, 0.13, 0.0], elbow: [1, -0.1, -0.25] }, pronate: 40, wristFlex: -15 },
+      armL: { reach: { at: 'hip', off: [0.065, 0.13, 0.01], hand: [0, -0.5, 1], palm: [-1, 0, 0], elbow: [1, 0, -0.4] } },
+      armR: { reach: { at: 'hip', off: [0.065, 0.13, 0.01], hand: [0, -0.5, 1], palm: [-1, 0, 0], elbow: [1, 0, -0.4] } },
       legL: { abduct: 3, twist: -5 }, legR: { abduct: 3, twist: -5 },
     },
     contacts: ['soleL', 'soleR', 'palmL', 'palmR'],
@@ -30,7 +30,7 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-03-hand-behind-head', name: 'Hand behind head', sheet: 'core', ref: `${REF} 03`, tags: ['idle', 'relaxed', 'stretch'], support: 'feet',
     angles: {
       back: { side: 3 }, neck: { side: -7, flex: -3 },
-      armL: { reach: { at: 'head', off: [0.02, 0.07, -0.11], elbow: [1, 0.9, 0.1] }, pronate: 20 },
+      armL: { reach: { at: 'head', off: [0.0, 0.08, -0.1], hand: [-1, 0.3, 0], palm: [0, 0, 1], elbow: [1, 0.7, 0] } },
       armR: { raise: 14, toward: 0, elbow: 18 },
       legL: { flex: 14, abduct: -6, twist: 12, knee: 32, ankle: -30 }, legR: { abduct: 2, twist: -4 },
     },
@@ -39,13 +39,13 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
   {
     id: 'core-04-arms-crossed', name: 'Arms crossed', sheet: 'core', ref: `${REF} 04`, tags: ['idle', 'defensive', 'thinking'], support: 'feet',
     angles: {
-      armL: { reach: { at: 'shoulderOther', off: [-0.02, -0.21, 0.17], elbow: [1, -1, 0.1] }, pronate: 20 },
-      armR: { reach: { at: 'shoulderOther', off: [-0.02, -0.26, 0.11], elbow: [1, -1, 0.1] }, pronate: 20 },
+      armL: { reach: { at: 'shoulderOther', off: [0.0, -0.21, 0.16], hand: [-1, 0, 0], palm: [0, 0, -1], elbow: [1, -1, 0.2] } },
+      armR: { reach: { at: 'shoulderOther', off: [0.0, -0.28, 0.1], hand: [-1, 0, 0], palm: [0, 0, -1], elbow: [1, -1, 0.2] } },
       legL: { abduct: 2, twist: -5 }, legR: { abduct: 2, twist: -5 },
     },
     bump: {
-      armL: { reach: { at: 'shoulderOther', off: [-0.02, -0.17, 0.27], elbow: [1, -1, 0.1] }, pronate: 20 },
-      armR: { reach: { at: 'shoulderOther', off: [-0.02, -0.22, 0.22], elbow: [1, -1, 0.1] }, pronate: 20 },
+      armL: { reach: { at: 'shoulderOther', off: [0.0, -0.17, 0.26], hand: [-1, 0, 0], palm: [0, 0, -1], elbow: [1, -1, 0.2] } },
+      armR: { reach: { at: 'shoulderOther', off: [0.0, -0.23, 0.21], hand: [-1, 0, 0], palm: [0, 0, -1], elbow: [1, -1, 0.2] } },
     },
     contacts: ['soleL', 'soleR'],
   },
@@ -53,8 +53,8 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-05-thinking', name: 'Thinking (hand on chin)', sheet: 'core', ref: `${REF} 05`, tags: ['idle', 'thinking', 'talk'], support: 'feet',
     angles: {
       neck: { side: 5, flex: 3 },
-      armR: { reach: { at: 'head', off: [0.02, -0.15, 0.1], elbow: [0.2, -1, 0.15] }, pronate: -40, wristFlex: -10 },
-      armL: { reach: { at: 'elbowOther', off: [0.02, -0.05, 0.03], elbow: [1, -0.7, -0.2] }, pronate: 30 },
+      armR: { reach: { at: 'head', off: [0.0, -0.13, 0.09], hand: [0, 1, 0.3], palm: [-0.4, 0, -1], elbow: [0.2, -1, 0.15] } },
+      armL: { reach: { at: 'elbowOther', off: [0.03, -0.04, 0.02], hand: [-1, 0, 0.1], palm: [0, 1, 0], elbow: [1, -0.7, -0.2] } },
       legL: { abduct: 2, twist: -5 }, legR: { flex: 6, knee: 10, abduct: 0, twist: 4 },
     },
     contacts: ['soleL', 'soleR'],
@@ -63,8 +63,8 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-06-phone-at-ear', name: 'Phone (at ear)', sheet: 'core', ref: `${REF} 06`, tags: ['phone', 'talk'], support: 'feet',
     angles: {
       neck: { side: -6 },
-      armR: { reach: { at: 'head', off: [0.09, -0.09, 0.02], elbow: [0.5, -1, 0.35] }, pronate: -20 },
-      armL: { raise: 8, toward: 5, elbow: 12 },
+      armR: { reach: { at: 'head', off: [0.095, 0.0, 0.03], hand: [0, 1, 0.2], palm: [-1, 0, 0], elbow: [0.4, -1, 0.4] } },
+      armL: { raise: 15, toward: -12, elbow: 14 },
       legL: { abduct: 2, twist: -5 }, legR: { abduct: 2, twist: -5 },
     },
     contacts: ['soleL', 'soleR'], props: [{ kind: 'phone', hand: 'R' }],
@@ -73,13 +73,13 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-07-texting', name: 'Texting (both hands)', sheet: 'core', ref: `${REF} 07`, tags: ['phone', 'ui'], support: 'feet',
     angles: {
       back: { flex: 4 }, neck: { flex: 28 },
-      armL: { reach: { at: 'chest', off: [0.05, -0.1, 0.3], elbow: [0.3, -1, -0.3] }, pronate: -50, wristFlex: -10 },
-      armR: { reach: { at: 'chest', off: [0.05, -0.1, 0.3], elbow: [0.3, -1, -0.3] }, pronate: -50, wristFlex: -10 },
+      armL: { reach: { at: 'chest', off: [0.04, -0.1, 0.3], hand: [-0.3, 0.3, 1], palm: [-0.5, 1, 0], elbow: [0.3, -1, -0.3] } },
+      armR: { reach: { at: 'chest', off: [0.04, -0.1, 0.3], hand: [-0.3, 0.3, 1], palm: [-0.5, 1, 0], elbow: [0.3, -1, -0.3] } },
       legL: { abduct: 2, twist: -5 }, legR: { abduct: 2, twist: -5 },
     },
     bump: {
-      armL: { reach: { at: 'chest', off: [0.05, -0.06, 0.36], elbow: [0.3, -1, -0.3] }, pronate: -50, wristFlex: -10 },
-      armR: { reach: { at: 'chest', off: [0.05, -0.06, 0.36], elbow: [0.3, -1, -0.3] }, pronate: -50, wristFlex: -10 },
+      armL: { reach: { at: 'chest', off: [0.04, -0.06, 0.36], hand: [-0.3, 0.3, 1], palm: [-0.5, 1, 0], elbow: [0.3, -1, -0.3] } },
+      armR: { reach: { at: 'chest', off: [0.04, -0.06, 0.36], hand: [-0.3, 0.3, 1], palm: [-0.5, 1, 0], elbow: [0.3, -1, -0.3] } },
     },
     contacts: ['soleL', 'soleR'], props: [{ kind: 'phone', hand: 'R' }],
   },
@@ -87,9 +87,13 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-08-tablet-held', name: 'Tablet (held)', sheet: 'core', ref: `${REF} 08`, tags: ['tablet', 'work'], support: 'feet',
     angles: {
       neck: { side: 4 },
-      armL: { raise: 18, toward: 45, elbow: 95, pronate: -30 },
-      armR: { reach: { at: 'hipOther', off: [0.08, 0.16, 0.16], elbow: [1, -0.8, -0.2] }, pronate: 20 },
+      armL: { reach: { at: 'hip', off: [0.07, 0.1, 0.1], hand: [0, 0.3, 1], palm: [-1, 0, 0], elbow: [1, -1, -0.3] } },
+      armR: { reach: { at: 'hipOther', off: [0.07, 0.15, 0.16], hand: [-1, 0, 0.2], palm: [0, 0, -1], elbow: [1, -0.8, -0.2] } },
       legL: { abduct: 2, twist: -5 }, legR: { abduct: 2, twist: -5 },
+    },
+    bump: {
+      armL: { reach: { at: 'hip', off: [0.1, 0.1, 0.16], hand: [0, 0.3, 1], palm: [-1, 0, 0], elbow: [1, -1, -0.3] } },
+      armR: { reach: { at: 'hipOther', off: [0.07, 0.2, 0.34], hand: [-1, 0, 0.2], palm: [0, 0, -1], elbow: [1, -0.8, -0.2] } },
     },
     contacts: ['soleL', 'soleR'], props: [{ kind: 'tablet', hand: 'L' }],
   },
@@ -97,8 +101,8 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-09-stool-legs-crossed', name: 'Sitting (legs crossed, stool)', sheet: 'core', ref: `${REF} 09`, tags: ['sit', 'talk'], support: 'seat', seat: 0.66,
     angles: {
       back: { flex: 6 },
-      armR: { reach: { at: 'knee', off: [-0.02, 0.07, 0.02], elbow: [1, -1, -0.2] }, pronate: 70 },
-      armL: { reach: { at: 'kneeOther', off: [0.05, 0.07, 0.0], elbow: [1, -1, -0.2] }, pronate: 70 },
+      armR: { reach: { at: 'knee', off: [0.0, 0.07, -0.02], hand: [-0.3, -0.3, 1], palm: [0, -1, 0], elbow: [1, -1, -0.2] } },
+      armL: { reach: { at: 'kneeOther', off: [0.03, 0.1, -0.05], hand: [-1, -0.2, 0.5], palm: [0, -1, 0], elbow: [1, -1, -0.2] } },
       legR: { flex: 95, abduct: -16, twist: 6, knee: 95, ankle: -25 },
       legL: { flex: 80, abduct: 6, twist: -6, knee: 60, ankle: -5 },
     },
@@ -109,8 +113,8 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-10-cross-legged', name: 'Sitting (cross-legged)', sheet: 'core', ref: `${REF} 10`, tags: ['sit', 'floor', 'rest'], support: 'floor',
     angles: {
       back: { flex: 6 }, neck: { flex: 4 },
-      armL: { reach: { at: 'pelvis', off: [0.07, -0.04, 0.24], elbow: [1, -0.8, -0.3] }, pronate: 60 },
-      armR: { reach: { at: 'pelvis', off: [0.07, -0.04, 0.24], elbow: [1, -0.8, -0.3] }, pronate: 60 },
+      armL: { reach: { at: 'knee', off: [-0.02, 0.07, 0.0], hand: [0.3, -0.3, 1], palm: [0, -1, 0], elbow: [1, -0.8, -0.3] } },
+      armR: { reach: { at: 'knee', off: [-0.02, 0.07, 0.0], hand: [0.3, -0.3, 1], palm: [0, -1, 0], elbow: [1, -0.8, -0.3] } },
       legL: { flex: 72, abduct: 40, twist: -45, knee: 135, ankle: -10 }, legR: { flex: 72, abduct: 40, twist: -45, knee: 135, ankle: -10 },
     },
     bump: { legL: { abduct: 46 }, legR: { abduct: 46 } },
@@ -120,11 +124,15 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-11-kneeling-on-heels', name: 'Kneeling (sitting on heels)', sheet: 'core', ref: `${REF} 11`, tags: ['kneel', 'floor', 'pregnancy'], support: 'floor',
     angles: {
       back: { flex: 2 },
-      armL: { reach: { at: 'hip', off: [0.0, 0.03, 0.24], elbow: [0.3, -1, -0.4] }, pronate: 70 },
-      armR: { reach: { at: 'hip', off: [0.0, 0.03, 0.24], elbow: [0.3, -1, -0.4] }, pronate: 70 },
-      legL: { flex: 92, abduct: 3, knee: 155, ankle: -45 }, legR: { flex: 92, abduct: 3, knee: 155, ankle: -45 },
+      armL: { reach: { at: 'hip', off: [0.0, 0.08, 0.22], hand: [0, -0.2, 1], palm: [0, -1, 0], elbow: [0.4, -1, -0.4] } },
+      armR: { reach: { at: 'hip', off: [0.0, 0.08, 0.22], hand: [0, -0.2, 1], palm: [0, -1, 0], elbow: [0.4, -1, -0.4] } },
+      legL: { flex: 92, abduct: 3, knee: 142, ankle: -45 }, legR: { flex: 92, abduct: 3, knee: 142, ankle: -45 },
     },
-    bump: { legL: { abduct: 20, twist: -10 }, legR: { abduct: 20, twist: -10 } },
+    bump: {
+      armL: { reach: { at: 'hip', off: [0.06, 0.08, 0.3], hand: [0, -0.2, 1], palm: [0, -1, 0], elbow: [0.6, -1, -0.4] } },
+      armR: { reach: { at: 'hip', off: [0.06, 0.08, 0.3], hand: [0, -0.2, 1], palm: [0, -1, 0], elbow: [0.6, -1, -0.4] } },
+      legL: { abduct: 20, twist: -10 }, legR: { abduct: 20, twist: -10 },
+    },
     contacts: ['kneeL', 'kneeR', 'toesL', 'toesR'],
   },
   {
@@ -163,8 +171,8 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     id: 'core-15-lunge', name: 'Lunge (forward)', sheet: 'core', ref: `${REF} 15`, tags: ['exercise', 'kneel', 'ready'], support: 'floor',
     angles: {
       back: { flex: 10 },
-      armL: { reach: { at: 'knee', off: [0.0, 0.08, 0.02], elbow: [1, -1, -0.2] }, pronate: 70 },
-      armR: { reach: { at: 'kneeOther', off: [0.04, 0.08, -0.02], elbow: [1, -1, -0.2] }, pronate: 70 },
+      armL: { reach: { at: 'knee', off: [0.0, 0.07, -0.01], hand: [0.2, -0.3, 1], palm: [0, -1, 0], elbow: [1, -1, -0.2] } },
+      armR: { reach: { at: 'kneeOther', off: [0.03, 0.1, -0.05], hand: [-1, -0.2, 0.6], palm: [0, -1, 0], elbow: [1, -1, -0.2] } },
       legL: { flex: 85, abduct: 6, knee: 92, ankle: 2 }, legR: { flex: -18, abduct: 4, knee: 100, ankle: -45 },
     },
     contacts: ['soleL', 'kneeR', 'toesR'],

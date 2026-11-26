@@ -8,7 +8,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { bodyFrame, mirrorAngles, mixAngles, poseAngles, poseChain, type BodyAngles } from '../src/actor/bodyAngles';
+import { bodyFrame, mirrorAngles, mixAngles, poseAngles, poseChain, qRotate, resolveReach, type BodyAngles } from '../src/actor/bodyAngles';
 import type { BindJoint, HumanMeasure } from '../src/actor/humanRig';
 import { measureHuman } from '../src/actor/humanSkeleton';
 import { JointLimits } from '../src/actor/jointLimits';
@@ -98,6 +98,34 @@ for (const name of Object.keys(FILES)) {
       const headAim = want(pos[j.head], acc[j.head], right, [0.02, -0.05, 0.12]);
       expect(Math.hypot(...sub(pos[j.wristL], hipAim))).toBeLessThan(0.002);
       expect(Math.hypot(...sub(pos[j.wristR], headAim))).toBeLessThan(0.002);
+    });
+
+    it('turns a reaching hand the way it was given: its fingers and its palm', () => {
+      const { bind, measure } = bodies[name], F = bodyFrame(measure, bind), j = measure.joints;
+      const pose: BodyAngles = { armL: { reach: { at: 'hip', off: [0.1, 0.12, 0.02], hand: [0, -0.3, 1], palm: [-1, 0, 0], elbow: [1, 0, -0.3] } } };
+      const { acc } = poseChain(bind, poseAngles(measure, bind, pose));
+      const A = F.arm.L, along = qRotate(acc[A.wrist], A.along), palm = qRotate(acc[A.wrist], A.palm);
+      const want = (v: V): V => [F.left[0] * v[0] + F.up[0] * v[1] + F.fwd[0] * v[2], F.left[1] * v[0] + F.up[1] * v[1] + F.fwd[1] * v[2], F.left[2] * v[0] + F.up[2] * v[1] + F.fwd[2] * v[2]];
+      expect(angle(along, want([0, -0.3, 1]))).toBeLessThan(1);
+      // (the palm square to the fingers: -out less its part along them)
+      expect(angle(palm, want([-1, 0, 0]))).toBeLessThan(2);
+      void j;
+    });
+
+    it('works a pose`s reaches out into plain angles that pose her the same', () => {
+      const { bind, measure } = bodies[name], F = bodyFrame(measure, bind), j = measure.joints;
+      const pose: BodyAngles = {
+        back: { flex: 12 },
+        armL: { reach: { at: 'hip', off: [0.1, 0.12, 0.02], hand: [0, -0.3, 1], palm: [-1, 0, 0], elbow: [1, 0, -0.3] } },
+        armR: { reach: { at: 'head', off: [0.03, -0.12, 0.1], elbow: [0.2, -1, 0.1] }, pronate: 20 },
+      };
+      const a = poseChain(bind, poseAngles(measure, bind, pose)), plain = resolveReach(measure, bind, pose);
+      expect(plain.armL?.reach).toBeUndefined();
+      const b = poseChain(bind, poseAngles(measure, bind, plain));
+      for (const w of [j.wristL, j.wristR, j.elbowL, j.elbowR]) expect(Math.hypot(...sub(a.pos[w], b.pos[w]))).toBeLessThan(0.002);
+      const A = F.arm.L;
+      expect(angle(qRotate(a.acc[A.wrist], A.along), qRotate(b.acc[A.wrist], A.along))).toBeLessThan(3);
+      expect(angle(qRotate(a.acc[A.wrist], A.palm), qRotate(b.acc[A.wrist], A.palm))).toBeLessThan(3);
     });
 
     it('a pose mirrored is the same pose on her other side', () => {

@@ -47,14 +47,18 @@ export interface ArmAngles {
  * Where a wrist goes, on her own body, so a hand that rests on her stays on her whatever her build: a joint of hers
  * (`ReachAt`; `own` and `other` side are the reaching arm's) and an offset from it in METRES, `[out, up, fwd]` -- out
  * toward the reaching arm's own side, up her body, forward her front -- in the frame of the part that joint belongs to
- * as she is posed (her pelvis for a hip, her chest for a shoulder or her neck, her head for her head, a thigh for a
- * knee). `elbow` says which way the elbow points, `[out, up, fwd]` in her chest's frame (default out, down and back).
+ * as she is posed (her pelvis for a hip or a knee, her chest for a shoulder or her neck, her head for her
+ * head). `elbow` says which way the elbow points, `[out, up, fwd]` in her chest's frame (default out, down and back).
  * Out of reach, the arm reaches as far as it can toward it.
  */
 export interface Reach {
   readonly at: ReachAt;
   readonly off?: readonly [number, number, number];
   readonly elbow?: readonly [number, number, number];
+  /** the way her fingers point, `[out, up, fwd]` in the same frame as `off`: then `off` is where the PALM'S MIDDLE goes,
+   * and the hand is turned so (half its roll taken by the forearm), with its palm facing `palm` (default: as near as it was) */
+  readonly hand?: readonly [number, number, number];
+  readonly palm?: readonly [number, number, number];
 }
 export type ReachAt = 'pelvis' | 'hip' | 'hipOther' | 'chest' | 'shoulder' | 'shoulderOther' | 'elbowOther' | 'neck' | 'head' | 'knee' | 'kneeOther';
 /** Her measure's units a metre, for a `Reach`'s offsets (1: the bind is in metres). */
@@ -136,6 +140,9 @@ interface ArmRig {
   readonly out: V; readonly ub: V; readonly fb: V; readonly hinge: V; readonly kink: number;
   readonly extSign: number; readonly pronSign: number;
   readonly flexAxis: V; readonly radialAxis: V;
+  /** the hand in the bind: the way its fingers go (wrist to the middle of the fingers' second joints), its palm's facing,
+   * and how far along it from the wrist its palm's middle is (bind units) */
+  readonly along: V; readonly palm: V; readonly palmAt: number;
 }
 /** A body's frame and arms, read once from its bind. */
 export interface BodyFrame {
@@ -194,7 +201,10 @@ export function bodyFrame(measure: HumanMeasure, bind: readonly BindJoint[]): Bo
     const extSign = dot(cross(scale(up, -1), fwd), out) > 0 ? 1 : -1;
     // the hand: its way (wrist to knuckles), its palm (toward her middle in the bind, arms down), its thumb's way
     const h = handOf(bind, wrist);
-    const along = h ? unit(sub(P(h.hand), P(wrist))) : fb;
+    const knuckles = h ? scale(add(add(h.index, h.little), h.thumb), 1 / 3) : null;
+    const reachOf = h ? Math.hypot(...sub(scale(add(h.index, h.little), 0.5), P(wrist))) : 0;
+    const along = h ? unit(sub(scale(add(h.index, h.little), 0.5), P(wrist))) : fb;
+    void knuckles;
     let palm: V = h ? unit(cross(along, sub(h.index, h.little))) : scale(out, -1);
     if (dot(palm, out) > 0) palm = scale(palm, -1);
     const thumbWay = h ? square(sub(h.index, h.little), along) : fwd;
@@ -204,6 +214,7 @@ export function bodyFrame(measure: HumanMeasure, bind: readonly BindJoint[]): Bo
     return {
       clav: bind[shoulder].parent, shoulder, elbow, wrist, out, ub, fb, hinge, kink, extSign, pronSign,
       flexAxis: unit(cross(along, palm)), radialAxis: unit(cross(along, thumbWay)),
+      along, palm: square(palm, along), palmAt: reachOf * 0.6,
     };
   };
   // an ankle's rotation about its foot (pointing forward) turns the sole (down) toward cross(fwd, -up)
@@ -280,15 +291,17 @@ function solveReach(measure: HumanMeasure, bind: readonly BindJoint[], F: BodyFr
       case 'elbowOther': return { p: pos[own('elbow', other)], q: acc[j.chest] };
       case 'neck': return { p: pos[j.neck], q: acc[j.chest] };
       case 'head': return { p: pos[j.head], q: acc[j.head] };
-      case 'knee': return { p: pos[own('knee', side)], q: acc[own('hip', side)] };
-      case 'kneeOther': return { p: pos[own('knee', other)], q: acc[own('hip', other)] };
+      case 'knee': return { p: pos[own('knee', side)], q: acc[j.pelvis] };
+      case 'kneeOther': return { p: pos[own('knee', other)], q: acc[j.pelvis] };
     }
   })();
   const way = (v: readonly [number, number, number] | undefined, q: Q): V => {
     const [o, u, f] = v ?? [0, 0, 0];
     return qRotate(q, add(add(scale(A.out, o), scale(F.up, u)), scale(F.fwd, f)));
   };
-  const target = add(at.p, scale(way(reach.off, at.q), upm));
+  // (with the hand's way given, `off` is the palm's middle: the wrist is its own way short of it)
+  const palmMid = add(at.p, scale(way(reach.off, at.q), upm));
+  const target = reach.hand ? sub(palmMid, scale(unit(way(reach.hand, at.q)), A.palmAt)) : palmMid;
   const cp = acc[bind[A.clav].parent] ?? [0, 0, 0, 1];
   const S = pos[A.shoulder];
   const a = Math.hypot(bind[A.elbow].x - bind[A.shoulder].x, bind[A.elbow].y - bind[A.shoulder].y, bind[A.elbow].z - bind[A.shoulder].z);
@@ -316,6 +329,101 @@ function solveReach(measure: HumanMeasure, bind: readonly BindJoint[], F: BodyFr
   const psi = Math.atan2(dot(cross(pf, pe), uL), dot(pf, pe));
   const R = 180 / Math.PI;
   return { raise: raise * R, toward: toward * R, twist: (psi * R) / A.extSign, elbow: elbow * R };
+}
+
+/** The rotation taking the frame (a1, a2) onto (b1, b2): each pair's first exactly, its second as near as square to it. */
+export function qFromFrames(a1: V, a2: V, b1: V, b2: V): Q {
+  const e1 = unit(a1), e2 = square(a2, e1), e3 = cross(e1, e2), f1 = unit(b1), f2 = square(b2, f1), f3 = cross(f1, f2);
+  // R = F E^T, as a matrix, then a quaternion
+  const m = (r: number, c: number) => f1[r] * e1[c] + f2[r] * e2[c] + f3[r] * e3[c];
+  const tr = m(0, 0) + m(1, 1) + m(2, 2);
+  let q: Q;
+  if (tr > 0) { const k = 0.5 / Math.sqrt(tr + 1); q = [(m(2, 1) - m(1, 2)) * k, (m(0, 2) - m(2, 0)) * k, (m(1, 0) - m(0, 1)) * k, 0.25 / k]; }
+  else if (m(0, 0) > m(1, 1) && m(0, 0) > m(2, 2)) { const k = 2 * Math.sqrt(1 + m(0, 0) - m(1, 1) - m(2, 2)); q = [0.25 * k, (m(0, 1) + m(1, 0)) / k, (m(0, 2) + m(2, 0)) / k, (m(2, 1) - m(1, 2)) / k]; }
+  else if (m(1, 1) > m(2, 2)) { const k = 2 * Math.sqrt(1 + m(1, 1) - m(0, 0) - m(2, 2)); q = [(m(0, 1) + m(1, 0)) / k, 0.25 * k, (m(1, 2) + m(2, 1)) / k, (m(0, 2) - m(2, 0)) / k]; }
+  else { const k = 2 * Math.sqrt(1 + m(2, 2) - m(0, 0) - m(1, 1)); q = [(m(0, 2) + m(2, 0)) / k, (m(1, 2) + m(2, 1)) / k, 0.25 * k, (m(1, 0) - m(0, 1)) / k]; }
+  const l = Math.hypot(q[0], q[1], q[2], q[3]);
+  return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+}
+/** How far `q` turns about unit `axis` (its twist, radians). */
+const twistAbout = (q: Q, axis: V) => { let t = 2 * Math.atan2(q[0] * axis[0] + q[1] * axis[1] + q[2] * axis[2], q[3]); if (t > Math.PI) t -= 2 * Math.PI; if (t < -Math.PI) t += 2 * Math.PI; return t; };
+
+/** A reaching hand turned the way its `reach.hand` and `reach.palm` say: the wrist's turn, half the roll in the forearm. */
+function orientHand(measure: HumanMeasure, bind: readonly BindJoint[], F: BodyFrame, side: 'L' | 'R', reach: Reach, out: MutableJointTurn[], k0: number): void {
+  const A = F.arm[side], j = measure.joints;
+  const { acc } = poseChain(bind, out);
+  // the frame the reach is written in (as `solveReach` reads it)
+  const frameOf: Record<ReachAt, number> = {
+    pelvis: j.pelvis, hip: j.pelvis, hipOther: j.pelvis, chest: j.chest, shoulder: j.chest, shoulderOther: j.chest, elbowOther: j.chest, neck: j.chest, head: j.head,
+    knee: j.pelvis, kneeOther: j.pelvis,
+  };
+  const fq = acc[frameOf[reach.at]];
+  const way = (v: readonly [number, number, number]): V => qRotate(fq, add(add(scale(A.out, v[0]), scale(F.up, v[1])), scale(F.fwd, v[2])));
+  const parent = bind[A.wrist].parent, Ap = acc[parent];
+  const handW = unit(way(reach.hand!));
+  // the palm: as given, or as it faces now
+  const palmNow = qRotate(acc[A.wrist], A.palm), palmW = reach.palm ? way(reach.palm) : palmNow;
+  const Q = qFromFrames(A.along, A.palm, handW, palmW);
+  let wrist = qMul(qConj(Ap), Q);
+  // half its roll about the forearm into the elbow (the forearm turns with the hand)
+  const roll = twistAbout(wrist, A.fb) * FOREARM_SHARE;
+  const t = out[k0 + 2], elbowNow = qAxis([t.ax, t.ay, t.az], t.radians);
+  writeTurn(out[k0 + 2], A.elbow, qMul(elbowNow, qAxis(A.fb, roll)));
+  wrist = qMul(qAxis(A.fb, -roll), wrist);
+  writeTurn(out[k0 + 3], A.wrist, wrist);
+}
+
+/**
+ * A pose's reaches worked out into plain angles, for this body: each reaching arm's `raise`, `toward`, `twist` and
+ * `elbow` as `poseAngles` solves them, and -- when its hand is turned -- its `pronate`, `wristFlex` and `wristSide` that
+ * turn it so (as near as three angles can). For the pose builder: what a finger then moves is a number.
+ */
+export function resolveReach(measure: HumanMeasure, bind: readonly BindJoint[], angles: BodyAngles, options: AngleOptions = {}): BodyAngles {
+  if (!angles.armL?.reach && !angles.armR?.reach) return angles;
+  const F = bodyFrame(measure, bind), turns = poseAngles(measure, bind, angles, [], options);
+  const { acc } = poseChain(bind, turns), R = 180 / Math.PI;
+  const solve = (s: 'L' | 'R'): ArmAngles | undefined => {
+    const given = s === 'L' ? angles.armL : angles.armR;
+    if (!given?.reach) return given;
+    const A = F.arm[s], cp = acc[bind[A.clav].parent] ?? [0, 0, 0, 1];
+    // the upper arm's way from her collarbone's frame, as `solveReach` measures it
+    const u = qRotate(qConj(cp), unit(sub(qRotate(acc[A.shoulder], A.ub), [0, 0, 0])));
+    const down = scale(F.up, -1);
+    const raise = Math.acos(Math.max(-1, Math.min(1, dot(u, down)))), toward = Math.atan2(dot(u, F.fwd), dot(u, A.out));
+    // its twist and elbow: the rest of the shoulder's turn about the arm, and the elbow's bend
+    const h = add(scale(A.out, Math.cos(toward)), scale(F.fwd, Math.sin(toward)));
+    const sw0 = qMul(qAxis(cross(down, h), raise), qArc(A.ub, down));
+    const shoulderLocal = qMul(qConj(cp), acc[A.shoulder]);
+    const twist = twistAbout(qMul(shoulderLocal, qConj(sw0)), u) / A.extSign;
+    const fore = qRotate(qConj(acc[A.shoulder]), qRotate(acc[A.elbow], A.fb));
+    const elbow = A.kink + Math.atan2(dot(cross(A.fb, fore), A.hinge), dot(A.fb, fore));
+    const arm: ArmAngles = { ...given, raise: raise * R, toward: toward * R, twist: twist * R, elbow: elbow * R };
+    delete (arm as { reach?: Reach }).reach;
+    if (!given.reach.hand) return arm;
+    // the hand: the three angles that come nearest the turn it was given (a few steps of Gauss-Newton on the hand's frame)
+    const want = qMul(qConj(acc[A.shoulder]), acc[A.wrist]);
+    const err = (p: number, f: number, sd: number): number[] => {
+      const t = armTurns(F, A, { ...arm, pronate: p, wristFlex: f, wristSide: sd });
+      const got = qMul(t.elbow, t.wrist), a1 = qRotate(got, A.along), a2 = qRotate(got, A.palm), b1 = qRotate(want, A.along), b2 = qRotate(want, A.palm);
+      return [...sub(a1, b1), ...sub(a2, b2)];
+    };
+    let x = [0, 0, 0];
+    for (let it = 0; it < 12; it += 1) {
+      const e0 = err(x[0], x[1], x[2]), J: number[][] = [];
+      for (let c = 0; c < 3; c += 1) { const d = [...x]; d[c] += 0.5; const e1 = err(d[0], d[1], d[2]); J.push(e1.map((v, i) => (v - e0[i]) / 0.5)); }
+      // normal equations (3 x 3)
+      const N = [0, 1, 2].map((r) => [0, 1, 2].map((c) => J[r].reduce((acc2, v, i) => acc2 + v * J[c][i], 0) + (r === c ? 1e-6 : 0)));
+      const g = [0, 1, 2].map((r) => -J[r].reduce((acc2, v, i) => acc2 + v * e0[i], 0));
+      const det = (M: number[][]) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+      const D = det(N); if (Math.abs(D) < 1e-12) break;
+      const col = (c: number) => N.map((row, r) => row.map((v, cc) => (cc === c ? g[r] : v)));
+      const step = [0, 1, 2].map((c) => det(col(c)) / D);
+      x = x.map((v, c) => Math.max(-180, Math.min(180, v + step[c])));
+      if (Math.hypot(...step) < 1e-3) break;
+    }
+    return { ...arm, pronate: x[0], wristFlex: x[1], wristSide: x[2] };
+  };
+  return { ...angles, armL: solve('L'), armR: solve('R') };
 }
 
 /**
@@ -360,6 +468,7 @@ export function poseAngles(measure: HumanMeasure, bind: readonly BindJoint[], an
     let a: ArmAngles = { ...given, ...solveReach(measure, bind, F, s, given.reach, out, upm) };
     if (a.raise! > SHRUG.from) { writeTurn(out[slot(s)], F.arm[s].clav, armTurns(F, F.arm[s], a).clav); a = { ...given, ...solveReach(measure, bind, F, s, given.reach, out, upm) }; }
     write(s, a);
+    if (given.reach.hand) orientHand(measure, bind, F, s, given.reach, out, slot(s));
   }
   if (out.length !== BODY_ANGLE_TURNS) out.length = BODY_ANGLE_TURNS;
   return out;
