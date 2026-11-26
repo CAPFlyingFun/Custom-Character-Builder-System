@@ -16,6 +16,7 @@
  * The report's lines: `lowest` (metres, the floor is 0), `through` (each pair of parts with points through the other:
  * how many, the deepest in mm), `contacts` (each named contact's height over what holds her, mm).
  */
+import { readFileSync } from 'node:fs';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
@@ -23,7 +24,7 @@ import { beside, draw, savePng, stacked } from './raster.mjs';
 import { measureHuman } from '../../src/actor/humanSkeleton';
 import type { BindJoint } from '../../src/actor/humanRig';
 import { poseChain, qRotate } from '../../src/actor/bodyAngles';
-import { CHECK_PAIRS, PART, PART_NAMES, partsOf, posePose, type PoseSpec } from '../../src/actor/poseLibrary';
+import { CHECK_PARTS, PART, PART_NAMES, partsOf, posePose, type PoseSpec } from '../../src/actor/poseLibrary';
 import { throughEachOther } from '../../src/actor/selfContact';
 import { bellyWeights } from '../../src/sarahlab/sarahLabTool';
 import { maleBellyField, vertexNormals } from '../../src/sarahlab/maleBelly';
@@ -147,9 +148,30 @@ export function posed(body: Body, spec: PoseSpec, bumpPct: number) {
   return { points: out, part, root: p.root, support: p.support, seat: p.seat, lowest: low + lift, hips: placedJoint(j.pelvis), placedJoint, walls };
 }
 
+/** Her named contact points (`data/contacts/female-v2.json`: a triangle of her skin and a place in it), female only. */
+const CONTACTS = JSON.parse(readFileSync('src/data/contacts/female-v2.json', 'utf8')) as { points: { site: string; side: string; tri: number; bary: number[] }[] };
+/** A pose's contact names to the sites they are on her (the lowest of them). */
+const SITES: Record<string, string[]> = { sole: ['heel', 'ball'], heel: ['heel'], toes: ['toes'], ball: ['ball'], knee: ['knee'], palm: ['palm', 'palmHeel'], forearm: ['elbow'], elbow: ['elbow'] };
+export function contactHeights(body: Body, x: ReturnType<typeof posed>, spec: PoseSpec): string {
+  if (body.which !== 'female') return '';
+  const floor = x.support === 'seat' ? 0 : 0, out: string[] = [];
+  for (const c of spec.contacts) {
+    const m = /^([a-z]+)([LR])$/.exec(c); if (!m || !SITES[m[1]]) continue;
+    let low = Infinity;
+    for (const p of CONTACTS.points) {
+      if (p.side !== m[2] || !SITES[m[1]].includes(p.site)) continue;
+      const t = p.tri * 3, i = [body.index[t], body.index[t + 1], body.index[t + 2]];
+      const y = p.bary[0] * x.points[i[0] * 3 + 1] + p.bary[1] * x.points[i[1] * 3 + 1] + p.bary[2] * x.points[i[2] * 3 + 1];
+      low = Math.min(low, y);
+    }
+    if (Number.isFinite(low)) out.push(`${c} ${((low - floor) * 1000).toFixed(0)}`);
+  }
+  return out.join(', ');
+}
+
 export function report(body: Body, spec: PoseSpec, bumpPct: number) {
   const x = posed(body, spec, bumpPct);
-  const through = throughEachOther(x.points, body.index, x.part, CHECK_PAIRS).filter((t) => t.count > 0);
+  const through = throughEachOther(x.points, body.index, x.part, CHECK_PARTS, { every: flag('quick') ? 4 : 1 }).filter((t) => t.count > 0);
   let floorUnder = 0; for (let i = 0; i < body.n; i++) if (x.points[i * 3 + 1] < -0.001) floorUnder++;
   return { x, through, floorUnder };
 }
@@ -173,6 +195,52 @@ function views(body: Body, x: ReturnType<typeof posed>, size: number, label: str
   return beside(pics);
 }
 
+/**
+ * FITTING A FLOOR POSE TO THE FLOOR (`--fit body.pitch=60:95,legs.flex=60:100`): the named numbers moved, each in its
+ * range, until the pose's named contacts are as near the floor as they can be (the sum of their heights' squares): a
+ * search a number at a time, its steps halved. `legs.` and `arms.` move both sides together. Prints what it found; the
+ * pose's file is the author's to change. Female only (her contacts are measured on her).
+ */
+export function fitPose(body: Body, spec: PoseSpec, bumpPct: number, params: { path: string; lo: number; hi: number }[]): { values: Record<string, number>; cost: number; touch: string } {
+  const get = (sp: PoseSpec, path: string): number => {
+    const [head, key] = path.split('.');
+    if (head === 'body') return (sp.body as Record<string, number> | undefined)?.[key] ?? 0;
+    const part = head === 'legs' ? 'legL' : head === 'arms' ? 'armL' : head;
+    return ((sp.angles as Record<string, Record<string, number> | undefined>)[part]?.[key]) ?? 0;
+  };
+  const set = (sp: PoseSpec, path: string, v: number): PoseSpec => {
+    const [head, key] = path.split('.');
+    if (head === 'body') return { ...sp, body: { ...sp.body, [key]: v } };
+    const parts = head === 'legs' ? ['legL', 'legR'] : head === 'arms' ? ['armL', 'armR'] : [head];
+    const angles = { ...sp.angles } as Record<string, unknown>;
+    for (const part of parts) angles[part] = { ...(angles[part] as object | undefined), [key]: v };
+    return { ...sp, angles: angles as PoseSpec['angles'] };
+  };
+  const cost = (sp: PoseSpec): number => {
+    const x = posed(body, sp, bumpPct), t = contactHeights(body, x, sp);
+    return t.split(', ').filter(Boolean).reduce((c, e) => { const mm = Number(e.split(' ')[1]); return c + (mm / 1000) ** 2; }, 0);
+  };
+  // (a number given one value, lo = hi, is set to it and not searched)
+  for (const p of params) if (p.lo === p.hi) spec = set(spec, p.path, p.lo);
+  let best = spec, bestCost = cost(spec);
+  const steps = params.map((p) => (p.hi - p.lo) / 4);
+  for (let round = 0; round < 8; round += 1) {
+    for (let k = 0; k < params.length; k += 1) {
+      if (params[k].lo === params[k].hi) continue;
+      for (const dir of [1, -1]) {
+        for (;;) {
+          const v = Math.min(params[k].hi, Math.max(params[k].lo, get(best, params[k].path) + dir * steps[k]));
+          const next = set(best, params[k].path, v), c = cost(next);
+          if (c < bestCost - 1e-9) { best = next; bestCost = c; } else break;
+        }
+      }
+      steps[k] /= 2;
+    }
+  }
+  const values = Object.fromEntries(params.map((p) => [p.path, +get(best, p.path).toFixed(1)]));
+  return { values, cost: bestCost, touch: contactHeights(body, posed(body, best, bumpPct), best) };
+}
+
 async function main() {
   const which = option('body', 'female') as 'female' | 'male', bumps = option('bump', '0').split(',').map(Number), size = Number(option('size', '300'));
   const sheet = option('sheet', ''), one = option('pose', '');
@@ -180,6 +248,11 @@ async function main() {
   if (!list.length) { console.log(`no pose: give --pose <id> or --sheet <sheet> (${[...new Set(POSES.map((p) => p.sheet))].join(', ')})`); process.exit(1); }
   const body = await loadPosable(which);
   const checkOnly = flag('check-only'), outDir = option('out-dir', '/tmp/poses');
+  if (option('fit', '')) {
+    const params = option('fit', '').split(',').map((x) => { const [path, r] = x.split('='); const [lo, hi] = r.split(':').map(Number); return { path, lo, hi }; });
+    for (const spec of list) for (const bump of bumps) { const f = fitPose(body, spec, bump, params); console.log(`${spec.id} @${bump}%: ${JSON.stringify(f.values)}; contacts mm over the floor: ${f.touch}`); }
+    return;
+  }
   for (const spec of list) {
     const rows = [];
     for (const bump of checkOnly && option('bump', '') === '' ? [0, 100, 200] : bumps) {
@@ -187,7 +260,8 @@ async function main() {
       const at = (i: number) => [0, 1, 2].map((c) => r.x.points[i * 3 + c].toFixed(2)).join(' ');
       const through = r.through.map((t) => `${PART_NAMES[t.a]}>${PART_NAMES[t.b]} ${t.count} (${(t.deepest * 1000).toFixed(0)} mm at ${at(t.at)})`).join(', ') || 'none';
       const walls = r.x.walls.map((w) => `${w.where} ${w.motion} ${w.angle.toFixed(0)}>${w.wall.toFixed(0)}`).join(', ');
-      console.log(`${which} ${spec.id} @${bump}%: through ${through}; below the floor ${r.floorUnder}${walls ? `; held at its wall: ${walls}` : ''}`);
+      const touch = contactHeights(body, r.x, spec);
+      console.log(`${which} ${spec.id} @${bump}%: through ${through}; below the floor ${r.floorUnder}${walls ? `; held at its wall: ${walls}` : ''}${touch ? `; contacts mm over the floor: ${touch}` : ''}`);
       if (!checkOnly) rows.push(views(body, r.x, size, `${spec.id} ${bump}%`));
     }
     if (!checkOnly) {

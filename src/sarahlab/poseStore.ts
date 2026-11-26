@@ -18,7 +18,7 @@ const SUPPORTS: readonly PoseSupport[] = ['feet', 'seat', 'floor'];
 const REACH_AT: readonly ReachAt[] = ['pelvis', 'hip', 'hipOther', 'chest', 'shoulder', 'shoulderOther', 'elbowOther', 'neck', 'head', 'knee', 'kneeOther'];
 const PROP_KINDS: readonly PoseProp['kind'][] = ['phone', 'tablet', 'stool', 'mug', 'book'];
 const BEND_KEYS = ['flex', 'side', 'twist'] as const;
-const ARM_KEYS = ['raise', 'toward', 'twist', 'elbow', 'pronate', 'wristFlex', 'wristSide'] as const;
+const ARM_KEYS = ['raise', 'toward', 'twist', 'elbow', 'pronate', 'wristFlex', 'wristSide', 'fingers'] as const;
 const LEG_KEYS = ['flex', 'abduct', 'twist', 'knee', 'ankle', 'ankleIn'] as const;
 
 type Obj = Record<string, unknown>;
@@ -47,9 +47,9 @@ function readVec3(x: unknown): [number, number, number] | undefined | null {
 function readReach(x: unknown): Reach | undefined | null {
   if (x === undefined) return undefined;
   if (!isObj(x) || !REACH_AT.includes(x.at as ReachAt)) return null;
-  const off = readVec3(x.off), elbow = readVec3(x.elbow);
-  if (off === null || elbow === null) return null;
-  return { at: x.at as ReachAt, ...(off ? { off } : {}), ...(elbow ? { elbow } : {}) };
+  const off = readVec3(x.off), elbow = readVec3(x.elbow), hand = readVec3(x.hand), palm = readVec3(x.palm);
+  if (off === null || elbow === null || hand === null || palm === null) return null;
+  return { at: x.at as ReachAt, ...(off ? { off } : {}), ...(elbow ? { elbow } : {}), ...(hand ? { hand } : {}), ...(palm ? { palm } : {}) };
 }
 function readArm(x: unknown): ArmAngles | undefined | null {
   const n = readNumbers(x, ARM_KEYS);

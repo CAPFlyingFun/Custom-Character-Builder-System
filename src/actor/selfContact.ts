@@ -13,10 +13,9 @@
  * Pure: no three, no DOM.
  */
 
-export interface ThroughPair { readonly a: number; readonly b: number }
 export interface Through {
   readonly a: number; readonly b: number;
-  /** points of `a` behind `b`'s skin by more than the tolerance */
+  /** points of `a` behind `b`'s skin by more than the tolerance (square to it) */
   readonly count: number;
   /** the deepest of them, metres (0 with none) */
   readonly deepest: number;
@@ -28,6 +27,8 @@ export interface ThroughOptions {
   readonly tolerance?: number;
   /** how far a point looks for the other's skin, metres (default 6 cm): deeper than this is not seen */
   readonly reach?: number;
+  /** look at every `every`-th point only (default 1: all), for a quick look */
+  readonly every?: number;
 }
 
 type V = [number, number, number];
@@ -53,44 +54,38 @@ function closest(p: V, a: V, b: V, c: V): { q: V; face: boolean } {
 }
 
 /**
- * For each pair, how many points of part `a` are through part `b`'s skin (`pos` posed, metres, three a point; `index`
- * three a triangle; `part` a number a point).
+ * For each part asked for (`parts`), its points that are behind the nearest skin of ANY OTHER part -- that skin the nearest
+ * triangle with no corner of the part itself, a blend zone's (255) among them, so a hand on her hip is told by her hip's
+ * own skin and not by the nearest skin that happens to carry a label -- each counted against the part that skin is
+ * (the most of its corners that are not 255; 255 when all are: skin at a joint). `pos` posed, metres, three a point;
+ * `index` three a triangle; `part` a number a point.
  */
-export function throughEachOther(pos: ArrayLike<number>, index: ArrayLike<number>, part: ArrayLike<number>, pairs: readonly ThroughPair[], options: ThroughOptions = {}): Through[] {
+export function throughEachOther(pos: ArrayLike<number>, index: ArrayLike<number>, part: ArrayLike<number>, parts: readonly number[], options: ThroughOptions = {}): Through[] {
   const tol = options.tolerance ?? 0.002, reach = options.reach ?? 0.06, cell = 0.015, rings = Math.ceil(reach / cell);
   const P = (i: number): V => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
   // a cell by three whole numbers, each within +-1024 cells (+-15 m) of the origin
   const cellKey = (x: number, y: number, z: number) => ((x + 1024) * 2048 + (y + 1024)) * 2048 + (z + 1024);
-  const grids = new Map<number, { cells: Map<number, number[]>; normal: Float64Array }>();
-  const gridOf = (b: number) => {
-    let g = grids.get(b);
-    if (g) return g;
-    const cells = new Map<number, number[]>(), tris = Math.floor(index.length / 3), normal = new Float64Array(tris * 3);
-    for (let t = 0; t < tris; t += 1) {
-      const i0 = index[t * 3], i1 = index[t * 3 + 1], i2 = index[t * 3 + 2];
-      if (part[i0] !== b || part[i1] !== b || part[i2] !== b) continue;
-      const a = P(i0), bb = P(i1), c = P(i2);
-      const n: V = [(bb[1] - a[1]) * (c[2] - a[2]) - (bb[2] - a[2]) * (c[1] - a[1]), (bb[2] - a[2]) * (c[0] - a[0]) - (bb[0] - a[0]) * (c[2] - a[2]), (bb[0] - a[0]) * (c[1] - a[1]) - (bb[1] - a[1]) * (c[0] - a[0])];
-      const l = Math.hypot(n[0], n[1], n[2]) || 1;
-      normal[t * 3] = n[0] / l; normal[t * 3 + 1] = n[1] / l; normal[t * 3 + 2] = n[2] / l;
-      // into every cell its box touches
-      const lo = [Math.min(a[0], bb[0], c[0]), Math.min(a[1], bb[1], c[1]), Math.min(a[2], bb[2], c[2])], hi = [Math.max(a[0], bb[0], c[0]), Math.max(a[1], bb[1], c[1]), Math.max(a[2], bb[2], c[2])];
-      for (let x = Math.floor(lo[0] / cell); x <= Math.floor(hi[0] / cell); x += 1)
-        for (let y = Math.floor(lo[1] / cell); y <= Math.floor(hi[1] / cell); y += 1)
-          for (let z = Math.floor(lo[2] / cell); z <= Math.floor(hi[2] / cell); z += 1) {
-            const k = cellKey(x, y, z); let list = cells.get(k); if (!list) cells.set(k, (list = [])); list.push(t);
-          }
-    }
-    g = { cells, normal };
-    grids.set(b, g);
-    return g;
-  };
-  const out: Through[] = [];
-  for (const { a, b } of pairs) {
-    const g = gridOf(b);
-    let count = 0, deepest = 0, at = -1;
-    const n = Math.floor(pos.length / 3);
-    for (let i = 0; i < n; i += 1) {
+  const cells = new Map<number, number[]>(), tris = Math.floor(index.length / 3), normal = new Float64Array(tris * 3), owner = new Uint8Array(tris);
+  for (let t = 0; t < tris; t += 1) {
+    const i0 = index[t * 3], i1 = index[t * 3 + 1], i2 = index[t * 3 + 2];
+    const a = P(i0), bb = P(i1), c = P(i2);
+    const n: V = [(bb[1] - a[1]) * (c[2] - a[2]) - (bb[2] - a[2]) * (c[1] - a[1]), (bb[2] - a[2]) * (c[0] - a[0]) - (bb[0] - a[0]) * (c[2] - a[2]), (bb[0] - a[0]) * (c[1] - a[1]) - (bb[1] - a[1]) * (c[0] - a[0])];
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    normal[t * 3] = n[0] / l; normal[t * 3 + 1] = n[1] / l; normal[t * 3 + 2] = n[2] / l;
+    // whose skin it is: the part most of its labelled corners are
+    const labels = [part[i0], part[i1], part[i2]].filter((x) => x !== 255);
+    owner[t] = labels.length === 0 ? 255 : labels.sort((x, y) => labels.filter((z) => z === y).length - labels.filter((z) => z === x).length)[0];
+    const lo = [Math.min(a[0], bb[0], c[0]), Math.min(a[1], bb[1], c[1]), Math.min(a[2], bb[2], c[2])], hi = [Math.max(a[0], bb[0], c[0]), Math.max(a[1], bb[1], c[1]), Math.max(a[2], bb[2], c[2])];
+    for (let x = Math.floor(lo[0] / cell); x <= Math.floor(hi[0] / cell); x += 1)
+      for (let y = Math.floor(lo[1] / cell); y <= Math.floor(hi[1] / cell); y += 1)
+        for (let z = Math.floor(lo[2] / cell); z <= Math.floor(hi[2] / cell); z += 1) {
+          const k = cellKey(x, y, z); let list = cells.get(k); if (!list) cells.set(k, (list = [])); list.push(t);
+        }
+  }
+  const tally = new Map<string, { a: number; b: number; count: number; deepest: number; at: number }>();
+  const n = Math.floor(pos.length / 3);
+  for (const a of parts) {
+    for (let i = 0; i < n; i += options.every ?? 1) {
       if (part[i] !== a) continue;
       const p = P(i), seen = new Set<number>(), cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell), cz = Math.floor(p[2] / cell);
       let best = Infinity, q: V = p, near: number[] = [];
@@ -98,24 +93,32 @@ export function throughEachOther(pos: ArrayLike<number>, index: ArrayLike<number
       for (let r = 0; r <= rings && !(best <= r * cell); r += 1) {
         for (let dx = -r; dx <= r; dx += 1) for (let dy = -r; dy <= r; dy += 1) for (let dz = -r; dz <= r; dz += 1) {
           if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== r) continue;
-          const list = g.cells.get(cellKey(cx + dx, cy + dy, cz + dz));
+          const list = cells.get(cellKey(cx + dx, cy + dy, cz + dz));
           if (!list) continue;
           for (const t of list) {
             if (seen.has(t)) continue;
             seen.add(t);
-            const c = closest(p, P(index[t * 3]), P(index[t * 3 + 1]), P(index[t * 3 + 2]));
+            const i0 = index[t * 3], i1 = index[t * 3 + 1], i2 = index[t * 3 + 2];
+            // (its own skin, and the skin that runs on from it, is not another part's)
+            if (part[i0] === a || part[i1] === a || part[i2] === a) continue;
+            const c = closest(p, P(i0), P(i1), P(i2));
             const d = Math.hypot(c.q[0] - p[0], c.q[1] - p[1], c.q[2] - p[2]);
             if (d < best - 1e-9) { best = d; q = c.q; near = [t]; } else if (d < best + 1e-9) near.push(t);
           }
         }
       }
-      if (!(best <= reach)) continue;
+      if (!(best <= reach) || !(best > tol)) continue;
       let nx = 0, ny = 0, nz = 0;
-      for (const t of near) { nx += g.normal[t * 3]; ny += g.normal[t * 3 + 1]; nz += g.normal[t * 3 + 2]; }
-      const side = (p[0] - q[0]) * nx + (p[1] - q[1]) * ny + (p[2] - q[2]) * nz;
-      if (side < 0 && best > tol) { count += 1; if (best > deepest) { deepest = best; at = i; } }
+      for (const t of near) { nx += normal[t * 3]; ny += normal[t * 3 + 1]; nz += normal[t * 3 + 2]; }
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      // how far behind that skin it is, square to it: a point beside the edge of skin it runs on from (a curve of her
+      // beside a blend zone) is nearly level with it, a point through it is behind it by all its distance
+      const depth = -((p[0] - q[0]) * nx + (p[1] - q[1]) * ny + (p[2] - q[2]) * nz) / nl;
+      if (!(depth > tol)) continue;
+      const b = owner[near[0]], key = `${a}>${b}`;
+      let e = tally.get(key); if (!e) tally.set(key, (e = { a, b, count: 0, deepest: 0, at: -1 }));
+      e.count += 1; if (depth > e.deepest) { e.deepest = depth; e.at = i; }
     }
-    out.push({ a, b, count, deepest, at });
   }
-  return out;
+  return [...tally.values()];
 }

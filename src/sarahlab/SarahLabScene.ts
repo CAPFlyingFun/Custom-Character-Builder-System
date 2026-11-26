@@ -110,9 +110,13 @@ import { measureContacts, type ContactPoint, type ContactSet, type FingerName } 
 import { closeToTouch, HAND_GRIP, shapeDistance, type GripShape } from '../actor/handGrip';
 import { BodySurface, type SurfaceAnchor } from './bodySurface';
 import { SEATED_TURNS, poseSeated } from '../actor/humanSeated';
-import { CHECK_PAIRS, PART_NAMES, partsOf, posePose, type PoseSpec } from '../actor/poseLibrary';
+import { CHECK_PARTS, PART_NAMES, partsOf, posePose, type PoseSpec } from '../actor/poseLibrary';
+import { anglesOfTurns, resolveReach } from '../actor/bodyAngles';
+import { clipLength, sampleAsPose, sampleClip, type PoseClip } from '../actor/poseClip';
+import { PoseBuilderPanel, type BuilderDraft } from './poseBuilderPanel';
+import { createPoseStore, type PoseStore } from './poseStore';
 import { throughEachOther } from '../actor/selfContact';
-import { POSES, poseById } from '../data/poses';
+import { POSES } from '../data/poses';
 import { createSoftBaby, restorePose, stepSoftBaby, type SoftBaby } from './softBaby';
 import { createSqueezeUniforms, patchSqueeze, setSqueeze, squeezePoints } from './babySqueeze';
 import { createSkinUniforms, patchSkin, stepSkin } from './babySkin';
@@ -793,8 +797,35 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   /** THE POSE LIBRARY (actor/poseLibrary.ts, data/poses): the pose she is in while `pose` is 'library', the sheet shown,
    * and where she was set for it last (worked out again when it, her build, her size or her body changes) */
   let libraryId = POSES[0]?.id ?? '', librarySheet = POSES[0]?.sheet ?? 'core';
-  let libraryPlaced: { key: string; position: THREE.Vector3; quaternion: THREE.Quaternion; seat: number } | null = null;
-  const libraryNow = (): PoseSpec | null => (pose === 'library' ? poseById(libraryId) ?? null : null);
+  let libraryPlaced: { key: string; position: THREE.Vector3; quaternion: THREE.Quaternion; seat: number; at: number } | null = null;
+  /** THE POSE BUILDER (poseBuilderPanel.ts; Joshua, 2026-11-26: "copy and import Beyond Extinction's animation/pose
+   * builder in CCBS so I can save my own poses and animations"): the pose being built, shown as a library pose of its
+   * own (`DRAFT_ID`); a clip played or scrubbed (`CLIP_ID`), at `t` seconds; and his poses and clips kept on the device
+   * (poseStore.ts), his poses a sheet of the library ('mine'). */
+  const DRAFT_ID = '__draft', CLIP_ID = '__clip';
+  let builderDraft: BuilderDraft | null = null, clipNow: { clip: PoseClip; t: number; playing: boolean } | null = null;
+  let refillLibrary = (): void => {};
+  const ownPoses = createPoseStore();
+  const poseStore: PoseStore = {
+    ...ownPoses,
+    savePose: (p) => { const r = ownPoses.savePose(p); refillLibrary(); return r; },
+    removePose: (id) => { ownPoses.removePose(id); refillLibrary(); },
+    importJson: (text) => { const r = ownPoses.importJson(text); refillLibrary(); return r; },
+  };
+  const allPoses = (): readonly PoseSpec[] => [...POSES, ...ownPoses.poses()];
+  const findPose = (id: string): PoseSpec | undefined => allPoses().find((x) => x.id === id);
+  const draftSpec = (d: BuilderDraft): PoseSpec => ({ id: DRAFT_ID, name: d.name, sheet: 'mine', ref: 'the pose builder', tags: [], support: d.support, ...(d.support === 'seat' ? { seat: d.seat } : {}), body: { ...d.body }, angles: d.angles, contacts: [] });
+  const libraryNow = (): PoseSpec | null => {
+    if (pose !== 'library') return null;
+    if (libraryId === CLIP_ID && clipNow) { const at = sampleClip(clipNow.clip, clipNow.t, findPose, bump / 100); return at ? sampleAsPose(clipNow.clip, at) : null; }
+    if (libraryId === DRAFT_ID && builderDraft) return draftSpec(builderDraft);
+    return findPose(libraryId) ?? null;
+  };
+  /** what her cloth (the tee, a skirt, her cloth bikini bottom) is laid on her afresh for: a change of pose, and in the
+   * library a change of library pose -- one to the next is a jump, as STAND to SQUAT is (a fault found 2026-11-26: from
+   * COBRA to the LUNGE the cloth tee settled lying down was thrown up over her bust). The builder's pose and a clip move
+   * her a little at a time and are worn through. */
+  const clothPoseNow = (): string => (pose === 'library' ? `library:${libraryId}` : pose);
   /** her birth area shaped (birthArea.ts); a probe can turn it off to compare */
   let birthAreaShown = true;
   /** how much of the split's shading shows (birthArea.ts `patchBirthShade`): none while anything is worn over it */
@@ -2718,8 +2749,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     lit(buttons.sit, pose === 'sit');
     lit(buttons.tpose, pose === 'tpose');
     for (const p of ['apart', 'squat', 'recline'] as const) lit(buttons[p], pose === p);
-    for (const spec of POSES) lit(buttons[`library-${spec.id}`], pose === 'library' && libraryId === spec.id);
-    for (const sheet of new Set(POSES.map((x) => x.sheet))) lit(buttons[`librarySheet-${sheet}`], librarySheet === sheet);
+    for (const spec of allPoses()) lit(buttons[`library-${spec.id}`], pose === 'library' && libraryId === spec.id);
+    for (const sheet of new Set([...POSES.map((x) => x.sheet), 'mine'])) lit(buttons[`librarySheet-${sheet}`], librarySheet === sheet);
     if (fields[SARAH_LAB_FIELD.library]) { const spec = libraryNow(); fields[SARAH_LAB_FIELD.library].textContent = spec ? `POSE LIBRARY · ${spec.name} · ${spec.tags.join(', ')} · touches ${spec.contacts.join(', ')}${spec.note ? ` · ${spec.note}` : ''}` : `POSE LIBRARY · ${POSES.length} poses · pick one`; }
     lit(buttons.ranges, rangesShown);
     for (const [group] of RANDOM_GROUPS) lit(buttons[`groupLock-${group}`], randomRules.groups.includes(group));
@@ -3567,7 +3598,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     const every = skinTrianglesOf(body), skin = every && every !== body.geometry.index?.array ? (every instanceof Uint32Array ? every : Uint32Array.from(every)) : null;
     skirtRoom = new ClothSkirt({ body, input, settings: want, line, skin, material, unitsPerMetre: M, scale: FACE_REST_SCALE, offset: FACE_REST_OFFSET });
     skirtOnLine = !!line; skirtJoints = input.joints;
-    skirtKey = key; skirtColour = colour; skirtPoseKey = pose; skirtShapeKey = shapeKeyNow(); skirtRecut = false;
+    skirtKey = key; skirtColour = colour; skirtPoseKey = clothPoseNow(); skirtShapeKey = shapeKeyNow(); skirtRecut = false;
     skirtCutMs = performance.now() - t0;
     three.add(skirtRoom.mesh);
     fabric?.sync(); fabric?.refreshTargets();
@@ -3636,7 +3667,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     });
     if (garment) setCutEdge(material, true);
     three.add(garmentRoom.cloth.mesh);
-    garmentPoseKey = pose;
+    garmentPoseKey = clothPoseNow();
     // cut at once for her as she is now, measured from the 0% design it was tailored from (`RoomGarment`'s
     // `tailoredShape`), as the cloth tee is cut for the body it is on; her shape changing from here cuts it again
     garmentRoom.cloth.setRestShift(restShiftNow());
@@ -3840,7 +3871,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:6px';
       const fill = () => {
         grid.replaceChildren();
-        for (const spec of POSES.filter((x) => x.sheet === librarySheet)) {
+        for (const spec of allPoses().filter((x) => x.sheet === librarySheet)) {
           const b = btn(spec.name.toUpperCase(), `${SARAH_LAB_ACTION.libraryPose}${spec.id}`, () => {
             sitMoving = false; sitAmount = 0;
             pose = 'library'; libraryId = spec.id; libraryPlaced = null;
@@ -3851,13 +3882,24 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           buttons[`library-${spec.id}`] = b; grid.appendChild(b);
         }
       };
-      for (const sheet of [...new Set(POSES.map((x) => x.sheet))]) {
-        const b = btn(sheet.toUpperCase(), `${SARAH_LAB_ACTION.librarySheet}${sheet}`, () => { librarySheet = sheet; fill(); });
-        b.style.padding = '7px 10px'; b.style.fontSize = '11px';
-        buttons[`librarySheet-${sheet}`] = b; sheets.appendChild(b);
-      }
-      fill();
+      const sheetChips = () => {
+        sheets.replaceChildren();
+        for (const sheet of [...new Set([...POSES.map((x) => x.sheet), 'mine'])]) {
+          const b = btn(sheet === 'mine' ? 'MINE' : sheet.toUpperCase(), `${SARAH_LAB_ACTION.librarySheet}${sheet}`, () => { librarySheet = sheet; fill(); });
+          b.style.padding = '7px 10px'; b.style.fontSize = '11px';
+          buttons[`librarySheet-${sheet}`] = b; sheets.appendChild(b);
+        }
+      };
+      sheetChips(); fill();
+      refillLibrary = () => { fill(); refresh(); };
       lib.append(line, sheets, grid);
+      // THE POSE BUILDER, folded away under its own button
+      const open = btn('POSE BUILDER ▸', SARAH_LAB_ACTION.poseBuilder, () => { builderShown = !builderShown; open.textContent = builderShown ? 'POSE BUILDER ▾' : 'POSE BUILDER ▸'; builder.root.style.display = builderShown ? '' : 'none'; if (builderShown) builder.refresh(); });
+      open.style.padding = '8px 10px'; open.style.fontSize = '11px';
+      buttons.poseBuilder = open;
+      const builder = makeBuilder();
+      builder.root.style.display = 'none';
+      lib.append(open, builder.root);
       root.appendChild(lib);
     }
 
@@ -5012,7 +5054,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       base = [...stood.filter((t) => !mine.has(t.joint)), ...birth];
     } else if (p === 'library') {
       // a pose of the library, at her belly, in her bind's units (`posePose`)
-      const spec = poseById(libraryId);
+      const spec = libraryNow();
       base = spec ? posePose(measure, rig.bind, spec, { bump: bump / 100, unitsPerMetre: rig.bindScale > 0 ? rig.bindScale : 1 }, out).turns : [];
     } else if (p === 'sit') base = poseSeated(measure, rig.bind, { style: 'sit', seconds, posture: 'pregnant', bump: bump / 100, settled: settledSitFor(SARAH_LAB_MODELS[modelIndex].id) }, out);
     else {
@@ -6073,6 +6115,51 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     keepBalance();
     if (!aimHeld) orbit.target.z = ORBIT_START.target.z;
   }
+  /** The pose builder's panel, on the room's own hooks (poseBuilderPanel.ts). */
+  let builderShown = false, builderPanel: PoseBuilderPanel | null = null, builderRefreshAt = 0;
+  function makeBuilder(): PoseBuilderPanel {
+    const into = (): void => {
+      if (pose === 'library') return;
+      sitMoving = false; sitAmount = 0; pose = 'library'; clothRestart = true; applyLook();
+    };
+    builderPanel = new PoseBuilderPanel({
+      // the pose she is in now, read off her turns as angles (any pose: standing, seated, a birth position, the library's)
+      startFrom: () => {
+        const spec = libraryNow(), turns = currentTurns();
+        const angles = measure && rig ? anglesOfTurns(measure, rig.bind, turns) : {};
+        return {
+          name: spec && spec.id !== DRAFT_ID && !spec.id.endsWith('@') ? spec.name : builderDraft?.name ?? 'my pose',
+          support: spec?.support ?? (pose === 'sit' ? 'seat' : isBirthPose(pose) && pose !== 'apart' ? 'floor' : 'feet'),
+          seat: spec?.seat ?? 0.45, body: { yaw: spec?.body?.yaw ?? 0, pitch: spec?.body?.pitch ?? 0, roll: spec?.body?.roll ?? 0 }, angles,
+        };
+      },
+      show: (d) => { builderDraft = d; clipNow = null; into(); libraryId = DRAFT_ID; refresh(); },
+      play: (clip, t) => {
+        if (!clip) { if (clipNow) clipNow.playing = false; return; }
+        clipNow = { clip, t, playing: true }; into(); libraryId = CLIP_ID; refresh();
+      },
+      playing: () => (clipNow?.playing ? { t: clipNow.t } : null),
+      scrub: (clip, t) => { clipNow = { clip, t, playing: false }; into(); libraryId = CLIP_ID; refresh(); },
+      store: poseStore,
+      library: () => POSES,
+      plain: (angles) => (measure && rig ? resolveReach(measure, rig.bind, angles, { unitsPerMetre: rig.bindScale > 0 ? rig.bindScale : 1 }) : angles),
+      download: (name, text) => {
+        const url = URL.createObjectURL(new Blob([text], { type: 'application/json' })), a = document.createElement('a');
+        a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      },
+    });
+    return builderPanel;
+  }
+  /** A clip played on: its time moved on, held at its end unless it loops; the builder's scrubber follows. */
+  function stepClip(dt: number): void {
+    if (!clipNow?.playing) return;
+    const length = clipLength(clipNow.clip);
+    clipNow.t += dt;
+    if (!clipNow.clip.loop && clipNow.t >= length) { clipNow.t = length; clipNow.playing = false; }
+    const now = performance.now();
+    if (builderShown && builderPanel && (now - builderRefreshAt > 100 || !clipNow.playing)) { builderRefreshAt = now; builderPanel.refresh(); }
+  }
   /**
    * Her place in a pose of the library: her body turned as a whole (the pose's `body`, about her hips' middle), her hips
    * over the room's middle, and set on what holds her -- her lowest point on the floor, or (a seat) the lowest of what
@@ -6082,8 +6169,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function placeLibrary(skin: THREE.SkinnedMesh): void {
     const spec = libraryNow();
     if (!model || !rig || !measure || !spec) return;
-    const key = `${spec.id}|${modelIndex}|${bonesBuilt}|${bump.toFixed(1)}|${standLift.toFixed(4)}`;
-    if (libraryPlaced?.key !== key) {
+    // (a pose being built or played changes as it goes: read again on a change, at most every LIVE_PLACE_MS, on fewer of
+    // her points; a pose of the library once, on every other point)
+    const live = spec.id === DRAFT_ID || spec.id.endsWith('@');
+    const key = `${live ? JSON.stringify([spec.body, spec.angles, spec.support, spec.seat]) : spec.id}|${modelIndex}|${bonesBuilt}|${bump.toFixed(1)}|${standLift.toFixed(4)}`;
+    const now = performance.now();
+    if (libraryPlaced?.key !== key && (!live || !libraryPlaced || now - libraryPlaced.at > LIVE_PLACE_MS)) {
       const body = bodyOf()?.mesh ?? skin, bones = body.skeleton.bones, j = measure.joints, v = new THREE.Vector3();
       const placed = posePose(measure, rig.bind, spec, { bump: bump / 100, unitsPerMetre: rig.bindScale > 0 ? rig.bindScale : 1 });
       const q = new THREE.Quaternion(placed.root[0], placed.root[1], placed.root[2], placed.root[3]);
@@ -6093,7 +6184,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       const seatBones = new Set([j.pelvis, j.hipL, j.hipR]), si = body.geometry.getAttribute('skinIndex'), sw = body.geometry.getAttribute('skinWeight');
       let low = Infinity;
       const n = body.geometry.getAttribute('position').count;
-      for (let i = 0; i < n; i += 2) {
+      for (let i = 0; i < n; i += live ? 9 : 2) {
         if (placed.support === 'seat') {
           let best = 0; for (let k = 1; k < 4; k++) if (sw.getComponent(i, k) > sw.getComponent(i, best)) best = k;
           if (!seatBones.has(si.getComponent(i, best))) continue;
@@ -6102,7 +6193,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         if (v.y < low) low = v.y;
       }
       const seat = placed.support === 'seat' ? placed.seat * M : 0;
-      libraryPlaced = { key, position: new THREE.Vector3(-hips.x, seat - low, -hips.z), quaternion: q, seat: placed.support === 'seat' ? placed.seat : 0 };
+      libraryPlaced = { key, position: new THREE.Vector3(-hips.x, seat - low, -hips.z), quaternion: q, seat: placed.support === 'seat' ? placed.seat : 0, at: now };
+      rig.apply(currentTurns());
     }
     model.position.copy(libraryPlaced.position); model.quaternion.copy(libraryPlaced.quaternion);
     model.updateMatrixWorld(true);
@@ -6110,6 +6202,8 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
     if (stool.visible) { stool.scale.set(1, libraryPlaced.seat * M, 1); stool.position.set(0, (libraryPlaced.seat * M) / 2, -0.03 * M); }
     if (!aimHeld) orbit.target.z = ORBIT_START.target.z;
   }
+  /** A pose being built or played is set on what holds her again at most this often (ms): her skin read on the CPU. GAME TUNING. */
+  const LIVE_PLACE_MS = 120;
   /** Leaned back in RECLINE, her hips are this high off the floor (metres): a bed's edge. GAME TUNING. */
   const RECLINE_HIPS_M = 0.55;
   /** THE MAT (P3b): soft, on the floor under her squat and where she sits back (BIRTH_MAT); `matAt` its middle on the floor. */
@@ -9975,6 +10069,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
   function advance(dt: number): void {
       seconds += dt;
       if (pose === 'walk') walked += WALK_SPEED * dt;
+      if (pose === 'library') stepClip(dt);
       if (sitMoving) { sitAmount = stepSit(sitAmount, pose === 'sit' ? 1 : 0, dt); if (sitAmount === (pose === 'sit' ? 1 : 0)) { sitMoving = false; applyLook(); } else if (sitTenths() !== sitShareLaid) { sitShareLaid = sitTenths(); const t0 = performance.now(); applyLook(); sitLayMs = performance.now() - t0; } }
       else sitAmount = pose === 'sit' ? 1 : 0;
       // walking, her feet take her pose first (stepFeet); out of the walk, the next walk sets them down afresh
@@ -10073,7 +10168,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // to SIT and back is a move, worn all the way through it)
       if (clothBrief?.mesh.visible && model?.visible) {
         model.updateMatrixWorld(true);
-        if (pose !== clothBriefPose) { clothBriefPose = pose; if (!sitMoving) clothBrief.restart(); }
+        if (clothPoseNow() !== clothBriefPose) { clothBriefPose = clothPoseNow(); if (!sitMoving) clothBrief.restart(); }
         clothBrief.frame(dt > 1 / 40 ? 1 / 40 : dt);
         if (paintedEdge?.group.visible) { const cb = clothBrief; paintedEdge.frame((v, out) => cb.posedVertex(v, out)); }
       }
@@ -10126,7 +10221,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           // a walk badly either way. What would mend it is her legs' jump itself, taken over several of the cloth's
           // own steps (or her pose eased into the walk): not tried.
           // (into SQUAT or RECLINE, or out of them: cut again on the next frame, ridden up or let down -- `SKIRT_RIDES_UP`)
-          if (pose !== skirtPoseKey) { const rode = SKIRT_RIDES_UP.has(skirtPoseKey); skirtPoseKey = pose; if (rode !== SKIRT_RIDES_UP.has(pose)) { skirtRecut = true; skirtRecutAge = SKIRT_RECUT_AFTER; } else if (!sitMoving) skirtRoom.restart(); }
+          if (clothPoseNow() !== skirtPoseKey) { const rode = SKIRT_RIDES_UP.has(skirtPoseKey); skirtPoseKey = clothPoseNow(); if (rode !== SKIRT_RIDES_UP.has(pose)) { skirtRecut = true; skirtRecutAge = SKIRT_RECUT_AFTER; } else if (!sitMoving) skirtRoom.restart(); }
           // WORN WITH THE CLOTH TEE (`clothLayers.ts`): tucked, the skirt's floors are raised over the tee; untucked, the
           // tee's over the skirt. Each reads the other as it stood a frame ago at the most.
           const tee = garmentRoom?.cloth ?? null, skirt = skirtRoom;
@@ -10182,7 +10277,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       }
       if (garmentRoom && model?.visible) {
         // a pose switch lays it on her afresh; STAND to SIT and back is a move, and it is worn all the way through it
-        if (pose !== garmentPoseKey) { garmentPoseKey = pose; if (!sitMoving) garmentRoom.cloth.restart(); }
+        if (clothPoseNow() !== garmentPoseKey) { garmentPoseKey = clothPoseNow(); if (!sitMoving) garmentRoom.cloth.restart(); }
         if (garmentRoom.capsules.stool !== null || sitAmount > 0) garmentRoom.capsules = { ...garmentRoom.capsules, stool: sitAmount > 0 && stool.visible ? { x: stool.position.x, z: stool.position.z, radius: 0.21 * M, top: stool.scale.y } : null };
         model.updateMatrixWorld(true);
         // BREAST and NAVEL DETAIL, exactly as on the cloth tee: the domes under it, her details drawn through it, and
@@ -11729,7 +11824,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
         maleNormalMap: (on: boolean) => { const sm = model ? findSkinnedMesh(model) : null, m = sm && (Array.isArray(sm.material) ? sm.material[0] : sm.material) as THREE.MeshStandardMaterial; if (!m) return null; m.userData.ownNormal ??= m.normalMap; m.normalMap = on ? m.userData.ownNormal : null; m.needsUpdate = true; return !!m.normalMap; },
         // (a probe's) THE POSE LIBRARY: put a pose on (by id), and say which she is in and where she was set
         library: (id?: string) => {
-          if (id !== undefined) { const spec = poseById(id); if (!spec) return null; sitMoving = false; sitAmount = 0; pose = 'library'; libraryId = id; librarySheet = spec.sheet; libraryPlaced = null; clothRestart = true; applyLook(); refresh(); }
+          if (id !== undefined) { const spec = findPose(id); if (!spec) return null; sitMoving = false; sitAmount = 0; pose = 'library'; libraryId = id; librarySheet = spec.sheet; libraryPlaced = null; clothRestart = true; applyLook(); refresh(); }
           const spec = libraryNow();
           return { pose, id: spec?.id ?? null, support: spec?.support ?? null, placed: libraryPlaced ? { position: libraryPlaced.position.toArray().map((x) => x / M), quaternion: libraryPlaced.quaternion.toArray(), seat: libraryPlaced.seat } : null, poses: POSES.map((x) => x.id) };
         },
@@ -11745,7 +11840,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
           const bones = b.skeleton.bones, at = (jt: number) => { const w = bones[jt].getWorldPosition(new THREE.Vector3()); return [w.x / M, w.y / M, w.z / M] as const; };
           const part = partsOf(measure, rig.bind, joints, weights, at, pos, 1);
           const index = g.index!.array as ArrayLike<number>;
-          const t0 = performance.now(), through = throughEachOther(pos, index, part, CHECK_PAIRS).filter((t) => t.count > 0);
+          const t0 = performance.now(), through = throughEachOther(pos, index, part, CHECK_PARTS).filter((t) => t.count > 0);
           let low = Infinity; for (let i = 0; i < n; i++) low = Math.min(low, pos[i * 3 + 1]);
           return { id: libraryNow()?.id ?? null, bump, lowest: low, ms: Math.round(performance.now() - t0), through: through.map((t) => ({ a: PART_NAMES[t.a], b: PART_NAMES[t.b], count: t.count, deepestMm: +(t.deepest * 1000).toFixed(1), at: [pos[t.at * 3], pos[t.at * 3 + 1], pos[t.at * 3 + 2]].map((x) => +x.toFixed(3)) })) };
         },

@@ -1587,6 +1587,54 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   `tests/characterSaves.test.ts`, `tests/characterExport.test.ts`; then the room: her vitals line at rest and her
   hardest, MALE and his, and `breathCheck` on him.
 
+## The pose library and the pose builder
+
+- **FIXED POSES ANY GAME CAN READ, NOT ANIMATIONS** (Joshua, 2026-11-26: "Can you create more animations and poses other
+  games can use?"; then "do fixed poses"; then "don't do the animations as it's game specific and I told the other agent
+  that"). A pose is DATA (`actor/poseLibrary.ts` `PoseSpec`, the sheets in `src/data/poses/`): a name, what it is for, the
+  picture it is drawn from (`ref`; his sheets are NOT kept in the repo), what holds her (`support`: her feet, a seat
+  `seat` metres high, the floor), her body's turn as a whole (`body`: yaw, pitch, roll about her hips' middle), her joints'
+  ANGLES IN A CLINICIAN'S DEGREES (`actor/bodyAngles.ts`) and, where a bump changes it, the same pose at her 200% belly
+  (`bump`, mixed in by her belly). `posePose` makes any body's turns from it BY ROLE: the female and the male base models,
+  and any rig `measureHuman` reads. How a game moves her from one pose to another is the game's.
+- **THE ANGLES** (`bodyAngles.ts`, its header has every sign): her back and neck, hips, knees and ankles in the joint
+  table's own terms (`JointLimits.compose` is `read` turned round: `tests/bodyAngles.test.ts` reads them back as written);
+  each arm as where its upper arm points from her chest (`raise` from hanging, `toward` out / forward / across / behind),
+  its twist, elbow, forearm roll, wrist, and `fingers` (0 straight .. 1 a loose fist, `FINGER_CURL`). A `reach` puts a
+  wrist -- or, with `hand` and `palm` given, the PALM'S MIDDLE, the hand turned so -- at a place on her own body (a joint
+  of hers and an offset in metres in that part's frame), so a hand on her hip or at her ear stays there whatever her build.
+  `resolveReach` and `anglesOfTurns` read any pose back as plain angles (the builder starts from them).
+- **HELD TO HER PASSIVE RANGES IN THE ROOM** (`limitedTurns` 'passive', as a birth position): her knees bend no further than
+  142 degrees (the table's), so KNEELING ON HER HEELS has her just above them, and CHILD'S POSE and COBRA are written within
+  her back's 80 and 25 degrees (her cobra is a low one, elbows bent).
+- **PLACING HER**: turned as a whole, her hips over the room's middle, her lowest point on the floor -- or, on a seat, the
+  lowest of what her pelvis and thighs carry on the stool's top (`placeLibrary`, her skin read on the CPU once a pose, size
+  and build). A game without her skin is to be handed the heights (NOT DONE: the preview can measure them).
+- **THE CHECK** (`actor/selfContact.ts` `throughEachOther`): each of her arms, legs and her trunk against the nearest skin of
+  ANY OTHER part, a joint's blend zone among it -- a point behind that skin by more than 2 mm, square to it, is through it
+  (the probe's `libraryCheck`, the preview's report). A point by her own skin's edge is level with it, not through.
+- **THE PREVIEW WITHOUT A BROWSER** (`scripts/preview/pose.mts`): her or his body file, its belly laid on, skinned on the
+  CPU, set on the floor, pictured from four sides, with the report -- parts through one another, joints held at their
+  walls, and her named contacts' heights over the floor (`data/contacts/female-v2.json`, female only). `--fit
+  body.pitch=60:95,legs.flex=60:100` searches those numbers for the pose's contacts on the floor (`lo:lo` sets one).
+- **THE CORE SIXTEEN** (`data/poses/core.ts`, his "Pose Reference -- 4x4 Core Set"): GAME TUNING by eye off its pictures,
+  the floor poses fitted by `--fit` (MEASURED on her, 0%: knees, toes and soles within 2 to 6 cm of the floor -- a contact
+  site sits that far up her skin; the lunge's back knee and the stool's free foot a few cm off it).
+- **THE POSE BUILDER** (Joshua, 2026-11-26: "copy and import Beyond Extinction's animation/pose builder in CCBS so I can save
+  my own poses and animations and upload to you to save in the Repo, then you can just do animations between different
+  poses"). Beyond Extinction's Animation Editor (bone groups turned by X/Y/Z, keys on a timeline, saved and exported by bone
+  NAME) brought in with the library's own numbers: `poseBuilderPanel.ts` in the Pose tab under POSE BUILDER -- start from
+  the pose she is in (any: `anglesOfTurns`), a part's sliders in degrees with -5 / +5 / reset, COPY TO OTHER SIDE, SWAP
+  SIDES, what holds her, SAVE POSE (his own, on the device: `poseStore.ts`, the library's MINE sheet), keys on a timeline
+  (`actor/poseClip.ts`: poses at times, eased, played and scrubbed in the room), SAVE CLIP, EXPORT ALL (`ccbs-poses.json`)
+  and IMPORT. A file he sends is added to the repo as a sheet of its own. An arm put on her by a reach keeps where it is
+  when he first moves one of its joints (`hooks.plain`: `resolveReach`).
+- NOT DONE: his other sheets (standing, stool, floor, kneeling, yoga); props in her hands (phone, tablet: named on a pose,
+  not drawn); a placed pose's heights as numbers for a game; the male body's contacts measured.
+- After anything changes them: `tests/bodyAngles.test.ts`, `tests/poseLibrary.test.ts`, `tests/poseStore.test.ts`,
+  `tests/poseBuilderPanel.test.ts`; the preview `--sheet core --check-only`; then the room: the poses changed, and the
+  builder by real touches on a phone-sized page.
+
 ## Her skeleton and her bare feet, laid a slice at a time
 
 - **SNEAKERS · OFF LAYS HER SKELETON AND FITS HER BARE FEET OVER IT, AND THE ROOM GOES ON DRAWING** (a fault Joshua found,

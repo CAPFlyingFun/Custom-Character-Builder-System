@@ -8,7 +8,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { bodyFrame, mirrorAngles, mixAngles, poseAngles, poseChain, qRotate, resolveReach, type BodyAngles } from '../src/actor/bodyAngles';
+import { bodyFrame, mirrorAngles, mixAngles, poseAngles, poseChain, qRotate, resolveReach, anglesOfTurns, type BodyAngles } from '../src/actor/bodyAngles';
 import type { BindJoint, HumanMeasure } from '../src/actor/humanRig';
 import { measureHuman } from '../src/actor/humanSkeleton';
 import { JointLimits } from '../src/actor/jointLimits';
@@ -126,6 +126,23 @@ for (const name of Object.keys(FILES)) {
       const A = F.arm.L;
       expect(angle(qRotate(a.acc[A.wrist], A.along), qRotate(b.acc[A.wrist], A.along))).toBeLessThan(3);
       expect(angle(qRotate(a.acc[A.wrist], A.palm), qRotate(b.acc[A.wrist], A.palm))).toBeLessThan(3);
+    });
+
+    it('reads any pose`s turns back as the angles that make it', () => {
+      const { bind, measure } = bodies[name], j = measure.joints;
+      const pose: BodyAngles = {
+        back: { flex: 20, side: -6, twist: 10 }, neck: { flex: 15, side: 4, twist: -20 },
+        armL: { raise: 70, toward: 40, twist: 15, elbow: 80, pronate: 30, wristFlex: 20, wristSide: -5 },
+        armR: { raise: 30, toward: -20, twist: -10, elbow: 30, pronate: -20 },
+        legL: { flex: 45, abduct: 10, twist: 5, knee: 60, ankle: -10 }, legR: { flex: -10, abduct: -3, twist: -8, knee: 15, ankle: 8 },
+      };
+      const turns = poseAngles(measure, bind, pose), back = anglesOfTurns(measure, bind, turns);
+      for (const part of ['back', 'neck'] as const) for (const k of ['flex', 'side', 'twist'] as const) expect(back[part]![k]!).toBeCloseTo(pose[part]![k]!, 1);
+      for (const part of ['legL', 'legR'] as const) for (const k of ['flex', 'abduct', 'twist', 'knee', 'ankle'] as const) expect(back[part]![k]!).toBeCloseTo(pose[part]![k]!, 1);
+      for (const part of ['armL', 'armR'] as const) for (const k of ['raise', 'toward', 'twist', 'elbow'] as const) expect(back[part]![k]!).toBeCloseTo(pose[part]![k]!, 0);
+      // posed again from what was read: the same body
+      const a = poseChain(bind, turns).pos, b = poseChain(bind, poseAngles(measure, bind, back)).pos;
+      for (const w of [j.wristL, j.wristR, j.head, j.ankleL, j.ankleR]) expect(Math.hypot(...sub(a[w], b[w]))).toBeLessThan(0.002);
     });
 
     it('a pose mirrored is the same pose on her other side', () => {

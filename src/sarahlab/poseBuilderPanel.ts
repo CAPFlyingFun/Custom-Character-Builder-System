@@ -32,12 +32,15 @@ export interface PoseBuilderHooks {
   readonly library: () => readonly PoseSpec[];
   /** save a file for him (the room makes the download) */
   readonly download: (fileName: string, text: string) => void;
+  /** a pose's reaches worked out into plain angles for her body (`bodyAngles.resolveReach`): an arm put on her keeps
+   * where it is when a finger first moves one of its joints */
+  readonly plain?: (angles: BodyAngles) => BodyAngles;
 }
 
 type PartId = 'body' | 'back' | 'neck' | 'armL' | 'armR' | 'legL' | 'legR';
 const PARTS: readonly (readonly [PartId, string])[] = [['body', 'BODY'], ['back', 'BACK'], ['neck', 'NECK'], ['armL', 'L ARM'], ['armR', 'R ARM'], ['legL', 'L LEG'], ['legR', 'R LEG']];
 
-interface SliderDef { readonly prop: string; readonly label: string; readonly min: number; readonly max: number; readonly note?: (v: number) => string }
+interface SliderDef { readonly prop: string; readonly label: string; readonly min: number; readonly max: number; readonly note?: (v: number) => string; readonly scale?: number; readonly unit?: string }
 const ARM_SLIDERS: readonly SliderDef[] = [
   { prop: 'raise', label: 'RAISE', min: 0, max: 180 },
   { prop: 'toward', label: 'DIRECTION', min: -90, max: 180, note: (v) => (v < -10 ? 'BEHIND' : v < 45 ? 'OUT' : v < 135 ? 'FORWARD' : 'ACROSS') },
@@ -46,6 +49,7 @@ const ARM_SLIDERS: readonly SliderDef[] = [
   { prop: 'pronate', label: 'FOREARM ROLL', min: -90, max: 90 },
   { prop: 'wristFlex', label: 'WRIST BEND', min: -80, max: 80 },
   { prop: 'wristSide', label: 'WRIST SIDE', min: -30, max: 30 },
+  { prop: 'fingers', label: 'FINGERS CURLED', min: 0, max: 100, scale: 100, unit: '%' },
 ];
 const LEG_SLIDERS: readonly SliderDef[] = [
   { prop: 'flex', label: 'HIP BEND', min: -30, max: 140 },
@@ -280,18 +284,26 @@ export class PoseBuilderPanel {
 
   // ---------------------------------------------------------------------------------------------- the draft
   private read(part: PartId, def: SliderDef): number {
-    if (part === 'body') return (this.d.body as Record<string, number>)[def.prop] ?? 0;
-    return ((this.d.angles[part] as Record<string, number> | undefined)?.[def.prop]) ?? 0;
+    const k = def.scale ?? 1;
+    if (part === 'body') return Math.round(((this.d.body as Record<string, number>)[def.prop] ?? 0) * k);
+    return Math.round((((this.d.angles[part] as Record<string, number> | undefined)?.[def.prop]) ?? 0) * k);
   }
   private set(part: PartId, def: SliderDef, raw: number): void {
-    const v = clampTo(Math.round(raw), def);
+    const v = clampTo(Math.round(raw), def) / (def.scale ?? 1);
     if (part === 'body') this.d.body = { ...this.d.body, [def.prop]: v };
     else {
       const old = (this.d.angles[part] ?? {}) as Record<string, unknown>;
       let next: Record<string, unknown> = { ...old, [def.prop]: v };
       if (part === 'armL' || part === 'armR') {
-        // a hand put on her is dropped the moment a joint is moved; the arm keeps the numbers it had
-        if (old.reach) { const { reach: _drop, ...rest } = next; void _drop; next = { raise: 0, toward: 0, twist: 0, elbow: 0, ...rest }; }
+        // a hand put on her is dropped the moment a joint is moved; the arm keeps where it was (its reach worked out into
+        // plain angles for her body by the room), and only the joint moved changes
+        if (old.reach) {
+          const plain = (this.hooks.plain?.(this.d.angles)?.[part] ?? {}) as Record<string, unknown>;
+          const { reach: _drop, ...rest } = { ...old };
+          void _drop;
+          next = { raise: 0, toward: 0, twist: 0, elbow: 0, ...rest, ...plain, [def.prop]: v };
+          delete next.reach;
+        }
       }
       this.d.angles = { ...this.d.angles, [part]: next };
     }
@@ -432,7 +444,7 @@ export class PoseBuilderPanel {
       const v = this.read(r.part, r.def);
       if (!this.underFinger(r.input)) r.input.value = String(v);
       const note = r.def.note?.(v);
-      const t = `${r.def.label} · ${v}°${note ? ` · ${note}` : ''}`;
+      const t = `${r.def.label} · ${v}${r.def.unit ?? '°'}${note ? ` · ${note}` : ''}`;
       if (r.line.textContent !== t) r.line.textContent = t;
     }
   }

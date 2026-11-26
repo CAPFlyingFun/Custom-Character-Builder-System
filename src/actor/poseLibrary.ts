@@ -145,16 +145,9 @@ export function partsOf(measure: HumanMeasure, bind: readonly BindJoint[], joint
   }
   return out;
 }
-/** The pairs a pose is checked for: each arm against her trunk, the other arm and each leg; each leg against her trunk
- * (her bump among it) and the other leg. Both ways where a part can go into another from either side. */
-export const CHECK_PAIRS = Object.freeze([
-  { a: PART.armL, b: PART.trunk }, { a: PART.armR, b: PART.trunk }, { a: PART.trunk, b: PART.armL }, { a: PART.trunk, b: PART.armR },
-  { a: PART.armL, b: PART.armR }, { a: PART.armR, b: PART.armL },
-  { a: PART.armL, b: PART.legL }, { a: PART.armL, b: PART.legR }, { a: PART.armR, b: PART.legL }, { a: PART.armR, b: PART.legR },
-  { a: PART.legL, b: PART.armL }, { a: PART.legL, b: PART.armR }, { a: PART.legR, b: PART.armL }, { a: PART.legR, b: PART.armR },
-  { a: PART.legL, b: PART.trunk }, { a: PART.legR, b: PART.trunk }, { a: PART.trunk, b: PART.legL }, { a: PART.trunk, b: PART.legR },
-  { a: PART.legL, b: PART.legR }, { a: PART.legR, b: PART.legL },
-]);
-export const PART_NAMES = ['trunk', 'armL', 'armR', 'legL', 'legR'] as const;
+/** The parts a pose is checked for, each against every other part's skin: her arms, her legs and her trunk (her bump
+ * among it). */
+export const CHECK_PARTS = Object.freeze([PART.armL, PART.armR, PART.legL, PART.legR, PART.trunk]);
+export const PART_NAMES: Readonly<Record<number, string>> = Object.freeze({ 0: 'trunk', 1: 'armL', 2: 'armR', 3: 'legL', 4: 'legR', 255: 'joint' });
 
 export { BODY_ANGLE_TURNS, poseChain };

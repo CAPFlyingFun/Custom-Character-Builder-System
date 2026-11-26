@@ -186,6 +186,8 @@ export const SARAH_LAB_ACTION = Object.freeze({
   /** `${librarySheet}<sheet>`: the pose library's sheet shown; `${libraryPose}<pose id>`: that pose put on (actor/poseLibrary.ts) */
   librarySheet: 'sarahlab:library-sheet:',
   libraryPose: 'sarahlab:library-pose:',
+  /** the pose builder shown or folded away (poseBuilderPanel.ts) */
+  poseBuilder: 'sarahlab:pose-builder',
   turn: 'sarahlab:turn',
   bounce: 'sarahlab:bounce',
   /** PREGNANT on or off (P5): on or off and nothing else -- her weeks are typed, each its own box (pregnancy.ts) */
