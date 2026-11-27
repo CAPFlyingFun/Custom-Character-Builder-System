@@ -1639,6 +1639,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   crease, as her armpit's is, hidden between the two; CROSS-LEGGED, her shins 3 cm through one another where they cross;
   CHILD'S POSE, her belly 5 cm into her thighs (her knees bend no more than 142, so her hips can not sit back onto her
   heels).
+  AT HER 100 AND 200% BUMPS (MEASURED the same way): the stool's crossed legs are uncrossed by 200%, a hand on each knee
+  (across her bump her forearms went 6 cm into it); the lunge's front knee goes wide and its right hand to her own hip;
+  kneeling and all fours take her knees wider; the tablet's arm goes further forward; CHILD'S POSE from her 100% kneels
+  wide and leans forward onto her knees (her bump on the floor held her knees 14 cm off it). LEFT, AND NAMED: at 100%,
+  half-way between, the stool's right thigh 4 cm into her belly and the lunge's front thigh 4 cm (a seated or lunging
+  belly resting on a thigh); all fours and child's pose, her thighs 3 to 5 cm into her bump; COBRA lies on her bump from
+  her 100% (it says so: not for late pregnancy).
+- **A REACH IN ONE OF A POSE'S TWO SETS ONLY** (`mixAngles`) is that set's up to half-way: child's pose's hands go to her
+  knees from her 100% bump, not from her first percent. A clip from a reaching pose to one that does not reach changes
+  the arm at half-way, as the poses' own angles stand (NOT DONE: the reach worked out into plain angles first).
 - **THE POSE BUILDER** (Joshua, 2026-11-26: "copy and import Beyond Extinction's animation/pose builder in CCBS so I can save
   my own poses and animations and upload to you to save in the Repo, then you can just do animations between different
   poses"). Beyond Extinction's Animation Editor (bone groups turned by X/Y/Z, keys on a timeline, saved and exported by bone
@@ -1648,6 +1658,16 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
   (`actor/poseClip.ts`: poses at times, eased, played and scrubbed in the room), SAVE CLIP, EXPORT ALL (`ccbs-poses.json`)
   and IMPORT. A file he sends is added to the repo as a sheet of its own. An arm put on her by a reach keeps where it is
   when he first moves one of its joints (`hooks.plain`: `resolveReach`).
+  MEASURED in the built room opened as a phone (430 x 932, a touch screen, light skin; no error on the page): POSE BUILDER
+  opened, HANDS ON HIPS chosen and START FROM CURRENT POSE pressed, L ARM's RAISE +5 four times by real touches (55 to
+  75 degrees, her arm lifting off her hip), SAVE POSE (in MINE), + KEY, six more +5 and BACK's FLEX +5 four times, + KEY,
+  PLAY (the clip played in the room), SAVE CLIP, EXPORT ALL (`ccbs-poses.json`: the pose and the clip), IMPORT of a file
+  made from it with a pose of another name (in MINE, "IMPORTED 1 POSE, 0 CLIPS"). The software renderer takes a minute
+  and more over each touch there: a phone's own time NOT MEASURED.
+- **ONE LIBRARY POSE TO THE NEXT LAYS HER CLOTH AFRESH** (`clothPoseNow`; a fault found 2026-11-26 in the pictures, fixed
+  and told): the room's pose was 'library' for all of them, so the cloth tee, a skirt and her cloth bikini bottom rode the
+  jump from one to the next -- from COBRA to the LUNGE the tee, settled lying down, was thrown up over her bust. The
+  builder's pose and a clip move her a little at a time and are worn through.
 - NOT DONE: his other sheets (standing, stool, floor, kneeling, yoga); props in her hands (phone, tablet: named on a pose,
   not drawn); a placed pose's heights as numbers for a game; the male body's contacts measured.
 - After anything changes them: `tests/bodyAngles.test.ts`, `tests/poseLibrary.test.ts`, `tests/poseStore.test.ts`,
