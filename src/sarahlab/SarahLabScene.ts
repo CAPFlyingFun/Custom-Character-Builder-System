@@ -111,7 +111,7 @@ import { closeToTouch, HAND_GRIP, shapeDistance, type GripShape } from '../actor
 import { BodySurface, type SurfaceAnchor } from './bodySurface';
 import { SEATED_TURNS, poseSeated } from '../actor/humanSeated';
 import { CHECK_PARTS, PART_NAMES, partsOf, posePose, type PoseSpec } from '../actor/poseLibrary';
-import { anglesOfTurns, resolveReach } from '../actor/bodyAngles';
+import { anglesOfTurns, resolveReach, type BodyAngles } from '../actor/bodyAngles';
 import { clipLength, sampleAsPose, sampleClip, type PoseClip } from '../actor/poseClip';
 import { PoseBuilderPanel, type BuilderDraft } from './poseBuilderPanel';
 import { createPoseStore, type PoseStore } from './poseStore';
@@ -826,6 +826,12 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
    * COBRA to the LUNGE the cloth tee settled lying down was thrown up over her bust). The builder's pose and a clip move
    * her a little at a time and are worn through. */
   const clothPoseNow = (): string => (pose === 'library' ? `library:${libraryId}` : pose);
+  /** a pose read back off her turns, to a tenth of a degree (a hundredth of a fist's curl): what the builder starts from
+   * and what he exports reads as he would write it, not -1.1e-24 */
+  const tidyAngles = (a: BodyAngles): BodyAngles => {
+    const one = <T extends object | undefined>(x: T): T => (x ? (Object.fromEntries(Object.entries(x).map(([k, v]) => [k, typeof v === 'number' ? (k === 'fingers' ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10 || 0) : v])) as T) : x);
+    return { back: one(a.back), neck: one(a.neck), armL: one(a.armL), armR: one(a.armR), legL: one(a.legL), legR: one(a.legR) };
+  };
   /** her birth area shaped (birthArea.ts); a probe can turn it off to compare */
   let birthAreaShown = true;
   /** how much of the split's shading shows (birthArea.ts `patchBirthShade`): none while anything is worn over it */
@@ -6126,7 +6132,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       // the pose she is in now, read off her turns as angles (any pose: standing, seated, a birth position, the library's)
       startFrom: () => {
         const spec = libraryNow(), turns = currentTurns();
-        const angles = measure && rig ? anglesOfTurns(measure, rig.bind, turns) : {};
+        const angles = measure && rig ? tidyAngles(anglesOfTurns(measure, rig.bind, turns)) : {};
         return {
           name: spec && spec.id !== DRAFT_ID && !spec.id.endsWith('@') ? spec.name : builderDraft?.name ?? 'my pose',
           support: spec?.support ?? (pose === 'sit' ? 'seat' : isBirthPose(pose) && pose !== 'apart' ? 'floor' : 'feet'),
@@ -6142,7 +6148,7 @@ export function buildSarahLabScene(ctx: SceneContext, hooks: SarahLabHooks): App
       scrub: (clip, t) => { clipNow = { clip, t, playing: false }; into(); libraryId = CLIP_ID; refresh(); },
       store: poseStore,
       library: () => POSES,
-      plain: (angles) => (measure && rig ? resolveReach(measure, rig.bind, angles, { unitsPerMetre: rig.bindScale > 0 ? rig.bindScale : 1 }) : angles),
+      plain: (angles) => (measure && rig ? tidyAngles(resolveReach(measure, rig.bind, angles, { unitsPerMetre: rig.bindScale > 0 ? rig.bindScale : 1 })) : angles),
       download: (name, text) => {
         const url = URL.createObjectURL(new Blob([text], { type: 'application/json' })), a = document.createElement('a');
         a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();

@@ -142,7 +142,7 @@ describe('file', () => {
     Object.defineProperty(input, 'files', { value: [new File([other.exportJson()], 'p.json', { type: 'application/json' })], configurable: true });
     input.dispatchEvent(new Event('change'));
     await vi.waitFor(() => expect(h.store.poses()).toHaveLength(1));
-    expect(h.root.querySelector(`[data-field="${F.line}"]`)!.textContent).toContain('IMPORTED 1 POSES, 0 CLIPS');
+    expect(h.root.querySelector(`[data-field="${F.line}"]`)!.textContent).toContain('IMPORTED 1 POSE, 0 CLIPS');
     expect(h.root.querySelector(`[data-action="${A.loadPose}mine-far"]`)).toBeTruthy();
   });
 });

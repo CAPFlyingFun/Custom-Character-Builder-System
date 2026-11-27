@@ -101,7 +101,7 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     },
     bump: {
       armL: { reach: { at: 'hip', off: [0.11, 0.1, 0.17], hand: [0, 0.3, 1], palm: [-1, 0, 0], elbow: [1, -1, -0.3] } },
-      armR: { reach: { at: 'hipOther', off: [0.04, 0.22, 0.36], hand: [-1, 0.2, 0.2], palm: [0, 0, -1], elbow: [0.7, -0.7, 0.7] } },
+      armR: { reach: { at: 'hipOther', off: [0.04, 0.22, 0.42], hand: [-1, 0.2, 0.2], palm: [0, 0, -1], elbow: [0.7, -0.7, 0.9] } },
     },
     contacts: ['soleL', 'soleR'], props: [{ kind: 'tablet', hand: 'L' }],
   },
@@ -114,7 +114,12 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
       legR: { flex: 95, abduct: -16, twist: 6, knee: 95, ankle: -25 },
       legL: { flex: 55, abduct: 6, twist: -6, knee: 60, ankle: -25 },
     },
-    bump: { legR: { flex: 85, abduct: -6, twist: 2, knee: 90, ankle: -25 } },
+    // at her 200% bump her legs are not crossed over it: knees apart, a hand on each
+    bump: {
+      armL: { reach: { at: 'knee', off: [0.0, 0.08, -0.02], hand: [0.3, -0.3, 1], palm: [0, -1, 0], elbow: [1.6, -1, 0.3] } },
+      armR: { reach: { at: 'knee', off: [0.0, 0.08, -0.02], hand: [0.3, -0.3, 1], palm: [0, -1, 0], elbow: [1.6, -1, 0.3] } },
+      legL: { flex: 75, abduct: 20, twist: -5, knee: 85, ankle: -15 }, legR: { flex: 75, abduct: 30, twist: -5, knee: 85, ankle: -15 },
+    },
     contacts: ['seat', 'soleL'], props: [{ kind: 'stool' }],
   },
   {
@@ -139,7 +144,7 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
     bump: {
       armL: { reach: { at: 'hip', off: [0.07, -0.03, 0.34], hand: [0, -0.5, 1], palm: [0, -1, 0], elbow: [1.2, -1, 0] } },
       armR: { reach: { at: 'hip', off: [0.07, -0.03, 0.34], hand: [0, -0.5, 1], palm: [0, -1, 0], elbow: [1.2, -1, 0] } },
-      legL: { abduct: 20, twist: -10 }, legR: { abduct: 20, twist: -10 },
+      legL: { abduct: 20, twist: 5 }, legR: { abduct: 20, twist: 5 },
     },
     contacts: ['kneeL', 'kneeR', 'toesL', 'toesR'],
   },
@@ -151,7 +156,7 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
       armL: { raise: 80, toward: 90, elbow: 4, pronate: 90, wristFlex: -80, fingers: 0.1 }, armR: { raise: 80, toward: 90, elbow: 4, pronate: 90, wristFlex: -80, fingers: 0.1 },
       legL: { flex: 80, abduct: 3, knee: 90, ankle: -55 }, legR: { flex: 80, abduct: 3, knee: 90, ankle: -55 },
     },
-    bump: { legL: { abduct: 10 }, legR: { abduct: 10 } },
+    bump: { legL: { abduct: 18 }, legR: { abduct: 18 } },
     contacts: ['palmL', 'palmR', 'kneeL', 'kneeR', 'toesL', 'toesR'],
   },
   {
@@ -191,9 +196,14 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
       back: { flex: 10 },
       armL: { reach: { at: 'knee', off: [0.0, 0.085, -0.01], hand: [0.2, -0.3, 1], palm: [0, -1, 0], elbow: [1, -1, -0.2] }, fingers: 0.4 },
       armR: { reach: { at: 'kneeOther', off: [0.03, 0.13, -0.05], hand: [-1, -0.2, 0.6], palm: [0, -1, 0], elbow: [1.5, -1, 0.3] }, fingers: 0.4 },
-      legL: { flex: 105, abduct: 6, knee: 77, ankle: 2 }, legR: { flex: -18, abduct: 4, knee: 63, ankle: -62 },
+      legL: { flex: 105, abduct: 10, knee: 77, ankle: 2 }, legR: { flex: -18, abduct: 4, knee: 63, ankle: -62 },
     },
-    bump: { legL: { flex: 95, abduct: 18, knee: 80 } },
+    bump: {
+      // fitted at her 200% bump (`--fit`): her front foot, back knee and toes on the floor
+      legL: { flex: 115, abduct: 42, knee: 89 }, legR: { flex: -24, knee: 67 },
+      // her right hand on her own hip: across her 200% bump it went 6 cm into it
+      armR: { reach: { at: 'hip', off: [0.09, 0.02, 0.1], hand: [0, -0.6, 0.8], palm: [-1, 0, 0], elbow: [1, -1, -0.2] }, fingers: 0.4 },
+    },
     contacts: ['soleL', 'kneeR', 'toesR'],
   },
   {

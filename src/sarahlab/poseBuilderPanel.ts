@@ -412,7 +412,7 @@ export class PoseBuilderPanel {
     if (!file) return;
     try {
       const r = this.hooks.store.importJson(await readFile(file));
-      this.say(`imported ${r.poses} poses, ${r.clips} clips${r.errors.length ? ` · ${r.errors.join(', ')}` : ''}`);
+      this.say(`imported ${r.poses} pose${r.poses === 1 ? "" : "s"}, ${r.clips} clip${r.clips === 1 ? "" : "s"}${r.errors.length ? ` · ${r.errors.join(', ')}` : ''}`);
     } catch { this.say('could not read that file'); }
     try { this.fileInput.value = ''; } catch { /* a file input may refuse */ }
     if (!this.disposed) this.lists(true);
