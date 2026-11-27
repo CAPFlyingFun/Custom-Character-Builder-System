@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { throughEachOther } from '../../src/actor/selfContact';
 import { CHECK_PARTS, PART_NAMES, type PoseSpec } from '../../src/actor/poseLibrary';
 import { poseById } from '../../src/data/poses';
-import { loadPosable, posed, contactHeights } from './pose.mts';
+import { loadPosable, posed, contactHeights } from './pose.mjs';
 
 const opt = (name: string, fallback: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
 const tries = JSON.parse(readFileSync(process.argv[2], 'utf8')) as { label: string; pose: string; patch?: Partial<PoseSpec> }[];

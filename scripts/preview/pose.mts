@@ -199,22 +199,25 @@ function views(body: Body, x: ReturnType<typeof posed>, size: number, label: str
  * FITTING A FLOOR POSE TO THE FLOOR (`--fit body.pitch=60:95,legs.flex=60:100`): the named numbers moved, each in its
  * range, until the pose's named contacts are as near the floor as they can be (the sum of their heights' squares): a
  * search a number at a time, its steps halved. `legs.` and `arms.` move both sides together. Prints what it found; the
- * pose's file is the author's to change. Female only (her contacts are measured on her).
+ * pose's file is the author's to change. Female only (her contacts are measured on her). At --bump 200 it fits the
+ * pose's 200% numbers (`bump`, `bumpBody`), which are all of the pose there.
  */
 export function fitPose(body: Body, spec: PoseSpec, bumpPct: number, params: { path: string; lo: number; hi: number }[]): { values: Record<string, number>; cost: number; touch: string } {
+  const big = bumpPct >= 200;
   const get = (sp: PoseSpec, path: string): number => {
     const [head, key] = path.split('.');
-    if (head === 'body') return (sp.body as Record<string, number> | undefined)?.[key] ?? 0;
+    if (head === 'body') return ((big ? sp.bumpBody?.[key as 'pitch'] : undefined) ?? (sp.body as Record<string, number> | undefined)?.[key]) ?? 0;
     const part = head === 'legs' ? 'legL' : head === 'arms' ? 'armL' : head;
-    return ((sp.angles as Record<string, Record<string, number> | undefined>)[part]?.[key]) ?? 0;
+    const at = (a?: PoseSpec['angles']) => (a as Record<string, Record<string, number> | undefined> | undefined)?.[part]?.[key];
+    return (big ? at(sp.bump) : undefined) ?? at(sp.angles) ?? 0;
   };
   const set = (sp: PoseSpec, path: string, v: number): PoseSpec => {
     const [head, key] = path.split('.');
-    if (head === 'body') return { ...sp, body: { ...sp.body, [key]: v } };
+    if (head === 'body') return big ? { ...sp, bumpBody: { ...(sp.bumpBody ?? sp.body), [key]: v } } : { ...sp, body: { ...sp.body, [key]: v } };
     const parts = head === 'legs' ? ['legL', 'legR'] : head === 'arms' ? ['armL', 'armR'] : [head];
-    const angles = { ...sp.angles } as Record<string, unknown>;
+    const angles = { ...(big ? sp.bump : sp.angles) } as Record<string, unknown>;
     for (const part of parts) angles[part] = { ...(angles[part] as object | undefined), [key]: v };
-    return { ...sp, angles: angles as PoseSpec['angles'] };
+    return big ? { ...sp, bump: angles as PoseSpec['angles'] } : { ...sp, angles: angles as PoseSpec['angles'] };
   };
   const cost = (sp: PoseSpec): number => {
     const x = posed(body, sp, bumpPct), t = contactHeights(body, x, sp);

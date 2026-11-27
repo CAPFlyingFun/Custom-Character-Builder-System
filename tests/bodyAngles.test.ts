@@ -161,6 +161,15 @@ for (const name of Object.keys(FILES)) {
       const m = mixAngles({ legL: { knee: 0 }, armL: { reach: { at: 'hip', off: [0, 0, 0] } } }, { legL: { knee: 90 }, armL: { reach: { at: 'hip', off: [0, 0.2, 0] } } }, 0.5);
       expect(m.legL?.knee).toBe(45);
       expect(m.armL?.reach?.off?.[1]).toBeCloseTo(0.1);
+      // the hand's way is kept through a mix (a fault found 2026-11-26: it was dropped, and her hands on her hips at a
+      // bump hung as her arm left them), on a straight line where both say it, as one says it where one does
+      const h = mixAngles({ armL: { reach: { at: 'hip', hand: [0, 0, 1], palm: [-1, 0, 0] } } }, { armL: { reach: { at: 'hip', hand: [0, 1, 1] } } }, 0.5);
+      expect(h.armL?.reach?.hand).toEqual([0, 0.5, 1]);
+      expect(h.armL?.reach?.palm).toEqual([-1, 0, 0]);
+      // a reach one side has and the other not is that side's up to half-way
+      const one = (t: number) => mixAngles({ armL: { raise: 170 } }, { armL: { raise: 170, reach: { at: 'knee' } } }, t).armL?.reach;
+      expect(one(0.25)).toBeUndefined();
+      expect(one(0.5)?.at).toBe('knee');
     });
   });
 }

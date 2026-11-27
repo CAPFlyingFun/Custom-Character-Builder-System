@@ -1616,10 +1616,29 @@ TRADDOMIUM, Beyond Extinction, TMB-Story, and future games").
 - **THE PREVIEW WITHOUT A BROWSER** (`scripts/preview/pose.mts`): her or his body file, its belly laid on, skinned on the
   CPU, set on the floor, pictured from four sides, with the report -- parts through one another, joints held at their
   walls, and her named contacts' heights over the floor (`data/contacts/female-v2.json`, female only). `--fit
-  body.pitch=60:95,legs.flex=60:100` searches those numbers for the pose's contacts on the floor (`lo:lo` sets one).
+  body.pitch=60:95,legs.flex=60:100` searches those numbers for the pose's contacts on the floor (`lo:lo` sets one); at
+  `--bump 200` it searches the pose's 200% numbers (`bump`, `bumpBody`).
+- **A POSE AT A BUMP IS ITS TWO SETS MIXED** (`mixAngles`): a reach's place, elbow and hand's way on a straight line. A
+  FAULT FOUND 2026-11-26: the mix dropped the hand's way (`hand`, `palm`), so at any bump but none -- 200% too, which is
+  the mix at its end -- a reached hand hung as her arm left it: her hands on her hips came out with their fingers down
+  her seat, 6 cm into it (MEASURED on her, the preview).
 - **THE CORE SIXTEEN** (`data/poses/core.ts`, his "Pose Reference -- 4x4 Core Set"): GAME TUNING by eye off its pictures,
   the floor poses fitted by `--fit` (MEASURED on her, 0%: knees, toes and soles within 2 to 6 cm of the floor -- a contact
   site sits that far up her skin; the lunge's back knee and the stool's free foot a few cm off it).
+- **TUNING A POSE** (`scripts/preview/tunePose.mts tries.json [--bump 0,200] [--where]`): a pose tried several ways, her
+  body read once, each try's parts through one another and her contacts' heights; `--where` names the bone that carries
+  the deepest point. It counts PART AGAINST PART only: a joint's blend zone reads 2 to 3 cm "through" at her groin and
+  armpits in her rest pose (MEASURED 2026-11-26, the neutral pose: some 200 points a leg), and is left out. What it found
+  in the sixteen as first written, and changed (MEASURED, 0%): a hand 2 cm into her hips (a palm's middle is half the
+  hand's thickness under its skin: put 1.5 cm off it); the hand behind her head 2.4 cm into it, and its standing foot 7.6
+  cm off the floor (the other foot's toes pointed under it); the THINKING arm round the BACK of her waist, 6 cm through
+  it (its elbow pointed back: now under her bust, in front); the TABLET's arm across her belly 6 cm into it; the WALKING
+  KEY's swinging arm 6 cm into its own thigh (swung straight back past her hips: now back and out); hands into her
+  thighs kneeling 4 cm; the lunge's and the stool's hands stacked 2 cm into one another. LEFT, AND NAMED: an upper arm
+  brought across her (arms crossed, the lunge, the stool) sinks 3 to 4 cm into the side of her bust -- her skin's own
+  crease, as her armpit's is, hidden between the two; CROSS-LEGGED, her shins 3 cm through one another where they cross;
+  CHILD'S POSE, her belly 5 cm into her thighs (her knees bend no more than 142, so her hips can not sit back onto her
+  heels).
 - **THE POSE BUILDER** (Joshua, 2026-11-26: "copy and import Beyond Extinction's animation/pose builder in CCBS so I can save
   my own poses and animations and upload to you to save in the Repo, then you can just do animations between different
   poses"). Beyond Extinction's Animation Editor (bone groups turned by X/Y/Z, keys on a timeline, saved and exported by bone

@@ -162,9 +162,17 @@ export const CORE_POSES: readonly PoseSpec[] = Object.freeze([
       armL: { raise: 174, toward: 90, elbow: 8, pronate: 90, fingers: 0.1 }, armR: { raise: 174, toward: 90, elbow: 8, pronate: 90, fingers: 0.1 },
       legL: { flex: 122, abduct: 4, knee: 142, ankle: -55 }, legR: { flex: 122, abduct: 4, knee: 142, ankle: -55 },
     },
-    bump: { back: { flex: 45 }, legL: { flex: 110, abduct: 32, twist: -15 }, legR: { flex: 110, abduct: 32, twist: -15 } },
-    bumpBody: { pitch: 66 },
+    // at her 200% bump her bump on the floor would hold her knees 14 cm off it (MEASURED, the preview): she kneels wide and
+    // leans forward onto her knees -- fitted with her knees and toes on the floor (`--fit`; her palms can not reach it there)
+    bump: {
+      back: { flex: 12 }, neck: { flex: 5 },
+      armL: { reach: { at: 'knee', off: [0.0, 0.08, 0.02], hand: [0, -0.3, 1], palm: [0, -1, 0], elbow: [1, -1, -0.2] }, fingers: 0.2 },
+      armR: { reach: { at: 'knee', off: [0.0, 0.08, 0.02], hand: [0, -0.3, 1], palm: [0, -1, 0], elbow: [1, -1, -0.2] }, fingers: 0.2 },
+      legL: { flex: 89, abduct: 35, twist: -38 }, legR: { flex: 89, abduct: 35, twist: -38 },
+    },
+    bumpBody: { pitch: 48 },
     contacts: ['kneeL', 'kneeR', 'toesL', 'toesR', 'forehead', 'palmL', 'palmR'],
+    note: 'from her 100% bump she kneels wide and leans forward onto her knees (her bump would hold her off the floor)',
   },
   {
     id: 'core-14-cobra', name: 'Cobra (stretch)', sheet: 'core', ref: `${REF} 14`, tags: ['floor', 'yoga', 'stretch'], support: 'floor',

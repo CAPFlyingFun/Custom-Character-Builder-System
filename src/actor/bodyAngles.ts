@@ -536,23 +536,29 @@ export function mixAngles(a: BodyAngles, b: BodyAngles, t: number): BodyAngles {
       const v = m((x as Record<string, number> | undefined)?.[key], (y as Record<string, number> | undefined)?.[key]); if (v !== undefined) o[key] = v;
     }
     const rx = (x as ArmAngles | undefined)?.reach, ry = (y as ArmAngles | undefined)?.reach;
-    if (rx || ry) (o as unknown as { reach: Reach }).reach = mixReach(rx, ry, t);
+    // a reach on one side only is that side's up to half-way (a pose that reaches at her 200% bump and not at none puts
+    // its hand there from her 100%, not from her first percent)
+    const r = rx && ry ? mixReach(rx, ry, t) : rx ? (t < 0.5 ? rx : undefined) : t >= 0.5 ? ry : undefined;
+    if (r) (o as unknown as { reach: Reach }).reach = r;
     return o as T;
   };
   return { back: obj(a.back, b.back), neck: obj(a.neck, b.neck), armL: obj(a.armL, b.armL), armR: obj(a.armR, b.armR), legL: obj(a.legL, b.legL), legR: obj(a.legR, b.legR) };
 }
 
-/** Two reaches mixed: the same joint, its offset and elbow on a straight line; another joint, whichever is nearer. */
-function mixReach(a: Reach | undefined, b: Reach | undefined, t: number): Reach {
-  if (!a) return b!;
-  if (!b || a.at !== b.at) return t < 0.5 || !b ? a : b;
+/** Two reaches mixed: the same joint, its offset, elbow and hand's way (fingers, palm) on a straight line; another joint,
+ * whichever is nearer. (A hand's way given on one side only is that side's: until 2026-11-26 a mixed reach dropped them,
+ * and a pose's hands on her hips at any bump but none came out turned as an arm left them -- fingers down her seat.) */
+function mixReach(a: Reach, b: Reach, t: number): Reach {
+  if (a.at !== b.at) return t < 0.5 ? a : b;
   const v3 = (p?: readonly [number, number, number], q?: readonly [number, number, number]): [number, number, number] | undefined => {
     if (!p && !q) return undefined;
     const x = p ?? [0, 0, 0], y = q ?? [0, 0, 0];
     return [x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t];
   };
   const off = v3(a.off, b.off), elbow = v3(a.elbow ?? [1, -0.6, -0.5], b.elbow ?? [1, -0.6, -0.5]);
-  return { at: a.at, ...(off ? { off } : {}), ...(elbow ? { elbow } : {}) };
+  const way = (p?: readonly [number, number, number], q?: readonly [number, number, number]) => (p && q ? v3(p, q) : p ?? q);
+  const hand = way(a.hand, b.hand), palm = way(a.palm, b.palm);
+  return { at: a.at, ...(off ? { off } : {}), ...(elbow ? { elbow } : {}), ...(hand ? { hand } : {}), ...(palm ? { palm } : {}) };
 }
 
 /** `a` with her left and right swapped: a pose on her left side made one on her right. */
